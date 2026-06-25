@@ -29,6 +29,14 @@
                             </div>
                         </div>
                         <div class="col-md-3">
+                            <div class="card text-white bg-danger mb-3">
+                                <div class="card-body">
+                                    <h5 class="card-title"><i class="bi bi-exclamation-triangle"></i> 异常节点</h5>
+                                    <p class="card-text display-4">{{ offline_count }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
                             <div class="card text-white bg-info mb-3">
                                 <div class="card-body">
                                     <h5 class="card-title"><i class="bi bi-collection"></i> 节点组</h5>
@@ -55,8 +63,77 @@
                     </div>
 
                     <div class="row mt-2">
-                        <div class="col-md-6">
-                            <div class="card h-100">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="bi bi-lightning-charge"></i> 快捷入口</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        <div class="col-md-2 col-4">
+                                            <a href="{% url 'nodes:create' %}" class="text-decoration-none">
+                                                <div class="card border-primary h-100 action-card">
+                                                    <div class="card-body text-center py-3">
+                                                        <i class="bi bi-plus-circle text-primary" style="font-size: 2rem;"></i>
+                                                        <h6 class="mt-2 mb-1">新建节点</h6>
+                                                        <small class="text-muted">添加新节点</small>
+                                                    </div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                        <div class="col-md-2 col-4">
+                                            <a href="{% url 'credentials:create' %}" class="text-decoration-none">
+                                                <div class="card border-success h-100 action-card">
+                                                    <div class="card-body text-center py-3">
+                                                        <i class="bi bi-key text-success" style="font-size: 2rem;"></i>
+                                                        <h6 class="mt-2 mb-1">新建凭证</h6>
+                                                        <small class="text-muted">添加SSH凭证</small>
+                                                    </div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                        <div class="col-md-2 col-4">
+                                            <a href="{% url 'nodes:group_create' %}" class="text-decoration-none">
+                                                <div class="card border-info h-100 action-card">
+                                                    <div class="card-body text-center py-3">
+                                                        <i class="bi bi-collection text-info" style="font-size: 2rem;"></i>
+                                                        <h6 class="mt-2 mb-1">新建节点组</h6>
+                                                        <small class="text-muted">创建节点组</small>
+                                                    </div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                        <div class="col-md-2 col-4">
+                                            <a href="{% url 'configs:create' %}" class="text-decoration-none">
+                                                <div class="card border-warning h-100 action-card">
+                                                    <div class="card-body text-center py-3">
+                                                        <i class="bi bi-file-earmark-plus text-warning" style="font-size: 2rem;"></i>
+                                                        <h6 class="mt-2 mb-1">创建配置版本</h6>
+                                                        <small class="text-muted">新建配置</small>
+                                                    </div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                        <div class="col-md-2 col-4">
+                                            <a href="{% url 'releases:create' %}" class="text-decoration-none">
+                                                <div class="card border-danger h-100 action-card">
+                                                    <div class="card-body text-center py-3">
+                                                        <i class="bi bi-rocket-takeoff text-danger" style="font-size: 2rem;"></i>
+                                                        <h6 class="mt-2 mb-1">创建发布任务</h6>
+                                                        <small class="text-muted">发布配置</small>
+                                                    </div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="card">
                                 <div class="card-header d-flex justify-content-between align-items-center">
                                     <h6 class="mb-0"><i class="bi bi-server"></i> 节点状态</h6>
                                     <a href="{% url 'nodes:list' %}" class="btn btn-sm btn-outline-primary">查看全部</a>
@@ -115,8 +192,11 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="card h-100">
+                    </div>
+
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="card">
                                 <div class="card-header d-flex justify-content-between align-items-center">
                                     <h6 class="mb-0"><i class="bi bi-clock-history"></i> 最近发布记录</h6>
                                     <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-primary">查看全部</a>
@@ -176,112 +256,6 @@
                                             </tbody>
                                         </table>
                                     </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row mt-4">
-                        <div class="col-md-8">
-                            <div class="card h-100">
-                                <div class="card-header">
-                                    <h6 class="mb-0"><i class="bi bi-lightning-charge"></i> 快捷入口</h6>
-                                </div>
-                                <div class="card-body">
-                                    <div class="row g-3">
-                                        <div class="col-4">
-                                            <a href="{% url 'nodes:create' %}" class="text-decoration-none">
-                                                <div class="card border-primary h-100 action-card">
-                                                    <div class="card-body text-center py-4">
-                                                        <i class="bi bi-plus-circle text-primary" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">新建节点</h6>
-                                                        <small class="text-muted">添加新节点</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="{% url 'credentials:create' %}" class="text-decoration-none">
-                                                <div class="card border-success h-100 action-card">
-                                                    <div class="card-body text-center py-4">
-                                                        <i class="bi bi-key text-success" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">新建凭证</h6>
-                                                        <small class="text-muted">添加SSH凭证</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="{% url 'nodes:group_create' %}" class="text-decoration-none">
-                                                <div class="card border-info h-100 action-card">
-                                                    <div class="card-body text-center py-4">
-                                                        <i class="bi bi-collection text-info" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">新建节点组</h6>
-                                                        <small class="text-muted">创建节点组</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="{% url 'configs:create' %}" class="text-decoration-none">
-                                                <div class="card border-warning h-100 action-card">
-                                                    <div class="card-body text-center py-4">
-                                                        <i class="bi bi-file-earmark-plus text-warning" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">创建配置版本</h6>
-                                                        <small class="text-muted">新建配置</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                        <div class="col-4">
-                                            <a href="{% url 'releases:create' %}" class="text-decoration-none">
-                                                <div class="card border-danger h-100 action-card">
-                                                    <div class="card-body text-center py-4">
-                                                        <i class="bi bi-rocket-takeoff text-danger" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">创建发布任务</h6>
-                                                        <small class="text-muted">发布配置</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="card h-100">
-                                <div class="card-header">
-                                    <h6 class="mb-0"><i class="bi bi-info-circle"></i> 系统信息</h6>
-                                </div>
-                                <div class="card-body">
-                                    <table class="table table-borderless mb-0">
-                                        <tbody>
-                                            <tr>
-                                                <th class="text-muted" style="width: 100px;">系统版本</th>
-                                                <td>MngxOps V1.0</td>
-                                            </tr>
-                                            <tr>
-                                                <th class="text-muted">当前用户</th>
-                                                <td>{{ user.username }}</td>
-                                            </tr>
-                                            <tr>
-                                                <th class="text-muted">当前时间</th>
-                                                <td>{{ current_time|date:"Y-m-d H:i:s" }}</td>
-                                            </tr>
-                                            <tr>
-                                                <th class="text-muted">Django版本</th>
-                                                <td>{{ django_version }}</td>
-                                            </tr>
-                                            <tr>
-                                                <th class="text-muted">Python版本</th>
-                                                <td>{{ python_version }}</td>
-                                            </tr>
-                                            <tr>
-                                                <th class="text-muted">登录时间</th>
-                                                <td>{{ last_login_text }}</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
                                 </div>
                             </div>
                         </div>

@@ -82,6 +82,9 @@
                                         <a href="{% url 'users:edit' user.username %}" class="btn btn-sm btn-primary">
                                             <i class="bi bi-pencil"></i> 编辑
                                         </a>
+                                        <a href="{% url 'users:edit' user.username %}?tab=roles" class="btn btn-sm btn-outline-info">
+                                            <i class="bi bi-person-badge"></i> 关联角色
+                                        </a>
                                         {% endif %}
                                         {% if user|has_perm_code:"users.delete" and user != request.user %}
                                         <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal"

@@ -274,14 +274,14 @@ def test_node_connection(request):
                     host,
                     ssh_port,
                     credential.username,
-                    password=credential.password,
+                    password=credential.get_password(),
                 )
             else:
                 success, message = test_ssh_connection(
                     host,
                     ssh_port,
                     credential.username,
-                    private_key=credential.private_key,
+                    private_key=credential.get_private_key(),
                 )
 
             if success and node_id:
@@ -294,12 +294,12 @@ def test_node_connection(request):
                     ssh_port,
                     credential.username,
                     password=(
-                        credential.password
+                        credential.get_password()
                         if credential.auth_type == "password"
                         else None
                     ),
                     private_key=(
-                        credential.private_key
+                        credential.get_private_key()
                         if credential.auth_type == "key"
                         else None
                     ),
@@ -454,14 +454,14 @@ def get_node_detail(request):
                             node.ip,
                             node.port,
                             credential.username,
-                            password=credential.password,
+                            password=credential.get_password(),
                         )
                     else:
                         success, system_info = get_system_info(
                             node.ip,
                             node.port,
                             credential.username,
-                            private_key=credential.private_key,
+                            private_key=credential.get_private_key(),
                         )
 
                     if success:
@@ -509,14 +509,14 @@ def get_node_system_info(request):
                     node.ip,
                     node.port,
                     credential.username,
-                    password=credential.password,
+                    password=credential.get_password(),
                 )
             else:
                 success, system_info = get_system_info(
                     node.ip,
                     node.port,
                     credential.username,
-                    private_key=credential.private_key,
+                    private_key=credential.get_private_key(),
                 )
 
             if success:
@@ -558,7 +558,7 @@ def get_node_nginx_version(request):
                     node.ip,
                     node.port,
                     credential.username,
-                    password=credential.password,
+                    password=credential.get_password(),
                     nginx_path=nginx_path,
                 )
             else:
@@ -566,7 +566,7 @@ def get_node_nginx_version(request):
                     node.ip,
                     node.port,
                     credential.username,
-                    private_key=credential.private_key,
+                    private_key=credential.get_private_key(),
                     nginx_path=nginx_path,
                 )
 

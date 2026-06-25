@@ -1,4 +1,5 @@
 import json
+import threading
 from datetime import datetime
 
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -31,7 +32,6 @@ from utils.pagination import PerPagePaginationMixin
 
 class ReleaseExecutorMixin:
     def _execute_release(self, task, action):
-        request = self.request
         node = task.node
         config = task.config
         version = task.version
@@ -60,9 +60,9 @@ class ReleaseExecutorMixin:
             "username": credential.username,
         }
         if credential.auth_type == "password":
-            kwargs["password"] = credential.password
+            kwargs["password"] = credential.get_password()
         else:
-            kwargs["private_key"] = credential.private_key
+            kwargs["private_key"] = credential.get_private_key()
 
         add_log(f"开始发布: {config.name} v{version.version} → {node.hostname}")
         add_log(f"目标路径: {config.file_path}")
@@ -542,6 +542,18 @@ class ReleaseCenterView(
         return context
 
 
+def _run_release_tasks(task_ids):
+    executor = ReleaseExecutorMixin()
+    for task_id in task_ids:
+        try:
+            task = ReleaseTask.objects.select_related(
+                "node", "config", "version", "operator"
+            ).get(pk=task_id)
+            executor._execute_release(task, "publish")
+        except ReleaseTask.DoesNotExist:
+            pass
+
+
 class ReleaseCenterExecuteView(
     LoginRequiredMixin, PermissionRequiredMixin, ReleaseExecutorMixin, View
 ):
@@ -570,43 +582,26 @@ class ReleaseCenterExecuteView(
             messages.error(request, msg)
             return redirect("releases:center")
 
-        action = "publish"
-        success_count = 0
-        fail_count = 0
-        results = []
+        task_ids = list(tasks.values_list("id", flat=True))
+        thread = threading.Thread(
+            target=_run_release_tasks,
+            args=(task_ids,),
+            daemon=True,
+        )
+        thread.start()
 
-        for task in tasks:
-            ok, msg = self._execute_release(task, action)
-            results.append(
-                {
-                    "task_id": task.id,
-                    "node": task.node.hostname,
-                    "config": task.config.name,
-                    "status": task.status,
-                    "message": msg,
-                }
-            )
-            if task.status == "success":
-                success_count += 1
-            else:
-                fail_count += 1
-
-        summary = f"批次 {batch_number}：成功 {success_count}，失败 {fail_count}"
         if is_ajax:
             return JsonResponse(
                 {
-                    "success": fail_count == 0,
-                    "message": summary,
-                    "results": results,
-                    "success_count": success_count,
-                    "fail_count": fail_count,
+                    "success": True,
+                    "message": f"批次 {batch_number} 开始异步执行，共 {len(task_ids)} 个任务",
+                    "task_ids": task_ids,
+                    "async": True,
                 }
             )
-
-        if fail_count > 0:
-            messages.error(request, summary)
-        else:
-            messages.success(request, summary)
+        messages.info(
+            request, f"批次 {batch_number} 开始异步执行，共 {len(task_ids)} 个任务"
+        )
         return redirect("releases:center")
 
 
@@ -632,26 +627,45 @@ class ReleaseCenterSingleExecuteView(
             status__in=["pending", "failed"],
         )
 
-        action = "publish"
-        ok, msg = self._execute_release(task, action)
+        thread = threading.Thread(
+            target=_run_release_tasks,
+            args=([task_id],),
+            daemon=True,
+        )
+        thread.start()
 
         if is_ajax:
             return JsonResponse(
                 {
-                    "success": task.status == "success",
-                    "message": msg,
+                    "success": True,
+                    "message": "任务开始异步执行",
                     "task_id": task.id,
-                    "node": task.node.hostname,
-                    "config": task.config.name,
-                    "status": task.status,
+                    "async": True,
                 }
             )
-
-        if task.status == "success":
-            messages.success(request, msg)
-        else:
-            messages.error(request, msg)
+        messages.info(request, "任务开始异步执行")
         return redirect("releases:center")
+
+
+class ReleaseTaskStatusView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_resource = "releases"
+    permission_action = "read"
+
+    def get(self, request, task_id):
+        task = get_object_or_404(
+            ReleaseTask.objects.select_related("node", "config", "version", "operator"),
+            pk=task_id,
+        )
+        return JsonResponse(
+            {
+                "task_id": task.id,
+                "status": task.status,
+                "result": task.result,
+                "node": task.node.hostname,
+                "config": task.config.name,
+                "finished": task.status not in ("pending", "running"),
+            }
+        )
 
 
 class ReleaseCenterCancelView(LoginRequiredMixin, PermissionRequiredMixin, View):

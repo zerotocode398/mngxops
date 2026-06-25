@@ -22,6 +22,11 @@ urlpatterns = [
         views.ReleaseCenterSingleExecuteView.as_view(),
         name="center_execute_single",
     ),
+    path(
+        "center/task/<int:task_id>/status/",
+        views.ReleaseTaskStatusView.as_view(),
+        name="task_status",
+    ),
     path("<int:pk>/", views.ReleaseDetailView.as_view(), name="detail"),
     path("<int:pk>/rollback/", views.ReleaseRollbackView.as_view(), name="rollback"),
     path(

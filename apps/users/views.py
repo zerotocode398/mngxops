@@ -69,6 +69,11 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     permission_resource = "users"
     permission_action = "update"
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["permission_groups"] = _build_permission_groups()
+        return context
+
     def form_valid(self, form):
         messages.success(self.request, f"用户 {form.instance.username} 更新成功")
         return super().form_valid(form)
@@ -97,6 +102,27 @@ class UserDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
 
 
 # ========== 角色视图（仅 Admin）==========
+
+
+from .perm_defs import RESOURCE_CHOICES, all_permission_items
+
+
+def _build_permission_groups():
+    """Build resource → permission_code mapping for the template."""
+    from .perm_defs import all_permission_items
+
+    groups = {}
+    for item in all_permission_items():
+        rk = item["resource"]
+        if rk not in groups:
+            groups[rk] = []
+        groups[rk].append(item["code"])
+
+    result = []
+    for rk, rl in RESOURCE_CHOICES:
+        if rk in groups:
+            result.append((rk, rl, groups[rk]))
+    return result
 
 
 class UserGroupListView(
@@ -138,6 +164,11 @@ class UserGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
     permission_resource = "roles"
     permission_action = "create"
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["permission_groups"] = _build_permission_groups()
+        return context
+
     def form_valid(self, form):
         form.instance.created_by = self.request.user
         messages.success(self.request, f"角色 {form.instance.name} 创建成功")
@@ -155,6 +186,11 @@ class UserGroupUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVie
     success_url = reverse_lazy("users:role_list")
     permission_resource = "roles"
     permission_action = "update"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["permission_groups"] = _build_permission_groups()
+        return context
 
     def form_valid(self, form):
         messages.success(self.request, f"角色 {form.instance.name} 更新成功")

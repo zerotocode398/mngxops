@@ -8,4 +8,5 @@ urlpatterns = [
     path("create/", views.CredentialCreateView.as_view(), name="create"),
     path("<int:pk>/edit/", views.CredentialUpdateView.as_view(), name="edit"),
     path("<int:pk>/delete/", views.CredentialDeleteView.as_view(), name="delete"),
+    path("<int:pk>/decrypt/", views.CredentialDecryptView.as_view(), name="decrypt"),
 ]
