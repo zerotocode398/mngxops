@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+{% load permission_tags %}
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MngxOps - 多节点 Nginx 配置管理平台{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 12px 20px;
+            margin: 4px 10px;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .sidebar .nav-link i {
+            margin-right: 8px;
+        }
+
+        .sidebar .nav-link.disabled {
+            color: rgba(255, 255, 255, 0.4);
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .navbar {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .card {
+            border: none;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            background: white;
+            border-bottom: 2px solid #f0f0f0;
+            font-weight: 600;
+        }
+
+        .btn {
+            border-radius: 6px;
+            padding: 8px 16px;
+        }
+
+        .table {
+            margin-bottom: 0;
+        }
+
+        .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .action-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+
+        .action-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-2 sidebar p-0">
+                <div class="p-4">
+                    <h4 class="mb-0"><i class="bi bi-shield-lock-fill"></i> MngxOps</h4>
+                    <small class="opacity-75">多节点 Nginx 配置管理平台</small>
+                </div>
+                <nav class="nav flex-column mt-3">
+                    <a class="nav-link" href="{% url 'dashboard:index' %}">
+                        <i class="bi bi-house-door"></i> 首页
+                    </a>
+
+                    <div class="text-white-50 px-4 py-2 small">功能模块</div>
+
+                    {% if user|has_perm_code:"nodes.read" %}
+                    <a class="nav-link" href="{% url 'nodes:list' %}">
+                        <i class="bi bi-server"></i> 节点管理
+                    </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"credentials.read" %}
+                    <a class="nav-link" href="{% url 'credentials:list' %}">
+                        <i class="bi bi-key"></i> 凭证管理
+                    </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"nodes.read" %}
+                    <a class="nav-link" href="{% url 'nodes:group_list' %}">
+                        <i class="bi bi-collection"></i> 节点组管理
+                    </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"configs.read" %}
+                    <a class="nav-link" href="{% url 'configs:list' %}">
+                        <i class="bi bi-file-earmark-code"></i> 配置管理
+                    </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"releases.create" %}
+                    <a class="nav-link" href="{% url 'releases:center' %}">
+                        <i class="bi bi-rocket-takeoff"></i> 发布中心
+                    </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"releases.read" %}
+                    <a class="nav-link" href="{% url 'releases:history' %}">
+                        <i class="bi bi-clock-history"></i> 发布历史
+                    </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"users.read" %}
+                    <a class="nav-link" href="{% url 'users:list' %}">
+                        <i class="bi bi-people"></i> 用户管理
+                    </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"roles.read" %}
+                    <a class="nav-link" href="{% url 'users:role_list' %}">
+                        <i class="bi bi-people-fill"></i> 角色管理
+                    </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"audit.read" %}
+                    <a class="nav-link" href="{% url 'audit:list' %}">
+                        <i class="bi bi-journal-text"></i> 操作日志
+                    </a>
+                    <a class="nav-link" href="{% url 'audit:login_list' %}">
+                        <i class="bi bi-box-arrow-in-right"></i> 登录日志
+                    </a>
+                    {% endif %}
+                </nav>
+            </div>
+
+            <div class="col-md-10">
+                <nav class="navbar navbar-expand-lg">
+                    <div class="container-fluid">
+                        <div class="d-flex align-items-center">
+                            <span class="navbar-brand mb-0 h1">
+                                <i class="bi bi-list"></i> {{ request.resolver_match.url_name|title }}
+                            </span>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <div class="dropdown">
+                                <button class="btn btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    <i class="bi bi-person-circle"></i> {{ user.username }}
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">
+                                            <i class="bi bi-person"></i> 个人中心
+                                        </a></li>
+                                    <li>
+                                        <hr class="dropdown-divider">
+                                    </li>
+                                    <li><a class="dropdown-item text-danger" href="{% url 'accounts:logout' %}">
+                                            <i class="bi bi-box-arrow-right"></i> 退出登录
+                                        </a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+
+                <div class="p-4">
+                    {% if messages %}
+                    {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+
+                    {% block content %}{% endblock %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('select[name="per_page"]').forEach(function (el) {
+                el.addEventListener('change', function () {
+                    const form = el.closest('form');
+                    if (form) {
+                        const pageInput = form.querySelector('input[name="page"]');
+                        if (!pageInput) {
+                            const hidden = document.createElement('input');
+                            hidden.type = 'hidden';
+                            hidden.name = 'page';
+                            hidden.value = '1';
+                            form.appendChild(hidden);
+                        } else {
+                            pageInput.value = '1';
+                        }
+                        form.submit();
+                    }
+                });
+            });
+        });
+
+        function goBackToConfigList(event) {
+            event.preventDefault();
+            const storedUrl = sessionStorage.getItem('configs_list_query');
+            if (storedUrl) {
+                window.location.href = storedUrl;
+            } else {
+                window.location.href = '{% url "configs:list" %}';
+            }
+        }
+
+        function goBackToReleaseHistory(event) {
+            event.preventDefault();
+            const storedUrl = sessionStorage.getItem('releases_list_query');
+            if (storedUrl) {
+                window.location.href = storedUrl;
+            } else {
+                window.location.href = '{% url "releases:history" %}';
+            }
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>

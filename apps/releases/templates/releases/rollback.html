@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block title %}回滚配置 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                        回滚配置
+                    </h5>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'releases:detail' task.id %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> 返回详情
+                        </a>
+                        <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary" onclick="goBackToReleaseHistory(event)">
+                            <i class="bi bi-list"></i> 发布历史
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="text-muted small">节点</div>
+                            <div><strong>{{ task.node.hostname }}</strong> ({{ task.node.ip }})</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">配置</div>
+                            <div><code>{{ task.config.name }}</code></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">当前版本</div>
+                            <div><span class="badge bg-secondary">v{{ task.version.version }}</span></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">路径</div>
+                            <div><code>{{ task.config.file_path }}</code></div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>回滚说明：</strong>
+                        <ul class="mb-0 mt-1">
+                            <li>选择历史版本后将创建回滚任务到<strong>发布中心</strong>，状态为"等待发布"</li>
+                            <li>请前往发布中心手动确认执行</li>
+                            <li>执行时自动：备份当前配置 → 上传历史版本 → nginx -t → reload</li>
+                            <li>任何步骤失败将自动回滚到备份版本</li>
+                        </ul>
+                    </div>
+
+                    <form method="post" id="rollbackForm">
+                        {% csrf_token %}
+                        <input type="hidden" name="version_id" id="selectedVersionId" value="">
+                        <div class="table-responsive px-3">
+                            <table class="table table-hover table-sm">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%">选择</th>
+                                        <th style="width: 10%">版本号</th>
+                                        <th style="width: 15%">修改人</th>
+                                        <th style="width: 20%">备注</th>
+                                        <th style="width: 15%">时间</th>
+                                        <th style="width: 10%">大小</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for version in page_obj %}
+                                    <tr>
+                                        <td class="text-center">
+                                            <input type="radio" name="version_radio" value="{{ version.id }}"
+                                                {% if forloop.first and page_obj.number == 1 %}checked{% endif %}
+                                                onclick="document.getElementById('selectedVersionId').value = this.value;">
+                                        </td>
+                                        <td>
+                                            {% if version.version == config.current_version %}
+                                            <a href="javascript:void(0)"
+                                               class="version-preview-link"
+                                               data-version-id="{{ version.id }}"
+                                               title="点击预览配置内容">
+                                                <span class="badge bg-success">v{{ version.version }}</span>
+                                            </a>
+                                            <br>
+                                            <small class="text-success">当前版本</small>
+                                            {% else %}
+                                            <a href="javascript:void(0)"
+                                               class="version-preview-link"
+                                               data-version-id="{{ version.id }}"
+                                               title="点击预览配置内容">
+                                                <span class="badge bg-secondary">v{{ version.version }}</span>
+                                            </a>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ version.created_by.username }}</td>
+                                        <td>
+                                            {% if version.remark %}
+                                            <small>{{ version.remark }}</small>
+                                            {% else %}
+                                            <small class="text-muted">-</small>
+                                            {% endif %}
+                                        </td>
+                                        <td><small>{{ version.created_at|date:"Y-m-d H:i" }}</small></td>
+                                        <td><small class="text-muted">{{ version.content_bytes }} 字节</small></td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-4">
+                                            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                                            <p class="mt-2">暂无版本记录</p>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {% if page_obj.paginator.num_pages > 1 %}
+                        <nav>
+                            <ul class="pagination pagination-sm justify-content-center">
+                                {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}">&laquo;</a>
+                                </li>
+                                {% endif %}
+                                {% for num in page_obj.paginator.page_range %}
+                                <li class="page-item {% if page_obj.number == num %}active{% endif %}">
+                                    <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                                </li>
+                                {% endfor %}
+                                {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}">&raquo;</a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        {% endif %}
+
+                        <div class="text-end mt-3">
+                            <a href="{% url 'releases:detail' task.id %}" class="btn btn-secondary">取消</a>
+                            <button type="button" class="btn btn-warning" id="rollbackConfirmBtn">
+                                <i class="bi bi-arrow-counterclockwise"></i> 确认回滚
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 回滚确认弹窗 -->
+<div class="modal fade" id="rollbackConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">
+                    <i class="bi bi-arrow-counterclockwise"></i> 确认回滚
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <p>回滚任务将创建到<strong>发布中心</strong>，初始状态为<strong>等待发布</strong>。</p>
+                <p class="mb-0">请前往发布中心手动确认后执行，是否继续？</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning" id="rollbackSubmitBtn">
+                    <i class="bi bi-arrow-counterclockwise"></i> 确认回滚
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 配置内容预览弹窗 -->
+<div class="modal fade" id="versionPreviewModal" tabindex="-1" aria-labelledby="versionPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <div>
+                    <h5 class="modal-title mb-0" id="versionPreviewModalLabel">
+                        <i class="bi bi-file-code"></i> <span id="vpConfigName">-</span>
+                    </h5>
+                    <small class="text-white-50" id="vpVersionLabel">v-</small>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="d-flex flex-wrap align-items-center gap-3 px-3 py-2 bg-light border-bottom small text-muted">
+                    <span><i class="bi bi-folder"></i> <code id="vpConfigPath">-</code></span>
+                    <span class="ms-auto"><i class="bi bi-file-earmark"></i> <span id="vpConfigSize">-</span></span>
+                    <span><i class="bi bi-person"></i> <span id="vpCreatedBy">-</span></span>
+                    <span><i class="bi bi-clock"></i> <span id="vpCreatedAt">-</span></span>
+                    <span id="vpRemark" class="text-warning"></span>
+                </div>
+                <div id="vpContentWrapper" class="position-relative">
+                    <div class="d-flex justify-content-between align-items-center px-3 py-1 bg-dark border-bottom">
+                        <small class="text-white-50">配置内容</small>
+                        <button type="button" class="btn btn-sm btn-outline-light" id="vpCopyBtn" onclick="copyVersionContent()">
+                            <i class="bi bi-clipboard"></i> 复制
+                        </button>
+                    </div>
+                    <pre class="m-0 p-3 bg-dark text-light" style="max-height: 60vh; overflow: auto; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 13px; line-height: 1.5;"><code id="vpContent" style="white-space: pre;">加载中...</code></pre>
+                </div>
+                <div id="vpLoading" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2 text-muted">加载配置内容...</p>
+                </div>
+                <div id="vpError" class="alert alert-danger m-3 d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var rollbackConfirmModal = new bootstrap.Modal(document.getElementById('rollbackConfirmModal'));
+        var versionPreviewModal = new bootstrap.Modal(document.getElementById('versionPreviewModal'));
+
+        document.getElementById('rollbackConfirmBtn').addEventListener('click', function() {
+            var selectedRadio = document.querySelector('input[name="version_radio"]:checked');
+            if (!selectedRadio) {
+                alert('请先选择一个版本');
+                return;
+            }
+            document.getElementById('selectedVersionId').value = selectedRadio.value;
+            rollbackConfirmModal.show();
+        });
+
+        document.getElementById('rollbackSubmitBtn').addEventListener('click', function() {
+            document.getElementById('rollbackForm').submit();
+        });
+
+        if (document.querySelector('input[name="version_radio"]:checked')) {
+            document.getElementById('selectedVersionId').value = document.querySelector('input[name="version_radio"]:checked').value;
+        }
+
+        var vpContent = document.getElementById('vpContent');
+        var vpLoading = document.getElementById('vpLoading');
+        var vpError = document.getElementById('vpError');
+        var vpContentWrapper = document.getElementById('vpContentWrapper');
+        var vpConfigName = document.getElementById('vpConfigName');
+        var vpVersionLabel = document.getElementById('vpVersionLabel');
+        var vpConfigPath = document.getElementById('vpConfigPath');
+        var vpConfigSize = document.getElementById('vpConfigSize');
+        var vpCreatedBy = document.getElementById('vpCreatedBy');
+        var vpCreatedAt = document.getElementById('vpCreatedAt');
+        var vpRemark = document.getElementById('vpRemark');
+        var vpCopyBtn = document.getElementById('vpCopyBtn');
+        var currentVersionContent = '';
+
+        document.querySelectorAll('.version-preview-link').forEach(function(link) {
+            link.addEventListener('click', function() {
+                var versionId = this.getAttribute('data-version-id');
+                loadVersionContent(versionId);
+            });
+        });
+
+        function loadVersionContent(versionId) {
+            vpContentWrapper.classList.add('d-none');
+            vpError.classList.add('d-none');
+            vpLoading.classList.remove('d-none');
+            vpConfigName.textContent = '-';
+            vpVersionLabel.textContent = 'v-';
+            vpConfigPath.textContent = '-';
+            vpConfigSize.textContent = '-';
+            vpCreatedBy.textContent = '-';
+            vpCreatedAt.textContent = '-';
+            vpRemark.textContent = '';
+            versionPreviewModal.show();
+
+            fetch('/releases/version/' + versionId + '/content/')
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function(data) {
+                    vpLoading.classList.add('d-none');
+                    if (data.success) {
+                        var d = data.data;
+                        vpConfigName.textContent = d.config_name;
+                        vpVersionLabel.textContent = 'v' + d.version_number + (d.version_label ? ' - ' + d.version_label : '');
+                        vpConfigPath.textContent = d.config_path;
+                        vpConfigSize.textContent = d.content_bytes + ' 字节';
+                        vpCreatedBy.textContent = d.created_by;
+                        vpCreatedAt.textContent = d.created_at;
+                        if (d.remark) {
+                            vpRemark.textContent = '备注: ' + d.remark;
+                        }
+                        vpContent.textContent = d.content;
+                        currentVersionContent = d.content;
+                        vpContentWrapper.classList.remove('d-none');
+                    } else {
+                        showVpError('加载失败');
+                    }
+                })
+                .catch(function(err) {
+                    vpLoading.classList.add('d-none');
+                    showVpError('加载失败: ' + err.message);
+                });
+        }
+
+        function showVpError(msg) {
+            vpError.textContent = msg;
+            vpError.classList.remove('d-none');
+        }
+
+        window.copyVersionContent = function() {
+            if (!currentVersionContent) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(currentVersionContent).then(function() {
+                    showCopyToast();
+                }).catch(function() {
+                    fallbackCopy(currentVersionContent);
+                });
+            } else {
+                fallbackCopy(currentVersionContent);
+            }
+        };
+
+        function fallbackCopy(text) {
+            var textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showCopyToast();
+            } catch (e) {
+                alert('复制失败，请手动复制');
+            }
+            document.body.removeChild(textarea);
+        }
+
+        function showCopyToast() {
+            var originalHTML = vpCopyBtn.innerHTML;
+            vpCopyBtn.innerHTML = '<i class="bi bi-check-lg"></i> 已复制';
+            vpCopyBtn.classList.add('btn-success');
+            vpCopyBtn.classList.remove('btn-outline-light');
+            vpCopyBtn.disabled = true;
+            setTimeout(function() {
+                vpCopyBtn.innerHTML = originalHTML;
+                vpCopyBtn.classList.remove('btn-success');
+                vpCopyBtn.classList.add('btn-outline-light');
+                vpCopyBtn.disabled = false;
+            }, 2000);
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}新增用户 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-person-plus"></i> 新增用户</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row justify-content-center">
+                        <div class="col-md-8">
+                            <form method="post">
+                                {% csrf_token %}
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="{{ form.username.id_for_label }}" class="form-label">
+                                            <i class="bi bi-person"></i> {{ form.username.label }}
+                                        </label>
+                                        {{ form.username }}
+                                        {% if form.username.errors %}
+                                        <div class="text-danger mt-1">
+                                            {% for error in form.username.errors %}
+                                            <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="col-md-6 mb-3">
+                                        <label for="{{ form.email.id_for_label }}" class="form-label">
+                                            <i class="bi bi-envelope"></i> {{ form.email.label }}
+                                        </label>
+                                        {{ form.email }}
+                                        {% if form.email.errors %}
+                                        <div class="text-danger mt-1">
+                                            {% for error in form.email.errors %}
+                                            <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.first_name.id_for_label }}" class="form-label">
+                                        <i class="bi bi-person-badge"></i> {{ form.first_name.label }}
+                                    </label>
+                                    {{ form.first_name }}
+                                    {% if form.first_name.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.first_name.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="{{ form.password1.id_for_label }}" class="form-label">
+                                            <i class="bi bi-key"></i> {{ form.password1.label }}
+                                        </label>
+                                        {{ form.password1 }}
+                                        {% if form.password1.errors %}
+                                        <div class="text-danger mt-1">
+                                            {% for error in form.password1.errors %}
+                                            <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="col-md-6 mb-3">
+                                        <label for="{{ form.password2.id_for_label }}" class="form-label">
+                                            <i class="bi bi-key-fill"></i> {{ form.password2.label }}
+                                        </label>
+                                        {{ form.password2 }}
+                                        {% if form.password2.errors %}
+                                        <div class="text-danger mt-1">
+                                            {% for error in form.password2.errors %}
+                                            <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.remark.id_for_label }}" class="form-label">
+                                        <i class="bi bi-card-text"></i> {{ form.remark.label }}
+                                    </label>
+                                    {{ form.remark }}
+                                    {% if form.remark.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.remark.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.groups.id_for_label }}" class="form-label">
+                                        <i class="bi bi-person-badge"></i> {{ form.groups.label }}
+                                    </label>
+                                    {{ form.groups }}
+                                    {% if form.groups.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.groups.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    <small class="text-muted">可勾选多个角色，最多 3 个</small>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.direct_permissions.id_for_label }}" class="form-label">
+                                        <i class="bi bi-shield-lock"></i> {{ form.direct_permissions.label }}
+                                    </label>
+                                    {{ form.direct_permissions }}
+                                    {% if form.direct_permissions.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.direct_permissions.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    <small class="text-muted">用户可继承角色权限，也可额外授予个人权限</small>
+                                </div>
+
+                                <div class="d-flex justify-content-between">
+                                    <a href="{% url 'users:list' %}" class="btn btn-secondary">
+                                        <i class="bi bi-arrow-left"></i> 返回
+                                    </a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-check-circle"></i> 确认创建
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

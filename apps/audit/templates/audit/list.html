@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}操作日志 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-journal-text"></i>
+                        操作日志
+                    </h5>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'audit:login_list' %}" class="btn btn-outline-info">
+                            <i class="bi bi-box-arrow-in-right"></i> 登录日志
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form method="get" class="row g-2 mb-3">
+                        <div class="col-md-3">
+                            <input type="text" name="search" class="form-control form-control-sm"
+                                placeholder="搜索用户 / 动作" value="{{ search }}">
+                        </div>
+                        <div class="col-md-2">
+                            <select name="module" class="form-select form-select-sm">
+                                <option value="">全部模块</option>
+                                {% for m in modules %}
+                                <option value="{{ m }}" {% if module_filter == m %}selected{% endif %}>{{ m }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="date" name="date_from" class="form-control form-control-sm"
+                                value="{{ date_from }}" placeholder="开始日期">
+                        </div>
+                        <div class="col-md-2">
+                            <input type="date" name="date_to" class="form-control form-control-sm"
+                                value="{{ date_to }}" placeholder="结束日期">
+                        </div>
+                        <div class="col-md-1">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary w-100">
+                                <i class="bi bi-search"></i> 搜索
+                            </button>
+                        </div>
+                        <div class="col-md-1">
+                            <select name="per_page" class="form-select form-select-sm">
+                                {% for size in per_page_options %}
+                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <a href="{% url 'audit:list' %}?per_page={{ per_page }}" class="btn btn-sm btn-outline-danger w-100">
+                                <i class="bi bi-x-circle"></i> 重置
+                            </a>
+                        </div>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th style="width: 8%">用户</th>
+                                    <th style="width: 10%">模块</th>
+                                    <th style="width: 15%">动作</th>
+                                    <th style="width: 10%">IP</th>
+                                    <th style="width: 8%">结果</th>
+                                    <th style="width: 15%">时间</th>
+                                    <th style="width: 34%">详情</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in logs %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ log.user.username }}</strong>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary">{{ log.module }}</span>
+                                    </td>
+                                    <td>
+                                        <small>{{ log.action }}</small>
+                                    </td>
+                                    <td>
+                                        <code>{{ log.ip }}</code>
+                                    </td>
+                                    <td>
+                                        {% if log.result == "success" %}
+                                        <span class="badge bg-success">成功</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">失败</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ log.created_at|date:"Y-m-d H:i:s" }}</small>
+                                    </td>
+                                    <td>
+                                        {% if log.detail %}
+                                        <small class="text-muted">{{ log.detail|truncatechars:80 }}</small>
+                                        {% else %}
+                                        <small class="text-muted">-</small>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                                        <p class="mt-2">暂无操作日志记录</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if is_paginated %}
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if module_filter %}&module={{ module_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
+                                    <i class="bi bi-chevron-double-left"></i> 首页
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if module_filter %}&module={{ module_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
+                                    <i class="bi bi-chevron-left"></i> 上一页
+                                </a>
+                            </li>
+                            {% endif %}
+
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                            </li>
+
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if module_filter %}&module={{ module_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
+                                    下一页 <i class="bi bi-chevron-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if module_filter %}&module={{ module_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
+                                    末页 <i class="bi bi-chevron-double-right"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
