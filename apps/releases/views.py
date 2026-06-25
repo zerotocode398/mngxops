@@ -16,6 +16,9 @@ from apps.users.permissions import PermissionRequiredMixin
 from utils.ssh import (
     backup_remote_file,
     upload_file_via_sftp,
+    restore_backup_file,
+    check_remote_file_size,
+    copy_remote_file,
     execute_nginx_test,
     execute_nginx_reload,
 )
@@ -63,6 +66,15 @@ class ReleaseExecutorMixin:
         add_log(f"开始发布: {config.name} v{version.version} → {node.hostname}")
         add_log(f"目标路径: {config.file_path}")
 
+        if not version.content or not version.content.strip():
+            add_log("配置内容为空，中止发布")
+            task.status = "failed"
+            task.result = "\n".join(log_lines)
+            task.finished_at = datetime.now()
+            task.save()
+            self._record_history(task, action, task.result)
+            return False, f"配置 {config.name} v{version.version} 内容为空，无法发布"
+
         add_log("正在备份原配置...")
         success, backup_result = backup_remote_file(
             file_path=config.file_path,
@@ -79,20 +91,50 @@ class ReleaseExecutorMixin:
             self._record_history(task, action, task.result)
             return False, f"备份失败: {backup_result}"
 
-        add_log("正在上传配置...")
+        add_log("正在上传配置到 /tmp ...")
+        tmp_path = f"/tmp/{config.file_path.split('/')[-1]}.mngxops_tmp"
         success, upload_result = upload_file_via_sftp(
-            remote_path=config.file_path,
+            remote_path=tmp_path,
             content=version.content,
             **kwargs,
         )
-        if success:
-            add_log("上传成功")
-        else:
-            add_log(f"上传失败: {upload_result}")
+        if not success:
+            add_log(f"上传到 /tmp 失败: {upload_result}")
+            task.status = "failed"
+            task.result = "\n".join(log_lines)
+            task.finished_at = datetime.now()
+            task.save()
+            self._record_history(task, action, task.result)
+            return False, f"上传到 /tmp 失败: {upload_result}"
+
+        add_log(f"已上传到 {tmp_path}，检查文件大小...")
+        size_ok, size_msg = check_remote_file_size(
+            file_path=tmp_path,
+            **kwargs,
+        )
+        add_log(f"/tmp 文件大小: {size_msg}")
+
+        if not size_ok:
+            add_log("/tmp 文件为空，中止发布")
+            task.status = "failed"
+            task.result = "\n".join(log_lines)
+            task.finished_at = datetime.now()
+            task.save()
+            self._record_history(task, action, task.result)
+            return False, f"/tmp 文件为空: {size_msg}"
+
+        add_log(f"从 /tmp 复制到目标路径 {config.file_path} ...")
+        copy_ok, copy_msg = copy_remote_file(
+            src_path=tmp_path,
+            dst_path=config.file_path,
+            **kwargs,
+        )
+        if not copy_ok:
+            add_log(f"复制失败: {copy_msg}")
             add_log("正在回滚备份...")
-            rollback_success, rollback_result = upload_file_via_sftp(
-                remote_path=config.file_path,
-                content="",
+            rollback_success, rollback_result = restore_backup_file(
+                backup_path=backup_result,
+                original_path=config.file_path,
                 **kwargs,
             )
             if not rollback_success:
@@ -104,7 +146,31 @@ class ReleaseExecutorMixin:
             task.finished_at = datetime.now()
             task.save()
             self._record_history(task, action, task.result)
-            return False, f"上传失败: {upload_result}"
+            return False, f"复制失败: {copy_msg}"
+
+        add_log(f"验证目标文件大小...")
+        target_ok, target_msg = check_remote_file_size(
+            file_path=config.file_path,
+            **kwargs,
+        )
+        add_log(f"目标文件大小: {target_msg}")
+
+        if not target_ok:
+            add_log("目标文件为空，正在回滚备份...")
+            restore_backup_file(
+                backup_path=backup_result,
+                original_path=config.file_path,
+                **kwargs,
+            )
+            add_log("回滚完成")
+            task.status = "failed"
+            task.result = "\n".join(log_lines)
+            task.finished_at = datetime.now()
+            task.save()
+            self._record_history(task, action, task.result)
+            return False, f"目标文件为空: {target_msg}"
+
+        add_log("上传成功")
 
         add_log("正在执行 nginx -t ...")
         nginx_path = node.nginx_path or None
@@ -116,9 +182,9 @@ class ReleaseExecutorMixin:
         add_log(test_output)
         if not success:
             add_log("nginx -t 失败，正在回滚备份...")
-            upload_file_via_sftp(
-                remote_path=config.file_path,
-                content="",
+            restore_backup_file(
+                backup_path=backup_result,
+                original_path=config.file_path,
                 **kwargs,
             )
             add_log("回滚完成")
@@ -140,9 +206,9 @@ class ReleaseExecutorMixin:
             task.status = "success"
         else:
             add_log("reload 失败，正在回滚备份...")
-            upload_file_via_sftp(
-                remote_path=config.file_path,
-                content="",
+            restore_backup_file(
+                backup_path=backup_result,
+                original_path=config.file_path,
                 **kwargs,
             )
             add_log("回滚完成")

@@ -402,6 +402,11 @@
     #previewAccordion .accordion-item:has(.accordion-button:not(.collapsed)) {
         border-left-color: #0d6efd;
     }
+    .version-preview-badge:hover {
+        opacity: 0.8;
+        transform: scale(1.05);
+        transition: all 0.15s;
+    }
 </style>
 <script>
 (function() {
@@ -700,6 +705,7 @@
                         return;
                     }
                     const sel = row.querySelector('.version-select');
+                    const versionNumber = sel ? 'v' + sel.options[sel.selectedIndex].text.match(/v(\d+)/)[1] : '最新';
                     selectedConfigs[id] = {
                         id: id,
                         node_id: parseInt(row.dataset.nodeId),
@@ -707,6 +713,7 @@
                         node_name: row.dataset.nodeName,
                         version_id: sel ? parseInt(sel.value) : null,
                         version_label: sel ? sel.options[sel.selectedIndex].text : '最新',
+                        version_number: versionNumber,
                     };
                     row.classList.add('selected');
                 } else {
@@ -725,6 +732,8 @@
                 if (selectedConfigs[id]) {
                     selectedConfigs[id].version_id = parseInt(this.value);
                     selectedConfigs[id].version_label = this.options[this.selectedIndex].text;
+                    const vMatch = this.options[this.selectedIndex].text.match(/v(\d+)/);
+                    selectedConfigs[id].version_number = vMatch ? 'v' + vMatch[1] : '最新';
                 }
             });
         });
@@ -838,7 +847,7 @@
                             <strong>${c.name}</strong>
                             <br><small class="text-muted">${c.node_name}</small>
                         </td>
-                        <td><span class="badge bg-info">${c.version_label || '最新'}</span></td>
+                        <td><span class="badge bg-info version-preview-badge" style="cursor: pointer;" data-version-id="${c.version_id || ''}" data-config-name="${c.name}" data-version-label="${c.version_label || ''}">${c.version_number || '最新'}</span></td>
                         <td>
                             ${isMine
                                 ? '<span class="badge bg-success" style="font-size:10px;">将发布</span>'
@@ -956,6 +965,16 @@
 
     document.getElementById('btnStep3Prev').addEventListener('click', function() {
         showStep(2);
+    });
+
+    document.getElementById('previewAccordion').addEventListener('click', function(e) {
+        const badge = e.target.closest('.version-preview-badge');
+        if (!badge) return;
+        const versionId = badge.dataset.versionId;
+        const configName = badge.dataset.configName;
+        const versionLabel = badge.dataset.versionLabel;
+        if (!versionId) return;
+        showVersionContent(parseInt(versionId), configName, versionLabel);
     });
 
     document.getElementById('btnConfirmPublish').addEventListener('click', function(e) {
