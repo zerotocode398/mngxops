@@ -339,11 +339,12 @@ def upload_file_via_sftp(
 
             content = content.replace("\r\n", "\n").replace("\r", "\n")
 
-            with tempfile.NamedTemporaryFile(
+            temp_file = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".tmp", delete=False, encoding="utf-8", newline=""
-            ) as f:
-                f.write(content)
-                temp_path = f.name
+            )
+            temp_file.write(content)
+            temp_path = temp_file.name
+            temp_file.close()
 
             try:
                 sftp.put(temp_path, remote_path)
@@ -406,6 +407,142 @@ def backup_remote_file(
         else:
             err = stderr.read().decode("utf-8").strip()
             return False, f"备份失败: {err}"
+    except Exception as e:
+        return False, str(e)
+
+
+def restore_backup_file(
+    host,
+    port,
+    username,
+    password=None,
+    private_key=None,
+    backup_path=None,
+    original_path=None,
+):
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        if private_key:
+            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
+            client.connect(
+                hostname=host,
+                port=port,
+                username=username,
+                pkey=pkey,
+                timeout=10,
+            )
+        else:
+            client.connect(
+                hostname=host,
+                port=port,
+                username=username,
+                password=password,
+                timeout=10,
+            )
+
+        _, stdout, stderr = client.exec_command(f"cp {backup_path} {original_path}")
+        exit_code = stdout.channel.recv_exit_status()
+
+        client.close()
+
+        if exit_code == 0:
+            return True, "回滚成功"
+        else:
+            err = stderr.read().decode("utf-8").strip()
+            return False, f"回滚失败: {err}"
+    except Exception as e:
+        return False, str(e)
+
+
+def check_remote_file_size(
+    host,
+    port,
+    username,
+    password=None,
+    private_key=None,
+    file_path=None,
+):
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        if private_key:
+            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
+            client.connect(
+                hostname=host,
+                port=port,
+                username=username,
+                pkey=pkey,
+                timeout=10,
+            )
+        else:
+            client.connect(
+                hostname=host,
+                port=port,
+                username=username,
+                password=password,
+                timeout=10,
+            )
+
+        _, stdout, stderr = client.exec_command(f"wc -c < {file_path}")
+        out = stdout.read().decode("utf-8").strip()
+        exit_code = stdout.channel.recv_exit_status()
+
+        client.close()
+
+        if exit_code == 0:
+            size = int(out)
+            return size > 0, f"{size} bytes"
+        else:
+            err = stderr.read().decode("utf-8").strip()
+            return False, f"检查失败: {err}"
+    except Exception as e:
+        return False, str(e)
+
+
+def copy_remote_file(
+    host,
+    port,
+    username,
+    password=None,
+    private_key=None,
+    src_path=None,
+    dst_path=None,
+):
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        if private_key:
+            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
+            client.connect(
+                hostname=host,
+                port=port,
+                username=username,
+                pkey=pkey,
+                timeout=10,
+            )
+        else:
+            client.connect(
+                hostname=host,
+                port=port,
+                username=username,
+                password=password,
+                timeout=10,
+            )
+
+        _, stdout, stderr = client.exec_command(f"cp {src_path} {dst_path}")
+        exit_code = stdout.channel.recv_exit_status()
+
+        client.close()
+
+        if exit_code == 0:
+            return True, "复制成功"
+        else:
+            err = stderr.read().decode("utf-8").strip()
+            return False, f"复制失败: {err}"
     except Exception as e:
         return False, str(e)
 
