@@ -18,6 +18,7 @@ from utils.ssh import (
     upload_file_via_sftp,
     restore_backup_file,
     check_remote_file_size,
+    check_remote_file_md5,
     copy_remote_file,
     execute_nginx_test,
     execute_nginx_reload,
@@ -82,6 +83,13 @@ class ReleaseExecutorMixin:
         )
         if success:
             add_log(f"备份成功: {backup_result}")
+            backup_size_ok, backup_size_msg = check_remote_file_size(
+                file_path=backup_result,
+                **kwargs,
+            )
+            add_log(f"备份文件大小: {backup_size_msg}")
+            if not backup_size_ok:
+                add_log("警告: 备份文件为空，回滚将无法恢复原配置")
         else:
             add_log(f"备份失败: {backup_result}")
             task.status = "failed"
@@ -132,15 +140,7 @@ class ReleaseExecutorMixin:
         if not copy_ok:
             add_log(f"复制失败: {copy_msg}")
             add_log("正在回滚备份...")
-            rollback_success, rollback_result = restore_backup_file(
-                backup_path=backup_result,
-                original_path=config.file_path,
-                **kwargs,
-            )
-            if not rollback_success:
-                add_log(f"回滚失败: {rollback_result}")
-            else:
-                add_log("回滚完成")
+            self._rollback_backup(backup_result, config.file_path, kwargs, log_lines)
             task.status = "failed"
             task.result = "\n".join(log_lines)
             task.finished_at = datetime.now()
@@ -155,14 +155,25 @@ class ReleaseExecutorMixin:
         )
         add_log(f"目标文件大小: {target_msg}")
 
+        add_log("校验文件 md5 确保内容一致...")
+        tmp_md5_ok, tmp_md5 = check_remote_file_md5(
+            file_path=tmp_path,
+            **kwargs,
+        )
+        target_md5_ok, target_md5 = check_remote_file_md5(
+            file_path=config.file_path,
+            **kwargs,
+        )
+        add_log(f"/tmp 文件 md5: {tmp_md5}")
+        add_log(f"目标文件 md5: {target_md5}")
+        if tmp_md5_ok and target_md5_ok and tmp_md5 == target_md5:
+            add_log("md5 一致，内容替换成功")
+        else:
+            add_log("md5 不一致，内容替换失败！")
+
         if not target_ok:
             add_log("目标文件为空，正在回滚备份...")
-            restore_backup_file(
-                backup_path=backup_result,
-                original_path=config.file_path,
-                **kwargs,
-            )
-            add_log("回滚完成")
+            self._rollback_backup(backup_result, config.file_path, kwargs, log_lines)
             task.status = "failed"
             task.result = "\n".join(log_lines)
             task.finished_at = datetime.now()
@@ -182,12 +193,7 @@ class ReleaseExecutorMixin:
         add_log(test_output)
         if not success:
             add_log("nginx -t 失败，正在回滚备份...")
-            restore_backup_file(
-                backup_path=backup_result,
-                original_path=config.file_path,
-                **kwargs,
-            )
-            add_log("回滚完成")
+            self._rollback_backup(backup_result, config.file_path, kwargs, log_lines)
             task.status = "failed"
             task.result = "\n".join(log_lines)
             task.finished_at = datetime.now()
@@ -206,12 +212,7 @@ class ReleaseExecutorMixin:
             task.status = "success"
         else:
             add_log("reload 失败，正在回滚备份...")
-            restore_backup_file(
-                backup_path=backup_result,
-                original_path=config.file_path,
-                **kwargs,
-            )
-            add_log("回滚完成")
+            self._rollback_backup(backup_result, config.file_path, kwargs, log_lines)
             task.status = "failed"
 
         task.result = "\n".join(log_lines)
@@ -233,6 +234,24 @@ class ReleaseExecutorMixin:
             action=action,
             result=result,
         )
+
+    def _rollback_backup(self, backup_result, config_file_path, kwargs, log_lines):
+        backup_size_ok, backup_size_msg = check_remote_file_size(
+            file_path=backup_result,
+            **kwargs,
+        )
+        if not backup_size_ok:
+            log_lines.append("警告: 备份文件为空，跳过回滚，避免清空目标配置")
+            return
+        rollback_ok, rollback_msg = restore_backup_file(
+            backup_path=backup_result,
+            original_path=config_file_path,
+            **kwargs,
+        )
+        if rollback_ok:
+            log_lines.append("回滚完成")
+        else:
+            log_lines.append(f"回滚失败: {rollback_msg}")
 
 
 class ReleaseCreateView(
