@@ -365,7 +365,7 @@ def backup_remote_file(
     password=None,
     private_key=None,
     file_path=None,
-    backup_dir="/opt/mngxops_backup",
+    backup_dir="/opt/app/mascloud/ansible",
 ):
     try:
         client = paramiko.SSHClient()
@@ -395,7 +395,11 @@ def backup_remote_file(
         backup_path = f"{backup_dir}/{backup_name}"
 
         _, stdout, stderr = client.exec_command(f"mkdir -p {backup_dir}")
-        stdout.channel.recv_exit_status()
+        mkdir_exit = stdout.channel.recv_exit_status()
+        if mkdir_exit != 0:
+            err = stderr.read().decode("utf-8").strip()
+            client.close()
+            return False, f"创建备份目录失败: {err}"
 
         _, stdout, stderr = client.exec_command(f"cp {file_path} {backup_path}")
         exit_code = stdout.channel.recv_exit_status()
@@ -547,6 +551,52 @@ def copy_remote_file(
         return False, str(e)
 
 
+def check_remote_file_md5(
+    host,
+    port,
+    username,
+    password=None,
+    private_key=None,
+    file_path=None,
+):
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        if private_key:
+            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
+            client.connect(
+                hostname=host,
+                port=port,
+                username=username,
+                pkey=pkey,
+                timeout=10,
+            )
+        else:
+            client.connect(
+                hostname=host,
+                port=port,
+                username=username,
+                password=password,
+                timeout=10,
+            )
+
+        _, stdout, stderr = client.exec_command(f"md5sum {file_path}")
+        out = stdout.read().decode("utf-8").strip()
+        exit_code = stdout.channel.recv_exit_status()
+
+        client.close()
+
+        if exit_code == 0:
+            md5 = out.split()[0]
+            return True, md5
+        else:
+            err = stderr.read().decode("utf-8").strip()
+            return False, f"md5 失败: {err}"
+    except Exception as e:
+        return False, str(e)
+
+
 def execute_nginx_test(
     host,
     port,
@@ -579,10 +629,7 @@ def execute_nginx_test(
             )
 
         nginx_bin = nginx_path or "nginx"
-        if config_path:
-            command = f"{nginx_bin} -t -c {config_path}"
-        else:
-            command = f"{nginx_bin} -t"
+        command = f"{nginx_bin} -t"
 
         _, stdout, stderr = client.exec_command(command)
         out = stdout.read().decode("utf-8")
