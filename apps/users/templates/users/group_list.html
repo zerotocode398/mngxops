@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}角色列表 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-people-fill"></i> 角色列表</h5>
+                    {% if user|has_perm_code:"roles.create" %}
+                    <a href="{% url 'users:role_create' %}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> 新增角色
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <form method="get" class="mb-3">
+                        <div class="input-group">
+                            <input type="text" name="search" class="form-control" placeholder="搜索角色名称"
+                                value="{{ search }}">
+                            <select name="per_page" class="form-select" style="max-width: 130px;">
+                                {% for size in per_page_options %}
+                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-outline-primary">
+                                <i class="bi bi-search"></i> 搜索
+                            </button>
+                            {% if search %}
+                            <a href="{% url 'users:role_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-x-circle"></i> 清空
+                            </a>
+                            {% endif %}
+                        </div>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>角色名称</th>
+                                    <th>成员数</th>
+                                    <th>描述</th>
+                                    <th>创建人</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for group in user_groups %}
+                                <tr>
+                                    <td><strong>{{ group.name }}</strong></td>
+                                    <td>
+                                        <a href="#" data-bs-toggle="modal" data-bs-target="#memberModal{{ group.id }}"
+                                            class="text-decoration-none">
+                                            <span class="badge bg-secondary">{{ group.members.count }}</span>
+                                        </a>
+                                    </td>
+                                    <td>{{ group.description|default:"-"|truncatewords:10 }}</td>
+                                    <td>{{ group.created_by.username }}</td>
+                                    <td>{{ group.created_at|date:"Y-m-d H:i" }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            {% if user|has_perm_code:"roles.update" %}
+                                            <button type="button" class="btn btn-outline-success" data-bs-toggle="modal"
+                                                data-bs-target="#manageUsersModal{{ group.id }}" title="管理用户">
+                                                <i class="bi bi-gear"></i>
+                                            </button>
+                                            <a href="{% url 'users:role_edit' group.id %}"
+                                                class="btn btn-outline-primary" title="编辑">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            {% endif %}
+                                            {% if user|has_perm_code:"roles.delete" %}
+                                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
+                                                data-bs-target="#deleteModal{{ group.id }}" title="删除">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">
+                                        <i class="bi bi-inbox"></i> 暂无角色数据
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% for group in user_groups %}
+                    {% if user|has_perm_code:"roles.delete" %}
+                    <div class="modal fade" id="deleteModal{{ group.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">确认删除</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    确定要删除角色 <strong>{{ group.name }}</strong> 吗？
+                                    <br><br>
+                                    <small class="text-muted">此操作不可恢复！</small>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                    <form method="post" action="{% url 'users:role_delete' group.id %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-danger">确认删除</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if user|has_perm_code:"roles.update" %}
+                    <div class="modal fade" id="manageUsersModal{{ group.id }}" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">
+                                        <i class="bi bi-gear"></i> 管理用户角色 — {{ group.name }}
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form method="post" action="{% url 'users:role_manage_users' group.id %}">
+                                    {% csrf_token %}
+                                    <div class="modal-body">
+                                        <table class="table table-sm table-bordered">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width:40px">
+                                                        <input type="checkbox" class="form-check-input" onclick="
+                                                            document.querySelectorAll('#manageUsersModal{{ group.id }} .user-check').forEach(cb => {
+                                                                if (!cb.disabled) cb.checked = this.checked;
+                                                            });
+                                                        ">
+                                                    </th>
+                                                    <th>用户名</th>
+                                                    <th>姓名</th>
+                                                    <th>邮箱</th>
+                                                    <th>已关联角色</th>
+                                                    <th>状态</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for u in all_users %}
+                                                <tr>
+                                                    <td>
+                                                        {% if u.profile in group.members.all %}
+                                                        <input type="checkbox" name="user_ids" value="{{ u.id }}"
+                                                            class="form-check-input user-check" checked>
+                                                        {% elif u.profile.groups.count >= 3 %}
+                                                        <input type="checkbox" name="user_ids" value="{{ u.id }}"
+                                                            class="form-check-input user-check" disabled>
+                                                        {% else %}
+                                                        <input type="checkbox" name="user_ids" value="{{ u.id }}"
+                                                            class="form-check-input user-check">
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>{{ u.username }}</td>
+                                                    <td>{{ u.first_name|default:"-" }}</td>
+                                                    <td>{{ u.email|default:"-" }}</td>
+                                                    <td>
+                                                        {% for ug in u.profile.groups.all %}
+                                                        <span class="badge bg-info">{{ ug.name }}</span>
+                                                        {% empty %}
+                                                        <span class="text-muted">无</span>
+                                                        {% endfor %}
+                                                        {% if u.profile.groups.count >= 3 %}
+                                                        {% if u.profile not in group.members.all %}
+                                                        <span class="badge bg-warning">已满</span>
+                                                        {% endif %}
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if u.is_active %}
+                                                        <span class="badge bg-success">激活</span>
+                                                        {% else %}
+                                                        <span class="badge bg-danger">禁用</span>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                        <small class="text-muted">勾选 = 赋予角色，取消勾选 =
+                                            移除角色。灰色已禁用的用户已达上限（3个角色），无法加入</small>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary"
+                                            data-bs-dismiss="modal">取消</button>
+                                        <button type="submit" class="btn btn-success">
+                                            <i class="bi bi-check-lg"></i> 保存变更
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="modal fade" id="memberModal{{ group.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">
+                                        <i class="bi bi-people"></i> {{ group.name }} 成员列表
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    {% if group.members.exists %}
+                                    <table class="table table-sm table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th>用户名</th>
+                                                <th>状态</th>
+                                                <th>加入时间</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for profile in group.members.all %}
+                                            <tr>
+                                                <td>{{ profile.user.username }}</td>
+                                                <td>
+                                                    {% if profile.user.is_active %}
+                                                    <span class="badge bg-success">激活</span>
+                                                    {% else %}
+                                                    <span class="badge bg-danger">禁用</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ profile.user.date_joined|date:"Y-m-d H:i" }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    {% else %}
+                                    <p class="text-muted text-center mb-0">暂无成员</p>
+                                    {% endif %}
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                    {% if is_paginated %}
+                    <nav>
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link"
+                                    href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}&search={{ search }}">上一页</a>
+                            </li>
+                            {% endif %}
+                            <li class="page-item disabled">
+                                <span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+                                    页</span>
+                            </li>
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link"
+                                    href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}&search={{ search }}">下一页</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

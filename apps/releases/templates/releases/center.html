@@ -1,0 +1,590 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}发布中心 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-rocket-takeoff"></i> 发布中心
+                    </h5>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'releases:create' %}" class="btn btn-primary">
+                            <i class="bi bi-plus-lg"></i> 新建发布
+                        </a>
+                        <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-clock-history"></i> 完整历史
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <h6 class="mb-0 me-3">
+                            <i class="bi bi-hourglass-split text-warning"></i> 待发布批次
+                        </h6>
+                        <span class="badge bg-warning text-dark">
+                            {% with total=0 %}{% for batch in batch_tasks.values %}{% for t in batch %}{% endfor %}{% endfor %}{% endwith %}
+                            {{ batch_tasks|length }} 个批次
+                        </span>
+                    </div>
+
+                    <form method="get" class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control" name="search" value="{{ search }}" placeholder="搜索批次号 / 节点 / 配置 / 操作人">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select form-select-sm" name="status">
+                                <option value="">全部状态</option>
+                                {% for val, label in status_choices %}
+                                {% if val == 'pending' or val == 'running' %}
+                                <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+                                {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-sm btn-primary w-100">
+                                <i class="bi bi-search"></i> 搜索
+                            </button>
+                        </div>
+                        <div class="col-md-2">
+                            <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary w-100">
+                                <i class="bi bi-x-circle"></i> 清空
+                            </a>
+                        </div>
+                    </form>
+
+                    {% if not batch_tasks %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                        <p class="mt-2">暂无待发布任务</p>
+                        <a href="{% url 'releases:create' %}" class="btn btn-primary btn-sm mt-1">
+                            <i class="bi bi-plus-lg"></i> 新建发布
+                        </a>
+                    </div>
+                    {% else %}
+                    {% for batch_number, batch in batch_tasks.items %}
+                    <div class="card mb-3 border">
+                        <div class="card-header bg-light d-flex justify-content-between align-items-center py-2">
+                            <div class="d-flex align-items-center">
+                                <button type="button" class="btn btn-sm btn-outline-secondary me-2 p-0 px-1 btn-toggle-batch" data-bs-toggle="collapse" data-bs-target="#collapse-{{ batch_number }}">
+                                    <i class="bi bi-chevron-down"></i>
+                                </button>
+                                <div>
+                                    <span class="fw-bold text-primary">
+                                        <i class="bi bi-tag"></i> {{ batch_number }}
+                                    </span>
+                                    <span class="text-muted ms-3 small">
+                                        <i class="bi bi-person"></i> {{ batch.0.operator.username }}
+                                    </span>
+                                    <span class="text-muted ms-3 small">
+                                        <i class="bi bi-clock"></i> {{ batch.0.created_at|date:"Y-m-d H:i" }}
+                                    </span>
+                                    <span class="badge bg-secondary ms-3">{{ batch|length }} 个任务</span>
+                                </div>
+                            </div>
+                            <div>
+                                {% if batch.0.status == 'pending' %}
+                                <form method="post" action="{% url 'releases:center_cancel' batch_number %}" class="d-inline" id="form-cancel-{{ batch_number }}">
+                                    {% csrf_token %}
+                                    <button type="button" class="btn btn-sm btn-outline-danger btn-cancel-batch" data-batch="{{ batch_number }}" data-count="{{ batch|length }}">
+                                        <i class="bi bi-x-circle"></i> 取消
+                                    </button>
+                                </form>
+                                    <button type="button" class="btn btn-sm btn-success btn-execute-batch ms-1" data-batch="{{ batch_number }}" data-count="{{ batch|length }}">
+                                        <i class="bi bi-play-fill"></i> 发布
+                                    </button>
+                                {% elif batch.0.status == 'running' %}
+                                <span class="text-info small">
+                                    <span class="spinner-border spinner-border-sm"></span> 执行中...
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="collapse-{{ batch_number }}" class="collapse show">
+                                <div class="table-responsive px-3">
+                                    <table class="table table-hover table-sm mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th style="width: 16%">节点</th>
+                                                <th style="width: 18%">配置</th>
+                                                <th style="width: 10%">版本</th>
+                                                <th style="width: 12%">状态</th>
+                                                <th style="width: 14%">创建时间</th>
+                                                <th style="width: 10%">操作人</th>
+                                                <th style="width: 10%">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for task in batch %}
+                                            <tr>
+                                                <td>
+                                                    <strong>{{ task.node.hostname }}</strong>
+                                                    <br><small class="text-muted">{{ task.node.ip }}</small>
+                                                </td>
+                                                <td>
+                                                    <code>{{ task.config.name }}</code>
+                                                    <br><small class="text-muted">{{ task.config.file_path }}</small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-secondary version-link" data-version-id="{{ task.version.id }}" style="cursor: pointer;">
+                                                        v{{ task.version.version }}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    {% if task.status == "pending" %}
+                                                    <span class="badge bg-secondary">等待发布</span>
+                                                    {% elif task.status == "running" %}
+                                                    <span class="badge bg-info">发布中</span>
+                                                    {% elif task.status == "success" %}
+                                                    <span class="badge bg-success">发布成功</span>
+                                                    {% elif task.status == "failed" %}
+                                                    <span class="badge bg-danger">发布失败</span>
+                                                    {% elif task.status == "cancelled" %}
+                                                    <span class="badge bg-warning">已取消</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
+                                                <td>{{ task.operator.username }}</td>
+                                                <td>
+                                                    <div class="btn-group btn-group-sm">
+                                                        {% if task.status == "pending" or task.status == "failed" %}
+                                                        <button type="button" class="btn btn-outline-success btn-execute-single"
+                                                                data-task-id="{{ task.id }}" data-node="{{ task.node.hostname }}" data-config="{{ task.config.name }}">
+                                                            <i class="bi bi-play-fill"></i>
+                                                        </button>
+                                                        {% endif %}
+                                                        <a href="{% url 'releases:detail' task.id %}" class="btn btn-outline-secondary">
+                                                            <i class="bi bi-eye"></i>
+                                                        </a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                    {% if is_paginated %}
+                    <nav>
+                        <ul class="pagination pagination-sm justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">&laquo;</a>
+                            </li>
+                            {% endif %}
+                            {% for num in page_obj.paginator.page_range %}
+                            <li class="page-item {% if page_obj.number == num %}active{% endif %}">
+                                <a class="page-link" href="?page={{ num }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">{{ num }}</a>
+                            </li>
+                            {% endfor %}
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">&raquo;</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="bi bi-clock-history text-info"></i> 最近发布记录
+                    </h6>
+                    <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-info">
+                        <i class="bi bi-list-ul"></i> 查看全部
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    <form method="get" class="row g-2 px-3 pt-3">
+                        <input type="hidden" name="search" value="{{ search }}">
+                        <input type="hidden" name="status" value="{{ status_filter }}">
+                        <div class="col-md-4">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control" name="history_search" value="{{ history_search }}" placeholder="搜索历史记录...">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select form-select-sm" name="history_status">
+                                <option value="">全部状态</option>
+                                <option value="success" {% if history_status == 'success' %}selected{% endif %}>发布成功</option>
+                                <option value="failed" {% if history_status == 'failed' %}selected{% endif %}>发布失败</option>
+                                <option value="rollback" {% if history_status == 'rollback' %}selected{% endif %}>已回滚</option>
+                                <option value="cancelled" {% if history_status == 'cancelled' %}selected{% endif %}>已取消</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-sm btn-outline-primary w-100">
+                                <i class="bi bi-search"></i> 搜索
+                            </button>
+                        </div>
+                        <div class="col-md-2">
+                            <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary w-100">
+                                <i class="bi bi-x-circle"></i> 清空
+                            </a>
+                        </div>
+                    </form>
+
+                    {% if history_page %}
+                    <div class="table-responsive mt-2 px-3">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 15%">时间</th>
+                                    <th style="width: 15%">节点</th>
+                                    <th style="width: 20%">配置</th>
+                                    <th style="width: 8%">版本</th>
+                                    <th style="width: 12%">批次号</th>
+                                    <th style="width: 10%">状态</th>
+                                    <th style="width: 20%">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for task in history_page %}
+                                <tr>
+                                    <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
+                                    <td>
+                                        <strong>{{ task.node.hostname }}</strong>
+                                        <br><small class="text-muted">{{ task.node.ip }}</small>
+                                    </td>
+                                    <td>
+                                        <code>{{ task.config.name }}</code>
+                                        <br><small class="text-muted">{{ task.config.file_path }}</small>
+                                    </td>
+                                    <td><span class="badge bg-secondary version-link" data-version-id="{{ task.version.id }}" style="cursor: pointer;">v{{ task.version.version }}</span></td>
+                                    <td>
+                                        {% if task.batch_number %}
+                                        <code class="small">{{ task.batch_number }}</code>
+                                        {% else %}
+                                        <small class="text-muted">-</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if task.status == "success" %}
+                                        <span class="badge bg-success">成功</span>
+                                        {% elif task.status == "failed" %}
+                                        <span class="badge bg-danger">失败</span>
+                                        {% elif task.status == "rollback" %}
+                                        <span class="badge bg-warning">已回滚</span>
+                                        {% elif task.status == "cancelled" %}
+                                        <span class="badge bg-secondary">已取消</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'releases:detail' task.id %}" class="btn btn-outline-info" title="详情">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            <a href="{% url 'releases:rollback' task.id %}" class="btn btn-outline-warning" title="回滚">
+                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if is_history_paginated %}
+                    <nav class="px-3 pb-2">
+                        <ul class="pagination pagination-sm justify-content-center mb-0">
+                            {% if history_page.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?history_page={{ history_page.previous_page_number }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if history_search %}&history_search={{ history_search }}{% endif %}{% if history_status %}&history_status={{ history_status }}{% endif %}">&laquo;</a>
+                            </li>
+                            {% endif %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ history_page.number }} / {{ history_page.paginator.num_pages }}</span>
+                            </li>
+                            {% if history_page.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?history_page={{ history_page.next_page_number }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if history_search %}&history_search={{ history_search }}{% endif %}{% if history_status %}&history_status={{ history_status }}{% endif %}">&raquo;</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox fs-3"></i>
+                        <p class="mt-2">暂无发布记录</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 确认弹窗 -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmModalTitle">确认操作</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body" id="confirmModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btnConfirmYes">确认</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 配置版本内容弹窗 -->
+<div class="modal fade" id="versionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="versionModalTitle">配置版本</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="versionContentPre" class="mb-0">加载中...</pre>
+            </div>
+            <div class="modal-footer">
+                <small class="text-muted">
+                    <i class="bi bi-info-circle"></i> 此内容仅供查看，不可编辑
+                </small>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 发布结果 Toast -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+    <div id="publishToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">
+        <div class="toast-header">
+            <i class="bi bi-check-circle-fill text-success me-2" id="toastIcon"></i>
+            <strong class="me-auto" id="toastTitle">发布结果</strong>
+            <small id="toastTime"></small>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="关闭"></button>
+        </div>
+        <div class="toast-body" id="toastBody"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .version-link:hover { opacity: 0.8; }
+    #versionModal .modal-body pre {
+        max-height: 450px;
+        overflow: auto;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+</style>
+<script>
+(function() {
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    const versionModal = new bootstrap.Modal(document.getElementById('versionModal'));
+    const publishToast = new bootstrap.Toast(document.getElementById('publishToast'));
+    let confirmCallback = null;
+
+    function getCsrfToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    }
+
+    function showPublishToast(success, title, message, detailUrl) {
+        const toastEl = document.getElementById('publishToast');
+        const iconEl = document.getElementById('toastIcon');
+        const titleEl = document.getElementById('toastTitle');
+        const bodyEl = document.getElementById('toastBody');
+        const timeEl = document.getElementById('toastTime');
+
+        iconEl.className = success
+            ? 'bi bi-check-circle-fill text-success me-2'
+            : 'bi bi-exclamation-triangle-fill text-danger me-2';
+        titleEl.textContent = title;
+        bodyEl.textContent = message;
+        timeEl.textContent = new Date().toLocaleTimeString();
+
+        if (detailUrl) {
+            toastEl.dataset.detailUrl = detailUrl;
+            toastEl.style.cursor = 'pointer';
+            toastEl.title = '点击查看详情';
+        } else {
+            delete toastEl.dataset.detailUrl;
+            toastEl.style.cursor = '';
+            toastEl.title = '';
+        }
+
+        publishToast.show();
+    }
+
+    // Toast click → navigate to detail
+    document.getElementById('publishToast').addEventListener('click', function() {
+        var url = this.dataset.detailUrl;
+        if (url) {
+            window.location.href = url;
+        }
+    });
+
+    function submitAjax(url, onSuccess) {
+        var btn = document.getElementById('btnConfirmYes');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 执行中...';
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCsrfToken()
+            }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            onSuccess(data);
+            btn.disabled = false;
+            btn.innerHTML = '确认';
+            modal.hide();
+            setTimeout(function() { location.reload(); }, 800);
+        })
+        .catch(function(err) {
+            showPublishToast(false, '请求失败', '网络错误：' + err.message);
+            btn.disabled = false;
+            btn.innerHTML = '确认';
+            modal.hide();
+        });
+    }
+
+    document.getElementById('btnConfirmYes').addEventListener('click', function() {
+        if (confirmCallback) confirmCallback();
+    });
+
+    function showConfirm(title, message, callback) {
+        document.getElementById('confirmModalTitle').textContent = title;
+        document.getElementById('confirmModalBody').textContent = message;
+        document.getElementById('btnConfirmYes').disabled = false;
+        document.getElementById('btnConfirmYes').innerHTML = '确认';
+        confirmCallback = callback;
+        modal.show();
+    }
+
+    document.querySelectorAll('.btn-execute-batch').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var batch = this.dataset.batch;
+            var count = this.dataset.count;
+            var url = '/releases/center/execute/' + batch + '/';
+            showConfirm('确认发布', '确认执行批次 ' + batch + ' 的全部 ' + count + ' 个任务？', function() {
+                var thatBtn = btn;
+                thatBtn.disabled = true;
+                thatBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                submitAjax(url, function(data) {
+                    thatBtn.disabled = false;
+                    thatBtn.innerHTML = '<i class="bi bi-play-fill"></i> 发布';
+                    if (data.success) {
+                        showPublishToast(true, '发布完成', data.message);
+                    } else {
+                        showPublishToast(false, '发布结果', data.message);
+                    }
+                });
+            });
+        });
+    });
+
+    document.querySelectorAll('.btn-cancel-batch').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var batch = this.dataset.batch;
+            var count = this.dataset.count;
+            var form = document.getElementById('form-cancel-' + batch);
+            showConfirm('确认取消', '确认取消批次 ' + batch + ' 的全部 ' + count + ' 个任务？', function() {
+                form.submit();
+            });
+        });
+    });
+
+    document.querySelectorAll('.btn-execute-single').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var taskId = this.dataset.taskId;
+            var node = this.dataset.node;
+            var config = this.dataset.config;
+            var url = '/releases/center/task/' + taskId + '/execute/';
+            showConfirm('确认发布单个任务', '确认将配置 ' + config + ' 发布到节点 ' + node + '？', function() {
+                var thatBtn = btn;
+                thatBtn.disabled = true;
+                thatBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                submitAjax(url, function(data) {
+                    thatBtn.disabled = false;
+                    thatBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
+                    var detailUrl = '/releases/detail/' + taskId + '/';
+                    if (data.success) {
+                        showPublishToast(true, '发布成功', data.message, detailUrl);
+                    } else {
+                        showPublishToast(false, '发布失败', data.message, detailUrl);
+                    }
+                });
+            });
+        });
+    });
+
+    document.querySelectorAll('.version-link').forEach(function(el) {
+        el.addEventListener('click', function() {
+            var versionId = this.dataset.versionId;
+            var pre = document.getElementById('versionContentPre');
+            var title = document.getElementById('versionModalTitle');
+            pre.textContent = '加载中...';
+            title.textContent = '配置版本 v' + versionId;
+            versionModal.show();
+
+            fetch('/configs/api/version-content/' + versionId + '/', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (res.success) {
+                    title.textContent = res.data.config_name + ' v' + res.data.version
+                        + ' (' + res.data.node_name + ')';
+                    pre.textContent = res.data.content;
+                } else {
+                    pre.textContent = '加载失败';
+                }
+            })
+            .catch(function() {
+                pre.textContent = '网络错误';
+            });
+        });
+    });
+
+    document.querySelectorAll('.btn-toggle-batch').forEach(function(btn) {
+        var target = document.querySelector(btn.dataset.bsTarget);
+        if (target) {
+            target.addEventListener('show.bs.collapse', function() {
+                btn.querySelector('i').className = 'bi bi-chevron-down';
+            });
+            target.addEventListener('hide.bs.collapse', function() {
+                btn.querySelector('i').className = 'bi bi-chevron-right';
+            });
+        }
+    });
+})();
+</script>
+{% endblock %}

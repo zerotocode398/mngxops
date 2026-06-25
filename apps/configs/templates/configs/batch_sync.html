@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% load config_filters %}
+
+{% block title %}批量同步 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-cloud-upload"></i> 批量同步</h5>
+                    <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary btn-sm" onclick="goBackToConfigList(event)">
+                        <i class="bi bi-arrow-left"></i> 返回配置列表
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-4">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>批量同步说明：</strong>选择需要同步的节点（可全选或部分选择），系统将通过 SSH 连接远程节点，
+                        读取 nginx.conf 并自动解析 <code>include</code> 指令发现所有子配置文件。
+                    </div>
+
+                    <form method="get" class="mb-3">
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <select name="environment" class="form-select" onchange="this.form.submit()">
+                                    <option value="">全部标签</option>
+                                    <option value="dev" {% if env_filter == "dev" %}selected{% endif %}>开发</option>
+                                    <option value="test" {% if env_filter == "test" %}selected{% endif %}>测试</option>
+                                    <option value="prod" {% if env_filter == "prod" %}selected{% endif %}>生产</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select name="status" class="form-select" onchange="this.form.submit()">
+                                    <option value="">全部状态</option>
+                                    <option value="online" {% if status_filter == "online" %}selected{% endif %}>在线
+                                    </option>
+                                    <option value="offline" {% if status_filter == "offline" %}selected{% endif %}>离线
+                                    </option>
+                                    <option value="unknown" {% if status_filter == "unknown" %}selected{% endif %}>未知
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select name="per_page" class="form-select" onchange="this.form.submit()">
+                                    {% for size in per_page_options %}
+                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                {% if env_filter or status_filter %}
+                                <a href="{% url 'configs:batch_sync' %}?per_page={{ per_page }}" class="btn btn-outline-secondary w-100">
+                                    <i class="bi bi-x-circle"></i> 清空筛选
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </form>
+
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="bi bi-file-earmark-text"></i>
+                                nginx.conf 主配置文件路径（统一应用于所有选中节点）
+                            </label>
+                            <input type="text" name="main_conf_path" class="form-control" value="{{ default_main_conf_path|default:'/etc/nginx/nginx.conf' }}"
+                                placeholder="例如: /etc/nginx/nginx.conf">
+                            <small class="text-muted">
+                                <i class="bi bi-lightbulb"></i>
+                                系统会自动解析 <code>include</code> 指令，发现所有子配置文件。相对路径会自动相对于 nginx.conf 所在目录解析。
+                            </small>
+                        </div>
+
+                        <div class="mb-3 d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0"><i class="bi bi-server"></i> 选择节点</h6>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="selectAll"
+                                    onchange="toggleAll(this)">
+                                <label class="form-check-label" for="selectAll">
+                                    <strong>全选 / 取消全选</strong>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive mb-3">
+                            <table class="table table-hover table-sm">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%">
+                                            <input class="form-check-input" type="checkbox" onchange="toggleAll(this)">
+                                        </th>
+                                        <th style="width: 20%">主机名</th>
+                                        <th style="width: 18%">IP 地址</th>
+                                        <th style="width: 12%">标签</th>
+                                        <th style="width: 10%">状态</th>
+                                        <th style="width: 15%">已同步配置</th>
+                                        <th style="width: 20%">上次同步路径</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for node in all_nodes %}
+                                    <tr>
+                                        <td>
+                                            <input class="form-check-input node-checkbox" type="checkbox"
+                                                name="node_ids" value="{{ node.id }}">
+                                        </td>
+                                        <td>
+                                            <strong>{{ node.hostname }}</strong>
+                                        </td>
+                                        <td>
+                                            <code>{{ node.ip }}:{{ node.port }}</code>
+                                        </td>
+                                        <td>
+                                            {% if node.environment == 'dev' %}
+                                            <span class="badge bg-secondary">开发</span>
+                                            {% elif node.environment == 'test' %}
+                                            <span class="badge bg-warning text-dark">测试</span>
+                                            {% else %}
+                                            <span class="badge bg-danger">生产</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if node.status == 'online' %}
+                                            <span class="badge bg-success">在线</span>
+                                            {% elif node.status == 'offline' %}
+                                            <span class="badge bg-danger">离线</span>
+                                            {% else %}
+                                            <span class="badge bg-secondary">未知</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if node.config_set.count > 0 %}
+                                            <span class="badge bg-info">{{ node.config_set.count }} 个配置</span>
+                                            {% else %}
+                                            <span class="text-muted">未同步</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">{{ node_sync_paths|dict_get:node.id }}</small>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted py-4">
+                                            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                                            <p class="mt-2">暂无节点数据</p>
+                                            <a href="{% url 'nodes:create' %}" class="btn btn-primary btn-sm">
+                                                <i class="bi bi-plus-circle"></i> 新增节点
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {% if is_paginated %}
+                        <nav aria-label="Page navigation" class="mt-2">
+                            <ul class="pagination justify-content-center mb-0">
+                                {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1&per_page={{ per_page }}{% if env_filter %}&environment={{ env_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">首页</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if env_filter %}&environment={{ env_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">上一页</a>
+                                </li>
+                                {% endif %}
+
+                                <li class="page-item active">
+                                    <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                                </li>
+
+                                {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if env_filter %}&environment={{ env_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">下一页</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if env_filter %}&environment={{ env_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">末页</a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        {% endif %}
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'configs:list' %}" class="btn btn-secondary" onclick="goBackToConfigList(event)">
+                                <i class="bi bi-x-circle"></i> 取消
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-cloud-upload"></i> 批量同步选中节点
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+<script>
+    function toggleAll(source) {
+        var checkboxes = document.getElementsByClassName('node-checkbox');
+        for (var i = 0; i < checkboxes.length; i++) {
+            checkboxes[i].checked = source.checked;
+        }
+    }
+</script>

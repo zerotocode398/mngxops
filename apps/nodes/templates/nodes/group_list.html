@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}节点组列表 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-collection"></i> 节点组列表</h5>
+                    <a href="{% url 'nodes:group_create' %}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> 新增节点组
+                    </a>
+                </div>
+                <div class="card-body">
+                    <form method="get" class="mb-3">
+                        <div class="input-group">
+                            <input type="text" name="search" class="form-control" placeholder="搜索节点组名称"
+                                value="{{ search }}">
+                            <select name="per_page" class="form-select" style="max-width: 130px;">
+                                {% for size in per_page_options %}
+                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-outline-primary">
+                                <i class="bi bi-search"></i> 搜索
+                            </button>
+                            {% if search %}
+                            <a href="{% url 'nodes:group_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-x-circle"></i> 清空
+                            </a>
+                            {% endif %}
+                        </div>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>节点组名称</th>
+                                    <th>节点数</th>
+                                    <th>描述</th>
+                                    <th>创建人</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for group in node_groups %}
+                                <tr>
+                                    <td><strong>{{ group.name }}</strong></td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ group.nodes.count }}</span>
+                                    </td>
+                                    <td>{{ group.description|default:"-"|truncatewords:10 }}</td>
+                                    <td>{{ group.created_by.username }}</td>
+                                    <td>{{ group.created_at|date:"Y-m-d H:i" }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button type="button" class="btn btn-outline-success" data-bs-toggle="modal"
+                                                data-bs-target="#manageNodesModal{{ group.id }}" title="管理节点">
+                                                <i class="bi bi-gear"></i>
+                                            </button>
+                                            <a href="{% url 'nodes:group_edit' group.id %}"
+                                                class="btn btn-outline-primary" title="编辑">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
+                                                data-bs-target="#deleteModal{{ group.id }}" title="删除">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">
+                                        <i class="bi bi-inbox"></i> 暂无节点组数据
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% for group in node_groups %}
+                    <div class="modal fade" id="deleteModal{{ group.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">确认删除</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    确定要删除节点组 <strong>{{ group.name }}</strong> 吗？
+                                    <br><br>
+                                    <small class="text-muted">此操作不可恢复！关联的节点不会删除</small>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                    <form method="post" action="{% url 'nodes:group_delete' group.id %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-danger">确认删除</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal fade" id="manageNodesModal{{ group.id }}" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">
+                                        <i class="bi bi-gear"></i> 管理节点 — {{ group.name }}
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form method="post" action="{% url 'nodes:group_manage_nodes' group.id %}">
+                                    {% csrf_token %}
+                                    <div class="modal-body">
+                                        <table class="table table-sm table-bordered">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width:40px">
+                                                        <input type="checkbox" class="form-check-input" onclick="
+                                                            document.querySelectorAll('#manageNodesModal{{ group.id }} .node-check').forEach(cb => {
+                                                                if (!cb.disabled) cb.checked = this.checked;
+                                                            });
+                                                        ">
+                                                    </th>
+                                                    <th>主机名</th>
+                                                    <th>IP</th>
+                                                    <th>已关联节点组</th>
+                                                    <th>状态</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for node in all_nodes %}
+                                                <tr>
+                                                    <td>
+                                                        {% if node.groups.count >= 3 and node not in group.nodes.all %}
+                                                        <input type="checkbox" name="node_ids" value="{{ node.id }}"
+                                                            class="form-check-input node-check" disabled>
+                                                        {% elif node in group.nodes.all %}
+                                                        <input type="checkbox" name="node_ids" value="{{ node.id }}"
+                                                            class="form-check-input node-check" checked>
+                                                        {% else %}
+                                                        <input type="checkbox" name="node_ids" value="{{ node.id }}"
+                                                            class="form-check-input node-check">
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>{{ node.hostname }}</td>
+                                                    <td>{{ node.ip }}</td>
+                                                    <td>
+                                                        {% for ng in node.groups.all %}
+                                                        <span class="badge bg-info">{{ ng.name }}</span>
+                                                        {% empty %}
+                                                        <span class="text-muted">无</span>
+                                                        {% endfor %}
+                                                        {% if node.groups.count >= 3 and node not in group.nodes.all %}
+                                                        <span class="badge bg-warning">已满</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if node.status == "online" %}
+                                                        <span class="badge bg-success">在线</span>
+                                                        {% elif node.status == "offline" %}
+                                                        <span class="badge bg-danger">离线</span>
+                                                        {% else %}
+                                                        <span class="badge bg-secondary">未知</span>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                        <small class="text-muted">勾选 = 加入节点组，取消勾选 =
+                                            移出节点组。灰色已禁用的节点已达上限（3个节点组），无法加入</small>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary"
+                                            data-bs-dismiss="modal">取消</button>
+                                        <button type="submit" class="btn btn-success">
+                                            <i class="bi bi-check-lg"></i> 保存变更
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                    {% if is_paginated %}
+                    <nav>
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link"
+                                    href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}&search={{ search }}">上一页</a>
+                            </li>
+                            {% endif %}
+                            <li class="page-item disabled">
+                                <span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+                                    页</span>
+                            </li>
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link"
+                                    href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}&search={{ search }}">下一页</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

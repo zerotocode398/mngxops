@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}保存前对比 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-git"></i> 保存前对比：{{ config.name }}
+                    </h5>
+                    <a href="{% url 'configs:edit' config.id %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-left"></i> 返回编辑
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <strong>文件：</strong><code>{{ new_file_path }}</code>
+                        <span class="ms-3"><strong>保存后版本：</strong>V{{ next_version }}</span>
+                    </div>
+
+                    <div class="table-responsive border rounded" style="max-height: 500px; overflow-y: auto;">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                                <tr>
+                                    <th style="width: 7%;">左行号</th>
+                                    <th style="width: 43%;">修改前</th>
+                                    <th style="width: 7%;">右行号</th>
+                                    <th style="width: 43%;">修改后</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in split_diff_rows %}
+                                <tr>
+                                    <td class="text-muted">{{ row.left_no }}</td>
+                                    <td class="font-monospace {% if row.type == 'delete' or row.type == 'replace' %}table-danger{% endif %}" style="white-space: pre-wrap;"><code>{{ row.left }}</code></td>
+                                    <td class="text-muted">{{ row.right_no }}</td>
+                                    <td class="font-monospace {% if row.type == 'insert' or row.type == 'replace' %}table-success{% endif %}" style="white-space: pre-wrap;"><code>{{ row.right }}</code></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <form method="post" action="{% url 'configs:edit' config.id %}" class="mt-3" id="saveReviewForm">
+                        {% csrf_token %}
+                        <input type="hidden" name="name" value="{{ new_name|escape }}">
+                        <input type="hidden" name="file_path" value="{{ new_file_path|escape }}">
+                        <textarea name="content" class="d-none">{{ new_content }}</textarea>
+                        <textarea name="remark" class="d-none">{{ remark }}</textarea>
+                        <input type="hidden" name="confirm_save" value="yes">
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'configs:edit' config.id %}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> 取消
+                            </a>
+                            <button type="button" class="btn btn-primary" id="openConfirmModalBtn">
+                                <i class="bi bi-check-circle"></i> 确认保存
+                            </button>
+                        </div>
+                    </form>
+
+                    <div class="modal fade" id="confirmSaveModal" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">
+                                        <i class="bi bi-exclamation-triangle"></i> 确认保存
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    确认将本次修改写入数据库并生成新版本 <strong>V{{ next_version }}</strong> 吗？
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                        取消
+                                    </button>
+                                    <button type="button" class="btn btn-primary" id="confirmSaveBtn">
+                                        <i class="bi bi-check-circle"></i> 确认保存
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        var form = document.getElementById('saveReviewForm');
+        var openBtn = document.getElementById('openConfirmModalBtn');
+        var confirmBtn = document.getElementById('confirmSaveBtn');
+        var modal = new bootstrap.Modal(document.getElementById('confirmSaveModal'));
+
+        openBtn.addEventListener('click', function () {
+            modal.show();
+        });
+
+        confirmBtn.addEventListener('click', function () {
+            form.submit();
+        });
+    })();
+</script>
+{% endblock %}
+

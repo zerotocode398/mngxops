@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% load config_filters %}
+
+{% block title %}配置同步 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-cloud-download"></i> 配置同步</h5>
+                    <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary btn-sm" onclick="goBackToConfigList(event)">
+                        <i class="bi bi-arrow-left"></i> 返回配置列表
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-4">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>同步说明：</strong>系统将通过 SSH 连接远程节点，读取 nginx.conf 并自动解析
+                        <code>include</code> 指令发现所有子配置文件（如
+                        <code>conf.d/*.conf</code>、<code>sites-enabled/*</code>、<code>*.stream</code> 等）。
+                        只需填写 nginx.conf 的路径即可。
+                    </div>
+
+                    <div class="alert alert-secondary mb-4">
+                        <i class="bi bi-sliders"></i>
+                        <strong>更新模式：</strong>
+                        <span class="ms-2">单台全量同步（自动拉取全部 include 配置）</span> /
+                        <span>单台部分同步（先解析再勾选需要更新的配置）</span> /
+                        <span>批量节点全量同步（在批量同步页执行）</span>
+                    </div>
+
+                    <h6 class="mb-3"><i class="bi bi-server"></i> 选择节点进行同步</h6>
+
+                    <form method="get" class="mb-3 d-flex justify-content-end">
+                        <div class="input-group" style="max-width: 220px;">
+                            <label class="input-group-text" for="perPageSelect">每页</label>
+                            <select id="perPageSelect" name="per_page" class="form-select">
+                                {% for size in per_page_options %}
+                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-outline-primary">应用</button>
+                        </div>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th>主机名</th>
+                                    <th>IP 地址</th>
+                                    <th>环境</th>
+                                    <th>状态</th>
+                                    <th>已同步配置</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for node in nodes %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ node.hostname }}</strong>
+                                    </td>
+                                    <td>
+                                        <code>{{ node.ip }}:{{ node.port }}</code>
+                                    </td>
+                                    <td>
+                                        {% if node.environment == 'dev' %}
+                                        <span class="badge bg-secondary">开发环境</span>
+                                        {% elif node.environment == 'test' %}
+                                        <span class="badge bg-warning text-dark">测试环境</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">生产环境</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if node.status == 'online' %}
+                                        <span class="badge bg-success">在线</span>
+                                        {% elif node.status == 'offline' %}
+                                        <span class="badge bg-danger">离线</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">未知</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if node.config_set.count > 0 %}
+                                        <span class="badge bg-info">{{ node.config_set.count }} 个配置</span>
+                                        {% else %}
+                                        <span class="text-muted">未同步</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal"
+                                                data-bs-target="#syncModal{{ node.id }}" title="从该节点同步配置">
+                                                <i class="bi bi-cloud-download"></i> 同步配置
+                                            </button>
+                                            <a href="{% url 'configs:create' %}?node_id={{ node.id }}"
+                                                class="btn btn-outline-secondary" title="手动添加配置">
+                                                <i class="bi bi-plus-circle"></i> 手动添加
+                                            </a>
+                                        </div>
+
+                                        <div class="modal fade" id="syncModal{{ node.id }}" tabindex="-1">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <form method="post"
+                                                        action="{% url 'configs:sync_remote' node.id %}">
+                                                        {% csrf_token %}
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title">
+                                                                <i class="bi bi-cloud-download"></i>
+                                                                同步配置：{{ node.hostname }}
+                                                            </h5>
+                                                            <button type="button" class="btn-close"
+                                                                data-bs-dismiss="modal"></button>
+                                                        </div>
+                                                        <div class="modal-body">
+                                                            <div class="mb-3">
+                                                                <label class="form-label">
+                                                                    <i class="bi bi-file-earmark-text"></i>
+                                                                    nginx.conf 主配置文件路径
+                                                                </label>
+                                                                <input type="text" name="main_conf_path"
+                                                                    class="form-control"
+                                                                    value="{{ node_sync_paths|dict_get:node.id|default:'/etc/nginx/nginx.conf' }}"
+                                                                    placeholder="例如: /etc/nginx/nginx.conf">
+                                                                <small class="text-muted">
+                                                                    <i class="bi bi-lightbulb"></i>
+                                                                    系统会自动解析 <code>include</code> 指令，发现所有子配置文件。
+                                                                </small>
+                                                            </div>
+                                                            <div class="alert alert-light mb-0">
+                                                                <small>
+                                                                    <i class="bi bi-search"></i>
+                                                                    <strong>自动发现：</strong>支持识别
+                                                                    <code>include *.conf</code>、
+                                                                    <code>include conf.d/*.conf</code>、
+                                                                    <code>include *.stream</code> 等所有
+                                                                    <code>include</code> 指令，相对路径会自动相对于 nginx.conf
+                                                                    所在目录解析。
+                                                                </small>
+                                                            </div>
+
+                                                            <div class="mb-0">
+                                                                <label class="form-label">
+                                                                    <i class="bi bi-list-check"></i> 单台部分同步（可选）
+                                                                </label>
+                                                                <details>
+                                                                    <summary class="text-primary" style="cursor:pointer;">
+                                                                        点击展开并手动勾选要同步的配置文件
+                                                                    </summary>
+                                                                    <div class="mt-2 border rounded p-2" style="max-height: 220px; overflow-y: auto;">
+                                                                        {% for c in node.config_set.all %}
+                                                                        {% if c.name != 'mime.types' %}
+                                                                        <div class="form-check">
+                                                                            <input class="form-check-input" type="checkbox"
+                                                                                name="selected_paths" value="{{ c.file_path }}"
+                                                                                form="partialSyncForm{{ node.id }}">
+                                                                            <label class="form-check-label small">
+                                                                                {{ c.file_path }}
+                                                                            </label>
+                                                                        </div>
+                                                                        {% endif %}
+                                                                        {% empty %}
+                                                                        <small class="text-muted">当前无已同步配置；请先执行一次全量同步后再做部分同步。</small>
+                                                                        {% endfor %}
+                                                                    </div>
+                                                                </details>
+                                                            </div>
+                                                        </div>
+                                                        <div class="modal-footer">
+                                                            <button type="button" class="btn btn-secondary"
+                                                                data-bs-dismiss="modal">取消</button>
+                                                            <button type="button" class="btn btn-outline-primary"
+                                                                onclick="submitPartialSync({{ node.id }})">
+                                                                <i class="bi bi-funnel"></i> 部分同步
+                                                            </button>
+                                                            <button type="submit" class="btn btn-primary">
+                                                                <i class="bi bi-cloud-download"></i> 开始同步
+                                                            </button>
+                                                        </div>
+                                                    </form>
+
+                                                    <form id="partialSyncForm{{ node.id }}" method="post"
+                                                        action="{% url 'configs:sync_partial' node.id %}">
+                                                        {% csrf_token %}
+                                                        <input type="hidden" name="main_conf_path"
+                                                            value="{{ node_sync_paths|dict_get:node.id|default:'/etc/nginx/nginx.conf' }}">
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                                        <p class="mt-2">暂无节点数据</p>
+                                        <a href="{% url 'nodes:create' %}" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-plus-circle"></i> 新增节点
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if is_paginated %}
+                    <nav aria-label="Page navigation" class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1&per_page={{ per_page }}">
+                                    <i class="bi bi-chevron-double-left"></i> 首页
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}">
+                                    <i class="bi bi-chevron-left"></i> 上一页
+                                </a>
+                            </li>
+                            {% endif %}
+
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                            </li>
+
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}">
+                                    下一页 <i class="bi bi-chevron-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}">
+                                    末页 <i class="bi bi-chevron-double-right"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function submitPartialSync(nodeId) {
+        var modal = document.getElementById('syncModal' + nodeId);
+        var sourceChecks = modal.querySelectorAll('input[name="selected_paths"]');
+        var partialForm = document.getElementById('partialSyncForm' + nodeId);
+
+        partialForm.querySelectorAll('input[name="selected_paths"]').forEach(function (el) {
+            el.remove();
+        });
+
+        var checkedCount = 0;
+        sourceChecks.forEach(function (cb) {
+            if (cb.checked) {
+                checkedCount += 1;
+                var hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'selected_paths';
+                hidden.value = cb.value;
+                partialForm.appendChild(hidden);
+            }
+        });
+
+        var sourcePath = modal.querySelector('input[name="main_conf_path"]');
+        partialForm.querySelector('input[name="main_conf_path"]').value = sourcePath.value;
+
+        if (checkedCount === 0) {
+            alert('请至少勾选一个配置文件');
+            return;
+        }
+        partialForm.submit();
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}{{ config.name }} - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-earmark-code"></i>
+                        {{ config.name }}
+                        <span class="badge bg-info ms-2">v{{ config.current_version }}</span>
+                    </h5>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary" onclick="goBackToConfigList(event)">
+                            <i class="bi bi-arrow-left"></i> 返回列表
+                        </a>
+                        {% if user|has_perm_code:"configs.update" %}
+                        <a href="{% url 'configs:edit' config.id %}" class="btn btn-outline-primary">
+                            <i class="bi bi-pencil"></i> 编辑
+                        </a>
+                        {% endif %}
+                        <a href="{% url 'configs:versions' config.id %}" class="btn btn-outline-info">
+                            <i class="bi bi-clock-history"></i> 版本历史
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="text-muted small">节点</div>
+                            <div><strong>{{ config.node.hostname }}</strong> ({{ config.node.ip }})</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">配置路径</div>
+                            <div><code>{{ config.file_path }}</code></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">创建人</div>
+                            <div>{{ config.created_by.username }}</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">更新时间</div>
+                            <div>{{ config.updated_at|date:"Y-m-d H:i" }}</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <strong><i class="bi bi-code-slash"></i> 配置内容</strong>
+                        {% if latest_version %}
+                        <small class="text-muted ms-2">（{{ latest_version.content_bytes }} 字节）</small>
+                        {% endif %}
+                    </div>
+                    <pre class="bg-light p-3 rounded border"
+                        style="max-height: 600px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; white-space: pre-wrap; word-wrap: break-word;">{% if latest_version %}{{ latest_version.content }}{% else %}{{ config.content }}{% endif %}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

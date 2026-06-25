@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}新增节点 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-plus-circle"></i> 新增节点</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row justify-content-center">
+                        <div class="col-md-8">
+                            <form method="post">
+                                {% csrf_token %}
+
+                                <div class="mb-3">
+                                    <label for="{{ form.hostname.id_for_label }}" class="form-label">
+                                        <i class="bi bi-hdd-network"></i> {{ form.hostname.label }}
+                                    </label>
+                                    {{ form.hostname }}
+                                    {% if form.hostname.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.hostname.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.ip.id_for_label }}" class="form-label">
+                                        <i class="bi bi-globe"></i> {{ form.ip.label }}
+                                    </label>
+                                    {{ form.ip }}
+                                    {% if form.ip.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.ip.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.port.id_for_label }}" class="form-label">
+                                        <i class="bi bi-usb"></i> {{ form.port.label }}
+                                    </label>
+                                    {{ form.port }}
+                                    {% if form.port.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.port.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.groups.id_for_label }}" class="form-label">
+                                        <i class="bi bi-collection"></i> {{ form.groups.label }}
+                                    </label>
+                                    <div class="border rounded p-2">
+                                        {% for checkbox in form.groups %}
+                                        <div class="form-check mb-1">
+                                            {{ checkbox.tag }}
+                                            <label class="form-check-label" for="{{ checkbox.id_for_label }}">
+                                                {{ checkbox.choice_label }}
+                                            </label>
+                                        </div>
+                                        {% empty %}
+                                        <span class="text-muted">暂无可选节点组</span>
+                                        {% endfor %}
+                                    </div>
+                                    {% if form.groups.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.groups.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    <small class="text-muted">可勾选多个节点组，最多 3 个</small>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.credential.id_for_label }}" class="form-label">
+                                        <i class="bi bi-key"></i> {{ form.credential.label }}
+                                    </label>
+                                    {{ form.credential }}
+                                    {% if form.credential.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.credential.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    <small class="text-muted">可选，不设置则无法执行连接测试等远程操作</small>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.environment.id_for_label }}" class="form-label">
+                                        <i class="bi bi-layers"></i> {{ form.environment.label }}
+                                    </label>
+                                    {{ form.environment }}
+                                    {% if form.environment.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.environment.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.nginx_path.id_for_label }}" class="form-label">
+                                        <i class="bi bi-file-earmark-code"></i> {{ form.nginx_path.label }}
+                                    </label>
+                                    {{ form.nginx_path }}
+                                    {% if form.nginx_path.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.nginx_path.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    <small class="text-muted">如果nginx是自定义编译的，请填写完整路径，例如:
+                                        /usr/local/nginx/sbin/nginx</small>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.description.id_for_label }}" class="form-label">
+                                        <i class="bi bi-card-text"></i> {{ form.description.label }}
+                                    </label>
+                                    {{ form.description }}
+                                    {% if form.description.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.description.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="d-flex justify-content-between">
+                                    <a href="{% url 'nodes:list' %}" class="btn btn-secondary">
+                                        <i class="bi bi-arrow-left"></i> 返回
+                                    </a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-check-circle"></i> 确认创建
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

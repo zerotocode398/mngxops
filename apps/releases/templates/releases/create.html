@@ -1,0 +1,1178 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}发布配置 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-rocket-takeoff"></i>
+                        发布配置
+                    </h5>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'releases:center' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> 返回发布中心
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form id="releaseForm" method="post" novalidate>
+                        {% csrf_token %}
+
+                        <!-- Step 1: 选择发布目标 -->
+                        <div id="wizard-step-1" class="wizard-step active">
+                            <h5 class="mb-3">
+                                <span class="step-badge">1</span> 选择发布目标
+                            </h5>
+
+                            <!-- 空状态 -->
+                            <div id="step1-empty" class="text-center py-5">
+                                <div class="mb-3">
+                                    <i class="bi bi-collection fs-1 text-muted"></i>
+                                </div>
+                                <p class="text-muted mb-3">请选择节点或节点组创建发布任务</p>
+                                <div class="d-flex justify-content-center gap-2">
+                                    <button type="button" class="btn btn-primary" id="btn-select-node">
+                                        <i class="bi bi-server"></i> 选择节点
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" id="btn-select-group">
+                                        <i class="bi bi-collection"></i> 选择节点组
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 节点选择面板 -->
+                            <div id="step1-selector" class="d-none">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <div class="d-flex gap-2 mb-3 flex-wrap">
+                                            <div class="input-group input-group-sm flex-grow-1" style="max-width: 260px;">
+                                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                                <input type="text" class="form-control" id="nodeSearch" placeholder="搜索节点名称 / IP">
+                                            </div>
+                                            <select class="form-select form-select-sm" id="envFilter" style="max-width: 120px;">
+                                                <option value="">全部环境</option>
+                                                <option value="dev">开发</option>
+                                                <option value="test">测试</option>
+                                                <option value="prod">生产</option>
+                                            </select>
+                                            <select class="form-select form-select-sm" id="statusFilter" style="max-width: 120px;">
+                                                <option value="">全部状态</option>
+                                                <option value="online">在线</option>
+                                                <option value="offline">离线</option>
+                                            </select>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSelectAllPage">
+                                                <i class="bi bi-check-all"></i> 全选本页
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnClearAll">
+                                                <i class="bi bi-x-circle"></i> 清空
+                                            </button>
+                                        </div>
+                                        <div class="table-responsive border rounded" style="max-height: 360px; overflow-y: auto;">
+                                            <table class="table table-sm table-hover mb-0">
+                                                <thead class="table-light sticky-top">
+                                                    <tr>
+                                                        <th style="width: 40px;"></th>
+                                                        <th>节点</th>
+                                                        <th>IP</th>
+                                                        <th>环境</th>
+                                                        <th>状态</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="nodeTableBody">
+                                                    <tr id="nodeTableLoading">
+                                                        <td colspan="5" class="text-center text-muted py-3">
+                                                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                                                            加载中...
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div id="nodePagination" class="d-flex justify-content-between align-items-center mt-2">
+                                            <small class="text-muted" id="nodePaginationInfo">共 0 条</small>
+                                            <div class="btn-group btn-group-sm" id="nodePaginationBtns"></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card border-primary h-100">
+                                            <div class="card-header bg-primary bg-opacity-10 border-primary py-2">
+                                                <strong><i class="bi bi-check2-square"></i> 已选节点</strong>
+                                                <span class="badge bg-primary ms-1" id="selectedNodeCount">0/5</span>
+                                            </div>
+                                            <div class="card-body p-0" style="max-height: 360px; overflow-y: auto;">
+                                                <div id="selectedNodeList" class="list-group list-group-flush">
+                                                    <div class="list-group-item text-center text-muted py-3 border-0">
+                                                        <small>尚未选择节点</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="card-footer bg-white py-2">
+                                                <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="btnBackToEmpty">
+                                                    <i class="bi bi-arrow-left"></i> 重新选择
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-end mt-3">
+                                <button type="button" class="btn btn-primary" id="btnStep1Next" disabled>
+                                    下一步 <i class="bi bi-arrow-right"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: 选择配置文件 -->
+                        <div id="wizard-step-2" class="wizard-step d-none">
+                            <h5 class="mb-3">
+                                <span class="step-badge">2</span> 选择配置文件
+                            </h5>
+                            <div class="alert alert-light border mb-3 py-2 ps-4">
+                                <i class="bi bi-server"></i>
+                                已选节点：<strong id="step2NodeList"></strong>
+                            </div>
+                            <div class="table-responsive border rounded" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th style="width: 30px;"></th>
+                                            <th>配置名称</th>
+                                            <th>文件路径</th>
+                                            <th>所属节点</th>
+                                            <th style="width: 160px;">选择版本</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="configTableBody">
+                                        <tr>
+                                            <td colspan="5" class="text-center text-muted py-3">
+                                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                                加载配置中...
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-2">
+                                <small class="text-muted">
+                                    已选 <span id="selectedConfigCount" class="fw-bold">0</span>/5 个配置
+                                </small>
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> 仅展示所选节点拥有的配置文件
+                                </small>
+                            </div>
+                            <div class="d-flex justify-content-between mt-3">
+                                <button type="button" class="btn btn-outline-secondary" id="btnStep2Prev">
+                                    <i class="bi bi-arrow-left"></i> 上一步
+                                </button>
+                                <button type="button" class="btn btn-primary" id="btnStep2Next" disabled>
+                                    下一步 <i class="bi bi-arrow-right"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Step 3: 发布预览 -->
+                        <div id="wizard-step-3" class="wizard-step d-none">
+                            <h5 class="mb-3">
+                                <span class="step-badge">3</span> 发布预览
+                            </h5>
+
+                            <div class="alert alert-light border mb-3">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div>
+                                        <strong>共 <span id="previewTaskCount" class="text-primary">0</span> 个发布任务</strong>
+                                        <span class="text-muted ms-2">，按节点分组展示，可逐个确认</span>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted">
+                                            <i class="bi bi-clock"></i> 所有任务归属同一批次，发布将按序逐个执行
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="accordion" id="previewAccordion">
+                                <div id="previewAccordionEmpty" class="text-center text-muted py-4 border rounded">
+                                    <i class="bi bi-clipboard-check fs-1"></i>
+                                    <p class="mt-2 mb-0">暂无预览任务</p>
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-between mt-3">
+                                <button type="button" class="btn btn-outline-secondary" id="btnStep3Prev">
+                                    <i class="bi bi-arrow-left"></i> 上一步
+                                </button>
+                                <button type="submit" class="btn btn-success" id="btnConfirmPublish" disabled>
+                                    <i class="bi bi-rocket-takeoff"></i> 确认发布
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div class="alert alert-warning mt-3 mb-0">
+                        <div class="d-flex align-items-start">
+                            <i class="bi bi-exclamation-triangle fs-5 me-2"></i>
+                            <div>
+                                <strong>发布说明：</strong>
+                                <ul class="mb-0 mt-1 small">
+                                    <li>发布前将 <strong>自动备份</strong> 目标节点上的配置文件至 <code>/opt/mngxops_backup/</code></li>
+                                    <li>上传完成后执行 <code>nginx -t</code> 语法检查，<strong>检查失败将自动回滚</strong></li>
+                                    <li>检查通过后执行 <code>nginx -s reload</code></li>
+                                    <li>单次发布最多选择 <strong>5 个节点</strong> 和 <strong>5 个配置</strong></li>
+                                    <li>所有任务将归属同一批次，按序逐个执行</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+</div>
+</div>
+
+<!-- 节点组选择弹窗 -->
+<div class="modal fade" id="groupModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-collection"></i> 选择节点组</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-light border mb-3 py-2">
+                    <i class="bi bi-info-circle"></i>
+                    选择一个节点组后，可全选该组所有节点或勾选部分节点，确认后加入发布目标
+                </div>
+                <div id="groupModalLoading" class="text-center py-4">
+                    <div class="spinner-border" role="status"></div>
+                    <p class="mt-2 text-muted">加载节点组...</p>
+                </div>
+                <div id="groupModalContent" class="d-none">
+                    <div id="groupList" class="accordion"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="d-flex justify-content-between align-items-center w-100">
+                    <small class="text-muted">
+                        已选 <span id="groupModalSelectedCount" class="fw-bold text-primary">0</span>/5 个节点
+                    </small>
+                    <div>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="button" class="btn btn-primary" id="btnGroupConfirm" disabled>
+                            <i class="bi bi-check-lg"></i> 确认选择
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+</div>
+</div>
+
+<!-- Toast 通知 -->
+<div class="toast-container position-fixed top-0 start-50 translate-middle-x p-3" style="z-index: 9999;">
+    <div id="limitToast" class="toast align-items-center text-bg-warning border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="limitToastBody">
+                <i class="bi bi-exclamation-triangle"></i> 提示
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="关闭"></button>
+        </div>
+    </div>
+</div>
+
+<!-- 确认弹窗 -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmModalTitle">确认操作</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body" id="confirmModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btnConfirmYes">确认</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 版本内容预览弹窗 -->
+<div class="modal fade" id="versionContentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="versionContentModalTitle">
+                    <i class="bi bi-file-earmark-code"></i> 版本内容预览
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex align-items-center mb-2">
+                    <span class="badge bg-info me-2" id="vcVersionBadge"></span>
+                    <small class="text-muted" id="vcCreatedAt"></small>
+                </div>
+                <pre id="versionContentPre" class="bg-dark text-light rounded p-3" style="max-height: 450px; overflow: auto; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;">加载中...</pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .wizard-step {
+        display: none;
+    }
+    .wizard-step.active {
+        display: block;
+    }
+    .step-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #0d6efd;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+    #nodeTableBody tr {
+        cursor: pointer;
+        transition: background 0.12s;
+    }
+    #nodeTableBody tr:hover {
+        background: #f0f6ff;
+    }
+    #nodeTableBody tr.selected {
+        background: #e7f1ff;
+    }
+    #nodeTableBody tr.disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+        background: #f8f8f8;
+    }
+    #configTableBody tr {
+        cursor: pointer;
+        transition: background 0.12s;
+    }
+    #configTableBody tr:hover {
+        background: #f0f6ff;
+    }
+    #configTableBody tr.selected {
+        background: #e7f1ff;
+    }
+    #configTableBody tr.disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+        background: #f8f8f8;
+    }
+    .version-select { font-size: 12px !important; }
+    .btn-version-preview { padding: 0.15rem 0.4rem; font-size: 12px; }
+    .env-badge-prod { background: #dc3545; color: #fff; font-size: 11px; }
+    .env-badge-test { background: #ffc107; color: #333; font-size: 11px; }
+    .env-badge-dev { background: #6c757d; color: #fff; font-size: 11px; }
+    .status-badge-online { background: #198754; color: #fff; font-size: 11px; }
+    .status-badge-offline { background: #dc3545; color: #fff; font-size: 11px; }
+    .status-badge-unknown { background: #6c757d; color: #fff; font-size: 11px; }
+    #previewAccordion .accordion-button:not(.collapsed) {
+        background: #e7f1ff;
+        color: #0d6efd;
+    }
+    #previewAccordion .accordion-button:focus {
+        box-shadow: none;
+        border-color: #dee2e6;
+    }
+    #previewAccordion .accordion-item {
+        border-left: 3px solid #dee2e6;
+        transition: border-color 0.2s;
+    }
+    #previewAccordion .accordion-item:has(.accordion-button:not(.collapsed)) {
+        border-left-color: #0d6efd;
+    }
+</style>
+<script>
+(function() {
+    const MAX_NODES = 5;
+    const MAX_CONFIGS = 5;
+    const PAGE_SIZE = 10;
+
+    let selectedNodes = {};
+    let selectedConfigs = {};
+    let currentNodePage = 1;
+    let currentFilters = { search: '', environment: '', status: '' };
+    let confirmCallback = null;
+
+    const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    document.getElementById('btnConfirmYes').addEventListener('click', function() {
+        if (confirmCallback) confirmCallback();
+        confirmModal.hide();
+    });
+
+    const limitToast = new bootstrap.Toast(document.getElementById('limitToast'), { delay: 2500 });
+
+    function showToast(message) {
+        document.getElementById('limitToastBody').innerHTML = '<i class="bi bi-exclamation-triangle"></i> ' + message;
+        limitToast.show();
+    }
+
+    function showConfirm(title, message, callback) {
+        document.getElementById('confirmModalTitle').textContent = title;
+        document.getElementById('confirmModalBody').textContent = message;
+        confirmCallback = callback;
+        confirmModal.show();
+    }
+
+    // ==================== Wizard navigation ====================
+    function showStep(stepNum) {
+        document.querySelectorAll('.wizard-step').forEach(el => el.classList.add('d-none'));
+        document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
+        const step = document.getElementById('wizard-step-' + stepNum);
+        step.classList.remove('d-none');
+        step.classList.add('active');
+    }
+
+    // ==================== Step 1: Node Selection ====================
+    function loadNodes(page, filters) {
+        const tbody = document.getElementById('nodeTableBody');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 加载中...</td></tr>';
+
+        const params = new URLSearchParams({
+            page: page,
+            page_size: PAGE_SIZE,
+            search: filters.search || '',
+            environment: filters.environment || '',
+            status: filters.status || ''
+        });
+
+        fetch('/nodes/api/list/?' + params.toString(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">加载失败</td></tr>';
+                return;
+            }
+            renderNodeTable(res.data, res.total, res.page, res.total_pages);
+        })
+        .catch(() => {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">网络错误</td></tr>';
+        });
+    }
+
+    function renderNodeTable(nodes, total, page, totalPages) {
+        const tbody = document.getElementById('nodeTableBody');
+        if (nodes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">暂无匹配节点</td></tr>';
+        } else {
+            tbody.innerHTML = nodes.map(n => {
+                const isSelected = selectedNodes[n.id] !== undefined;
+                const isDisabled = !isSelected && Object.keys(selectedNodes).length >= MAX_NODES;
+                const noCred = !n.has_credential;
+                const rowClass = isSelected ? 'selected' : (isDisabled ? 'disabled' : '');
+                const envLabel = { 'prod': '生产', 'test': '测试', 'dev': '开发' }[n.environment] || n.environment || '-';
+                const envCls = 'env-badge-' + (n.environment || 'dev');
+                const statusLabel = { 'online': '在线', 'offline': '离线' }[n.status] || '未知';
+                const statusCls = 'status-badge-' + (n.status || 'unknown');
+                const groups = n.groups.map(g => g.name).join(', ');
+                return `<tr class="${rowClass}" data-id="${n.id}" data-hostname="${n.hostname}" data-ip="${n.ip}" data-env="${n.environment}" data-status="${n.status}" data-no-cred="${noCred}">
+                    <td><input type="checkbox" class="form-check-input node-cb" ${isSelected ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}></td>
+                    <td>
+                        <strong>${n.hostname}</strong>
+                        ${noCred ? '<span class="badge bg-warning text-dark ms-1" title="未配置凭证"><i class="bi bi-exclamation-triangle"></i></span>' : ''}
+                        ${groups ? '<br><small class="text-muted"><i class="bi bi-collection"></i> ' + groups + '</small>' : ''}
+                    </td>
+                    <td><code>${n.ip}</code></td>
+                    <td><span class="badge ${envCls}">${envLabel}</span></td>
+                    <td><span class="badge ${statusCls}">${statusLabel}</span></td>
+                </tr>`;
+            }).join('');
+
+            tbody.querySelectorAll('tr').forEach(row => {
+                row.addEventListener('click', function(e) {
+                    if (e.target.tagName === 'INPUT') return;
+                    const cb = this.querySelector('.node-cb');
+                    if (cb && !cb.disabled) cb.checked = !cb.checked;
+                    cb.dispatchEvent(new Event('change'));
+                });
+            });
+            tbody.querySelectorAll('.node-cb').forEach(cb => {
+                cb.addEventListener('change', function() {
+                    const row = this.closest('tr');
+                    const id = parseInt(row.dataset.id);
+                    if (this.checked) {
+                        if (Object.keys(selectedNodes).length >= MAX_NODES) {
+                            this.checked = false;
+                            showToast('最多选择 ' + MAX_NODES + ' 个节点');
+                            return;
+                        }
+                        selectedNodes[id] = {
+                            id: id,
+                            hostname: row.dataset.hostname,
+                            ip: row.dataset.ip,
+                            environment: row.dataset.env,
+                            status: row.dataset.status
+                        };
+                        row.classList.add('selected');
+                    } else {
+                        delete selectedNodes[id];
+                        row.classList.remove('selected');
+                    }
+                    refreshNodeSelection();
+                });
+            });
+        }
+
+        document.getElementById('nodePaginationInfo').textContent = '共 ' + total + ' 条，第 ' + page + '/' + totalPages + ' 页';
+        renderPagination('nodePaginationBtns', page, totalPages, function(p) {
+            currentNodePage = p;
+            loadNodes(p, currentFilters);
+        });
+    }
+
+    function refreshNodeSelection() {
+        const count = Object.keys(selectedNodes).length;
+        document.getElementById('selectedNodeCount').textContent = count + '/' + MAX_NODES;
+
+        const listEl = document.getElementById('selectedNodeList');
+        const ids = Object.keys(selectedNodes);
+        if (ids.length === 0) {
+            listEl.innerHTML = '<div class="list-group-item text-center text-muted py-3 border-0"><small>尚未选择节点</small></div>';
+        } else {
+            listEl.innerHTML = ids.map(id => {
+                const n = selectedNodes[id];
+                const envLabel = { 'prod': '生产', 'test': '测试', 'dev': '开发' }[n.environment] || n.environment;
+                return `<div class="list-group-item py-2 d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${n.hostname}</strong>
+                        <small class="text-muted ms-1">${n.ip}</small>
+                        <span class="badge bg-secondary ms-1" style="font-size:10px;">${envLabel}</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger border-0 py-0 px-1 remove-node" data-id="${id}">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>`;
+            }).join('');
+            listEl.querySelectorAll('.remove-node').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const id = parseInt(this.dataset.id);
+                    delete selectedNodes[id];
+                    refreshNodeSelection();
+                    loadNodes(currentNodePage, currentFilters);
+                });
+            });
+        }
+
+        document.getElementById('btnStep1Next').disabled = (count === 0);
+    }
+
+    function renderPagination(containerId, page, totalPages, callback) {
+        const container = document.getElementById(containerId);
+        if (totalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+        let html = '';
+        html += '<button type="button" class="btn btn-sm btn-outline-secondary" data-page="' + (page - 1) + '" ' + (page <= 1 ? 'disabled' : '') + '>&laquo;</button>';
+        for (let p = 1; p <= totalPages; p++) {
+            html += '<button type="button" class="btn btn-sm ' + (p === page ? 'btn-primary' : 'btn-outline-secondary') + '" data-page="' + p + '">' + p + '</button>';
+        }
+        html += '<button type="button" class="btn btn-sm btn-outline-secondary" data-page="' + (page + 1) + '" ' + (page >= totalPages ? 'disabled' : '') + '>&raquo;</button>';
+        container.innerHTML = html;
+        container.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const p = parseInt(this.dataset.page);
+                if (p >= 1 && p <= totalPages && p !== page) callback(p);
+            });
+        });
+    }
+
+    function doSearch() {
+        currentFilters = {
+            search: document.getElementById('nodeSearch').value,
+            environment: document.getElementById('envFilter').value,
+            status: document.getElementById('statusFilter').value
+        };
+        currentNodePage = 1;
+        loadNodes(1, currentFilters);
+    }
+
+    // ==================== Step 2: Config Selection ====================
+    function loadConfigs() {
+        const tbody = document.getElementById('configTableBody');
+        const nodeIds = Object.keys(selectedNodes).join(',');
+        if (!nodeIds) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">请先选择节点</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 加载配置中...</td></tr>';
+
+        fetch('/configs/api/by-nodes/?node_ids=' + nodeIds, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">加载失败: ' + (res.error || '') + '</td></tr>';
+                return;
+            }
+            renderConfigTable(res.data);
+        })
+        .catch(() => {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">网络错误</td></tr>';
+        });
+    }
+
+    function renderConfigTable(configs) {
+        const tbody = document.getElementById('configTableBody');
+        if (configs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">所选节点无配置文件</td></tr>';
+            return;
+        }
+
+        const nodeNames = {};
+        Object.values(selectedNodes).forEach(n => { nodeNames[n.id] = n.hostname; });
+
+        tbody.innerHTML = configs.map(c => {
+            const isSelected = selectedConfigs[c.id] !== undefined;
+            const isDisabled = !isSelected && Object.keys(selectedConfigs).length >= MAX_CONFIGS;
+            const rowClass = isSelected ? 'selected' : (isDisabled ? 'disabled' : '');
+            const nodeName = nodeNames[c.node_id] || c.node_name;
+            const versions = c.versions || [];
+            const savedVersionId = selectedConfigs[c.id] ? selectedConfigs[c.id].version_id : null;
+            const currentVersionId = versions.length > 0 ? versions[0].id : null;
+            const defaultVersionId = savedVersionId || currentVersionId || '';
+
+            let versionHtml = '<span class="text-muted">-</span>';
+            if (versions.length > 0) {
+                versionHtml = `<div class="d-flex align-items-center gap-1">
+                    <select class="form-select form-select-sm version-select" data-config-id="${c.id}" style="width: 120px;">
+                        ${versions.map(v => {
+                            const label = 'v' + v.version + ' (' + v.created_at + ')';
+                            const sel = v.id === defaultVersionId ? ' selected' : '';
+                            return `<option value="${v.id}"${sel}>${label}</option>`;
+                        }).join('')}
+                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-secondary btn-version-preview" data-config-name="${c.name}" title="预览版本内容">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                </div>`;
+            }
+
+            return `<tr class="${rowClass}" data-id="${c.id}" data-node-id="${c.node_id}" data-name="${c.name}" data-node-name="${nodeName}">
+                <td><input type="checkbox" class="form-check-input config-cb" ${isSelected ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}></td>
+                <td><strong>${c.name}</strong></td>
+                <td><code class="small">${c.file_path}</code></td>
+                <td><i class="bi bi-server"></i> ${nodeName}</td>
+                <td>${versionHtml}</td>
+            </tr>`;
+        }).join('');
+
+        tbody.querySelectorAll('tr').forEach(row => {
+            row.addEventListener('click', function(e) {
+                if (e.target.tagName === 'INPUT') return;
+                const cb = this.querySelector('.config-cb');
+                if (cb && !cb.disabled) cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change'));
+            });
+        });
+        tbody.querySelectorAll('.config-cb').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const row = this.closest('tr');
+                const id = parseInt(row.dataset.id);
+                if (this.checked) {
+                    if (Object.keys(selectedConfigs).length >= MAX_CONFIGS) {
+                        this.checked = false;
+                        showToast('最多选择 ' + MAX_CONFIGS + ' 个配置');
+                        return;
+                    }
+                    const sel = row.querySelector('.version-select');
+                    selectedConfigs[id] = {
+                        id: id,
+                        node_id: parseInt(row.dataset.nodeId),
+                        name: row.dataset.name,
+                        node_name: row.dataset.nodeName,
+                        version_id: sel ? parseInt(sel.value) : null,
+                        version_label: sel ? sel.options[sel.selectedIndex].text : '最新',
+                    };
+                    row.classList.add('selected');
+                } else {
+                    delete selectedConfigs[id];
+                    row.classList.remove('selected');
+                }
+                refreshConfigSelection();
+            });
+        });
+
+        tbody.querySelectorAll('.version-select').forEach(sel => {
+            sel.addEventListener('change', function(e) {
+                e.stopPropagation();
+                const row = this.closest('tr');
+                const id = parseInt(row.dataset.id);
+                if (selectedConfigs[id]) {
+                    selectedConfigs[id].version_id = parseInt(this.value);
+                    selectedConfigs[id].version_label = this.options[this.selectedIndex].text;
+                }
+            });
+        });
+
+        tbody.querySelectorAll('.btn-version-preview').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                const row = this.closest('tr');
+                const sel = row.querySelector('.version-select');
+                if (!sel) return;
+                const versionId = parseInt(sel.value);
+                const configName = this.dataset.configName || row.dataset.name;
+                showVersionContent(versionId, configName, sel.options[sel.selectedIndex].text);
+            });
+        });
+
+        refreshConfigSelection();
+    }
+
+    function refreshConfigSelection() {
+        const count = Object.keys(selectedConfigs).length;
+        document.getElementById('selectedConfigCount').textContent = count;
+        document.getElementById('btnStep2Next').disabled = (count === 0);
+    }
+
+    function showVersionContent(versionId, configName, versionLabel) {
+        const modal = new bootstrap.Modal(document.getElementById('versionContentModal'));
+        const pre = document.getElementById('versionContentPre');
+        const badge = document.getElementById('vcVersionBadge');
+        const createdAt = document.getElementById('vcCreatedAt');
+
+        document.getElementById('versionContentModalTitle').innerHTML =
+            '<i class="bi bi-file-earmark-code"></i> ' + configName;
+        badge.textContent = versionLabel;
+        createdAt.textContent = '';
+        pre.textContent = '加载中...';
+        modal.show();
+
+        fetch('/configs/api/version-content/' + versionId + '/', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            const d = data.data || data;
+            pre.textContent = d.content || '(空文件)';
+            if (d.created_at) {
+                createdAt.textContent = '创建时间: ' + d.created_at;
+            }
+        })
+        .catch(() => {
+            pre.textContent = '加载失败';
+        });
+    }
+
+    // ==================== Step 3: Preview ====================
+    let cachedEmptyEl = null;
+
+    function buildPreview() {
+        const accordion = document.getElementById('previewAccordion');
+        if (!cachedEmptyEl) {
+            cachedEmptyEl = document.getElementById('previewAccordionEmpty');
+        }
+        const emptyEl = cachedEmptyEl;
+        const nodeIds = Object.keys(selectedNodes);
+        const configIds = Object.keys(selectedConfigs);
+
+        if (nodeIds.length === 0 || configIds.length === 0) {
+            accordion.innerHTML = '';
+            if (emptyEl && !emptyEl.parentNode) {
+                accordion.appendChild(emptyEl);
+            }
+            if (emptyEl) {
+                emptyEl.classList.remove('d-none');
+            }
+            document.getElementById('previewTaskCount').textContent = '0';
+            document.getElementById('btnConfirmPublish').disabled = true;
+            return;
+        }
+
+        if (emptyEl) {
+            emptyEl.classList.add('d-none');
+        }
+        const nodes = Object.values(selectedNodes);
+        const configs = Object.values(selectedConfigs);
+        let totalTasks = 0;
+
+        let html = '';
+        nodes.forEach((n, nodeIdx) => {
+            const nodeLabel = { 'prod': '生产', 'test': '测试', 'dev': '开发' }[n.environment] || n.environment;
+            const nodeId = 'preview-node-' + n.id;
+            const hash = nodeIdx + 1;
+            const configsForNode = configs.filter(c => c.node_id === n.id);
+            const crossConfigs = configs.filter(c => c.node_id !== n.id);
+
+            const crossedOut = crossConfigs.length > 0
+                ? '<span class="badge bg-warning text-dark ms-1" title="此配置属于其他节点，将不会在此节点上执行"><i class="bi bi-exclamation-triangle"></i> ' + crossConfigs.length + ' 个跨节点配置不适用</span>'
+                : '';
+
+            totalTasks += configsForNode.length;
+
+            const configRows = configs.length === 0
+                ? '<tr><td colspan="4" class="text-center text-muted py-2">无匹配配置</td></tr>'
+                : configs.map((c, ci) => {
+                    const isMine = c.node_id === n.id;
+                    const rowStyle = isMine ? '' : 'style="opacity:0.4; text-decoration: line-through;"';
+                    const rowLabel = isMine ? '' : ' <span class="badge bg-secondary" style="font-size:10px;">跳过</span>';
+                    return `<tr ${rowStyle}>
+                        <td>${ci + 1}${rowLabel}</td>
+                        <td>
+                            <strong>${c.name}</strong>
+                            <br><small class="text-muted">${c.node_name}</small>
+                        </td>
+                        <td><span class="badge bg-info">${c.version_label || '最新'}</span></td>
+                        <td>
+                            ${isMine
+                                ? '<span class="badge bg-success" style="font-size:10px;">将发布</span>'
+                                : '<span class="badge bg-secondary" style="font-size:10px;">不适用</span>'}
+                        </td>
+                    </tr>`;
+                }).join('');
+
+            html += `<div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button ${nodeIdx === 0 ? '' : 'collapsed'} py-2" type="button" data-bs-toggle="collapse" data-bs-target="#${nodeId}">
+                        <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-server"></i>
+                                <strong>${n.hostname}</strong>
+                                <code class="ms-1">${n.ip}</code>
+                                <span class="badge bg-secondary ms-1">${nodeLabel}</span>
+                            </div>
+                            <span class="badge bg-primary">${configs.length} 个配置</span>
+                        </div>
+                    </button>
+                </h2>
+                <div id="${nodeId}" class="accordion-collapse collapse ${nodeIdx === 0 ? 'show' : ''}" data-bs-parent="#previewAccordion">
+                    <div class="accordion-body p-0">
+                        <div class="table-responsive px-3">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 5%;">#</th>
+                                    <th style="width: 45%;">配置</th>
+                                    <th style="width: 15%;">版本</th>
+                                    <th style="width: 15%;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>${configRows}</tbody>
+                        </table>
+                        </div>
+                        ${crossedOut}
+                    </div>
+                </div>
+            </div>`;
+        });
+
+        accordion.innerHTML = html;
+        document.getElementById('previewTaskCount').textContent = totalTasks;
+        document.getElementById('btnConfirmPublish').disabled = (totalTasks === 0);
+    }
+
+    // ==================== Event Bindings ====================
+    document.getElementById('btn-select-node').addEventListener('click', function() {
+        document.getElementById('step1-empty').classList.add('d-none');
+        document.getElementById('step1-selector').classList.remove('d-none');
+        loadNodes(1, currentFilters);
+    });
+
+    document.getElementById('btn-select-group').addEventListener('click', function() {
+        openGroupModal();
+    });
+
+    document.getElementById('btnBackToEmpty').addEventListener('click', function() {
+        if (Object.keys(selectedNodes).length > 0) {
+            showConfirm('确认返回', '返回将清空已选节点，确定吗？', function() {
+                selectedNodes = {};
+                selectedConfigs = {};
+                refreshNodeSelection();
+                document.getElementById('step1-selector').classList.add('d-none');
+                document.getElementById('step1-empty').classList.remove('d-none');
+            });
+            return;
+        }
+        selectedNodes = {};
+        selectedConfigs = {};
+        refreshNodeSelection();
+        document.getElementById('step1-selector').classList.add('d-none');
+        document.getElementById('step1-empty').classList.remove('d-none');
+    });
+
+    document.getElementById('nodeSearch').addEventListener('input', debounce(doSearch, 300));
+    document.getElementById('envFilter').addEventListener('change', doSearch);
+    document.getElementById('statusFilter').addEventListener('change', doSearch);
+
+    document.getElementById('btnSelectAllPage').addEventListener('click', function() {
+        const cbs = document.querySelectorAll('#nodeTableBody .node-cb:not(:disabled)');
+        cbs.forEach(cb => {
+            if (!cb.checked && Object.keys(selectedNodes).length < MAX_NODES) {
+                cb.checked = true;
+                cb.dispatchEvent(new Event('change'));
+            }
+        });
+    });
+
+    document.getElementById('btnClearAll').addEventListener('click', function() {
+        selectedNodes = {};
+        selectedConfigs = {};
+        refreshNodeSelection();
+        loadNodes(currentNodePage, currentFilters);
+    });
+
+    document.getElementById('btnStep1Next').addEventListener('click', function() {
+        const nodeNames = Object.values(selectedNodes).map(n => n.hostname).join(', ');
+        document.getElementById('step2NodeList').textContent = nodeNames;
+        selectedConfigs = {};
+        showStep(2);
+        loadConfigs();
+    });
+
+    document.getElementById('btnStep2Prev').addEventListener('click', function() {
+        showStep(1);
+    });
+
+    document.getElementById('btnStep2Next').addEventListener('click', function() {
+        buildPreview();
+        showStep(3);
+    });
+
+    document.getElementById('btnStep3Prev').addEventListener('click', function() {
+        showStep(2);
+    });
+
+    document.getElementById('btnConfirmPublish').addEventListener('click', function(e) {
+        e.preventDefault();
+        const nodeIds = Object.keys(selectedNodes);
+        const configIds = Object.keys(selectedConfigs);
+        const total = nodeIds.length * configIds.length;
+        showConfirm('确认发布', '确认发布 ' + total + ' 个任务？点击确认后将立即开始执行。', function() {
+            const form = document.getElementById('releaseForm');
+            form.querySelectorAll('input[name="node_ids"]').forEach(el => el.remove());
+            form.querySelectorAll('input[name="config_ids"]').forEach(el => el.remove());
+            form.querySelectorAll('input[name="version_ids"]').forEach(el => el.remove());
+
+            nodeIds.forEach(id => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'node_ids';
+                input.value = id;
+                form.appendChild(input);
+            });
+            configIds.forEach(id => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'config_ids';
+                input.value = id;
+                form.appendChild(input);
+            });
+            Object.entries(selectedConfigs).forEach(([configId, cfg]) => {
+                if (cfg.version_id) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'version_ids';
+                    input.value = configId + ':' + cfg.version_id;
+                    form.appendChild(input);
+                }
+            });
+
+            form.submit();
+        });
+    });
+
+    // ==================== Group Modal ====================
+    let groupModalData = [];
+    let groupModalSelected = {};
+
+    function openGroupModal() {
+        const modal = new bootstrap.Modal(document.getElementById('groupModal'));
+        groupModalSelected = {};
+        document.getElementById('groupModalLoading').classList.remove('d-none');
+        document.getElementById('groupModalContent').classList.add('d-none');
+        document.getElementById('groupModalSelectedCount').textContent = '0';
+        document.getElementById('btnGroupConfirm').disabled = true;
+        modal.show();
+
+        fetch('/nodes/api/groups/', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(res => {
+            document.getElementById('groupModalLoading').classList.add('d-none');
+            document.getElementById('groupModalContent').classList.remove('d-none');
+            if (!res.success || res.data.length === 0) {
+                document.getElementById('groupList').innerHTML = '<div class="text-center text-muted py-3">暂无节点组</div>';
+                return;
+            }
+            groupModalData = res.data;
+            renderGroupAccordion(res.data);
+        })
+        .catch(() => {
+            document.getElementById('groupModalContent').classList.remove('d-none');
+            document.getElementById('groupList').innerHTML = '<div class="text-center text-danger py-3">加载失败</div>';
+        });
+    }
+
+    function renderGroupAccordion(groups) {
+        const container = document.getElementById('groupList');
+        container.innerHTML = groups.map((g, idx) => {
+            const collapsed = idx !== 0 ? 'collapsed' : '';
+            const show = idx === 0 ? 'show' : '';
+            const nodeRows = g.nodes.map(n => {
+                const envLabel = { 'prod': '生产', 'test': '测试', 'dev': '开发' }[n.environment] || n.environment;
+                const envCls = 'env-badge-' + (n.environment || 'dev');
+                const statusLabel = { 'online': '在线', 'offline': '离线' }[n.status] || '未知';
+                const statusCls = 'status-badge-' + (n.status || 'unknown');
+                const noCredWarn = n.has_credential ? '' : '<span class="badge bg-warning text-dark ms-1" title="未配置凭证"><i class="bi bi-exclamation-triangle"></i></span>';
+                return `<label class="list-group-item d-flex align-items-center py-2 group-node-item" data-group-id="${g.id}" data-node-id="${n.id}" style="cursor:pointer;">
+                    <input type="checkbox" class="form-check-input me-2 group-node-cb" value="${n.id}" data-group-id="${g.id}">
+                    <div class="flex-grow-1">
+                        <strong>${n.hostname}</strong>
+                        <code class="ms-2">${n.ip}</code>
+                        <span class="badge ${envCls} ms-1">${envLabel}</span>
+                        <span class="badge ${statusCls} ms-1">${statusLabel}</span>
+                        ${noCredWarn}
+                    </div>
+                </label>`;
+            }).join('');
+
+            return `<div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button ${collapsed} py-2" type="button" data-bs-toggle="collapse" data-bs-target="#group-collapse-${g.id}">
+                        <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                            <span><strong>${g.name}</strong></span>
+                            <span class="badge bg-secondary">${g.node_count} 个节点</span>
+                        </div>
+                    </button>
+                </h2>
+                <div id="group-collapse-${g.id}" class="accordion-collapse collapse ${show}" data-bs-parent="#groupList">
+                    <div class="accordion-body p-0">
+                        <div class="p-2 border-bottom bg-light">
+                            <button type="button" class="btn btn-sm btn-outline-secondary btn-group-select-all" data-group-id="${g.id}">
+                                <i class="bi bi-check-all"></i> 全选此组
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary btn-group-clear" data-group-id="${g.id}">
+                                <i class="bi bi-x-circle"></i> 清空此组
+                            </button>
+                        </div>
+                        <div class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;">
+                            ${nodeRows}
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+
+        container.querySelectorAll('.btn-group-select-all').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const gid = parseInt(this.dataset.groupId);
+                const group = groupModalData.find(g => g.id === gid);
+                if (!group) return;
+                group.nodes.forEach(n => {
+                    const cb = container.querySelector('.group-node-cb[value="' + n.id + '"]');
+                    if (cb && !cb.disabled) {
+                        cb.checked = true;
+                        cb.dispatchEvent(new Event('change'));
+                    }
+                });
+            });
+        });
+        container.querySelectorAll('.btn-group-clear').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const gid = parseInt(this.dataset.groupId);
+                container.querySelectorAll('.group-node-cb[data-group-id="' + gid + '"]').forEach(cb => {
+                    cb.checked = false;
+                    cb.dispatchEvent(new Event('change'));
+                });
+            });
+        });
+        container.querySelectorAll('.group-node-cb').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const nodeId = parseInt(this.value);
+                const groupId = parseInt(this.dataset.groupId);
+                const group = groupModalData.find(g => g.id === groupId);
+                if (this.checked) {
+                    if (Object.keys(groupModalSelected).length >= MAX_NODES) {
+                        this.checked = false;
+                        showToast('最多选择 ' + MAX_NODES + ' 个节点');
+                        return;
+                    }
+                    const node = group.nodes.find(n => n.id === nodeId);
+                    if (node) {
+                        groupModalSelected[nodeId] = {
+                            id: node.id,
+                            hostname: node.hostname,
+                            ip: node.ip,
+                            environment: node.environment,
+                            status: node.status
+                        };
+                    }
+                } else {
+                    delete groupModalSelected[nodeId];
+                }
+                updateGroupModalCount();
+            });
+        });
+        container.querySelectorAll('.group-node-item').forEach(label => {
+            label.addEventListener('click', function(e) {
+                if (e.target.tagName === 'INPUT') return;
+                const cb = this.querySelector('.group-node-cb');
+                if (cb && !cb.disabled) cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change'));
+            });
+        });
+    }
+
+    function updateGroupModalCount() {
+        const count = Object.keys(groupModalSelected).length;
+        document.getElementById('groupModalSelectedCount').textContent = count;
+        document.getElementById('btnGroupConfirm').disabled = (count === 0);
+
+        const groupModal = document.getElementById('groupModal');
+        groupModal.querySelectorAll('.group-node-cb').forEach(cb => {
+            if (!cb.checked && Object.keys(groupModalSelected).length >= MAX_NODES) {
+                cb.disabled = true;
+            } else {
+                cb.disabled = false;
+            }
+        });
+    }
+
+    document.getElementById('btnGroupConfirm').addEventListener('click', function() {
+        selectedNodes = {};
+        selectedConfigs = {};
+        Object.assign(selectedNodes, groupModalSelected);
+        refreshNodeSelection();
+        document.getElementById('step1-empty').classList.add('d-none');
+        document.getElementById('step1-selector').classList.remove('d-none');
+        loadNodes(currentNodePage, currentFilters);
+        bootstrap.Modal.getInstance(document.getElementById('groupModal')).hide();
+    });
+
+    function debounce(fn, delay) {
+        let timer;
+        return function() {
+            clearTimeout(timer);
+            timer = setTimeout(() => fn.apply(this, arguments), delay);
+        };
+    }
+})();
+</script>
+{% endblock %}

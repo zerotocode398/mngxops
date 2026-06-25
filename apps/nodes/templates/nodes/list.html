@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}节点列表 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-server"></i> 节点列表</h5>
+                    {% if user|has_perm_code:"nodes.create" %}
+                    <a href="{% url 'nodes:create' %}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> 新增节点
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <form method="get" class="mb-3">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <input type="text" name="search" class="form-control" placeholder="搜索主机名或IP地址"
+                                    value="{{ search }}">
+                            </div>
+                            <div class="col-md-2">
+                                <select name="per_page" class="form-select">
+                                    {% for size in per_page_options %}
+                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" class="btn btn-outline-primary w-100">
+                                    <i class="bi bi-search"></i> 搜索
+                                </button>
+                            </div>
+                            <div class="col-md-3">
+                                {% if search %}
+                                <a href="{% url 'nodes:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary w-100">
+                                    <i class="bi bi-x-circle"></i> 清空筛选
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th style="width: 15%">主机名</th>
+                                    <th style="width: 15%">IP地址|端口</th>
+                                    <th style="width: 10%">状态</th>
+                                    <th style="width: 15%">Nginx版本</th>
+                                    <th style="width: 12%">创建人</th>
+                                    <th style="width: 18%">更新时间</th>
+                                    <th style="width: 15%">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for node in nodes %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ node.hostname }}</strong>
+                                    </td>
+                                    <td>
+                                        <code>{{ node.ip }}:{{ node.port }}</code>
+                                    </td>
+                                    <td>
+                                        {% if node.status == 'online' %}
+                                        <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> 在线</span>
+                                        {% elif node.status == 'offline' %}
+                                        <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> 离线</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary"><i class="bi bi-question-circle-fill"></i>
+                                            未知</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <code data-nginx-version="{{ node.nginx_version|default:'' }}"
+                                            class="nginx-version-cell">
+                                            {{ node.nginx_version|default:"未获取" }}
+                                        </code>
+                                    </td>
+                                    <td>
+                                        {{ node.created_by.username }}
+                                    </td>
+                                    <td>
+                                        <small>{{ node.updated_at|date:"Y-m-d H:i" }}</small>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button type="button" class="btn btn-outline-success"
+                                                onclick="testConnection(this)" data-node-id="{{ node.id }}"
+                                                title="测试连接">
+                                                <i class="bi bi-plug"></i>
+                                            </button>
+                                            {% if user|has_perm_code:"nodes.update" %}
+                                            <a href="{% url 'nodes:edit' node.id %}" class="btn btn-outline-primary"
+                                                title="编辑">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            {% endif %}
+                                            {% if user|has_perm_code:"nodes.delete" %}
+                                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
+                                                data-bs-target="#deleteModal{{ node.id }}" title="删除">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <div class="modal fade" id="deleteModal{{ node.id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">确认删除</h5>
+                                                <button type="button" class="btn-close"
+                                                    data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                确定要删除节点 <strong>{{ node.hostname }} ({{ node.ip }})</strong> 吗？
+                                                <br><br>
+                                                <small class="text-muted">此操作不可恢复！</small>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary"
+                                                    data-bs-dismiss="modal">取消</button>
+                                                <form method="post" action="{% url 'nodes:delete' node.id %}">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-danger">确认删除</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                                        <p class="mt-2">暂无节点数据</p>
+                                        {% if user|has_perm_code:"nodes.create" %}
+                                        <a href="{% url 'nodes:create' %}" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-plus-circle"></i> 新增节点
+                                        </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if is_paginated %}
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">
+                                    <i class="bi bi-chevron-double-left"></i> 首页
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link"
+                                    href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">
+                                    <i class="bi bi-chevron-left"></i> 上一页
+                                </a>
+                            </li>
+                            {% endif %}
+
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages
+                                    }}</span>
+                            </li>
+
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link"
+                                    href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">
+                                    下一页 <i class="bi bi-chevron-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link"
+                                    href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">
+                                    末页 <i class="bi bi-chevron-double-right"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 自定义弹窗 -->
+<div class="modal fade" id="customModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="customModalTitle">提示</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="customModalBody">
+                <div id="loadingSpinner" class="text-center" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2">处理中，请稍候...</p>
+                </div>
+                <div id="modalContent"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="modalConfirmBtn" style="display: none;">确认</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let customModal;
+
+    function showCustomModal(title, content, showConfirm = false, confirmCallback = null) {
+        document.getElementById('customModalTitle').textContent = title;
+        document.getElementById('modalContent').innerHTML = content;
+        document.getElementById('loadingSpinner').style.display = 'none';
+
+        const confirmBtn = document.getElementById('modalConfirmBtn');
+        if (showConfirm) {
+            confirmBtn.style.display = 'block';
+            confirmBtn.onclick = function () {
+                if (confirmCallback) {
+                    confirmCallback();
+                }
+                customModal.hide();
+            };
+        } else {
+            confirmBtn.style.display = 'none';
+        }
+
+        if (!customModal) {
+            customModal = new bootstrap.Modal(document.getElementById('customModal'));
+        }
+        customModal.show();
+    }
+
+    function showLoading(title = '处理中') {
+        document.getElementById('customModalTitle').textContent = title;
+        document.getElementById('modalContent').innerHTML = '';
+        document.getElementById('loadingSpinner').style.display = 'block';
+        document.getElementById('modalConfirmBtn').style.display = 'none';
+
+        if (!customModal) {
+            customModal = new bootstrap.Modal(document.getElementById('customModal'));
+        }
+        customModal.show();
+    }
+
+    function hideLoading() {
+        document.getElementById('loadingSpinner').style.display = 'none';
+    }
+
+    function testConnection(el) {
+        const nodeId = parseInt(el.getAttribute('data-node-id'));
+        const data = { node_id: nodeId };
+
+        showLoading('测试连接');
+
+        fetch('{% url "nodes:test" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify(data)
+        })
+            .then(response => response.json())
+            .then(result => {
+                hideLoading();
+
+                if (result.success) {
+                    const content = `
+                        <div class="alert alert-success">
+                            <i class="bi bi-check-circle-fill"></i> <strong>连接成功</strong>
+                        </div>
+                        <p>${result.message}</p>
+                        <p class="text-muted">节点状态已更新为"在线"</p>
+                    `;
+                    showCustomModal('连接测试结果', content, true, () => {
+                        location.reload();
+                    });
+                } else {
+                    const content = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-x-circle-fill"></i> <strong>连接失败</strong>
+                        </div>
+                        <p>${result.message}</p>
+                        <p class="text-muted">节点状态已更新为"离线"</p>
+                    `;
+                    showCustomModal('连接测试结果', content);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                const content = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle-fill"></i> <strong>测试失败</strong>
+                    </div>
+                    <p>网络错误或服务器异常</p>
+                `;
+                showCustomModal('错误', content);
+            });
+    }
+
+    function formatNginxVersion(version) {
+        if (!version) return "未获取";
+
+        let versionStr = version.toString();
+
+        if (versionStr.includes("nginx version:")) {
+            versionStr = versionStr.split("nginx version:")[-1].trim();
+        }
+
+        if (versionStr.startsWith("nginx/")) {
+            versionStr = versionStr.replace("nginx/", "");
+        }
+
+        return versionStr;
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const versionCells = document.querySelectorAll('.nginx-version-cell');
+        versionCells.forEach(cell => {
+            const originalVersion = cell.getAttribute('data-nginx-version');
+            if (originalVersion) {
+                cell.textContent = formatNginxVersion(originalVersion);
+            }
+        });
+    });
+</script>
+{% endblock %}

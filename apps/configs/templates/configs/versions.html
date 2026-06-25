@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}{{ config.name }} 版本历史 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clock-history"></i>
+                        {{ config.name }} 版本历史
+                        <span class="badge bg-info ms-2">最新 v{{ config.current_version }}</span>
+                    </h5>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'configs:version_compare' config.id %}" class="btn btn-outline-warning">
+                            <i class="bi bi-intersect"></i> 版本差异
+                        </a>
+                        <a href="{% url 'configs:detail' config.id %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-eye"></i> 查看配置
+                        </a>
+                        <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary" onclick="goBackToConfigList(event)">
+                            <i class="bi bi-arrow-left"></i> 返回列表
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <div class="text-muted small">节点</div>
+                            <div><strong>{{ config.node.hostname }}</strong> ({{ config.node.ip }})</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-muted small">配置路径</div>
+                            <div><code>{{ config.file_path }}</code></div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-muted small">总版本数</div>
+                            <div><strong>{{ versions.count }}</strong> 个版本</div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="perPageSelect" class="form-label mb-0 small text-muted">每页显示</label>
+                            <select id="perPageSelect" class="form-select form-select-sm" style="width: auto;" onchange="changePerPage(this.value)">
+                                <option value="10" {% if per_page == 10 %}selected{% endif %}>10 条</option>
+                                <option value="20" {% if per_page == 20 %}selected{% endif %}>20 条</option>
+                                <option value="50" {% if per_page == 50 %}selected{% endif %}>50 条</option>
+                                <option value="100" {% if per_page == 100 %}selected{% endif %}>100 条</option>
+                            </select>
+                        </div>
+                        {% if is_paginated %}
+                        <small class="text-muted">共 {{ page_obj.paginator.count }} 条版本记录</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="alert alert-light py-2 mb-3">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle"></i>
+                            每次配置更新都会生成独立历史版本，版本号格式：<code>YYYYMMDD - V(版本号)</code>；
+                            系统仅保留近 {{ retention_days }} 天历史。
+                        </small>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead>
+                                <tr>
+                                    <th style="width: 10%">版本号</th>
+                                    <th style="width: 15%">修改人</th>
+                                    <th style="width: 20%">备注</th>
+                                    <th style="width: 15%">时间</th>
+                                    <th style="width: 10%">大小</th>
+                                    <th style="width: 30%">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for version in versions %}
+                                <tr>
+                                    <td>
+                                        {% if version.version == config.current_version %}
+                                        <span class="badge bg-success">{{ version.version_label }}</span>
+                                        <br>
+                                        <small class="text-success">当前版本</small>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ version.version_label }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {{ version.created_by.username }}
+                                    </td>
+                                    <td>
+                                        {% if version.remark %}
+                                        <small>{{ version.remark }}</small>
+                                        {% else %}
+                                        <small class="text-muted">-</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ version.created_at|date:"Y-m-d H:i" }}</small>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{ version.content_bytes }} 字节</small>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a href="{% url 'configs:version_detail' config.id version.id %}"
+                                                class="btn btn-outline-info" title="查看内容">
+                                                <i class="bi bi-eye"></i> 查看
+                                            </a>
+                                            {% if user|has_perm_code:"configs.update" and version.version != config.current_version %}
+                                            <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal"
+                                                data-bs-target="#restoreModal{{ version.id }}" title="恢复此版本">
+                                                <i class="bi bi-arrow-counterclockwise"></i> 恢复
+                                            </button>
+                                            {% endif %}
+                                        </div>
+
+                                        {% if user|has_perm_code:"configs.update" and version.version != config.current_version %}
+                                        <div class="modal fade" id="restoreModal{{ version.id }}" tabindex="-1">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">确认恢复版本</h5>
+                                                        <button type="button" class="btn-close"
+                                                            data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <p>确定要将 <strong>{{ config.name }}</strong> 恢复到 <strong>v{{ version.version }}</strong> 吗？</p>
+                                                        <p class="text-muted">
+                                                            <i class="bi bi-info-circle"></i>
+                                                            此操作将创建一个新版本（v{{ next_version }}），内容与 v{{ version.version }} 一致。
+                                                        </p>
+                                                        {% if version.remark %}
+                                                        <div class="alert alert-light mb-0">
+                                                            <small><strong>该版本备注：</strong>{{ version.remark }}</small>
+                                                        </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary"
+                                                            data-bs-dismiss="modal">取消</button>
+                                                        <form method="post"
+                                                            action="{% url 'configs:restore' config.id version.id %}">
+                                                            {% csrf_token %}
+                                                            <button type="submit" class="btn btn-warning">
+                                                                <i class="bi bi-arrow-counterclockwise"></i> 确认恢复
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                                        <p class="mt-2">暂无版本记录</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if is_paginated %}
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1&per_page={{ per_page }}">
+                                    <i class="bi bi-chevron-double-left"></i> 首页
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}">
+                                    <i class="bi bi-chevron-left"></i> 上一页
+                                </a>
+                            </li>
+                            {% endif %}
+
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                            </li>
+
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}">
+                                    下一页 <i class="bi bi-chevron-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}">
+                                    末页 <i class="bi bi-chevron-double-right"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function changePerPage(value) {
+        var url = new URL(window.location.href);
+        url.searchParams.set('per_page', value);
+        url.searchParams.set('page', '1');
+        window.location.href = url.toString();
+    }
+</script>
+{% endblock %}

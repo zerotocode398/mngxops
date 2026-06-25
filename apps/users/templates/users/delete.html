@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}删除用户 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> 删除用户</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row justify-content-center">
+                        <div class="col-md-6">
+                            <div class="alert alert-warning">
+                                <h5 class="alert-heading"><i class="bi bi-exclamation-circle"></i> 警告</h5>
+                                <hr>
+                                <p class="mb-0">您即将删除用户 <strong>{{ object.username }}</strong></p>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 class="card-title">用户信息</h6>
+                                    <table class="table table-sm table-borderless">
+                                        <tr>
+                                            <th>用户名</th>
+                                            <td>{{ object.username }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>姓名</th>
+                                            <td>{{ object.first_name|default:"-" }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>邮箱</th>
+                                            <td>{{ object.email|default:"-" }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>手机号</th>
+                                            <td>{{ object.profile.mobile|default:"-" }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th>超级管理员</th>
+                                            <td>
+                                                {% if object.is_superuser %}
+                                                <span class="badge bg-success">是</span>
+                                                {% else %}
+                                                <span class="badge bg-secondary">否</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>加入时间</th>
+                                            <td>{{ object.date_joined|date:"Y-m-d H:i:s" }}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <form method="post" class="mt-4">
+                                {% csrf_token %}
+                                <div class="d-flex justify-content-between">
+                                    <a href="{% url 'users:list' %}" class="btn btn-secondary">
+                                        <i class="bi bi-arrow-left"></i> 取消
+                                    </a>
+                                    <button type="submit" class="btn btn-danger">
+                                        <i class="bi bi-trash"></i> 确认删除
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

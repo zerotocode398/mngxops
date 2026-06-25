@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}编辑配置 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-pencil-square"></i> 编辑配置：{{ config.name }}
+                        <span class="badge bg-info ms-2">当前 v{{ config.current_version }}</span>
+                    </h5>
+                    <a href="{% url 'configs:detail' config.id %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-left"></i> 返回
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="row justify-content-center">
+                        <div class="col-md-10">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted">节点</label>
+                                    <div><strong>{{ config.node.hostname }}</strong> ({{ config.node.ip }})</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-muted">创建人</label>
+                                    <div>{{ config.created_by.username }}</div>
+                                </div>
+                            </div>
+
+                            <form method="post">
+                                {% csrf_token %}
+
+                                <div class="mb-3">
+                                    <label for="{{ form.name.id_for_label }}" class="form-label">
+                                        <i class="bi bi-tag"></i> {{ form.name.label }}
+                                    </label>
+                                    {{ form.name }}
+                                    {% if form.name.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.name.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.file_path.id_for_label }}" class="form-label">
+                                        <i class="bi bi-folder"></i> {{ form.file_path.label }}
+                                    </label>
+                                    {{ form.file_path }}
+                                    {% if form.file_path.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.file_path.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.content.id_for_label }}" class="form-label">
+                                        <i class="bi bi-code-slash"></i> {{ form.content.label }}
+                                    </label>
+                                    {{ form.content }}
+                                    {% if form.content.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.content.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="{{ form.remark.id_for_label }}" class="form-label">
+                                        <i class="bi bi-chat-left-text"></i> {{ form.remark.label }}
+                                    </label>
+                                    {{ form.remark }}
+                                    {% if form.remark.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.remark.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    {% if form.remark.help_text %}
+                                    <small class="text-muted">{{ form.remark.help_text }}</small>
+                                    {% endif %}
+                                </div>
+
+                                <div class="d-flex justify-content-end gap-2">
+                                    <a href="{% url 'configs:detail' config.id %}" class="btn btn-secondary">
+                                        <i class="bi bi-x-circle"></i> 取消
+                                    </a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-check-circle"></i> 保存（生成新版本 v{{ next_version }}）
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
