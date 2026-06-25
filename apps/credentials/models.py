@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 
+from utils.crypto import encrypt_value, decrypt_value
+
 User = get_user_model()
 
 
@@ -35,3 +37,20 @@ class Credential(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if self.password and not self._is_encrypted(self.password):
+            self.password = encrypt_value(self.password)
+        if self.private_key and not self._is_encrypted(self.private_key):
+            self.private_key = encrypt_value(self.private_key)
+        super().save(*args, **kwargs)
+
+    def get_password(self):
+        return decrypt_value(self.password) if self.password else ""
+
+    def get_private_key(self):
+        return decrypt_value(self.private_key) if self.private_key else ""
+
+    @staticmethod
+    def _is_encrypted(value):
+        return value.startswith("gAAAAA")

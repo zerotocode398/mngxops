@@ -527,7 +527,7 @@ class ConfigSyncRemoteView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 node.ip,
                 node.port,
                 credential.username,
-                password=credential.password,
+                password=credential.get_password(),
                 nginx_conf_path=nginx_conf_path,
             )
         else:
@@ -535,7 +535,7 @@ class ConfigSyncRemoteView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 node.ip,
                 node.port,
                 credential.username,
-                private_key=credential.private_key,
+                private_key=credential.get_private_key(),
                 nginx_conf_path=nginx_conf_path,
             )
 
@@ -596,7 +596,7 @@ class ConfigSyncPartialView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 node.ip,
                 node.port,
                 credential.username,
-                password=credential.password,
+                password=credential.get_password(),
                 nginx_conf_path=nginx_conf_path,
             )
         else:
@@ -604,7 +604,7 @@ class ConfigSyncPartialView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 node.ip,
                 node.port,
                 credential.username,
-                private_key=credential.private_key,
+                private_key=credential.get_private_key(),
                 nginx_conf_path=nginx_conf_path,
             )
 
@@ -731,7 +731,7 @@ class ConfigBatchSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     node.ip,
                     node.port,
                     credential.username,
-                    password=credential.password,
+                    password=credential.get_password(),
                     nginx_conf_path=nginx_conf_path,
                 )
             else:
@@ -739,7 +739,7 @@ class ConfigBatchSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     node.ip,
                     node.port,
                     credential.username,
-                    private_key=credential.private_key,
+                    private_key=credential.get_private_key(),
                     nginx_conf_path=nginx_conf_path,
                 )
 
@@ -788,7 +788,7 @@ class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 node.ip,
                 node.port,
                 credential.username,
-                password=credential.password,
+                password=credential.get_password(),
                 file_path=config.file_path,
             )
         else:
@@ -796,7 +796,7 @@ class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 node.ip,
                 node.port,
                 credential.username,
-                private_key=credential.private_key,
+                private_key=credential.get_private_key(),
                 file_path=config.file_path,
             )
 

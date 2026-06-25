@@ -448,7 +448,38 @@
         }
     });
 
-    function submitAjax(url, onSuccess) {
+    function pollTaskStatus(taskId, detailUrl, startTime) {
+        var elapsed = Date.now() - startTime;
+        if (elapsed > 60000) {
+            showPublishToast(false, '执行超时', '任务执行超过60秒，请手动查看详情', detailUrl);
+            setTimeout(function() { window.location.href = detailUrl; }, 1500);
+            return;
+        }
+
+        fetch('/releases/center/task/' + taskId + '/status/', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.finished) {
+                if (data.status === 'success') {
+                    showPublishToast(true, '发布成功',
+                        data.node + ' / ' + data.config + ' 发布成功', detailUrl);
+                } else {
+                    showPublishToast(false, '发布失败',
+                        data.node + ' / ' + data.config + ' 发布失败', detailUrl);
+                }
+                setTimeout(function() { window.location.href = detailUrl; }, 1500);
+            } else {
+                setTimeout(function() { pollTaskStatus(taskId, detailUrl, startTime); }, 2000);
+            }
+        })
+        .catch(function() {
+            setTimeout(function() { pollTaskStatus(taskId, detailUrl, startTime); }, 2000);
+        });
+    }
+
+    function submitAjax(url, taskId, onResponse) {
         var btn = document.getElementById('btnConfirmYes');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 执行中...';
@@ -462,11 +493,10 @@
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            onSuccess(data);
             btn.disabled = false;
             btn.innerHTML = '确认';
             modal.hide();
-            setTimeout(function() { location.reload(); }, 800);
+            onResponse(data, taskId);
         })
         .catch(function(err) {
             showPublishToast(false, '请求失败', '网络错误：' + err.message);
@@ -498,13 +528,17 @@
                 var thatBtn = btn;
                 thatBtn.disabled = true;
                 thatBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-                submitAjax(url, function(data) {
+                submitAjax(url, null, function(data, _taskId) {
                     thatBtn.disabled = false;
                     thatBtn.innerHTML = '<i class="bi bi-play-fill"></i> 发布';
-                    if (data.success) {
+                    if (data.success && data.async) {
+                        showPublishToast(true, '异步执行中', data.message);
+                        setTimeout(function() { location.reload(); }, 2000);
+                    } else if (data.success) {
                         showPublishToast(true, '发布完成', data.message);
+                        setTimeout(function() { location.reload(); }, 1500);
                     } else {
-                        showPublishToast(false, '发布结果', data.message);
+                        showPublishToast(false, '发布失败', data.message);
                     }
                 });
             });
@@ -528,18 +562,23 @@
             var node = this.dataset.node;
             var config = this.dataset.config;
             var url = '/releases/center/task/' + taskId + '/execute/';
+            var detailUrl = '/releases/detail/' + taskId + '/';
             showConfirm('确认发布单个任务', '确认将配置 ' + config + ' 发布到节点 ' + node + '？', function() {
                 var thatBtn = btn;
                 thatBtn.disabled = true;
                 thatBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-                submitAjax(url, function(data) {
+                submitAjax(url, taskId, function(data, tid) {
                     thatBtn.disabled = false;
                     thatBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
-                    var detailUrl = '/releases/detail/' + taskId + '/';
-                    if (data.success) {
+                    if (data.success && data.async) {
+                        showPublishToast(true, '异步执行中', data.message);
+                        pollTaskStatus(tid, detailUrl, Date.now());
+                    } else if (data.success) {
                         showPublishToast(true, '发布成功', data.message, detailUrl);
+                        setTimeout(function() { window.location.href = detailUrl; }, 1500);
                     } else {
                         showPublishToast(false, '发布失败', data.message, detailUrl);
+                        setTimeout(function() { window.location.href = detailUrl; }, 1500);
                     }
                 });
             });

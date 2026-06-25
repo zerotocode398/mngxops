@@ -2,6 +2,31 @@
 
 {% block title %}编辑用户 - MngxOps{% endblock %}
 
+{% block extra_js %}
+<script>
+    document.querySelectorAll('.btn-perm-select-all').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var resource = this.dataset.resource;
+            var panel = document.getElementById('perm-' + resource);
+            panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+                cb.checked = true;
+            });
+        });
+    });
+    document.querySelectorAll('.btn-perm-deselect-all').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var resource = this.dataset.resource;
+            var panel = document.getElementById('perm-' + resource);
+            panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+                cb.checked = false;
+            });
+        });
+    });
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -141,10 +166,47 @@
                                 </div>
 
                                 <div class="mb-3">
-                                    <label for="{{ form.direct_permissions.id_for_label }}" class="form-label">
+                                    <label class="form-label">
                                         <i class="bi bi-shield-lock"></i> {{ form.direct_permissions.label }}
                                     </label>
-                                    {{ form.direct_permissions }}
+                                    <div class="permission-accordion" id="permAccordion">
+                                        {% for resource_key, resource_label, permission_codes in permission_groups %}
+                                        <div class="card mb-2">
+                                            <div class="card-header py-1 px-2 d-flex justify-content-between align-items-center"
+                                                data-bs-toggle="collapse" data-bs-target="#perm-{{ resource_key }}"
+                                                style="cursor:pointer; background:#f8f9fa;">
+                                                <strong class="small">{{ resource_label }}</strong>
+                                                <div>
+                                                    <button type="button" class="btn btn-sm btn-outline-primary btn-perm-select-all"
+                                                        data-resource="{{ resource_key }}" style="font-size:11px;">
+                                                        全选
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary btn-perm-deselect-all"
+                                                        data-resource="{{ resource_key }}" style="font-size:11px;">
+                                                        取消
+                                                    </button>
+                                                    <i class="bi bi-chevron-down ms-2"></i>
+                                                </div>
+                                            </div>
+                                            <div id="perm-{{ resource_key }}" class="collapse show">
+                                                <div class="card-body py-2 px-3">
+                                                    <div class="d-flex flex-wrap gap-2">
+                                                        {% for choice in form.direct_permissions %}
+                                                        {% if choice.data.value in permission_codes %}
+                                                        <div class="form-check form-check-inline">
+                                                            {{ choice.tag }}
+                                                            <label class="form-check-label small" for="{{ choice.id_for_label }}">
+                                                                {{ choice.choice_label }}
+                                                            </label>
+                                                        </div>
+                                                        {% endif %}
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
                                     {% if form.direct_permissions.errors %}
                                     <div class="text-danger mt-1">
                                         {% for error in form.direct_permissions.errors %}
