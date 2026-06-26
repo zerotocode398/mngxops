@@ -8,6 +8,13 @@ User = get_user_model()
 
 
 class Config(models.Model):
+    SYNC_STATUS_CHOICES = [
+        ("pending", "等待同步"),
+        ("syncing", "同步中"),
+        ("success", "同步成功"),
+        ("failed", "同步失败"),
+    ]
+
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
     node = models.ForeignKey(
         Node,
@@ -18,6 +25,15 @@ class Config(models.Model):
     file_path = models.CharField(max_length=500, verbose_name="配置文件路径")
     content = models.TextField(verbose_name="配置内容")
     current_version = models.IntegerField(default=1, verbose_name="当前版本号")
+    sync_status = models.CharField(
+        max_length=20,
+        choices=SYNC_STATUS_CHOICES,
+        default="pending",
+        verbose_name="同步状态",
+    )
+    last_sync_time = models.DateTimeField(
+        null=True, blank=True, verbose_name="最后同步时间"
+    )
     created_by = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -85,7 +101,7 @@ class ConfigSyncSetting(models.Model):
     )
     main_conf_path = models.CharField(
         max_length=500,
-        default="/etc/nginx/nginx.conf",
+        blank=True,
         verbose_name="nginx.conf 主路径",
     )
     updated_by = models.ForeignKey(
@@ -103,4 +119,3 @@ class ConfigSyncSetting(models.Model):
 
     def __str__(self):
         return f"{self.node.hostname}: {self.main_conf_path}"
-

@@ -59,7 +59,7 @@ class SSHClient:
             self.client = None
 
     def __enter__(self):
-        self.connect()
+        self._connect_result = self.connect()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -69,8 +69,7 @@ class SSHClient:
 def test_ssh_connection(host, port, username, password=None, private_key=None):
     try:
         with SSHClient(host, port, username, password, private_key) as ssh:
-            success, message = ssh.connect()
-            return success, message
+            return ssh._connect_result
     except Exception as e:
         return False, str(e)
 
@@ -135,7 +134,7 @@ def discover_nginx_configs(
     username,
     password=None,
     private_key=None,
-    nginx_conf_path="/etc/nginx/nginx.conf",
+    nginx_conf_path="",
 ):
     import re
 

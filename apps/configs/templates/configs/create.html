@@ -16,8 +16,9 @@
                 <div class="card-body">
                     <div class="row justify-content-center">
                         <div class="col-md-10">
-                            <form method="post">
+                            <form method="post" id="configForm">
                                 {% csrf_token %}
+                                <input type="hidden" name="use_glob" id="useGlobHidden" value="0">
 
                                 <div class="mb-3">
                                     <label for="id_node" class="form-label">
@@ -26,8 +27,7 @@
                                     <select name="node" id="id_node" class="form-select" required>
                                         <option value="">-- 请选择节点 --</option>
                                         {% for node in all_nodes %}
-                                        <option value="{{ node.id }}" {% if selected_node_id==node.id|stringformat:"s"
-                                            %}selected{% endif %}>
+                                        <option value="{{ node.id }}" {% if selected_node_id == node.id|stringformat:"s" %}selected{% endif %}>
                                             {{ node.hostname }} ({{ node.ip }})
                                         </option>
                                         {% endfor %}
@@ -35,69 +35,124 @@
                                 </div>
 
                                 <div class="mb-3">
-                                    <label for="{{ form.name.id_for_label }}" class="form-label">
-                                        <i class="bi bi-tag"></i> {{ form.name.label }}
-                                    </label>
-                                    {{ form.name }}
-                                    {% if form.name.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.name.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="globModeSwitch">
+                                        <label class="form-check-label" for="globModeSwitch">
+                                            <i class="bi bi-asterisk"></i> 使用通配符匹配多个文件
+                                        </label>
                                     </div>
-                                    {% endif %}
+                                    <small class="text-muted ms-4">例如 <code>/etc/nginx/conf.d/*.conf</code> 或 <code>*.txt</code></small>
                                 </div>
 
-                                <div class="mb-3">
-                                    <label for="{{ form.file_path.id_for_label }}" class="form-label">
-                                        <i class="bi bi-folder"></i> {{ form.file_path.label }}
-                                    </label>
-                                    {{ form.file_path }}
-                                    {% if form.file_path.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.file_path.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
+                                <div id="singleFields">
+                                    <div class="mb-3">
+                                        <label for="{{ form.name.id_for_label }}" class="form-label">
+                                            <i class="bi bi-tag"></i> {{ form.name.label }}
+                                        </label>
+                                        {{ form.name }}
+                                        {% if form.name.errors %}
+                                        <div class="text-danger mt-1">
+                                            {% for error in form.name.errors %}
+                                            <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
                                     </div>
-                                    {% endif %}
+
+                                    <div class="mb-3">
+                                        <label for="{{ form.file_path.id_for_label }}" class="form-label">
+                                            <i class="bi bi-folder"></i> {{ form.file_path.label }}
+                                        </label>
+                                        {{ form.file_path }}
+                                        {% if form.file_path.errors %}
+                                        <div class="text-danger mt-1">
+                                            {% for error in form.file_path.errors %}
+                                            <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="{{ form.content.id_for_label }}" class="form-label">
+                                            <i class="bi bi-code-slash"></i> {{ form.content.label }}
+                                        </label>
+                                        {{ form.content }}
+                                        {% if form.content.errors %}
+                                        <div class="text-danger mt-1">
+                                            {% for error in form.content.errors %}
+                                            <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="{{ form.remark.id_for_label }}" class="form-label">
+                                            <i class="bi bi-chat-left-text"></i> {{ form.remark.label }}
+                                        </label>
+                                        {{ form.remark }}
+                                        {% if form.remark.errors %}
+                                        <div class="text-danger mt-1">
+                                            {% for error in form.remark.errors %}
+                                            <small>{{ error }}</small>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                        {% if form.remark.help_text %}
+                                        <small class="text-muted">{{ form.remark.help_text }}</small>
+                                        {% endif %}
+                                    </div>
                                 </div>
 
-                                <div class="mb-3">
-                                    <label for="{{ form.content.id_for_label }}" class="form-label">
-                                        <i class="bi bi-code-slash"></i> {{ form.content.label }}
-                                    </label>
-                                    {{ form.content }}
-                                    {% if form.content.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.content.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
+                                <div id="globFields" style="display:none;">
+                                    <div class="mb-3">
+                                        <label for="globPattern" class="form-label">
+                                            <i class="bi bi-folder-symlink"></i> 文件匹配模式
+                                        </label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control font-monospace" id="globPattern"
+                                                name="glob_pattern" placeholder="例: /etc/nginx/conf.d/*.conf">
+                                            <button type="button" class="btn btn-outline-primary" id="previewGlobBtn"
+                                                onclick="previewGlob()">
+                                                <i class="bi bi-search"></i> 预览匹配文件
+                                            </button>
+                                        </div>
+                                        <small class="text-muted">输入 Glob 模式后点击预览，查看节点上匹配的文件列表</small>
                                     </div>
-                                    {% endif %}
-                                </div>
 
-                                <div class="mb-3">
-                                    <label for="{{ form.remark.id_for_label }}" class="form-label">
-                                        <i class="bi bi-chat-left-text"></i> {{ form.remark.label }}
-                                    </label>
-                                    {{ form.remark }}
-                                    {% if form.remark.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.remark.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
+                                    <div id="globPreviewArea" style="display:none;">
+                                        <div class="card border-info mb-3">
+                                            <div class="card-header bg-info bg-opacity-10 d-flex justify-content-between align-items-center">
+                                                <span><i class="bi bi-list-check"></i> 匹配结果（<span id="globCount">0</span> 个文件）</span>
+                                                <span class="d-flex gap-2">
+                                                    <a href="javascript:void(0)" class="text-decoration-none small" onclick="selectAllGlob(true)">全选</a>
+                                                    <a href="javascript:void(0)" class="text-decoration-none small" onclick="selectAllGlob(false)">取消全选</a>
+                                                </span>
+                                            </div>
+                                            <div class="card-body p-2" id="globFileList"
+                                                style="max-height:250px;overflow-y:auto;">
+                                                <span class="text-muted">加载中...</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    {% endif %}
-                                    {% if form.remark.help_text %}
-                                    <small class="text-muted">{{ form.remark.help_text }}</small>
-                                    {% endif %}
+
+                                    <div class="mb-3">
+                                        <label for="batchRemark" class="form-label">
+                                            <i class="bi bi-chat-left-text"></i> 批量备注
+                                        </label>
+                                        <textarea class="form-control" id="batchRemark" name="batch_remark"
+                                            rows="2" placeholder="说明本次批量导入的目的"></textarea>
+                                    </div>
+
+                                    <div id="globSelectedFiles"></div>
                                 </div>
 
                                 <div class="d-flex justify-content-end gap-2">
                                     <a href="{% url 'configs:list' %}" class="btn btn-secondary" onclick="goBackToConfigList(event)">
                                         <i class="bi bi-x-circle"></i> 取消
                                     </a>
-                                    <button type="submit" class="btn btn-primary">
+                                    <button type="submit" class="btn btn-primary" id="submitBtn">
                                         <i class="bi bi-check-circle"></i> 创建配置
                                     </button>
                                 </div>
@@ -109,4 +164,101 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    var globSwitch = document.getElementById('globModeSwitch');
+    var singleFields = document.getElementById('singleFields');
+    var globFields = document.getElementById('globFields');
+    var submitBtn = document.getElementById('submitBtn');
+    var globPreviewArea = document.getElementById('globPreviewArea');
+    var globFileList = document.getElementById('globFileList');
+    var globCount = document.getElementById('globCount');
+    var globSelectedFiles = document.getElementById('globSelectedFiles');
+
+    globSwitch.addEventListener('change', function () {
+        if (this.checked) {
+            singleFields.style.display = 'none';
+            globFields.style.display = 'block';
+            submitBtn.innerHTML = '<i class="bi bi-cloud-download"></i> 批量拉取并创建';
+            document.getElementById('useGlobHidden').value = '1';
+        } else {
+            singleFields.style.display = 'block';
+            globFields.style.display = 'none';
+            globPreviewArea.style.display = 'none';
+            submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> 创建配置';
+            document.getElementById('useGlobHidden').value = '0';
+            globSelectedFiles.innerHTML = '';
+        }
+    });
+
+    function previewGlob() {
+        var nodeId = document.getElementById('id_node').value;
+        var pattern = document.getElementById('globPattern').value.trim();
+
+        if (!nodeId) {
+            alert('请先选择关联节点');
+            return;
+        }
+        if (!pattern) {
+            alert('请输入文件匹配模式');
+            return;
+        }
+
+        var btn = document.getElementById('previewGlobBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 匹配中...';
+        globFileList.innerHTML = '<span class="text-muted">正在连接节点搜索文件...</span>';
+        globPreviewArea.style.display = 'block';
+
+        var formData = new FormData();
+        formData.append('node_id', nodeId);
+        formData.append('pattern', pattern);
+
+        fetch('{% url "configs:api_preview_glob" %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            body: formData
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-search"></i> 预览匹配文件';
+                globCount.textContent = data.count;
+
+                if (data.count === 0) {
+                    globFileList.innerHTML = '<div class="text-muted text-center py-3"><i class="bi bi-exclamation-circle"></i> 未匹配到任何文件</div>';
+                    return;
+                }
+
+                var html = '';
+                data.files.forEach(function (file, idx) {
+                    html += '<div class="form-check glob-file-item">';
+                    html += '<input class="form-check-input glob-checkbox" type="checkbox"';
+                    html += ' name="selected_files" value="' + file + '" id="gf_' + idx + '" checked>';
+                    html += '<label class="form-check-label font-monospace small" for="gf_' + idx + '">' + file + '</label>';
+                    html += '</div>';
+                });
+                globFileList.innerHTML = html;
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-search"></i> 预览匹配文件';
+                globFileList.innerHTML = '<div class="text-danger text-center py-3"><i class="bi bi-x-circle"></i> 预览失败，请检查节点连接</div>';
+            });
+    }
+
+    function selectAllGlob(checked) {
+        var boxes = document.querySelectorAll('.glob-checkbox');
+        boxes.forEach(function (cb) { cb.checked = checked; });
+    }
+
+    function goBackToConfigList(e) {
+        if (document.referrer && document.referrer.indexOf('/configs/') !== -1) {
+            e.preventDefault();
+            window.history.back();
+        }
+    }
+</script>
 {% endblock %}

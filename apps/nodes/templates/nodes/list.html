@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load permission_tags %}
+{% load config_filters %}
 
 {% block title %}节点列表 - MngxOps{% endblock %}
 
@@ -11,32 +12,31 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-server"></i> 节点列表</h5>
                     {% if user|has_perm_code:"nodes.create" %}
-                    <a href="{% url 'nodes:create' %}" class="btn btn-primary">
+                    <a href="{% url 'nodes:create' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-primary">
                         <i class="bi bi-plus-circle"></i> 新增节点
                     </a>
                     {% endif %}
                 </div>
                 <div class="card-body">
-                    <form method="get" class="mb-3">
+                    <form method="get" class="mb-3" id="searchForm">
                         <div class="row g-2">
-                            <div class="col-md-4">
-                                <input type="text" name="search" class="form-control" placeholder="搜索主机名或IP地址"
-                                    value="{{ search }}">
+                            <div class="col-md-8">
+                                <div class="tag-input-wrapper form-control" id="combinedTagWrapper">
+                                    <input type="text" class="tag-input-field" id="combinedSearchField"
+                                        placeholder="搜索主机名/IP 或 输入组名后回车搜索">
+                                </div>
+                                <input type="hidden" name="search" id="searchHidden" value="{{ search }}">
+                                <input type="hidden" name="group_search" id="groupSearchHidden" value="{{ group_search }}">
                             </div>
                             <div class="col-md-2">
-                                <select name="per_page" class="form-select">
+                                <select name="per_page" class="form-select" onchange="document.getElementById('searchForm').submit()">
                                     {% for size in per_page_options %}
                                     <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-3">
-                                <button type="submit" class="btn btn-outline-primary w-100">
-                                    <i class="bi bi-search"></i> 搜索
-                                </button>
-                            </div>
-                            <div class="col-md-3">
-                                {% if search %}
+                            <div class="col-md-2">
+                                {% if search or group_search %}
                                 <a href="{% url 'nodes:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary w-100">
                                     <i class="bi bi-x-circle"></i> 清空筛选
                                 </a>
@@ -51,6 +51,7 @@
                                 <tr>
                                     <th style="width: 15%">主机名</th>
                                     <th style="width: 15%">IP地址|端口</th>
+                                    <th style="width: 10%">所属组</th>
                                     <th style="width: 10%">状态</th>
                                     <th style="width: 15%">Nginx版本</th>
                                     <th style="width: 12%">创建人</th>
@@ -66,6 +67,13 @@
                                     </td>
                                     <td>
                                         <code>{{ node.ip }}:{{ node.port }}</code>
+                                    </td>
+                                    <td>
+                                        {% for group in node_groups|dict_get:node.id %}
+                                        <span class="badge bg-info text-dark">{{ group.name }}</span>
+                                        {% empty %}
+                                        <span class="text-muted small">-</span>
+                                        {% endfor %}
                                     </td>
                                     <td>
                                         {% if node.status == 'online' %}
@@ -97,7 +105,7 @@
                                                 <i class="bi bi-plug"></i>
                                             </button>
                                             {% if user|has_perm_code:"nodes.update" %}
-                                            <a href="{% url 'nodes:edit' node.id %}" class="btn btn-outline-primary"
+                                            <a href="{% url 'nodes:edit' node.id %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-primary"
                                                 title="编辑">
                                                 <i class="bi bi-pencil"></i>
                                             </a>
@@ -128,7 +136,7 @@
                                             <div class="modal-footer">
                                                 <button type="button" class="btn btn-secondary"
                                                     data-bs-dismiss="modal">取消</button>
-                                                <form method="post" action="{% url 'nodes:delete' node.id %}">
+                                                <form method="post" action="{% url 'nodes:delete' node.id %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
                                                     {% csrf_token %}
                                                     <button type="submit" class="btn btn-danger">确认删除</button>
                                                 </form>
@@ -138,7 +146,7 @@
                                 </div>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">
+                                    <td colspan="8" class="text-center text-muted py-4">
                                         <i class="bi bi-inbox" style="font-size: 3rem;"></i>
                                         <p class="mt-2">暂无节点数据</p>
                                         {% if user|has_perm_code:"nodes.create" %}
@@ -154,17 +162,19 @@
                     </div>
 
                     {% if is_paginated %}
+                    {% with qp=search|default:'' gp=group_search|default:'' %}
+                    {% with params='&per_page='|add:per_page|stringformat:'s'|add:'&search='|add:qp|add:'&group_search='|add:gp %}
                     <nav aria-label="Page navigation">
                         <ul class="pagination justify-content-center">
                             {% if page_obj.has_previous %}
                             <li class="page-item">
-                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">
+                                <a class="page-link" href="?page=1{{ params }}">
                                     <i class="bi bi-chevron-double-left"></i> 首页
                                 </a>
                             </li>
                             <li class="page-item">
                                 <a class="page-link"
-                                    href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">
+                                    href="?page={{ page_obj.previous_page_number }}{{ params }}">
                                     <i class="bi bi-chevron-left"></i> 上一页
                                 </a>
                             </li>
@@ -178,19 +188,21 @@
                             {% if page_obj.has_next %}
                             <li class="page-item">
                                 <a class="page-link"
-                                    href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">
+                                    href="?page={{ page_obj.next_page_number }}{{ params }}">
                                     下一页 <i class="bi bi-chevron-right"></i>
                                 </a>
                             </li>
                             <li class="page-item">
                                 <a class="page-link"
-                                    href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">
+                                    href="?page={{ page_obj.paginator.num_pages }}{{ params }}">
                                     末页 <i class="bi bi-chevron-double-right"></i>
                                 </a>
                             </li>
                             {% endif %}
                         </ul>
                     </nav>
+                    {% endwith %}
+                    {% endwith %}
                     {% endif %}
                 </div>
             </div>
@@ -222,6 +234,48 @@
         </div>
     </div>
 </div>
+
+<style>
+    .tag-input-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        min-height: 38px;
+        cursor: text;
+        overflow-y: auto;
+    }
+    .tag-input-wrapper .tag-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #e9ecef;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove:hover {
+        opacity: 1;
+        color: #dc3545;
+    }
+    .tag-input-wrapper .tag-input-field {
+        border: none;
+        outline: none;
+        flex: 1;
+        min-width: 100px;
+        padding: 0;
+        background: transparent;
+    }
+</style>
 
 <script>
     let customModal;
@@ -296,14 +350,20 @@
                         location.reload();
                     });
                 } else {
+                    let statusMsg = '';
+                    if (result.status_updated) {
+                        statusMsg = '<p class="text-muted">节点状态已更新为"离线"</p>';
+                    }
                     const content = `
                         <div class="alert alert-danger">
                             <i class="bi bi-x-circle-fill"></i> <strong>连接失败</strong>
                         </div>
                         <p>${result.message}</p>
-                        <p class="text-muted">节点状态已更新为"离线"</p>
+                        ${statusMsg}
                     `;
-                    showCustomModal('连接测试结果', content);
+                    showCustomModal('连接测试结果', content, true, () => {
+                        location.reload();
+                    });
                 }
             })
             .catch(error => {
@@ -342,6 +402,81 @@
                 cell.textContent = formatNginxVersion(originalVersion);
             }
         });
+
+        initCombinedTagInput('combinedTagWrapper', 'combinedSearchField', 'searchHidden', 'groupSearchHidden');
     });
+
+    function initCombinedTagInput(wrapperId, fieldId, searchHiddenId, groupHiddenId) {
+        var wrapper = document.getElementById(wrapperId);
+        var field = document.getElementById(fieldId);
+        var searchHidden = document.getElementById(searchHiddenId);
+        var groupHidden = document.getElementById(groupHiddenId);
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function (b) {
+                values.push(b.getAttribute('data-value'));
+            });
+            groupHidden.value = values.join(',');
+            searchHidden.value = field.value.trim();
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        function loadInitial() {
+            var groupVal = groupHidden.value.trim();
+            if (groupVal) {
+                var tags = groupVal.split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+                tags.forEach(function (tag) { createBadge(tag); });
+            }
+            field.value = searchHidden.value;
+        }
+
+        field.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                }
+                updateHidden();
+                document.getElementById('searchForm').submit();
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                }
+            }
+        });
+
+        field.addEventListener('input', function () {
+            updateHidden();
+        });
+
+        wrapper.addEventListener('click', function (e) {
+            if (e.target === wrapper) {
+                field.focus();
+            }
+        });
+
+        loadInitial();
+        field.focus();
+    }
 </script>
 {% endblock %}

@@ -53,7 +53,7 @@ class NodeForm(forms.ModelForm):
             "hostname": "主机名",
             "ip": "IP地址",
             "port": "SSH端口",
-            "credential": "SSH凭证（节点专属）",
+            "credential": "SSH凭证",
             "groups": "节点组",
             "environment": "环境",
             "nginx_path": "Nginx路径",

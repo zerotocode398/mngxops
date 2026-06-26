@@ -16,9 +16,6 @@
                         <a href="{% url 'configs:sync_wizard' %}" class="btn btn-outline-info">
                             <i class="bi bi-cloud-download"></i> 配置同步
                         </a>
-                        <a href="{% url 'configs:batch_sync' %}" class="btn btn-outline-success">
-                            <i class="bi bi-cloud-upload"></i> 批量同步
-                        </a>
                         {% endif %}
                         {% if user|has_perm_code:"configs.create" %}
                         <a href="{% url 'configs:create' %}" class="btn btn-outline-primary">
