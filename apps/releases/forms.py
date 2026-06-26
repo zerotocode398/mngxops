@@ -24,7 +24,8 @@ class ReleaseCreateForm(forms.ModelForm):
         self.fields["version"].required = False
         self.fields["node"].queryset = (
             self.fields["node"]
-            .queryset.select_related("credential")
+            .queryset.filter(is_locked=False)
+            .select_related("credential")
             .order_by("hostname")
         )
         self.fields["config"].queryset = (

@@ -128,6 +128,7 @@
                                             <tr>
                                                 <td>
                                                     <strong>{{ task.node.hostname }}</strong>
+                                                    {% if task.node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
                                                     <br><small class="text-muted">{{ task.node.ip }}</small>
                                                 </td>
                                                 <td>
@@ -157,10 +158,12 @@
                                                 <td>
                                                     <div class="btn-group btn-group-sm">
                                                         {% if task.status == "pending" or task.status == "failed" %}
+                                                        {% if not task.node.is_locked %}
                                                         <button type="button" class="btn btn-outline-success btn-execute-single"
                                                                 data-task-id="{{ task.id }}" data-node="{{ task.node.hostname }}" data-config="{{ task.config.name }}">
                                                             <i class="bi bi-play-fill"></i>
                                                         </button>
+                                                        {% endif %}
                                                         {% endif %}
                                                         <a href="{% url 'releases:detail' task.id %}" class="btn btn-outline-secondary">
                                                             <i class="bi bi-eye"></i>

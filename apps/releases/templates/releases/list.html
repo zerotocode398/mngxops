@@ -68,6 +68,7 @@
                                     <div class="d-flex align-items-center gap-3 w-100 me-3">
                                         <i class="bi bi-server fs-5"></i>
                                         <strong>{{ node.hostname }}</strong>
+                                        {% if node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
                                         <code class="text-muted">{{ node.ip }}:{{ node.port }}</code>
                                         {% if node.environment == 'dev' %}
                                         <span class="badge bg-secondary">开发</span>
