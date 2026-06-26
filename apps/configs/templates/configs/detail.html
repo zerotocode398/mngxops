@@ -18,7 +18,7 @@
                         <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary" onclick="goBackToConfigList(event)">
                             <i class="bi bi-arrow-left"></i> 返回列表
                         </a>
-                        {% if user|has_perm_code:"configs.update" %}
+                        {% if user|has_perm_code:"configs.update" and not config.node.is_locked %}
                         <a href="{% url 'configs:edit' config.id %}" class="btn btn-outline-primary">
                             <i class="bi bi-pencil"></i> 编辑
                         </a>

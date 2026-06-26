@@ -36,6 +36,14 @@ class ReleaseExecutorMixin:
         config = task.config
         version = task.version
 
+        if node.is_locked:
+            task.status = "failed"
+            task.result = f"节点 {node.hostname} 已锁定，无法执行发布"
+            task.finished_at = datetime.now()
+            task.save()
+            self._record_history(task, action, task.result)
+            return False, task.result
+
         credential = _get_node_credential(node)
         if not credential:
             task.status = "failed"
@@ -292,6 +300,15 @@ class ReleaseCreateView(
         batch_number = generate_batch_number()
         created_count = 0
 
+        # Check if any selected node is locked
+        for node_id in node_ids:
+            node = get_object_or_404(Node, id=node_id)
+            if node.is_locked:
+                messages.error(
+                    request, f"节点 {node.hostname} 已锁定，无法创建发布任务"
+                )
+                return redirect("releases:create")
+
         for node_id in node_ids:
             node = get_object_or_404(Node, id=node_id)
             for config_id in config_ids:
@@ -439,6 +456,9 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
             ReleaseTask.objects.select_related("node", "config", "version", "operator"),
             pk=pk,
         )
+        if task.node.is_locked:
+            messages.error(request, f"节点 {task.node.hostname} 已锁定，无法回滚")
+            return redirect("releases:center")
         version_id = request.POST.get("version_id")
         if not version_id:
             messages.error(request, "请选择要回滚的版本")

@@ -69,6 +69,7 @@ class Node(models.Model):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="unknown", verbose_name="状态"
     )
+    is_locked = models.BooleanField(default=False, verbose_name="已锁定")
     description = models.TextField(blank=True, verbose_name="描述")
     created_by = models.ForeignKey(
         User, on_delete=models.CASCADE, verbose_name="创建人"

@@ -97,6 +97,13 @@ class ConfigEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     permission_resource = "configs"
     permission_action = "update"
 
+    def dispatch(self, request, *args, **kwargs):
+        config = self.get_object()
+        if config.node.is_locked:
+            messages.error(request, f"节点 {config.node.hostname} 已锁定，无法编辑配置")
+            return redirect("configs:list")
+        return super().dispatch(request, *args, **kwargs)
+
     def get_success_url(self):
         return reverse("configs:detail", kwargs={"pk": self.object.pk})
 
@@ -216,6 +223,9 @@ class ConfigVersionRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View
 
     def post(self, request, pk, version_id):
         config = get_object_or_404(Config, pk=pk)
+        if config.node.is_locked:
+            messages.error(request, f"节点 {config.node.hostname} 已锁定，无法恢复版本")
+            return redirect("configs:versions", pk=config.pk)
         old_version = get_object_or_404(ConfigVersion, pk=version_id, config=config)
 
         new_version_num = config.current_version + 1
@@ -382,6 +392,9 @@ class ConfigVersionCompareApplyView(LoginRequiredMixin, PermissionRequiredMixin,
 
     def post(self, request, pk):
         config = get_object_or_404(Config, pk=pk)
+        if config.node.is_locked:
+            messages.error(request, f"节点 {config.node.hostname} 已锁定，无法应用差异")
+            return redirect("configs:versions", pk=config.pk)
         confirmed_content = request.POST.get("confirmed_content", "")
         is_confirmed = request.POST.get("confirm_change") == "yes"
         payload = request.POST.get("payload", "")
@@ -486,7 +499,7 @@ class ConfigSyncWizardView(
         from apps.nodes.models import Node
 
         queryset = (
-            Node.objects.all()
+            Node.objects.filter(is_locked=False)
             .select_related("created_by")
             .prefetch_related("config_set", "groups")
             .order_by("-created_at")
@@ -569,6 +582,9 @@ class ConfigSyncRemoteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         from utils.ssh import discover_nginx_configs
 
         node = get_object_or_404(Node, id=node_id)
+        if node.is_locked:
+            messages.error(request, f"节点 {node.hostname} 已锁定，无法同步")
+            return redirect("configs:sync_wizard")
         credential = _get_node_credential(node)
 
         if not credential:
@@ -638,6 +654,9 @@ class ConfigSyncPartialView(LoginRequiredMixin, PermissionRequiredMixin, View):
         from utils.ssh import discover_nginx_configs
 
         node = get_object_or_404(Node, id=node_id)
+        if node.is_locked:
+            messages.error(request, f"节点 {node.hostname} 已锁定，无法同步")
+            return redirect("configs:sync_wizard")
         credential = _get_node_credential(node)
         if not credential:
             messages.error(request, f"节点 {node.hostname} 未配置 SSH 凭证，请先配置")
@@ -731,6 +750,9 @@ class ConfigSyncBatchView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         for node_id in node_ids:
             node = get_object_or_404(Node, id=node_id)
+            if node.is_locked:
+                skip_nodes.append(f"{node.hostname}(已锁定)")
+                continue
             credential = _get_node_credential(node)
 
             if not credential:
@@ -803,6 +825,9 @@ class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         config = get_object_or_404(Config, pk=pk)
         node = config.node
+        if node.is_locked:
+            messages.error(request, f"节点 {node.hostname} 已锁定，无法更新配置")
+            return redirect("configs:list")
         credential = _get_node_credential(node)
 
         if not credential:
@@ -874,6 +899,11 @@ class ConfigGlobPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return JsonResponse({"success": False, "message": "参数不完整"}, status=400)
 
         node = get_object_or_404(Node, id=node_id)
+        if node.is_locked:
+            return JsonResponse(
+                {"success": False, "message": "节点已锁定，无法预览文件"},
+                status=400,
+            )
         credential = _get_node_credential(node)
 
         if not credential:
@@ -923,7 +953,9 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
         from apps.nodes.models import Node
 
         context["all_nodes"] = (
-            Node.objects.all().select_related("created_by").order_by("hostname")
+            Node.objects.filter(is_locked=False)
+            .select_related("created_by")
+            .order_by("hostname")
         )
         context["selected_node_id"] = self.request.GET.get("node_id", "")
         return context
@@ -943,6 +975,12 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
 
         node_id = request.POST.get("node")
         if node_id:
+            from apps.nodes.models import Node
+
+            node = get_object_or_404(Node, id=node_id)
+            if node.is_locked:
+                form.add_error(None, f"节点 {node.hostname} 已锁定，无法创建配置")
+                return self.form_invalid(form)
             form.instance.node_id = node_id
 
         form.instance.created_by = request.user
@@ -978,6 +1016,9 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
             return self.form_invalid(form)
 
         node = get_object_or_404(Node, id=node_id)
+        if node.is_locked:
+            form.add_error(None, f"节点 {node.hostname} 已锁定，无法创建配置")
+            return self.form_invalid(form)
         credential = _get_node_credential(node)
 
         if not credential:
@@ -1195,6 +1236,15 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             cache.set(f"batch_sync:{task_id}", progress, timeout=300)
 
             start_time = timezone.now()
+
+            if node.is_locked:
+                progress["nodes"][str(node_id)]["status"] = "failed"
+                progress["nodes"][str(node_id)]["error"] = "节点已锁定"
+                progress["completed"] += 1
+                cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+                total_errors.append(f"{node.hostname}: 节点已锁定")
+                continue
+
             credential = _get_node_credential(node)
 
             if not credential:
@@ -1343,6 +1393,11 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
             )
 
         node = get_object_or_404(Node, id=node_id)
+
+        if node.is_locked:
+            return JsonResponse(
+                {"success": False, "message": f"节点 {node.hostname} 已锁定，无法同步"}
+            )
 
         progress = {
             "task_id": task_id,

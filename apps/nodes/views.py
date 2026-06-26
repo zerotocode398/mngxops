@@ -229,6 +229,8 @@ class NodeUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     permission_resource = "nodes"
     permission_action = "update"
 
+    # Locked nodes can still be edited - only remote operations are blocked
+
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["user"] = self.request.user
@@ -262,6 +264,8 @@ class NodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     permission_resource = "nodes"
     permission_action = "delete"
 
+    # Locked nodes can still be deleted - only remote operations are blocked
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["query_string"] = self.request.GET.urlencode()
@@ -278,6 +282,142 @@ class NodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
         node = self.get_object()
         messages.success(request, f"节点 {node.hostname} 删除成功")
         return super().post(request, *args, **kwargs)
+
+
+def node_lock(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"success": False, "message": "请先登录"})
+    if not user_has_permission(request.user, "nodes", "update"):
+        return JsonResponse({"success": False, "message": "无权限执行该操作"})
+
+    if request.method == "POST":
+        import json
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        data = json.loads(request.body)
+        action = data.get("action", "lock")
+        node_ids = data.get("node_ids", [])
+        if not node_ids and data.get("node_id"):
+            node_ids = [data.get("node_id")]
+
+        if not node_ids:
+            return JsonResponse({"success": False, "message": "未指定节点"})
+
+        MAX_BATCH = 3
+        if len(node_ids) > MAX_BATCH:
+            return JsonResponse(
+                {"success": False, "message": f"最多只能操作 {MAX_BATCH} 个节点"}
+            )
+
+        nodes = Node.objects.filter(id__in=node_ids).order_by("id")
+        if not nodes:
+            return JsonResponse({"success": False, "message": "节点不存在"})
+
+        if action == "lock":
+            updated_count = nodes.update(is_locked=True, status="offline")
+            hostnames = list(nodes.values_list("hostname", flat=True))
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": f"已锁定 {updated_count} 个节点",
+                    "hostnames": hostnames,
+                    "action": "lock",
+                }
+            )
+        elif action == "unlock":
+            nodes.update(is_locked=False)
+
+            def _unlock_test(node):
+                try:
+                    credential = _get_node_credential(node)
+                    if not credential:
+                        node.status = "unknown"
+                        node.save()
+                        return {
+                            "node_id": node.id,
+                            "hostname": node.hostname,
+                            "ip": node.ip,
+                            "success": False,
+                            "message": "未配置凭证",
+                        }
+
+                    if credential.auth_type == "password":
+                        success, message = test_ssh_connection(
+                            node.ip,
+                            node.port,
+                            credential.username,
+                            password=credential.get_password(),
+                        )
+                    else:
+                        success, message = test_ssh_connection(
+                            node.ip,
+                            node.port,
+                            credential.username,
+                            private_key=credential.get_private_key(),
+                        )
+
+                    if success:
+                        node.status = "online"
+                        nginx_path = node.nginx_path if node.nginx_path else None
+                        version_success, version_info = get_nginx_version(
+                            node.ip,
+                            node.port,
+                            credential.username,
+                            password=(
+                                credential.get_password()
+                                if credential.auth_type == "password"
+                                else None
+                            ),
+                            private_key=(
+                                credential.get_private_key()
+                                if credential.auth_type == "key"
+                                else None
+                            ),
+                            nginx_path=nginx_path,
+                        )
+                        if version_success:
+                            node.nginx_version = version_info
+                    else:
+                        node.status = "offline"
+
+                    node.save()
+                    return {
+                        "node_id": node.id,
+                        "hostname": node.hostname,
+                        "ip": node.ip,
+                        "success": success,
+                        "message": message,
+                    }
+                except Exception as e:
+                    return {
+                        "node_id": node.id,
+                        "hostname": node.hostname,
+                        "ip": node.ip,
+                        "success": False,
+                        "message": str(e),
+                    }
+
+            results = []
+            with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
+                future_to_node = {
+                    executor.submit(_unlock_test, node): node for node in nodes
+                }
+                for future in as_completed(future_to_node):
+                    result = future.result()
+                    results.append(result)
+
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": "已解锁并完成连接测试",
+                    "action": "unlock",
+                    "results": results,
+                }
+            )
+        else:
+            return JsonResponse({"success": False, "message": "无效的操作"})
+
+    return JsonResponse({"success": False, "message": "仅支持POST请求"})
 
 
 def test_node_connection(request):
@@ -303,6 +443,10 @@ def test_node_connection(request):
 
             if node_id:
                 node = Node.objects.get(id=node_id)
+                if node.is_locked:
+                    return JsonResponse(
+                        {"success": False, "message": "该节点已锁定，无法测试连接"}
+                    )
                 credential = _get_node_credential(node)
                 if not credential:
                     return JsonResponse(
@@ -378,6 +522,126 @@ def test_node_connection(request):
             return JsonResponse({"success": False, "message": "凭证不存在"})
         except Exception as e:
             return JsonResponse({"success": False, "message": str(e)})
+
+    return JsonResponse({"success": False, "message": "仅支持POST请求"})
+
+
+def batch_test_node_connection(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"success": False, "message": "请先登录"})
+    if not user_has_permission(request.user, "nodes", "update"):
+        return JsonResponse({"success": False, "message": "无权限执行该操作"})
+
+    if request.method == "POST":
+        import json
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        data = json.loads(request.body)
+        node_ids = data.get("node_ids", [])
+
+        if not node_ids:
+            return JsonResponse({"success": False, "message": "未选择任何节点"})
+
+        MAX_BATCH = 3
+        if len(node_ids) > MAX_BATCH:
+            return JsonResponse(
+                {"success": False, "message": f"最多只能测试 {MAX_BATCH} 个节点"}
+            )
+
+        nodes = Node.objects.filter(id__in=node_ids).order_by("id")
+        results = []
+        total = len(nodes)
+
+        def _test_one(node):
+            try:
+                if node.is_locked:
+                    return {
+                        "node_id": node.id,
+                        "hostname": node.hostname,
+                        "ip": node.ip,
+                        "success": False,
+                        "message": "节点已锁定",
+                    }
+                credential = _get_node_credential(node)
+                if not credential:
+                    return {
+                        "node_id": node.id,
+                        "hostname": node.hostname,
+                        "ip": node.ip,
+                        "success": False,
+                        "message": "未配置凭证",
+                    }
+
+                if credential.auth_type == "password":
+                    success, message = test_ssh_connection(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        password=credential.get_password(),
+                    )
+                else:
+                    success, message = test_ssh_connection(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        private_key=credential.get_private_key(),
+                    )
+
+                if success:
+                    node.status = "online"
+                    nginx_path = node.nginx_path if node.nginx_path else None
+                    version_success, version_info = get_nginx_version(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        password=(
+                            credential.get_password()
+                            if credential.auth_type == "password"
+                            else None
+                        ),
+                        private_key=(
+                            credential.get_private_key()
+                            if credential.auth_type == "key"
+                            else None
+                        ),
+                        nginx_path=nginx_path,
+                    )
+                    if version_success:
+                        node.nginx_version = version_info
+                else:
+                    node.status = "offline"
+
+                node.save()
+
+                return {
+                    "node_id": node.id,
+                    "hostname": node.hostname,
+                    "ip": node.ip,
+                    "success": success,
+                    "message": message,
+                }
+            except Exception as e:
+                return {
+                    "node_id": node.id,
+                    "hostname": node.hostname,
+                    "ip": node.ip,
+                    "success": False,
+                    "message": str(e),
+                }
+
+        with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
+            future_to_node = {executor.submit(_test_one, node): node for node in nodes}
+            for future in as_completed(future_to_node):
+                result = future.result()
+                results.append(result)
+
+        return JsonResponse(
+            {
+                "success": True,
+                "total": total,
+                "results": results,
+            }
+        )
 
     return JsonResponse({"success": False, "message": "仅支持POST请求"})
 

@@ -85,6 +85,7 @@
                                     <div class="d-flex align-items-center gap-3 w-100 me-3">
                                         <i class="bi bi-server fs-5"></i>
                                         <strong>{{ node.hostname }}</strong>
+                                        {% if node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
                                         <code class="text-muted">{{ node.ip }}:{{ node.port }}</code>
                                         {% if node.environment == 'dev' %}
                                         <span class="badge bg-secondary">开发</span>
@@ -146,6 +147,7 @@
                                                                 <i class="bi bi-eye"></i>
                                                             </a>
                                                             {% if user|has_perm_code:"configs.update" %}
+                                                            {% if not node.is_locked %}
                                                             <a href="{% url 'configs:edit' config.id %}"
                                                                 class="btn btn-outline-primary" title="编辑">
                                                                 <i class="bi bi-pencil"></i>
@@ -161,6 +163,7 @@
                                                                     <i class="bi bi-arrow-repeat"></i>
                                                                 </button>
                                                             </form>
+                                                            {% endif %}
                                                             {% endif %}
                                                             <a href="{% url 'configs:versions' config.id %}"
                                                                 class="btn btn-outline-secondary" title="版本">

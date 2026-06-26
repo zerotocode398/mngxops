@@ -11,11 +11,22 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-server"></i> 节点列表</h5>
-                    {% if user|has_perm_code:"nodes.create" %}
-                    <a href="{% url 'nodes:create' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-primary">
-                        <i class="bi bi-plus-circle"></i> 新增节点
-                    </a>
-                    {% endif %}
+                    <div class="d-flex gap-2 align-items-center">
+                        <button type="button" class="btn btn-outline-warning btn-sm" id="batchLockBtn" onclick="batchLockNodes()" disabled>
+                            <i class="bi bi-lock"></i> 批量锁定（0/3）
+                        </button>
+                        <button type="button" class="btn btn-outline-info btn-sm" id="batchUnlockBtn" onclick="batchUnlockNodes()" disabled>
+                            <i class="bi bi-unlock"></i> 批量解锁（0/3）
+                        </button>
+                        <button type="button" class="btn btn-outline-success btn-sm" id="batchTestBtn" onclick="batchTestConnection()" disabled>
+                            <i class="bi bi-lightning-charge"></i> 批量测试连接（0/3）
+                        </button>
+                        {% if user|has_perm_code:"nodes.create" %}
+                        <a href="{% url 'nodes:create' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> 新增节点
+                        </a>
+                        {% endif %}
+                    </div>
                 </div>
                 <div class="card-body">
                     <form method="get" class="mb-3" id="searchForm">
@@ -49,21 +60,28 @@
                         <table class="table table-hover table-sm">
                             <thead>
                                 <tr>
-                                    <th style="width: 15%">主机名</th>
-                                    <th style="width: 15%">IP地址|端口</th>
+                                    <th style="width: 30px;">
+                                        <input type="checkbox" id="selectAllNodes">
+                                    </th>
+                                    <th style="width: 14%">主机名</th>
+                                    <th style="width: 14%">IP地址|端口</th>
                                     <th style="width: 10%">所属组</th>
                                     <th style="width: 10%">状态</th>
-                                    <th style="width: 15%">Nginx版本</th>
-                                    <th style="width: 12%">创建人</th>
-                                    <th style="width: 18%">更新时间</th>
+                                    <th style="width: 14%">Nginx版本</th>
+                                    <th style="width: 11%">创建人</th>
+                                    <th style="width: 16%">更新时间</th>
                                     <th style="width: 15%">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for node in nodes %}
-                                <tr>
+                                <tr class="{% if node.is_locked %}table-secondary{% endif %}">
+                                    <td>
+                                        <input type="checkbox" class="node-checkbox" data-node-id="{{ node.id }}" data-node-locked="{{ node.is_locked|yesno:'true,false' }}">
+                                    </td>
                                     <td>
                                         <strong>{{ node.hostname }}</strong>
+                                        {% if node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
                                     </td>
                                     <td>
                                         <code>{{ node.ip }}:{{ node.port }}</code>
@@ -99,16 +117,33 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
+                                            {% if not node.is_locked %}
                                             <button type="button" class="btn btn-outline-success"
                                                 onclick="testConnection(this)" data-node-id="{{ node.id }}"
                                                 title="测试连接">
                                                 <i class="bi bi-plug"></i>
                                             </button>
+                                            {% endif %}
                                             {% if user|has_perm_code:"nodes.update" %}
                                             <a href="{% url 'nodes:edit' node.id %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-primary"
                                                 title="编辑">
                                                 <i class="bi bi-pencil"></i>
                                             </a>
+                                            {% endif %}
+                                            {% if user|has_perm_code:"nodes.update" %}
+                                            {% if node.is_locked %}
+                                            <button type="button" class="btn btn-outline-warning"
+                                                onclick="toggleLock(this)" data-node-id="{{ node.id }}" data-action="unlock"
+                                                title="解锁">
+                                                <i class="bi bi-unlock-fill"></i>
+                                            </button>
+                                            {% else %}
+                                            <button type="button" class="btn btn-outline-secondary"
+                                                onclick="toggleLock(this)" data-node-id="{{ node.id }}" data-action="lock"
+                                                title="锁定">
+                                                <i class="bi bi-lock"></i>
+                                            </button>
+                                            {% endif %}
                                             {% endif %}
                                             {% if user|has_perm_code:"nodes.delete" %}
                                             <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
@@ -146,7 +181,7 @@
                                 </div>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="8" class="text-center text-muted py-4">
+                                    <td colspan="9" class="text-center text-muted py-4">
                                         <i class="bi bi-inbox" style="font-size: 3rem;"></i>
                                         <p class="mt-2">暂无节点数据</p>
                                         {% if user|has_perm_code:"nodes.create" %}
@@ -316,6 +351,21 @@
         customModal.show();
     }
 
+    function updateLoadingContent(html) {
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('modalContent').innerHTML = html;
+    }
+
+    var batchTestTimer = null;
+    var batchTestSeconds = 0;
+
+    function stopBatchTestTimer() {
+        if (batchTestTimer) {
+            clearInterval(batchTestTimer);
+            batchTestTimer = null;
+        }
+    }
+
     function hideLoading() {
         document.getElementById('loadingSpinner').style.display = 'none';
     }
@@ -325,6 +375,27 @@
         const data = { node_id: nodeId };
 
         showLoading('测试连接');
+        stopBatchTestTimer();
+        batchTestSeconds = 10;
+        batchTestTimer = setInterval(function () {
+            batchTestSeconds--;
+            if (batchTestSeconds <= 0) {
+                stopBatchTestTimer();
+                updateLoadingContent(
+                    '<div class="text-center py-3">' +
+                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                    '<p class="text-muted mb-0">即将完成...</p>' +
+                    '</div>'
+                );
+            } else {
+                updateLoadingContent(
+                    '<div class="text-center py-3">' +
+                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                    '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchTestSeconds + '</strong> 秒</p>' +
+                    '</div>'
+                );
+            }
+        }, 1000);
 
         fetch('{% url "nodes:test" %}', {
             method: 'POST',
@@ -336,8 +407,8 @@
         })
             .then(response => response.json())
             .then(result => {
+                stopBatchTestTimer();
                 hideLoading();
-
                 if (result.success) {
                     const content = `
                         <div class="alert alert-success">
@@ -367,6 +438,7 @@
                 }
             })
             .catch(error => {
+                stopBatchTestTimer();
                 hideLoading();
                 const content = `
                     <div class="alert alert-danger">
@@ -477,6 +549,403 @@
 
         loadInitial();
         field.focus();
+    }
+
+    var selectAllCheckbox = document.getElementById('selectAllNodes');
+    var batchTestBtn = document.getElementById('batchTestBtn');
+    var batchLockBtn = document.getElementById('batchLockBtn');
+    var batchUnlockBtn = document.getElementById('batchUnlockBtn');
+    var MAX_SELECT = 3;
+
+    function updateBatchUI() {
+        var checked = document.querySelectorAll('.node-checkbox:checked');
+        var count = checked.length;
+        batchTestBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> 批量测试连接（' + count + '/' + MAX_SELECT + '）';
+        batchTestBtn.disabled = count === 0;
+        batchLockBtn.innerHTML = '<i class="bi bi-lock"></i> 批量锁定（' + count + '/' + MAX_SELECT + '）';
+        batchLockBtn.disabled = count === 0;
+        batchUnlockBtn.innerHTML = '<i class="bi bi-unlock"></i> 批量解锁（' + count + '/' + MAX_SELECT + '）';
+        batchUnlockBtn.disabled = count === 0;
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function () {
+            var checkboxes = document.querySelectorAll('.node-checkbox');
+            if (selectAllCheckbox.checked) {
+                var selected = 0;
+                checkboxes.forEach(function (cb) {
+                    if (selected < MAX_SELECT) {
+                        cb.checked = true;
+                        selected++;
+                    } else {
+                        cb.checked = false;
+                    }
+                });
+                if (selected >= MAX_SELECT) {
+                    selectAllCheckbox.checked = false;
+                }
+            } else {
+                checkboxes.forEach(function (cb) { cb.checked = false; });
+            }
+            updateBatchUI();
+        });
+    }
+
+    document.querySelectorAll('.node-checkbox').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            var checked = document.querySelectorAll('.node-checkbox:checked');
+            if (checked.length > MAX_SELECT) {
+                cb.checked = false;
+                showCustomModal('提示', '<p class="text-warning">最多只能勾选 ' + MAX_SELECT + ' 个节点</p>');
+            }
+            updateBatchUI();
+        });
+    });
+
+    function toggleLock(el) {
+        var nodeId = parseInt(el.getAttribute('data-node-id'));
+        var action = el.getAttribute('data-action');
+        var isLock = action === 'lock';
+        var title = isLock ? '锁定节点' : '解锁节点';
+        var confirmMsg = isLock
+            ? '确定要锁定该节点吗？锁定后节点状态将变为"离线"，且不可再进行操作。'
+            : '确定要解锁该节点吗？解锁后将自动测试连接并更新状态。';
+
+        showCustomModal(title, '<p>' + confirmMsg + '</p>', true, function () {
+            stopBatchTestTimer();
+            batchTestSeconds = isLock ? 0 : 12;
+
+            if (isLock) {
+                showLoading(title + '中...');
+            } else {
+                showLoading('解锁中');
+                batchTestTimer = setInterval(function () {
+                    batchTestSeconds--;
+                    if (batchTestSeconds <= 0) {
+                        stopBatchTestTimer();
+                        updateLoadingContent(
+                            '<div class="text-center py-3">' +
+                            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                            '<p class="text-muted mb-0">即将完成...</p>' +
+                            '</div>'
+                        );
+                    } else {
+                        updateLoadingContent(
+                            '<div class="text-center py-3">' +
+                            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                            '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchTestSeconds + '</strong> 秒</p>' +
+                            '</div>'
+                        );
+                    }
+                }, 1000);
+            }
+
+            var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            fetch('{% url "nodes:lock" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ node_id: nodeId, action: action })
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (result) {
+                    stopBatchTestTimer();
+                    hideLoading();
+                    if (result.success) {
+                        if (result.action === 'unlock' && result.results) {
+                            var r = result.results[0];
+                            var statusHtml = r.success
+                                ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> 连接成功</span>'
+                                : '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> 连接失败</span>';
+                            var content =
+                                '<div class="mb-2">' + statusHtml + '</div>' +
+                                '<p><strong>主机名：</strong>' + r.hostname + '</p>' +
+                                '<p><strong>IP：</strong><code>' + r.ip + '</code></p>' +
+                                '<p><strong>详情：</strong>' + r.message + '</p>';
+                            showCustomModal('解锁完成', content, true, function () {
+                                location.reload();
+                            });
+                        } else {
+                            showCustomModal('操作完成', '<p class="text-success">' + result.message + '</p>', true, function () {
+                                location.reload();
+                            });
+                        }
+                    } else {
+                        showCustomModal('操作失败', '<p class="text-danger">' + result.message + '</p>');
+                    }
+                })
+                .catch(function (error) {
+                    stopBatchTestTimer();
+                    hideLoading();
+                    showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
+                });
+        });
+    }
+
+    function batchLockNodes() {
+        var checked = document.querySelectorAll('.node-checkbox:checked');
+        var nodeIds = [];
+        var allLocked = true;
+        checked.forEach(function (cb) {
+            nodeIds.push(parseInt(cb.getAttribute('data-node-id')));
+            if (cb.getAttribute('data-node-locked') !== 'true') {
+                allLocked = false;
+            }
+        });
+
+        if (nodeIds.length === 0) {
+            showCustomModal('提示', '<p class="text-warning">请先选择要锁定的节点</p>');
+            return;
+        }
+
+        if (allLocked) {
+            showCustomModal('提示', '<p class="text-warning">所选节点已全部锁定，无需重复锁定</p>');
+            return;
+        }
+
+        showCustomModal(
+            '批量锁定节点',
+            '<p>确定要锁定选中的 <strong>' + nodeIds.length + '</strong> 个节点吗？</p>' +
+            '<p class="text-muted">锁定后节点状态将变为"离线"，且不可再进行操作。</p>',
+            true,
+            function () {
+                showLoading('批量锁定中...');
+
+                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                fetch('{% url "nodes:lock" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ node_ids: nodeIds, action: 'lock' })
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (result) {
+                        hideLoading();
+                        if (result.success) {
+                            var hostnamesHtml = result.hostnames.map(function (h) {
+                                return '<span class="badge bg-secondary me-1">' + h + '</span>';
+                            }).join('');
+                            var content =
+                                '<div class="mb-2">' + hostnamesHtml + '</div>' +
+                                '<p class="text-success">' + result.message + '</p>';
+                            showCustomModal('批量锁定完成', content, true, function () {
+                                location.reload();
+                            });
+                        } else {
+                            showCustomModal('批量锁定失败', '<p class="text-danger">' + result.message + '</p>');
+                        }
+                    })
+                    .catch(function (error) {
+                        hideLoading();
+                        showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
+                    });
+            }
+        );
+    }
+
+    function batchUnlockNodes() {
+        var checked = document.querySelectorAll('.node-checkbox:checked');
+        var nodeIds = [];
+        var allUnlocked = true;
+        checked.forEach(function (cb) {
+            nodeIds.push(parseInt(cb.getAttribute('data-node-id')));
+            if (cb.getAttribute('data-node-locked') === 'true') {
+                allUnlocked = false;
+            }
+        });
+
+        if (nodeIds.length === 0) {
+            showCustomModal('提示', '<p class="text-warning">请先选择要解锁的节点</p>');
+            return;
+        }
+
+        if (allUnlocked) {
+            showCustomModal('提示', '<p class="text-warning">所选节点均未锁定，无需解锁</p>');
+            return;
+        }
+
+        showCustomModal(
+            '批量解锁节点',
+            '<p>确定要解锁选中的 <strong>' + nodeIds.length + '</strong> 个节点吗？</p>' +
+            '<p class="text-muted">解锁后将自动测试连接并更新状态。</p>',
+            true,
+            function () {
+                stopBatchTestTimer();
+                batchTestSeconds = 12;
+                showLoading('批量解锁中');
+                batchTestTimer = setInterval(function () {
+                    batchTestSeconds--;
+                    if (batchTestSeconds <= 0) {
+                        stopBatchTestTimer();
+                        updateLoadingContent(
+                            '<div class="text-center py-3">' +
+                            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                            '<p class="text-muted mb-0">即将完成...</p>' +
+                            '</div>'
+                        );
+                    } else {
+                        updateLoadingContent(
+                            '<div class="text-center py-3">' +
+                            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                            '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchTestSeconds + '</strong> 秒</p>' +
+                            '</div>'
+                        );
+                    }
+                }, 1000);
+
+                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                fetch('{% url "nodes:lock" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ node_ids: nodeIds, action: 'unlock' })
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (result) {
+                        stopBatchTestTimer();
+                        hideLoading();
+                        if (result.success) {
+                            var resultsHtml = result.results.map(function (r) {
+                                var statusBadge = r.success
+                                    ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> 连接成功</span>'
+                                    : '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> 连接失败</span>';
+                                return '<tr>' +
+                                    '<td><strong>' + r.hostname + '</strong></td>' +
+                                    '<td><code>' + r.ip + '</code></td>' +
+                                    '<td>' + statusBadge + '</td>' +
+                                    '<td><small>' + (r.message || '') + '</small></td>' +
+                                    '</tr>';
+                            }).join('');
+
+                            var content =
+                                '<div class="table-responsive"><table class="table table-sm table-hover mb-0">' +
+                                '<thead><tr><th>主机名</th><th>IP</th><th>状态</th><th>详情</th></tr></thead>' +
+                                '<tbody>' + resultsHtml + '</tbody></table></div>';
+                            showCustomModal('批量解锁完成', content, true, function () {
+                                location.reload();
+                            });
+                        } else {
+                            showCustomModal('批量解锁失败', '<p class="text-danger">' + result.message + '</p>');
+                        }
+                    })
+                    .catch(function (error) {
+                        stopBatchTestTimer();
+                        hideLoading();
+                        showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
+                    });
+            }
+        );
+    }
+
+    function batchTestConnection() {
+        var checked = document.querySelectorAll('.node-checkbox:checked');
+        var nodeIds = [];
+        checked.forEach(function (cb) { nodeIds.push(parseInt(cb.getAttribute('data-node-id'))); });
+
+        if (nodeIds.length === 0) {
+            showCustomModal('提示', '<p class="text-warning">请先选择要测试的节点</p>');
+            return;
+        }
+
+        showLoading('批量测试连接中...');
+        stopBatchTestTimer();
+        batchTestSeconds = 10;
+        batchTestTimer = setInterval(function () {
+            batchTestSeconds--;
+            if (batchTestSeconds <= 0) {
+                stopBatchTestTimer();
+                updateLoadingContent(
+                    '<div class="text-center py-3">' +
+                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                    '<p class="text-muted mb-0">即将完成...</p>' +
+                    '</div>'
+                );
+            } else {
+                updateLoadingContent(
+                    '<div class="text-center py-3">' +
+                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                    '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchTestSeconds + '</strong> 秒</p>' +
+                    '</div>'
+                );
+            }
+        }, 1000);
+
+        fetch('{% url "nodes:batch_test" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ node_ids: nodeIds })
+        })
+            .then(function (response) { return response.json(); })
+            .then(function (result) {
+                stopBatchTestTimer();
+                hideLoading();
+
+                if (!result.success) {
+                    showCustomModal('测试失败', '<p class="text-danger">' + result.message + '</p>');
+                    return;
+                }
+
+                var successCount = 0;
+                var failCount = 0;
+                var rowsHtml = '';
+
+                result.results.forEach(function (r) {
+                    if (r.success) {
+                        successCount++;
+                        rowsHtml +=
+                            '<tr>' +
+                            '<td><strong>' + r.hostname + '</strong></td>' +
+                            '<td><code>' + r.ip + '</code></td>' +
+                            '<td><span class="badge bg-success"><i class="bi bi-check-circle"></i> 成功</span></td>' +
+                            '<td><small class="text-muted">' + r.message + '</small></td>' +
+                            '</tr>';
+                    } else {
+                        failCount++;
+                        rowsHtml +=
+                            '<tr>' +
+                            '<td><strong>' + r.hostname + '</strong></td>' +
+                            '<td><code>' + r.ip + '</code></td>' +
+                            '<td><span class="badge bg-danger"><i class="bi bi-x-circle"></i> 失败</span></td>' +
+                            '<td><small class="text-danger">' + r.message + '</small></td>' +
+                            '</tr>';
+                    }
+                });
+
+                var summaryHtml = '';
+                if (successCount > 0) {
+                    summaryHtml += '<span class="badge bg-success me-1">成功 ' + successCount + '</span>';
+                }
+                if (failCount > 0) {
+                    summaryHtml += '<span class="badge bg-danger me-1">失败 ' + failCount + '</span>';
+                }
+                summaryHtml += '<span class="badge bg-secondary">共 ' + result.total + ' 个</span>';
+
+                var content =
+                    '<div class="mb-2">' + summaryHtml + '</div>' +
+                    '<div class="table-responsive" style="max-height: 400px; overflow-y: auto;">' +
+                    '<table class="table table-sm table-bordered mb-0">' +
+                    '<thead><tr><th>主机名</th><th>IP</th><th>结果</th><th>详情</th></tr></thead>' +
+                    '<tbody>' + rowsHtml + '</tbody>' +
+                    '</table></div>';
+
+                showCustomModal('批量测试连接结果', content, true, function () {
+                    location.reload();
+                });
+            })
+            .catch(function (error) {
+                stopBatchTestTimer();
+                hideLoading();
+                showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
+            });
     }
 </script>
 {% endblock %}
