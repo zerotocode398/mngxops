@@ -1,4 +1,5 @@
 from apps.configs.models import Config, ConfigVersion, ConfigSyncSetting
+from django.utils import timezone
 
 SKIP_FILES = {"mime.types"}
 
@@ -6,7 +7,7 @@ SKIP_FILES = {"mime.types"}
 def get_or_create_sync_setting(node, user=None):
     setting, created = ConfigSyncSetting.objects.get_or_create(
         node=node,
-        defaults={"main_conf_path": "/etc/nginx/nginx.conf", "updated_by": user},
+        defaults={"main_conf_path": "", "updated_by": user},
     )
     return setting
 
@@ -28,6 +29,8 @@ def sync_discovered_configs(node, discovered, request_user, remark="从远程节
     updated = []
     skipped = []
 
+    now = timezone.now()
+
     for item in discovered:
         if item["name"] in SKIP_FILES:
             continue
@@ -40,6 +43,8 @@ def sync_discovered_configs(node, discovered, request_user, remark="从远程节
                 file_path=item["path"],
                 content=item["content"],
                 current_version=1,
+                sync_status="success",
+                last_sync_time=now,
                 created_by=request_user,
             )
             ConfigVersion.objects.create(
@@ -55,6 +60,8 @@ def sync_discovered_configs(node, discovered, request_user, remark="从远程节
             config.name = item["name"]
             config.content = item["content"]
             config.current_version = new_version
+            config.sync_status = "success"
+            config.last_sync_time = now
             config.save()
             ConfigVersion.objects.create(
                 config=config,
@@ -66,13 +73,17 @@ def sync_discovered_configs(node, discovered, request_user, remark="从远程节
             config.prune_old_versions()
             updated.append(item["name"])
         else:
+            config.sync_status = "success"
+            config.last_sync_time = now
+            config.save(update_fields=["sync_status", "last_sync_time"])
             skipped.append(item["name"])
 
     return created, updated, skipped
 
 
-def sync_selected_configs(node, selected_paths, discovered, request_user, remark="部分配置同步"):
+def sync_selected_configs(
+    node, selected_paths, discovered, request_user, remark="部分配置同步"
+):
     selected_set = set(selected_paths)
     filtered = [item for item in discovered if item["path"] in selected_set]
     return sync_discovered_configs(node, filtered, request_user, remark=remark)
-

@@ -63,17 +63,17 @@
                                         <i class="bi bi-collection"></i> {{ form.groups.label }}
                                     </label>
                                     <div class="multi-select-container" id="multiSelectGroups">
-                                        <div class="input-group">
+                                        <div class="input-group mb-2">
                                             <span class="input-group-text"><i class="bi bi-search"></i></span>
                                             <input type="text" class="form-control" id="groupSearchInput"
                                                 placeholder="搜索节点组..." autocomplete="off">
                                         </div>
-                                        <div class="multi-select-dropdown border rounded p-1 mt-1" id="groupDropdown"
-                                            style="max-height:180px;overflow-y:auto;display:none;">
+                                        <div class="border rounded p-2" id="groupListContainer"
+                                            style="max-height:200px;overflow-y:auto;">
                                             {% for checkbox in form.groups %}
                                             <div class="form-check multi-select-item" data-value="{{ checkbox.choice_label }}">
                                                 {{ checkbox.tag }}
-                                                <label class="form-check-label w-100" for="{{ checkbox.id_for_label }}">
+                                                <label class="form-check-label" for="{{ checkbox.id_for_label }}">
                                                     {{ checkbox.choice_label }}
                                                 </label>
                                             </div>
@@ -81,15 +81,7 @@
                                             <span class="text-muted small">暂无可选节点组</span>
                                             {% endfor %}
                                         </div>
-                                        <div class="mt-2" id="selectedGroupsTags">
-                                            {% for checkbox in form.groups %}
-                                            {% if checkbox.data.selected %}
-                                            <span class="badge bg-primary me-1 mb-1 group-tag" data-value="{{ checkbox.choice_label }}">
-                                                {{ checkbox.choice_label }} <i class="bi bi-x" style="cursor:pointer;"></i>
-                                            </span>
-                                            {% endif %}
-                                            {% endfor %}
-                                        </div>
+                                        <div class="mt-2" id="selectedGroupsTags"></div>
                                     </div>
                                     {% if form.groups.errors %}
                                     <div class="text-danger mt-1">
@@ -168,7 +160,7 @@
                                 </div>
 
                                 <div class="d-flex justify-content-between">
-                                    <a href="{% url 'nodes:list' %}" class="btn btn-secondary">
+                                    <a href="{% url 'nodes:list' %}{% if query_string %}?{{ query_string }}{% endif %}" class="btn btn-secondary">
                                         <i class="bi bi-arrow-left"></i> 返回
                                     </a>
                                     <button type="submit" class="btn btn-primary">
@@ -256,7 +248,13 @@
 
     function testConnection() {
         var nodeId = document.getElementById('editNodeId').value;
-        var data = { node_id: parseInt(nodeId) };
+        var ip = document.getElementById('id_ip').value.trim();
+        var port = document.getElementById('id_port').value.trim();
+        var data = {
+            node_id: parseInt(nodeId),
+            ip: ip,
+            port: port
+        };
 
         var testResult = document.getElementById('testResult');
         testResult.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> 测试中...</span>';
@@ -281,7 +279,11 @@
                         location.reload();
                     });
                 } else {
-                    var content = '<div class="alert alert-danger"><i class="bi bi-x-circle-fill"></i> <strong>连接失败</strong></div><p>' + result.message + '</p><p class="text-muted">节点状态已更新为"离线"</p>';
+                    var statusMsg = '';
+                    if (result.status_updated) {
+                        statusMsg = '<p class="text-muted">节点状态已更新为"离线"</p>';
+                    }
+                    var content = '<div class="alert alert-danger"><i class="bi bi-x-circle-fill"></i> <strong>连接失败</strong></div><p>' + result.message + '</p>' + statusMsg;
                     showCustomModal('连接测试结果', content);
                 }
             })
@@ -295,9 +297,9 @@
     // ===== 节点组多选组件 =====
     (function() {
         var searchInput = document.getElementById('groupSearchInput');
-        var dropdown = document.getElementById('groupDropdown');
+        var listContainer = document.getElementById('groupListContainer');
         var tagsContainer = document.getElementById('selectedGroupsTags');
-        var items = dropdown.querySelectorAll('.multi-select-item');
+        var items = listContainer.querySelectorAll('.multi-select-item');
         var MAX_GROUPS = 3;
 
         function updateTags() {
@@ -320,24 +322,12 @@
             });
         }
 
-        searchInput.addEventListener('focus', function() {
-            dropdown.style.display = 'block';
-            items.forEach(function(item) { item.style.display = ''; });
-        });
-
         searchInput.addEventListener('input', function() {
             var q = this.value.toLowerCase();
-            dropdown.style.display = 'block';
             items.forEach(function(item) {
                 var label = (item.getAttribute('data-value') || '').toLowerCase();
                 item.style.display = label.indexOf(q) >= 0 ? '' : 'none';
             });
-        });
-
-        document.addEventListener('click', function(e) {
-            if (!document.getElementById('multiSelectGroups').contains(e.target)) {
-                dropdown.style.display = 'none';
-            }
         });
 
         items.forEach(function(item) {
@@ -345,9 +335,11 @@
             var label = item.querySelector('label');
             if (!cb || !label) return;
 
+            cb.addEventListener('change', updateTags);
+
             label.addEventListener('click', function(e) {
                 e.preventDefault();
-                var checked = document.querySelectorAll('#groupDropdown input[type="checkbox"]:checked').length;
+                var checked = listContainer.querySelectorAll('input[type="checkbox"]:checked').length;
                 if (!cb.checked && checked >= MAX_GROUPS) {
                     alert('最多只能选择 ' + MAX_GROUPS + ' 个节点组');
                     return;

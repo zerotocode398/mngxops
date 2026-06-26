@@ -7,8 +7,28 @@ urlpatterns = [
     path("", views.ConfigListView.as_view(), name="list"),
     path("api/by-nodes/", views.ConfigByNodesAPIView.as_view(), name="api_by_nodes"),
     path("create/", views.ConfigCreateView.as_view(), name="create"),
+    path(
+        "api/preview-glob/",
+        views.ConfigGlobPreviewView.as_view(),
+        name="api_preview_glob",
+    ),
     path("sync/", views.ConfigSyncWizardView.as_view(), name="sync_wizard"),
-    path("sync/batch/", views.ConfigBatchSyncView.as_view(), name="batch_sync"),
+    path("sync/batch/", views.ConfigSyncBatchView.as_view(), name="sync_batch"),
+    path(
+        "sync/api/batch/",
+        views.ConfigSyncBatchAPIView.as_view(),
+        name="sync_batch_api",
+    ),
+    path(
+        "sync/api/single/",
+        views.ConfigSyncSingleAPIView.as_view(),
+        name="sync_single_api",
+    ),
+    path(
+        "sync/api/progress/",
+        views.ConfigSyncProgressView.as_view(),
+        name="sync_progress",
+    ),
     path(
         "sync/<int:node_id>/partial/",
         views.ConfigSyncPartialView.as_view(),

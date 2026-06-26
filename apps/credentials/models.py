@@ -46,10 +46,18 @@ class Credential(models.Model):
         super().save(*args, **kwargs)
 
     def get_password(self):
-        return decrypt_value(self.password) if self.password else ""
+        if not self.password:
+            return ""
+        if self._is_encrypted(self.password):
+            return decrypt_value(self.password)
+        return self.password
 
     def get_private_key(self):
-        return decrypt_value(self.private_key) if self.private_key else ""
+        if not self.private_key:
+            return ""
+        if self._is_encrypted(self.private_key):
+            return decrypt_value(self.private_key)
+        return self.private_key
 
     @staticmethod
     def _is_encrypted(value):

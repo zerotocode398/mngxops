@@ -31,3 +31,9 @@ class ConfigForm(forms.ModelForm):
             "file_path": "配置文件路径",
             "content": "配置内容",
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["name"].required = False
+        self.fields["file_path"].required = False
+        self.fields["content"].required = False

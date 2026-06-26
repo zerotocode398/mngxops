@@ -154,19 +154,35 @@ class NodeListView(
     permission_action = "read"
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().prefetch_related("groups")
         search = self.request.GET.get("search", "")
+        group_search = self.request.GET.get("group_search", "")
 
         if search:
-            queryset = queryset.filter(hostname__icontains=search) | queryset.filter(
-                ip__icontains=search
+            queryset = queryset.filter(
+                Q(hostname__icontains=search) | Q(ip__icontains=search)
             )
+
+        if group_search:
+            group_names = [
+                name.strip() for name in group_search.split(",") if name.strip()
+            ]
+            if group_names:
+                from functools import reduce
+                import operator
+
+                q_objects = [Q(groups__name__icontains=name) for name in group_names]
+                queryset = queryset.filter(reduce(operator.or_, q_objects)).distinct()
 
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["search"] = self.request.GET.get("search", "")
+        context["group_search"] = self.request.GET.get("group_search", "")
+        context["node_groups"] = {
+            node.id: list(node.groups.all()) for node in context["nodes"]
+        }
         return context
 
 
@@ -183,6 +199,18 @@ class NodeCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
         kwargs["user"] = self.request.user
         return kwargs
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["query_string"] = self.request.GET.urlencode()
+        return context
+
+    def get_success_url(self):
+        url = reverse_lazy("nodes:list")
+        qs = self.request.GET.urlencode()
+        if qs:
+            url = f"{url}?{qs}"
+        return url
+
     def form_valid(self, form):
         form.instance.created_by = self.request.user
         form.instance.status = "unknown"
@@ -198,7 +226,6 @@ class NodeUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     model = Node
     form_class = NodeForm
     template_name = "nodes/edit.html"
-    success_url = reverse_lazy("nodes:list")
     permission_resource = "nodes"
     permission_action = "update"
 
@@ -206,6 +233,18 @@ class NodeUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
         kwargs = super().get_form_kwargs()
         kwargs["user"] = self.request.user
         return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["query_string"] = self.request.GET.urlencode()
+        return context
+
+    def get_success_url(self):
+        url = reverse_lazy("nodes:list")
+        qs = self.request.GET.urlencode()
+        if qs:
+            url = f"{url}?{qs}"
+        return url
 
     def form_valid(self, form):
         messages.success(self.request, f"节点 {form.instance.hostname} 更新成功")
@@ -222,6 +261,18 @@ class NodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     success_url = reverse_lazy("nodes:list")
     permission_resource = "nodes"
     permission_action = "delete"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["query_string"] = self.request.GET.urlencode()
+        return context
+
+    def get_success_url(self):
+        url = reverse_lazy("nodes:list")
+        qs = self.request.GET.urlencode()
+        if qs:
+            url = f"{url}?{qs}"
+        return url
 
     def post(self, request, *args, **kwargs):
         node = self.get_object()
@@ -260,8 +311,8 @@ def test_node_connection(request):
                             "message": "节点未配置凭证，请先关联SSH凭证",
                         }
                     )
-                host = node.ip
-                ssh_port = node.port
+                host = ip if ip else node.ip
+                ssh_port = int(port) if port else node.port
             elif ip and port and credential_id:
                 credential = Credential.objects.get(id=credential_id)
                 host = ip
@@ -314,7 +365,13 @@ def test_node_connection(request):
                 node.status = "offline"
                 node.save()
 
-            return JsonResponse({"success": success, "message": message})
+            return JsonResponse(
+                {
+                    "success": success,
+                    "message": message,
+                    "status_updated": bool(node_id),
+                }
+            )
         except Node.DoesNotExist:
             return JsonResponse({"success": False, "message": "节点不存在"})
         except Credential.DoesNotExist:

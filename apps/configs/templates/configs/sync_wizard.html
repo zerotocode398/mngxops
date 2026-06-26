@@ -27,21 +27,32 @@
                         <i class="bi bi-sliders"></i>
                         <strong>更新模式：</strong>
                         <span class="ms-2">单台全量同步（自动拉取全部 include 配置）</span> /
-                        <span>单台部分同步（先解析再勾选需要更新的配置）</span> /
-                        <span>批量节点全量同步（在批量同步页执行）</span>
+                        <span>单台部分同步（先解析再勾选需要更新的配置）</span>
                     </div>
 
-                    <h6 class="mb-3"><i class="bi bi-server"></i> 选择节点进行同步</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0"><i class="bi bi-server"></i> 选择节点进行同步</h6>
+                        <button type="button" class="btn btn-primary btn-sm" id="applyBatchBtn"
+                            onclick="batchSyncSelected()" disabled>
+                            <i class="bi bi-check-circle"></i> 应用（<span id="batchCount">0</span>/3）
+                        </button>
+                    </div>
 
-                    <form method="get" class="mb-3 d-flex justify-content-end">
+                    <form method="get" class="mb-3 d-flex justify-content-between align-items-center" id="perPageForm">
+                        <div class="tag-input-wrapper form-control" id="combinedTagSync" style="max-width: 360px;">
+                            <input type="text" class="tag-input-field" id="combinedSearchSync"
+                                placeholder="搜索主机名/IP 或 输入组名后回车添加标签">
+                        </div>
+                        <input type="hidden" name="search" id="searchHiddenSync" value="{{ search }}">
+                        <input type="hidden" name="group_search" id="groupSearchHiddenSync" value="{{ group_search }}">
                         <div class="input-group" style="max-width: 220px;">
                             <label class="input-group-text" for="perPageSelect">每页</label>
-                            <select id="perPageSelect" name="per_page" class="form-select">
+                            <select id="perPageSelect" name="per_page" class="form-select"
+                                onchange="document.getElementById('perPageForm').submit()">
                                 {% for size in per_page_options %}
                                 <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条</option>
                                 {% endfor %}
                             </select>
-                            <button type="submit" class="btn btn-outline-primary">应用</button>
                         </div>
                     </form>
 
@@ -49,8 +60,13 @@
                         <table class="table table-hover table-sm">
                             <thead>
                                 <tr>
+                                    <th style="width:40px;">
+                                        <input class="form-check-input" type="checkbox" id="selectAllNodes"
+                                            onchange="toggleSelectAll(this)">
+                                    </th>
                                     <th>主机名</th>
                                     <th>IP 地址</th>
+                                    <th>所属组</th>
                                     <th>环境</th>
                                     <th>状态</th>
                                     <th>已同步配置</th>
@@ -61,10 +77,22 @@
                                 {% for node in nodes %}
                                 <tr>
                                     <td>
+                                        <input class="form-check-input node-checkbox" type="checkbox"
+                                            value="{{ node.id }}" data-hostname="{{ node.hostname }}"
+                                            onchange="updateBatchCount()">
+                                    </td>
+                                    <td>
                                         <strong>{{ node.hostname }}</strong>
                                     </td>
                                     <td>
                                         <code>{{ node.ip }}:{{ node.port }}</code>
+                                    </td>
+                                    <td>
+                                        {% for group in node_groups|dict_get:node.id %}
+                                        <span class="badge bg-info text-dark">{{ group.name }}</span>
+                                        {% empty %}
+                                        <span class="text-muted small">-</span>
+                                        {% endfor %}
                                     </td>
                                     <td>
                                         {% if node.environment == 'dev' %}
@@ -85,11 +113,40 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if node.config_set.count > 0 %}
-                                        <span class="badge bg-info">{{ node.config_set.count }} 个配置</span>
+                                        {% with summary=node_sync_summary|dict_get:node.id %}
+                                        {% if summary %}
+                                        <div class="small">
+                                            {% if summary.failed > 0 %}
+                                            <span class="badge bg-danger" title="失败 {{ summary.failed }} 个">
+                                                <i class="bi bi-exclamation-triangle"></i> {{ summary.failed }}
+                                            </span>
+                                            {% endif %}
+                                            {% if summary.syncing > 0 %}
+                                            <span class="badge bg-info" title="同步中 {{ summary.syncing }} 个">
+                                                <i class="bi bi-arrow-repeat spin"></i> {{ summary.syncing }}
+                                            </span>
+                                            {% endif %}
+                                            {% if summary.success > 0 %}
+                                            <span class="badge bg-success" title="成功 {{ summary.success }} 个">
+                                                <i class="bi bi-check-circle"></i> {{ summary.success }}
+                                            </span>
+                                            {% else %}
+                                            <span class="badge bg-secondary" title="共 {{ summary.total }} 个配置">
+                                                {{ summary.total }} 个
+                                            </span>
+                                            {% endif %}
+                                            <span class="text-muted d-block mt-1" style="font-size: 0.75rem;">
+                                                {% if summary.last_sync %}
+                                                {{ summary.last_sync|date:"m-d H:i" }}
+                                                {% else %}
+                                                {{ summary.fallback_time|date:"m-d H:i" }}
+                                                {% endif %}
+                                            </span>
+                                        </div>
                                         {% else %}
-                                        <span class="text-muted">未同步</span>
+                                        <span class="text-muted small">未同步</span>
                                         {% endif %}
+                                        {% endwith %}
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
@@ -106,7 +163,7 @@
                                         <div class="modal fade" id="syncModal{{ node.id }}" tabindex="-1">
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
-                                                    <form method="post"
+                                                    <form id="syncForm{{ node.id }}" method="post"
                                                         action="{% url 'configs:sync_remote' node.id %}">
                                                         {% csrf_token %}
                                                         <div class="modal-header">
@@ -124,8 +181,8 @@
                                                                     nginx.conf 主配置文件路径
                                                                 </label>
                                                                 <input type="text" name="main_conf_path"
-                                                                    class="form-control"
-                                                                    value="{{ node_sync_paths|dict_get:node.id|default:'/etc/nginx/nginx.conf' }}"
+                                                                    class="form-control" required
+                                                                    value="{{ node_sync_paths|dict_get:node.id }}"
                                                                     placeholder="例如: /etc/nginx/nginx.conf">
                                                                 <small class="text-muted">
                                                                     <i class="bi bi-lightbulb"></i>
@@ -178,7 +235,8 @@
                                                                 onclick="submitPartialSync({{ node.id }})">
                                                                 <i class="bi bi-funnel"></i> 部分同步
                                                             </button>
-                                                            <button type="submit" class="btn btn-primary">
+                                                            <button type="button" class="btn btn-primary"
+                                                                onclick="submitFullSync({{ node.id }})">
                                                                 <i class="bi bi-cloud-download"></i> 开始同步
                                                             </button>
                                                         </div>
@@ -188,7 +246,7 @@
                                                         action="{% url 'configs:sync_partial' node.id %}">
                                                         {% csrf_token %}
                                                         <input type="hidden" name="main_conf_path"
-                                                            value="{{ node_sync_paths|dict_get:node.id|default:'/etc/nginx/nginx.conf' }}">
+                                                            value="{{ node_sync_paths|dict_get:node.id }}">
                                                     </form>
                                                 </div>
                                             </div>
@@ -197,7 +255,7 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted py-4">
+                                    <td colspan="7" class="text-center text-muted py-4">
                                         <i class="bi bi-inbox" style="font-size: 3rem;"></i>
                                         <p class="mt-2">暂无节点数据</p>
                                         <a href="{% url 'nodes:create' %}" class="btn btn-primary btn-sm">
@@ -253,7 +311,500 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+    .spin {
+        animation: sync-spin 1s linear infinite;
+    }
+    @keyframes sync-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    .tag-input-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        min-height: 38px;
+        cursor: text;
+        overflow-y: auto;
+    }
+    .tag-input-wrapper .tag-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #e9ecef;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove:hover {
+        opacity: 1;
+        color: #dc3545;
+    }
+    .tag-input-wrapper .tag-input-field {
+        border: none;
+        outline: none;
+        flex: 1;
+        min-width: 100px;
+        padding: 0;
+        background: transparent;
+    }
+</style>
 <script>
+    var MAX_BATCH = 3;
+    var pollTimer = null;
+
+    function initTagInput(wrapperId, fieldId, searchHiddenId, groupHiddenId) {
+        var wrapper = document.getElementById(wrapperId);
+        var field = document.getElementById(fieldId);
+        var searchHidden = document.getElementById(searchHiddenId);
+        var groupHidden = document.getElementById(groupHiddenId);
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function (b) {
+                values.push(b.getAttribute('data-value'));
+            });
+            groupHidden.value = values.join(',');
+            searchHidden.value = field.value.trim();
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        function loadInitial() {
+            var groupVal = groupHidden.value.trim();
+            if (groupVal) {
+                var tags = groupVal.split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+                tags.forEach(function (tag) { createBadge(tag); });
+            }
+            field.value = searchHidden.value;
+        }
+
+        field.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                    updateHidden();
+                }
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                }
+            }
+        });
+
+        field.addEventListener('input', function () {
+            updateHidden();
+        });
+
+        wrapper.addEventListener('click', function (e) {
+            if (e.target === wrapper) {
+                field.focus();
+            }
+        });
+
+        loadInitial();
+        field.focus();
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        initTagInput('combinedTagSync', 'combinedSearchSync', 'searchHiddenSync', 'groupSearchHiddenSync');
+    });
+
+    function showCustomModal(title, message, showClose) {
+        document.getElementById('syncAlertTitle').textContent = title;
+        document.getElementById('syncAlertBody').innerHTML = message;
+        document.getElementById('syncAlertClose').style.display = showClose ? 'inline-block' : 'none';
+        document.getElementById('syncAlertClose').onclick = null;
+        var modal = new bootstrap.Modal(document.getElementById('syncAlertModal'));
+        modal.show();
+    }
+
+    function updateBatchCount() {
+        var checked = document.querySelectorAll('.node-checkbox:checked');
+        var count = checked.length;
+        document.getElementById('batchCount').textContent = count;
+        var btn = document.getElementById('applyBatchBtn');
+        btn.disabled = count === 0;
+
+        if (count > MAX_BATCH) {
+            showCustomModal('提示', '最多只能选择 ' + MAX_BATCH + ' 个节点进行批量同步', true);
+            checked[checked.length - 1].checked = false;
+            updateBatchCount();
+            return;
+        }
+
+        var selectAll = document.getElementById('selectAllNodes');
+        var allBoxes = document.querySelectorAll('.node-checkbox');
+        selectAll.checked = allBoxes.length > 0 && count === allBoxes.length;
+        selectAll.indeterminate = count > 0 && count < allBoxes.length;
+    }
+
+    function toggleSelectAll(el) {
+        var allBoxes = document.querySelectorAll('.node-checkbox');
+        allBoxes.forEach(function(cb) { cb.checked = el.checked; });
+        updateBatchCount();
+    }
+
+    function buildProgressHTML(nodeIds, hostnames) {
+        hostnames = hostnames || {};
+        var html = '';
+        var statusIcons = {
+            'waiting': '<i class="bi bi-clock text-muted"></i>',
+            'syncing': '<i class="bi bi-arrow-repeat spin text-primary"></i>',
+            'success': '<i class="bi bi-check-circle text-success"></i>',
+            'failed': '<i class="bi bi-x-circle text-danger"></i>'
+        };
+        var statusTexts = {
+            'waiting': '等待中',
+            'syncing': '同步中',
+            'success': '已完成',
+            'failed': '同步失败'
+        };
+        nodeIds.forEach(function(id) {
+            var displayName = hostnames[id] || ('节点 #' + id);
+            html += '<div class="d-flex align-items-center justify-content-between mb-2 p-2 border rounded" id="prog-node-' + id + '">';
+            html += '<div class="d-flex align-items-center">';
+            html += '<span class="me-2" id="prog-icon-' + id + '">' + statusIcons['waiting'] + '</span>';
+            html += '<span id="prog-name-' + id + '">' + displayName + '</span>';
+            html += '</div>';
+            html += '<div class="d-flex align-items-center">';
+            html += '<span class="badge bg-secondary me-2" id="prog-status-' + id + '">' + statusTexts['waiting'] + '</span>';
+            html += '<small class="text-muted" id="prog-time-' + id + '"></small>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div id="prog-files-' + id + '" class="ms-4 mb-2" style="display:none;"></div>';
+        });
+        return html;
+    }
+
+    function updateProgressUI(progress) {
+        var statusIcons = {
+            'waiting': '<i class="bi bi-clock text-muted"></i>',
+            'syncing': '<i class="bi bi-arrow-repeat spin text-primary"></i>',
+            'success': '<i class="bi bi-check-circle text-success"></i>',
+            'failed': '<i class="bi bi-x-circle text-danger"></i>'
+        };
+        var statusTexts = {
+            'waiting': '等待中',
+            'syncing': '同步中',
+            'success': '已完成',
+            'failed': '同步失败'
+        };
+        var statusBadges = {
+            'waiting': 'bg-secondary',
+            'syncing': 'bg-primary',
+            'success': 'bg-success',
+            'failed': 'bg-danger'
+        };
+        var fileStatusIcons = {
+            'created': '<i class="bi bi-plus-circle text-success small"></i>',
+            'updated': '<i class="bi bi-pencil text-warning small"></i>',
+            'skipped': '<i class="bi bi-dash-circle text-muted small"></i>',
+            'failed': '<i class="bi bi-exclamation-circle text-danger small"></i>'
+        };
+        var fileStatusTexts = {
+            'created': '新增',
+            'updated': '更新',
+            'skipped': '未变化',
+            'failed': '失败'
+        };
+
+        var allDone = progress.completed >= progress.total;
+        document.getElementById('progressPercent').textContent = Math.round(progress.completed / progress.total * 100) + '%';
+
+        for (var nodeId in progress.nodes) {
+            var node = progress.nodes[nodeId];
+            var iconEl = document.getElementById('prog-icon-' + nodeId);
+            var nameEl = document.getElementById('prog-name-' + nodeId);
+            var statusEl = document.getElementById('prog-status-' + nodeId);
+            var timeEl = document.getElementById('prog-time-' + nodeId);
+            var filesEl = document.getElementById('prog-files-' + nodeId);
+
+            if (iconEl) iconEl.innerHTML = statusIcons[node.status] || statusIcons['waiting'];
+            if (nameEl) nameEl.textContent = node.hostname || ('节点 #' + nodeId);
+            if (statusEl) {
+                statusEl.textContent = statusTexts[node.status] || node.status;
+                statusEl.className = 'badge me-2 ' + (statusBadges[node.status] || 'bg-secondary');
+            }
+            if (timeEl && node.time > 0) {
+                timeEl.textContent = node.time + 's';
+            }
+            if (node.error && node.status === 'failed') {
+                var row = document.getElementById('prog-node-' + nodeId);
+                if (row && !row.querySelector('.text-danger.small')) {
+                    var errDiv = document.createElement('div');
+                    errDiv.className = 'text-danger small mt-1';
+                    errDiv.textContent = node.error;
+                    row.appendChild(errDiv);
+                }
+            }
+
+            if (node.files && node.files.length > 0 && filesEl) {
+                var fileHtml = '<div class="border rounded p-2 mt-1" style="background:#f8f9fa; max-height:200px; overflow-y:auto;">';
+                fileHtml += '<div class="small fw-bold mb-1 text-muted">配置文件详情：</div>';
+                node.files.forEach(function(f) {
+                    var icon = fileStatusIcons[f.status] || fileStatusIcons['skipped'];
+                    var text = fileStatusTexts[f.status] || f.status;
+                    var rowClass = f.status === 'failed' ? 'text-danger' : '';
+                    fileHtml += '<div class="d-flex align-items-center small ' + rowClass + ' mb-0">';
+                    fileHtml += '<span class="me-1">' + icon + '</span>';
+                    fileHtml += '<span class="me-1 badge bg-light text-dark border" style="font-size:0.65rem;">' + text + '</span>';
+                    fileHtml += '<code class="text-truncate" style="font-size:0.75rem; max-width:280px;" title="' + f.path + '">' + f.path + '</code>';
+                    if (f.error) {
+                        fileHtml += ' <span class="text-danger" style="font-size:0.7rem;" title="' + f.error + '">' + f.error + '</span>';
+                    }
+                    fileHtml += '</div>';
+                });
+                fileHtml += '</div>';
+                filesEl.innerHTML = fileHtml;
+                filesEl.style.display = 'block';
+            }
+        }
+
+        if (allDone) {
+            document.getElementById('progressSpinner').style.display = 'none';
+            document.getElementById('progressCloseBtn').disabled = false;
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+        }
+    }
+
+    function submitFullSync(nodeId) {
+        var modal = document.getElementById('syncModal' + nodeId);
+        var pathInput = modal.querySelector('input[name="main_conf_path"]');
+        var mainConfPath = pathInput.value.trim();
+
+        if (!mainConfPath) {
+            showCustomModal('提示', '<p class="mb-0"><i class="bi bi-info-circle text-warning"></i> 请输入 nginx.conf 主配置文件路径</p>', true);
+            return;
+        }
+
+        var bsModal = bootstrap.Modal.getInstance(modal);
+        bsModal.hide();
+
+        var hostnames = {};
+        hostnames[nodeId] = document.getElementById('syncModal' + nodeId).querySelector('.modal-title').textContent.split('：')[1];
+        var progressList = document.getElementById('progressList');
+        progressList.innerHTML = buildProgressHTML([nodeId], hostnames);
+        document.getElementById('progressPercent').textContent = '0%';
+        document.getElementById('progressSpinner').style.display = 'inline-block';
+        document.getElementById('progressCloseBtn').disabled = true;
+        document.getElementById('progressCloseBtn').textContent = '同步中...';
+        document.getElementById('progressSummary').style.display = 'none';
+
+        var progressModal = new bootstrap.Modal(document.getElementById('syncProgressModal'), {backdrop: 'static', keyboard: false});
+        document.getElementById('progressModalTitle').innerHTML = '<i class="bi bi-cloud-download me-2"></i>同步进度';
+        progressModal.show();
+
+        var taskId = 'single_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+        fetch('{% url "configs:sync_single_api" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ node_id: nodeId, main_conf_path: mainConfPath, task_id: taskId })
+        }).then(function(response) {
+            return response.json();
+        }).then(function(data) {
+            if (data.success) {
+                pollProgress(taskId, progressModal, 'single');
+            } else {
+                updateProgressError(data.message || '同步请求失败');
+                document.getElementById('progressCloseBtn').disabled = false;
+                document.getElementById('progressCloseBtn').textContent = '关闭';
+                document.getElementById('progressSpinner').style.display = 'none';
+            }
+        })['catch'](function(err) {
+            updateProgressError('网络请求失败: ' + err.message);
+            document.getElementById('progressCloseBtn').disabled = false;
+            document.getElementById('progressCloseBtn').textContent = '关闭';
+            document.getElementById('progressSpinner').style.display = 'none';
+        });
+    }
+
+    function batchSyncSelected() {
+        var checked = document.querySelectorAll('.node-checkbox:checked');
+        if (checked.length === 0) {
+            showCustomModal('提示', '<p class="mb-0"><i class="bi bi-info-circle text-warning"></i> 请选择需要同步的节点</p>', true);
+            return;
+        }
+        if (checked.length > MAX_BATCH) {
+            showCustomModal('提示', '最多只能选择 ' + MAX_BATCH + ' 个节点进行批量同步', true);
+            return;
+        }
+
+        var nodeIds = [];
+        var hostnames = {};
+        checked.forEach(function(cb) {
+            nodeIds.push(parseInt(cb.value));
+            hostnames[cb.value] = cb.getAttribute('data-hostname');
+        });
+
+        var progressList = document.getElementById('progressList');
+        progressList.innerHTML = buildProgressHTML(nodeIds, hostnames);
+        document.getElementById('progressPercent').textContent = '0%';
+        document.getElementById('progressSpinner').style.display = 'inline-block';
+        document.getElementById('progressCloseBtn').disabled = true;
+        document.getElementById('progressCloseBtn').textContent = '同步中...';
+        document.getElementById('progressSummary').style.display = 'none';
+
+        var progressModal = new bootstrap.Modal(document.getElementById('syncProgressModal'), {backdrop: 'static', keyboard: false});
+        document.getElementById('progressModalTitle').innerHTML = '<i class="bi bi-cloud-upload me-2"></i>批量同步进度';
+        progressModal.show();
+
+        var taskId = 'batch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+        fetch('{% url "configs:sync_batch_api" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ node_ids: nodeIds, task_id: taskId })
+        }).then(function(response) {
+            return response.json();
+        }).then(function(data) {
+            if (data.success) {
+                pollProgress(taskId, progressModal);
+            } else {
+                updateProgressError(data.message || '同步请求失败');
+                document.getElementById('progressCloseBtn').disabled = false;
+                document.getElementById('progressCloseBtn').textContent = '关闭';
+                document.getElementById('progressSpinner').style.display = 'none';
+            }
+        })['catch'](function(err) {
+            updateProgressError('网络请求失败: ' + err.message);
+            document.getElementById('progressCloseBtn').disabled = false;
+            document.getElementById('progressCloseBtn').textContent = '关闭';
+            document.getElementById('progressSpinner').style.display = 'none';
+        });
+    }
+
+    function pollProgress(taskId, progressModal, syncType) {
+        syncType = syncType || 'batch';
+        pollTimer = setInterval(function() {
+            fetch('{% url "configs:sync_progress" %}?task_id=' + encodeURIComponent(taskId))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.success && data.progress) {
+                        updateProgressUI(data.progress);
+                        if (data.progress.completed >= data.progress.total) {
+                            var totalCreated = 0, totalUpdated = 0, totalSkipped = 0, totalFailed = 0;
+                            var summaryParts = [];
+                            var nodeName = '';
+                            for (var nid in data.progress.nodes) {
+                                var n = data.progress.nodes[nid];
+                                totalCreated += n.created || 0;
+                                totalUpdated += n.updated || 0;
+                                totalSkipped += n.skipped || 0;
+                                nodeName = n.hostname || ('节点 #' + nid);
+                                if (n.status === 'failed') totalFailed++;
+                            }
+                            if (totalCreated) summaryParts.push('新增 ' + totalCreated + ' 个');
+                            if (totalUpdated) summaryParts.push('更新 ' + totalUpdated + ' 个');
+                            if (totalSkipped) summaryParts.push(totalSkipped + ' 个未变化');
+                            if (totalFailed && syncType === 'batch') summaryParts.push(totalFailed + ' 个节点失败');
+
+                            if (syncType === 'single') {
+                                progressModal.hide();
+                                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+
+                                var statusIcon = totalFailed ? 'bi-exclamation-triangle text-warning' : 'bi-check-circle text-success';
+                                var statusTitle = totalFailed ? '同步失败' : '同步完成';
+                                var statusBg = totalFailed ? 'alert-warning' : 'alert-success';
+                                var summaryHtml = summaryParts.length ? summaryParts.join('，') : '未发现新配置';
+                                var errorMsg = '';
+                                for (var nid in data.progress.nodes) {
+                                    if (data.progress.nodes[nid].error) {
+                                        errorMsg = '<div class="text-danger small mt-1"><i class="bi bi-exclamation-circle"></i> ' + data.progress.nodes[nid].error + '</div>';
+                                    }
+                                }
+                                var fileListHtml = '';
+                                for (var nid in data.progress.nodes) {
+                                    var files = data.progress.nodes[nid].files;
+                                    if (files && files.length > 0) {
+                                        fileListHtml += '<div class="border rounded p-2 mt-2 text-start" style="background:#f8f9fa; max-height:180px; overflow-y:auto;">';
+                                        fileListHtml += '<div class="small fw-bold mb-1 text-muted">配置文件详情：</div>';
+                                        var fIcons = {'created': 'bi-plus-circle text-success', 'updated': 'bi-pencil text-warning', 'skipped': 'bi-dash-circle text-muted', 'failed': 'bi-exclamation-circle text-danger'};
+                                        var fTexts = {'created': '新增', 'updated': '更新', 'skipped': '未变化', 'failed': '失败'};
+                                        files.forEach(function(f) {
+                                            fileListHtml += '<div class="d-flex align-items-center small mb-0">';
+                                            fileListHtml += '<i class="bi ' + (fIcons[f.status] || 'bi-dash-circle text-muted') + ' me-1"></i>';
+                                            fileListHtml += '<span class="me-1 badge bg-light text-dark border" style="font-size:0.65rem;">' + (fTexts[f.status] || f.status) + '</span>';
+                                            fileListHtml += '<code class="text-truncate" style="font-size:0.7rem; max-width:260px;" title="' + f.path + '">' + f.path + '</code>';
+                                            if (f.error) {
+                                                fileListHtml += ' <span class="text-danger" style="font-size:0.65rem;" title="' + f.error + '"><i class="bi bi-info-circle"></i></span>';
+                                            }
+                                            fileListHtml += '</div>';
+                                        });
+                                        fileListHtml += '</div>';
+                                    }
+                                }
+                                showCustomModal(statusTitle,
+                                    '<div class="text-center mb-2"><i class="bi ' + statusIcon + ' fs-1"></i></div>' +
+                                    '<div class="alert ' + statusBg + ' mb-0 text-center">' +
+                                    '<strong>' + nodeName + '</strong>：' + summaryHtml +
+                                    '</div>' + errorMsg + fileListHtml,
+                                    true);
+                                document.getElementById('syncAlertClose').onclick = function() {
+                                    location.reload();
+                                };
+                            } else {
+                                var summaryHtml = summaryParts.length ? summaryParts.join('，') : '同步完成';
+                                document.getElementById('progressSummaryText').textContent = summaryHtml;
+                                document.getElementById('progressSummary').style.display = 'block';
+                                document.getElementById('progressCloseBtn').textContent = '完成';
+                                document.getElementById('progressCloseBtn').onclick = function() {
+                                    progressModal.hide();
+                                    location.reload();
+                                };
+                            }
+                            document.getElementById('progressCloseBtn').disabled = false;
+                            document.getElementById('progressSpinner').style.display = 'none';
+                        }
+                    }
+                });
+        }, 800);
+    }
+
+    function updateProgressError(msg) {
+        document.getElementById('progressSummaryText').textContent = msg;
+        document.getElementById('progressSummary').style.display = 'block';
+    }
+
     function submitPartialSync(nodeId) {
         var modal = document.getElementById('syncModal' + nodeId);
         var sourceChecks = modal.querySelectorAll('input[name="selected_paths"]');
@@ -279,10 +830,60 @@
         partialForm.querySelector('input[name="main_conf_path"]').value = sourcePath.value;
 
         if (checkedCount === 0) {
-            alert('请至少勾选一个配置文件');
+            showCustomModal('提示', '<p class="mb-0"><i class="bi bi-info-circle text-warning"></i> 请至少勾选一个配置文件</p>', true);
             return;
         }
         partialForm.submit();
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var urlParams = new URLSearchParams(window.location.search);
+        var syncError = urlParams.get('sync_error');
+        if (syncError) {
+            showCustomModal('同步失败', '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle"></i> ' + decodeURIComponent(syncError) + '</div>', true);
+            var newUrl = window.location.pathname;
+            window.history.replaceState({}, '', newUrl);
+        }
+    });
 </script>
+
+<form id="batchSyncForm" method="post" action="{% url 'configs:sync_batch' %}" style="display:none;">
+    {% csrf_token %}
+</form>
+
+<div class="modal fade" id="syncProgressModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="progressModalTitle"><i class="bi bi-cloud-upload me-2"></i>批量同步进度</h5>
+                <span class="ms-2" id="progressSpinner"><i class="bi bi-arrow-repeat spin text-primary"></i></span>
+                <span class="ms-2 fw-bold" id="progressPercent">0%</span>
+            </div>
+            <div class="modal-body">
+                <div id="progressList"></div>
+                <div id="progressSummary" class="alert alert-info mt-3 mb-0" style="display:none;">
+                    <i class="bi bi-info-circle"></i> <span id="progressSummaryText"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="progressCloseBtn" disabled>同步中...</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="syncAlertModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="syncAlertTitle">提示</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="syncAlertBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="syncAlertClose">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
