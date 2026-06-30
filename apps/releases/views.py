@@ -1,19 +1,26 @@
 import json
 import threading
+import logging
 from datetime import datetime
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
+from django.db import OperationalError
 from django.db.models import Q
+from django.utils import timezone
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse
 from django.views.generic import ListView, DetailView, CreateView, View
-from django.http import JsonResponse
 
 from apps.nodes.views import _get_node_credential
 from apps.nodes.models import Node
 from apps.configs.models import Config, ConfigVersion
-from apps.users.permissions import PermissionRequiredMixin
+from apps.users.permissions import (
+    PermissionRequiredMixin,
+    user_has_permission,
+    forbidden_response,
+)
 from utils.ssh import (
     backup_remote_file,
     upload_file_via_sftp,
@@ -26,8 +33,10 @@ from utils.ssh import (
 )
 
 from .forms import ReleaseCreateForm
-from .models import ReleaseTask, ReleaseHistory, generate_batch_number
+from .models import ReleaseTask, ReleaseHistory, TaskCenterTask, generate_batch_number
 from utils.pagination import PerPagePaginationMixin
+
+logger = logging.getLogger(__name__)
 
 
 class ReleaseExecutorMixin:
@@ -270,6 +279,9 @@ class ReleaseCreateView(
     template_name = "releases/create.html"
     permission_resource = "releases"
     permission_action = "create"
+    recommended_nodes_per_batch = 5
+    recommended_configs_per_batch = 10
+    max_tasks_per_batch = 1000
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -278,8 +290,20 @@ class ReleaseCreateView(
     def post(self, request, *args, **kwargs):
         from apps.configs.models import Config, ConfigVersion
 
+        node_config_pairs_raw = request.POST.getlist("node_config_pairs")
+        node_config_pairs = []
+        for item in node_config_pairs_raw:
+            if ":" in item:
+                nid, cid = item.split(":", 1)
+                if nid.isdigit() and cid.isdigit():
+                    node_config_pairs.append((int(nid), int(cid)))
+
         node_ids = request.POST.getlist("node_ids")
         config_ids = request.POST.getlist("config_ids")
+
+        if node_config_pairs:
+            node_ids = list({str(nid) for nid, _ in node_config_pairs})
+            config_ids = [str(cid) for _, cid in node_config_pairs]
 
         # Parse version_ids mapping: config_id → version_id
         version_ids = {}
@@ -293,8 +317,30 @@ class ReleaseCreateView(
             messages.error(request, "请至少选择一个节点和一个配置")
             return redirect("releases:create")
 
-        if len(node_ids) > 5 or len(config_ids) > 5:
-            messages.error(request, "单次发布最多选择 5 个节点和 5 个配置")
+        selected_config_count = (
+            len(node_config_pairs) if node_config_pairs else len(config_ids)
+        )
+        if len(node_ids) > self.recommended_nodes_per_batch:
+            messages.warning(
+                request,
+                f"当前选择 {len(node_ids)} 个节点，已超过默认建议 {self.recommended_nodes_per_batch} 个节点，任务将继续创建",
+            )
+        if selected_config_count > self.recommended_configs_per_batch:
+            messages.warning(
+                request,
+                f"当前选择 {selected_config_count} 个配置，已超过默认建议 {self.recommended_configs_per_batch} 个配置，任务将继续创建",
+            )
+
+        planned_task_count = (
+            len(node_config_pairs)
+            if node_config_pairs
+            else len(node_ids) * len(config_ids)
+        )
+        if planned_task_count > self.max_tasks_per_batch:
+            messages.error(
+                request,
+                f"单次最多创建 {self.max_tasks_per_batch} 个发布任务，当前将创建 {planned_task_count} 个",
+            )
             return redirect("releases:create")
 
         batch_number = generate_batch_number()
@@ -309,12 +355,11 @@ class ReleaseCreateView(
                 )
                 return redirect("releases:create")
 
-        for node_id in node_ids:
-            node = get_object_or_404(Node, id=node_id)
-            for config_id in config_ids:
+        if node_config_pairs:
+            for node_id, config_id in node_config_pairs:
+                node = get_object_or_404(Node, id=node_id)
                 config = get_object_or_404(Config, id=config_id, node_id=node_id)
 
-                # Use specified version if available, otherwise latest
                 if config_id in version_ids:
                     version = get_object_or_404(
                         ConfigVersion, id=version_ids[config_id], config_id=config_id
@@ -334,6 +379,34 @@ class ReleaseCreateView(
                     status="pending",
                 )
                 created_count += 1
+        else:
+            for node_id in node_ids:
+                node = get_object_or_404(Node, id=node_id)
+                for config_id in config_ids:
+                    config = get_object_or_404(Config, id=config_id, node_id=node_id)
+
+                    # Use specified version if available, otherwise latest
+                    if config_id in version_ids:
+                        version = get_object_or_404(
+                            ConfigVersion,
+                            id=version_ids[config_id],
+                            config_id=config_id,
+                        )
+                    else:
+                        version = config.versions.order_by("-version").first()
+
+                    if not version:
+                        continue
+
+                    ReleaseTask.objects.create(
+                        batch_number=batch_number,
+                        node=node,
+                        config=config,
+                        version=version,
+                        operator=request.user,
+                        status="pending",
+                    )
+                    created_count += 1
 
         if created_count == 0:
             messages.error(request, "未找到可发布的配置版本")
@@ -395,6 +468,118 @@ class ReleaseListView(
 
         context["node_tasks"] = node_tasks
         context["has_any_filter"] = bool(search or status_filter)
+        return context
+
+
+class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
+    model = TaskCenterTask
+    template_name = "releases/task_center.html"
+    context_object_name = "tasks"
+    paginate_by = 15
+    ordering = ["-created_at"]
+
+    def dispatch(self, request, *args, **kwargs):
+        self.can_read_release_tasks = user_has_permission(
+            request.user, "releases", "read"
+        )
+        self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
+        if not (self.can_read_release_tasks or self.can_read_node_tasks):
+            return forbidden_response(request, "当前账号无权限访问该功能")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        queryset = super().get_queryset().select_related("trigger_user")
+        if not self.can_read_release_tasks:
+            queryset = queryset.filter(
+                operation_type="node_batch_test", trigger_user=self.request.user
+            )
+        search = self.request.GET.get("search", "")
+        status_filter = self.request.GET.get("status", "")
+        operation_type = self.request.GET.get("operation_type", "")
+
+        if search:
+            tags = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
+            for tag in tags:
+                queryset = queryset.filter(
+                    Q(source_batch__icontains=tag)
+                    | Q(target_hostnames__icontains=tag)
+                    | Q(target_ips__icontains=tag)
+                )
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if operation_type:
+            queryset = queryset.filter(operation_type=operation_type)
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["search"] = self.request.GET.get("search", "")
+        context["status_filter"] = self.request.GET.get("status", "")
+        context["operation_type_filter"] = self.request.GET.get("operation_type", "")
+        context["status_choices"] = TaskCenterTask.STATUS_CHOICES
+        context["operation_type_choices"] = TaskCenterTask.OPERATION_TYPE_CHOICES
+        context["has_any_filter"] = bool(
+            context["search"]
+            or context["status_filter"]
+            or context["operation_type_filter"]
+        )
+        return context
+
+
+class TaskCenterDetailView(LoginRequiredMixin, DetailView):
+    model = TaskCenterTask
+    template_name = "releases/task_detail.html"
+    context_object_name = "task"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.can_read_release_tasks = user_has_permission(
+            request.user, "releases", "read"
+        )
+        self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
+        if not (self.can_read_release_tasks or self.can_read_node_tasks):
+            return forbidden_response(request, "当前账号无权限访问该功能")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.can_read_release_tasks:
+            return queryset
+        return queryset.filter(
+            operation_type="node_batch_test", trigger_user=self.request.user
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        task = self.object
+
+        result_text = (task.result or "").strip()
+        success_lines = []
+        failed_lines = []
+        other_lines = []
+
+        if result_text:
+            for raw in result_text.splitlines():
+                line = raw.strip()
+                if not line:
+                    continue
+                if line.startswith("[成功]"):
+                    success_lines.append(line)
+                elif line.startswith("[失败]"):
+                    failed_lines.append(line)
+                else:
+                    other_lines.append(line)
+
+        context["task_result_groups"] = {
+            "success": success_lines,
+            "failed": failed_lines,
+            "other": other_lines,
+        }
+        context["has_grouped_result"] = bool(
+            success_lines or failed_lines or other_lines
+        )
         return context
 
 
@@ -500,16 +685,21 @@ class ReleaseCenterView(
             .select_related("node", "config", "version", "operator")
             .filter(status__in=["pending", "running"])
         )
-        search = self.request.GET.get("search", "")
+        search = self.request.GET.get("search", "").strip()
         status_filter = self.request.GET.get("status", "")
 
         if search:
-            queryset = queryset.filter(
-                Q(batch_number__icontains=search)
-                | Q(config__name__icontains=search)
-                | Q(node__hostname__icontains=search)
-                | Q(operator__username__icontains=search)
-            )
+            terms = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
+            if terms:
+                for term in terms:
+                    queryset = queryset.filter(
+                        Q(batch_number__icontains=term)
+                        | Q(config__name__icontains=term)
+                        | Q(node__hostname__icontains=term)
+                        | Q(operator__username__icontains=term)
+                    )
         if status_filter:
             queryset = queryset.filter(status=status_filter)
 
@@ -562,16 +752,95 @@ class ReleaseCenterView(
         return context
 
 
-def _run_release_tasks(task_ids):
+def _run_release_tasks(task_ids, task_center_id=None):
     executor = ReleaseExecutorMixin()
+    total = len(task_ids)
+    success = 0
+    failed = 0
+    detail_lines = []
+
+    if task_center_id:
+        TaskCenterTask.objects.filter(pk=task_center_id).update(
+            status="running",
+            started_at=timezone.now(),
+            progress=0,
+        )
+
     for task_id in task_ids:
         try:
             task = ReleaseTask.objects.select_related(
                 "node", "config", "version", "operator"
             ).get(pk=task_id)
-            executor._execute_release(task, "publish")
+            ok, _ = executor._execute_release(task, "publish")
+            if ok:
+                success += 1
+                detail_lines.append(
+                    f"[成功] {task.node.hostname} / {task.config.name} v{task.version.version}"
+                )
+            else:
+                failed += 1
+                reason = (task.result or "").split("\n")[-1]
+                detail_lines.append(
+                    f"[失败] {task.node.hostname} / {task.config.name} v{task.version.version} - {reason}"
+                )
+
+            if task_center_id:
+                done = success + failed
+                TaskCenterTask.objects.filter(pk=task_center_id).update(
+                    progress=int(done * 100 / total) if total else 100,
+                    detail=f"执行中：成功 {success}，失败 {failed}，共 {total}",
+                    updated_at=timezone.now(),
+                )
         except ReleaseTask.DoesNotExist:
-            pass
+            failed += 1
+            detail_lines.append(f"[失败] 任务#{task_id} 不存在")
+
+    if task_center_id:
+        status = "success" if failed == 0 else "failed"
+        TaskCenterTask.objects.filter(pk=task_center_id).update(
+            status=status,
+            progress=100,
+            finished_at=timezone.now(),
+            result="\n".join(
+                [f"执行完成：成功 {success}，失败 {failed}，共 {total}"] + detail_lines
+            ),
+            detail=f"执行完成：成功 {success}，失败 {failed}，共 {total}",
+        )
+
+
+class TaskCenterProgressAPIView(LoginRequiredMixin, View):
+    def dispatch(self, request, *args, **kwargs):
+        self.can_read_release_tasks = user_has_permission(
+            request.user, "releases", "read"
+        )
+        self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
+        if not (self.can_read_release_tasks or self.can_read_node_tasks):
+            return forbidden_response(request, "当前账号无权限访问该功能")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get(self, request):
+        ids_raw = request.GET.get("ids", "")
+        id_list = [int(i) for i in ids_raw.split(",") if i.strip().isdigit()]
+        if not id_list:
+            return JsonResponse({"success": True, "tasks": []})
+
+        tasks = TaskCenterTask.objects.filter(id__in=id_list).order_by("-created_at")
+        if not self.can_read_release_tasks:
+            tasks = tasks.filter(
+                operation_type="node_batch_test", trigger_user=request.user
+            )
+        data = [
+            {
+                "id": t.id,
+                "status": t.status,
+                "progress": t.progress,
+                "detail": t.detail,
+                "result": t.result,
+                "finished": t.status in ["success", "failed", "cancelled"],
+            }
+            for t in tasks
+        ]
+        return JsonResponse({"success": True, "tasks": data})
 
 
 class ReleaseCenterExecuteView(
@@ -582,47 +851,78 @@ class ReleaseCenterExecuteView(
 
     def post(self, request, batch_number):
         is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        try:
+            if ReleaseTask.objects.filter(status="running").exists():
+                msg = "当前有批次正在执行中，请等待完成后再执行"
+                if is_ajax:
+                    return JsonResponse({"success": False, "message": msg})
+                messages.error(request, msg)
+                return redirect("releases:center")
 
-        if ReleaseTask.objects.filter(status="running").exists():
-            msg = "当前有批次正在执行中，请等待完成后再执行"
-            if is_ajax:
-                return JsonResponse({"success": False, "message": msg})
-            messages.error(request, msg)
-            return redirect("releases:center")
+            tasks = ReleaseTask.objects.filter(
+                batch_number=batch_number,
+                status__in=["pending"],
+            ).select_related("node", "config", "version", "operator")
 
-        tasks = ReleaseTask.objects.filter(
-            batch_number=batch_number,
-            status__in=["pending"],
-        ).select_related("node", "config", "version", "operator")
+            if not tasks.exists():
+                msg = f"批次 {batch_number} 没有可执行的任务"
+                if is_ajax:
+                    return JsonResponse({"success": False, "message": msg})
+                messages.error(request, msg)
+                return redirect("releases:center")
 
-        if not tasks.exists():
-            msg = f"批次 {batch_number} 没有可执行的任务"
-            if is_ajax:
-                return JsonResponse({"success": False, "message": msg})
-            messages.error(request, msg)
-            return redirect("releases:center")
+            task_ids = list(tasks.values_list("id", flat=True))
 
-        task_ids = list(tasks.values_list("id", flat=True))
-        thread = threading.Thread(
-            target=_run_release_tasks,
-            args=(task_ids,),
-            daemon=True,
-        )
-        thread.start()
-
-        if is_ajax:
-            return JsonResponse(
-                {
-                    "success": True,
-                    "message": f"批次 {batch_number} 开始异步执行，共 {len(task_ids)} 个任务",
-                    "task_ids": task_ids,
-                    "async": True,
-                }
+            task_center = TaskCenterTask.objects.create(
+                operation_type="release_publish",
+                status="pending",
+                detail=f"待执行任务 {len(task_ids)} 个",
+                source_batch=batch_number,
+                target_hostnames=",".join(t.node.hostname for t in tasks),
+                target_ips=",".join(t.node.ip for t in tasks),
+                target_configs=",".join(sorted({t.config.name for t in tasks})),
+                trigger_user=request.user,
             )
-        messages.info(
-            request, f"批次 {batch_number} 开始异步执行，共 {len(task_ids)} 个任务"
-        )
-        return redirect("releases:center")
+
+            thread = threading.Thread(
+                target=_run_release_tasks,
+                args=(task_ids, task_center.id),
+                daemon=True,
+            )
+            thread.start()
+
+            if is_ajax:
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "message": f"批次 {batch_number} 开始异步执行，共 {len(task_ids)} 个任务",
+                        "task_ids": task_ids,
+                        "task_center_id": task_center.id,
+                        "task_center_detail_url": reverse(
+                            "releases:task_center_detail", args=[task_center.id]
+                        ),
+                        "task_center_home_url": reverse("releases:history"),
+                        "async": True,
+                    }
+                )
+            messages.info(
+                request, f"批次 {batch_number} 开始异步执行，共 {len(task_ids)} 个任务"
+            )
+            return redirect("releases:center")
+        except OperationalError:
+            logger.exception("Batch execute failed due to database operation error")
+            msg = "执行失败：数据库结构可能未同步，请先执行 migrate"
+            if is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=500)
+            messages.error(request, msg)
+            return redirect("releases:center")
+        except Exception as exc:
+            logger.exception("Batch execute failed unexpectedly")
+            msg = f"执行失败：{exc}"
+            if is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=500)
+            messages.error(request, msg)
+            return redirect("releases:center")
 
 
 class ReleaseCenterSingleExecuteView(
@@ -633,38 +933,69 @@ class ReleaseCenterSingleExecuteView(
 
     def post(self, request, task_id):
         is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        try:
+            if ReleaseTask.objects.filter(status="running").exists():
+                msg = "当前有批次正在执行中，请等待完成后再执行"
+                if is_ajax:
+                    return JsonResponse({"success": False, "message": msg})
+                messages.error(request, msg)
+                return redirect("releases:center")
 
-        if ReleaseTask.objects.filter(status="running").exists():
-            msg = "当前有批次正在执行中，请等待完成后再执行"
+            task = get_object_or_404(
+                ReleaseTask.objects.select_related(
+                    "node", "config", "version", "operator"
+                ),
+                pk=task_id,
+                status__in=["pending", "failed"],
+            )
+
+            task_center = TaskCenterTask.objects.create(
+                operation_type="release_publish",
+                status="pending",
+                detail=f"节点 {task.node.hostname} / 配置 {task.config.name}",
+                source_batch=task.batch_number or "",
+                target_hostnames=task.node.hostname,
+                target_ips=task.node.ip,
+                target_configs=task.config.name,
+                trigger_user=request.user,
+            )
+            thread = threading.Thread(
+                target=_run_release_tasks,
+                args=([task_id], task_center.id),
+                daemon=True,
+            )
+            thread.start()
+
             if is_ajax:
-                return JsonResponse({"success": False, "message": msg})
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "message": "任务开始异步执行",
+                        "task_id": task.id,
+                        "task_center_id": task_center.id,
+                        "task_center_detail_url": reverse(
+                            "releases:task_center_detail", args=[task_center.id]
+                        ),
+                        "task_center_home_url": reverse("releases:history"),
+                        "async": True,
+                    }
+                )
+            messages.info(request, "任务开始异步执行")
+            return redirect("releases:center")
+        except OperationalError:
+            logger.exception("Single execute failed due to database operation error")
+            msg = "执行失败：数据库结构可能未同步，请先执行 migrate"
+            if is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=500)
             messages.error(request, msg)
             return redirect("releases:center")
-
-        task = get_object_or_404(
-            ReleaseTask.objects.select_related("node", "config", "version", "operator"),
-            pk=task_id,
-            status__in=["pending", "failed"],
-        )
-
-        thread = threading.Thread(
-            target=_run_release_tasks,
-            args=([task_id],),
-            daemon=True,
-        )
-        thread.start()
-
-        if is_ajax:
-            return JsonResponse(
-                {
-                    "success": True,
-                    "message": "任务开始异步执行",
-                    "task_id": task.id,
-                    "async": True,
-                }
-            )
-        messages.info(request, "任务开始异步执行")
-        return redirect("releases:center")
+        except Exception as exc:
+            logger.exception("Single execute failed unexpectedly")
+            msg = f"执行失败：{exc}"
+            if is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=500)
+            messages.error(request, msg)
+            return redirect("releases:center")
 
 
 class ReleaseTaskStatusView(LoginRequiredMixin, PermissionRequiredMixin, View):

@@ -13,6 +13,7 @@ class Config(models.Model):
         ("syncing", "同步中"),
         ("success", "同步成功"),
         ("failed", "同步失败"),
+        ("orphaned", "远程已删除"),
     ]
 
     id = models.BigAutoField(primary_key=True, verbose_name="ID")

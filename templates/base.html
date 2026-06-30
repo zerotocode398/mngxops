@@ -126,9 +126,9 @@
                         <i class="bi bi-rocket-takeoff"></i> 发布中心
                     </a>
                     {% endif %}
-                    {% if user|has_perm_code:"releases.read" %}
+                    {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
                     <a class="nav-link" href="{% url 'releases:history' %}">
-                        <i class="bi bi-clock-history"></i> 发布历史
+                        <i class="bi bi-list-task"></i> 任务中心
                     </a>
                     {% endif %}
                     {% if user|has_perm_code:"users.read" %}
@@ -197,6 +197,7 @@
         </div>
     </div>
 
+    {% csrf_token %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {

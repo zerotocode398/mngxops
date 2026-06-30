@@ -135,13 +135,15 @@ def discover_nginx_configs(
     password=None,
     private_key=None,
     nginx_conf_path="",
+    max_include_depth=3,
 ):
+    import posixpath
     import re
 
     results = []
     errors = []
 
-    include_pattern = re.compile(r"include\s+([^\s;]+)\s*;")
+    include_pattern = re.compile(r"include\s+([^;]+?)\s*;")
     skip_files = {
         "mime.types",
         "fastcgi_params",
@@ -153,7 +155,7 @@ def discover_nginx_configs(
         "win-utf",
     }
 
-    def is_builtin_file(path):
+    def is_builtin_file(path: str):
         name = path.split("/")[-1]
         if name in skip_files:
             return True
@@ -161,11 +163,21 @@ def discover_nginx_configs(
             return True
         return False
 
-    pending = [nginx_conf_path]
+    def normalize_include_path(raw_path: str, current_dir: str) -> str:
+        # Support include with quotes and relative segments like ../conf.d/*.conf
+        include_path = (raw_path or "").strip().strip("\"'")
+        if not include_path:
+            return ""
+        if include_path.startswith("/"):
+            return str(posixpath.normpath(include_path))
+        return str(posixpath.normpath(posixpath.join(current_dir, include_path)))
+
+    pending = [(str(nginx_conf_path), 0)]
     seen = set()
+    depth_limited = set()
 
     while pending:
-        current_path = pending.pop(0)
+        current_path, current_depth = pending.pop(0)
         if current_path in seen:
             continue
         seen.add(current_path)
@@ -187,11 +199,11 @@ def discover_nginx_configs(
                 }
             )
 
-        current_dir = "/".join(current_path.split("/")[:-1])
+        current_dir = posixpath.dirname(current_path) or "/"
         for match in include_pattern.finditer(content):
-            include_path = match.group(1)
-            if not include_path.startswith("/"):
-                include_path = f"{current_dir}/{include_path}"
+            include_path = normalize_include_path(match.group(1), current_dir)
+            if not include_path:
+                continue
 
             if "*" in include_path:
                 files = expand_remote_glob(
@@ -201,10 +213,21 @@ def discover_nginx_configs(
                 files = [include_path]
 
             for f_path in files:
-                if is_builtin_file(f_path):
+                normalized_f_path: str = str(f_path).strip().strip("\"'")
+                if not normalized_f_path:
                     continue
-                if f_path not in seen:
-                    pending.append(f_path)
+                if is_builtin_file(normalized_f_path):
+                    continue
+                if normalized_f_path not in seen:
+                    next_depth = current_depth + 1
+                    if next_depth > max_include_depth:
+                        if normalized_f_path not in depth_limited:
+                            errors.append(
+                                f"include 递归超限（>{max_include_depth}）：{normalized_f_path}"
+                            )
+                            depth_limited.add(normalized_f_path)
+                        continue
+                    pending.append((str(normalized_f_path), next_depth))
 
     return results, errors
 

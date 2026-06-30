@@ -39,6 +39,7 @@ urlpatterns = [
     ),
     path("<int:pk>/", views.ConfigDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", views.ConfigEditView.as_view(), name="edit"),
+    path("<int:pk>/delete/", views.ConfigDeleteView.as_view(), name="delete"),
     path("<int:pk>/update/", views.ConfigUpdateView.as_view(), name="update"),
     path("<int:pk>/versions/", views.ConfigVersionListView.as_view(), name="versions"),
     path(

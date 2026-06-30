@@ -17,7 +17,7 @@
                             <i class="bi bi-plus-lg"></i> 新建发布
                         </a>
                         <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary">
-                            <i class="bi bi-clock-history"></i> 完整历史
+                            <i class="bi bi-list-task"></i> 任务中心
                         </a>
                     </div>
                 </div>
@@ -32,15 +32,16 @@
                         </span>
                     </div>
 
-                    <form method="get" class="row g-2 mb-3">
-                        <div class="col-md-4">
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                <input type="text" class="form-control" name="search" value="{{ search }}" placeholder="搜索批次号 / 节点 / 配置 / 操作人">
+                    <form method="get" class="row g-2 mb-3" id="releaseSearchForm">
+                        <div class="col-md-6">
+                            <div class="tag-input-wrapper form-control" id="releaseSearchTagWrapper">
+                                <input type="text" class="tag-input-field" id="releaseSearchField"
+                                    placeholder="输入条件后回车搜索：批次号/节点/配置/操作人">
                             </div>
+                            <input type="hidden" name="search" id="releaseSearchHidden" value="{{ search }}">
                         </div>
                         <div class="col-md-2">
-                            <select class="form-select form-select-sm" name="status">
+                            <select class="form-select form-select-sm" name="status" onchange="document.getElementById('releaseSearchForm').submit()">
                                 <option value="">全部状态</option>
                                 {% for val, label in status_choices %}
                                 {% if val == 'pending' or val == 'running' %}
@@ -48,11 +49,6 @@
                                 {% endif %}
                                 {% endfor %}
                             </select>
-                        </div>
-                        <div class="col-md-2">
-                            <button type="submit" class="btn btn-sm btn-primary w-100">
-                                <i class="bi bi-search"></i> 搜索
-                            </button>
                         </div>
                         <div class="col-md-2">
                             <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary w-100">
@@ -92,6 +88,7 @@
                             </div>
                             <div>
                                 {% if batch.0.status == 'pending' %}
+                                {% if user|has_perm_code:"releases.update" %}
                                 <form method="post" action="{% url 'releases:center_cancel' batch_number %}" class="d-inline" id="form-cancel-{{ batch_number }}">
                                     {% csrf_token %}
                                     <button type="button" class="btn btn-sm btn-outline-danger btn-cancel-batch" data-batch="{{ batch_number }}" data-count="{{ batch|length }}">
@@ -101,6 +98,9 @@
                                     <button type="button" class="btn btn-sm btn-success btn-execute-batch ms-1" data-batch="{{ batch_number }}" data-count="{{ batch|length }}">
                                         <i class="bi bi-play-fill"></i> 发布
                                     </button>
+                                {% else %}
+                                <span class="text-muted small">无发布操作权限</span>
+                                {% endif %}
                                 {% elif batch.0.status == 'running' %}
                                 <span class="text-info small">
                                     <span class="spinner-border spinner-border-sm"></span> 执行中...
@@ -157,12 +157,14 @@
                                                 <td>{{ task.operator.username }}</td>
                                                 <td>
                                                     <div class="btn-group btn-group-sm">
+                                                        {% if user|has_perm_code:"releases.update" %}
                                                         {% if task.status == "pending" or task.status == "failed" %}
                                                         {% if not task.node.is_locked %}
                                                         <button type="button" class="btn btn-outline-success btn-execute-single"
                                                                 data-task-id="{{ task.id }}" data-node="{{ task.node.hostname }}" data-config="{{ task.config.name }}">
                                                             <i class="bi bi-play-fill"></i>
                                                         </button>
+                                                        {% endif %}
                                                         {% endif %}
                                                         {% endif %}
                                                         <a href="{% url 'releases:detail' task.id %}" class="btn btn-outline-secondary">
@@ -211,7 +213,7 @@
                         <i class="bi bi-clock-history text-info"></i> 最近发布记录
                     </h6>
                     <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-info">
-                        <i class="bi bi-list-ul"></i> 查看全部
+                        <i class="bi bi-list-ul"></i> 去任务中心
                     </a>
                 </div>
                 <div class="card-body p-0">
@@ -274,7 +276,9 @@
                                     <td><span class="badge bg-secondary version-link" data-version-id="{{ task.version.id }}" style="cursor: pointer;">v{{ task.version.version }}</span></td>
                                     <td>
                                         {% if task.batch_number %}
-                                        <code class="small">{{ task.batch_number }}</code>
+                                        <a href="{% url 'releases:history' %}?search={{ task.batch_number|urlencode }}&focus_tag={{ task.batch_number|urlencode }}" class="text-decoration-none">
+                                            <code class="small">{{ task.batch_number }}</code>
+                                        </a>
                                         {% else %}
                                         <small class="text-muted">-</small>
                                         {% endif %}
@@ -375,16 +379,15 @@
     </div>
 </div>
 
-<!-- 发布结果 Toast -->
-<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
-    <div id="publishToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">
-        <div class="toast-header">
-            <i class="bi bi-check-circle-fill text-success me-2" id="toastIcon"></i>
-            <strong class="me-auto" id="toastTitle">发布结果</strong>
-            <small id="toastTime"></small>
-            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="关闭"></button>
+<!-- 发布结果自定义居中弹窗 -->
+<div id="publishOverlay" class="publish-overlay" style="display: none;">
+    <div class="publish-popup" id="publishPopup">
+        <div class="publish-popup-icon" id="popupIcon">
+            <i class="bi bi-check-circle-fill"></i>
         </div>
-        <div class="toast-body" id="toastBody"></div>
+        <h5 class="publish-popup-title" id="popupTitle">发布结果</h5>
+        <p class="publish-popup-msg" id="popupMsg"></p>
+        <p class="publish-popup-hint" id="popupHint"></p>
     </div>
 </div>
 {% endblock %}
@@ -392,6 +395,45 @@
 {% block extra_js %}
 <style>
     .version-link:hover { opacity: 0.8; }
+    .tag-input-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        min-height: 38px;
+        cursor: text;
+        overflow-y: auto;
+    }
+    .tag-input-wrapper .tag-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #e9ecef;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove:hover {
+        opacity: 1;
+        color: #dc3545;
+    }
+    .tag-input-wrapper .tag-input-field {
+        border: none;
+        outline: none;
+        flex: 1;
+        min-width: 120px;
+        padding: 0;
+        background: transparent;
+    }
     #versionModal .modal-body pre {
         max-height: 450px;
         overflow: auto;
@@ -404,58 +446,130 @@
         white-space: pre-wrap;
         word-wrap: break-word;
     }
+
+    .publish-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .publish-popup {
+        background: #fff;
+        border-radius: 16px;
+        padding: 36px 44px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+        cursor: pointer;
+        max-width: 420px;
+        width: 90%;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .publish-popup:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+    }
+    .publish-popup-icon {
+        font-size: 3rem;
+        margin-bottom: 12px;
+    }
+    .publish-popup-icon.success { color: #198754; }
+    .publish-popup-icon.fail { color: #dc3545; }
+    .publish-popup-title {
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: #212529;
+    }
+    .publish-popup-msg {
+        color: #6c757d;
+        margin-bottom: 6px;
+        font-size: 0.95rem;
+    }
+    .publish-popup-hint {
+        color: #adb5bd;
+        font-size: 0.8rem;
+        margin-bottom: 0;
+    }
 </style>
 <script>
 (function() {
     const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
     const versionModal = new bootstrap.Modal(document.getElementById('versionModal'));
-    const publishToast = new bootstrap.Toast(document.getElementById('publishToast'));
     let confirmCallback = null;
+    let popupTimer = null;
+    let popupDetailUrl = null;
+
+    const overlayEl = document.getElementById('publishOverlay');
+    const popupEl = document.getElementById('publishPopup');
 
     function getCsrfToken() {
         return document.querySelector('[name=csrfmiddlewaretoken]').value;
     }
 
-    function showPublishToast(success, title, message, detailUrl) {
-        const toastEl = document.getElementById('publishToast');
-        const iconEl = document.getElementById('toastIcon');
-        const titleEl = document.getElementById('toastTitle');
-        const bodyEl = document.getElementById('toastBody');
-        const timeEl = document.getElementById('toastTime');
+    function showPublishPopup(success, title, message, detailUrl) {
+        const iconEl = document.getElementById('popupIcon');
+        const titleEl = document.getElementById('popupTitle');
+        const msgEl = document.getElementById('popupMsg');
+        const hintEl = document.getElementById('popupHint');
 
-        iconEl.className = success
-            ? 'bi bi-check-circle-fill text-success me-2'
-            : 'bi bi-exclamation-triangle-fill text-danger me-2';
+        iconEl.className = 'publish-popup-icon ' + (success ? 'success' : 'fail');
+        iconEl.innerHTML = success
+            ? '<i class="bi bi-check-circle-fill"></i>'
+            : '<i class="bi bi-exclamation-triangle-fill"></i>';
         titleEl.textContent = title;
-        bodyEl.textContent = message;
-        timeEl.textContent = new Date().toLocaleTimeString();
+        msgEl.textContent = message;
 
-        if (detailUrl) {
-            toastEl.dataset.detailUrl = detailUrl;
-            toastEl.style.cursor = 'pointer';
-            toastEl.title = '点击查看详情';
+        popupDetailUrl = detailUrl || null;
+        if (popupDetailUrl) {
+            popupEl.style.cursor = 'pointer';
+            hintEl.textContent = '3 秒后自动刷新，点击可跳转任务中心';
         } else {
-            delete toastEl.dataset.detailUrl;
-            toastEl.style.cursor = '';
-            toastEl.title = '';
+            popupEl.style.cursor = 'default';
+            hintEl.textContent = '3 秒后自动刷新';
         }
 
-        publishToast.show();
+        overlayEl.style.display = 'flex';
+        schedulePopupAutoRefresh();
     }
 
-    // Toast click → navigate to detail
-    document.getElementById('publishToast').addEventListener('click', function() {
-        var url = this.dataset.detailUrl;
-        if (url) {
-            window.location.href = url;
+    function hidePublishPopup() {
+        overlayEl.style.display = 'none';
+        clearPopupAutoRefresh();
+    }
+
+    function schedulePopupAutoRefresh() {
+        clearPopupAutoRefresh();
+        popupTimer = setTimeout(function() {
+            popupTimer = null;
+            location.reload();
+        }, 3000);
+    }
+
+    function clearPopupAutoRefresh() {
+        if (popupTimer) {
+            clearTimeout(popupTimer);
+            popupTimer = null;
+        }
+    }
+
+    // Popup click → navigate to task center
+    popupEl.addEventListener('click', function() {
+        clearPopupAutoRefresh();
+        if (popupDetailUrl) {
+            window.location.href = popupDetailUrl;
         }
     });
 
     function pollTaskStatus(taskId, detailUrl, startTime) {
         var elapsed = Date.now() - startTime;
         if (elapsed > 60000) {
-            showPublishToast(false, '执行超时', '任务执行超过60秒，请手动查看详情', detailUrl);
-            setTimeout(function() { window.location.href = detailUrl; }, 1500);
+            showPublishPopup(false, '执行超时', '任务执行超过60秒，请手动查看详情', detailUrl);
+            schedulePopupAutoRefresh();
             return;
         }
 
@@ -466,13 +580,13 @@
         .then(function(data) {
             if (data.finished) {
                 if (data.status === 'success') {
-                    showPublishToast(true, '发布成功',
+                    showPublishPopup(true, '发布成功',
                         data.node + ' / ' + data.config + ' 发布成功', detailUrl);
                 } else {
-                    showPublishToast(false, '发布失败',
+                    showPublishPopup(false, '发布失败',
                         data.node + ' / ' + data.config + ' 发布失败', detailUrl);
                 }
-                setTimeout(function() { window.location.href = detailUrl; }, 1500);
+                schedulePopupAutoRefresh();
             } else {
                 setTimeout(function() { pollTaskStatus(taskId, detailUrl, startTime); }, 2000);
             }
@@ -494,7 +608,17 @@
                 'X-CSRFToken': getCsrfToken()
             }
         })
-        .then(function(r) { return r.json(); })
+        .then(async function(r) {
+            const contentType = r.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error('服务器返回非JSON响应，请检查权限或登录状态');
+            }
+            const data = await r.json();
+            if (!r.ok) {
+                throw new Error(data.message || ('请求失败（HTTP ' + r.status + '）'));
+            }
+            return data;
+        })
         .then(function(data) {
             btn.disabled = false;
             btn.innerHTML = '确认';
@@ -502,7 +626,7 @@
             onResponse(data, taskId);
         })
         .catch(function(err) {
-            showPublishToast(false, '请求失败', '网络错误：' + err.message);
+            showPublishPopup(false, '请求失败', err.message);
             btn.disabled = false;
             btn.innerHTML = '确认';
             modal.hide();
@@ -526,7 +650,7 @@
         btn.addEventListener('click', function() {
             var batch = this.dataset.batch;
             var count = this.dataset.count;
-            var url = '/releases/center/execute/' + batch + '/';
+            var url = '/releases/center/' + batch + '/execute/';
             showConfirm('确认发布', '确认执行批次 ' + batch + ' 的全部 ' + count + ' 个任务？', function() {
                 var thatBtn = btn;
                 thatBtn.disabled = true;
@@ -535,13 +659,14 @@
                     thatBtn.disabled = false;
                     thatBtn.innerHTML = '<i class="bi bi-play-fill"></i> 发布';
                     if (data.success && data.async) {
-                        showPublishToast(true, '异步执行中', data.message);
-                        setTimeout(function() { location.reload(); }, 2000);
+                        const jumpUrl = data.task_center_home_url || '{% url "releases:history" %}';
+                        showPublishPopup(true, '异步执行中', data.message, jumpUrl);
+                        schedulePopupAutoRefresh();
                     } else if (data.success) {
-                        showPublishToast(true, '发布完成', data.message);
-                        setTimeout(function() { location.reload(); }, 1500);
+                        showPublishPopup(true, '发布完成', data.message);
+                        schedulePopupAutoRefresh();
                     } else {
-                        showPublishToast(false, '发布失败', data.message);
+                        showPublishPopup(false, '发布失败', data.message);
                     }
                 });
             });
@@ -565,7 +690,6 @@
             var node = this.dataset.node;
             var config = this.dataset.config;
             var url = '/releases/center/task/' + taskId + '/execute/';
-            var detailUrl = '/releases/detail/' + taskId + '/';
             showConfirm('确认发布单个任务', '确认将配置 ' + config + ' 发布到节点 ' + node + '？', function() {
                 var thatBtn = btn;
                 thatBtn.disabled = true;
@@ -574,14 +698,17 @@
                     thatBtn.disabled = false;
                     thatBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
                     if (data.success && data.async) {
-                        showPublishToast(true, '异步执行中', data.message);
-                        pollTaskStatus(tid, detailUrl, Date.now());
+                        var jumpUrl = data.task_center_home_url || '{% url "releases:history" %}';
+                        showPublishPopup(true, '异步执行中', data.message, jumpUrl);
+                        pollTaskStatus(tid, jumpUrl, Date.now());
                     } else if (data.success) {
-                        showPublishToast(true, '发布成功', data.message, detailUrl);
-                        setTimeout(function() { window.location.href = detailUrl; }, 1500);
+                        var successJump = data.task_center_home_url || '{% url "releases:history" %}';
+                        showPublishPopup(true, '发布成功', data.message, successJump);
+                        schedulePopupAutoRefresh();
                     } else {
-                        showPublishToast(false, '发布失败', data.message, detailUrl);
-                        setTimeout(function() { window.location.href = detailUrl; }, 1500);
+                        var failJump = data.task_center_home_url || '{% url "releases:history" %}';
+                        showPublishPopup(false, '发布失败', data.message, failJump);
+                        schedulePopupAutoRefresh();
                     }
                 });
             });
@@ -627,6 +754,92 @@
             });
         }
     });
+
+    function initReleaseSearchTagInput() {
+        var wrapper = document.getElementById('releaseSearchTagWrapper');
+        var field = document.getElementById('releaseSearchField');
+        var hidden = document.getElementById('releaseSearchHidden');
+        var form = document.getElementById('releaseSearchForm');
+
+        if (!wrapper || !field || !hidden || !form) {
+            return;
+        }
+
+        function focusFieldWithCaret() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function(b) {
+                values.push(b.getAttribute('data-value'));
+            });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        function loadInitial() {
+            var searchVal = hidden.value.trim();
+            if (searchVal) {
+                var tags = searchVal.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+                tags.forEach(function(tag) { createBadge(tag); });
+            }
+            field.value = '';
+        }
+
+        field.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                }
+                updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
+                form.submit();
+            }
+
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
+                }
+            }
+        });
+
+        wrapper.addEventListener('click', function(e) {
+            if (e.target === wrapper) {
+                focusFieldWithCaret();
+            }
+        });
+
+        loadInitial();
+        focusFieldWithCaret();
+    }
+
+    initReleaseSearchTagInput();
 })();
 </script>
 {% endblock %}

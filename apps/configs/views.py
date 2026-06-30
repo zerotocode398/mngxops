@@ -1,6 +1,7 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
-from django.db.models import Q
+from django.core.paginator import Paginator
+from django.db.models import Count, Q
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse_lazy, reverse
 from django.views.generic import ListView, DetailView, UpdateView, CreateView, View
@@ -9,6 +10,7 @@ import difflib
 import hashlib
 import json
 import uuid
+from collections import OrderedDict
 from urllib.parse import quote
 from django.core.cache import cache
 
@@ -30,7 +32,7 @@ class ConfigListView(
     model = Config
     template_name = "configs/list.html"
     context_object_name = "configs"
-    paginate_by = 10
+    paginate_by = None
     ordering = ["-updated_at"]
     permission_resource = "configs"
     permission_action = "read"
@@ -43,9 +45,16 @@ class ConfigListView(
         env_filter = self.request.GET.get("environment", "")
         status_filter = self.request.GET.get("status", "")
         if search:
-            queryset = queryset.filter(
-                Q(name__icontains=search) | Q(node__hostname__icontains=search)
-            )
+            search_terms = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
+            if search_terms:
+                for term in search_terms:
+                    queryset = queryset.filter(
+                        Q(name__icontains=term)
+                        | Q(node__hostname__icontains=term)
+                        | Q(node__ip__icontains=term)
+                    )
         if env_filter:
             queryset = queryset.filter(node__environment=env_filter)
         if status_filter:
@@ -53,24 +62,62 @@ class ConfigListView(
         return queryset.select_related("node", "created_by")
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        from collections import OrderedDict
-
         search = self.request.GET.get("search", "")
         env_filter = self.request.GET.get("environment", "")
         status_filter = self.request.GET.get("status", "")
 
-        context["search"] = search
-        context["env_filter"] = env_filter
-        context["status_filter"] = status_filter
+        configs = self.get_queryset()
 
         node_configs = OrderedDict()
-        for config in context["configs"]:
+        for config in configs:
             node_configs.setdefault(config.node, []).append(config)
 
-        context["node_configs"] = node_configs
-        context["has_any_filter"] = bool(search or env_filter or status_filter)
+        nodes = sorted(node_configs.keys(), key=lambda n: n.hostname)
+
+        orphaned_info = Config.objects.filter(
+            node__in=nodes, sync_status="orphaned"
+        ).values_list("node_id", "name")
+        orphaned_by_node = {}
+        orphaned_counts = {}
+        for node_id, name in orphaned_info:
+            orphaned_by_node.setdefault(node_id, []).append(name)
+            orphaned_counts[node_id] = len(orphaned_by_node[node_id])
+        for node in nodes:
+            node.orphaned_count = orphaned_counts.get(node.id, 0)
+            node.orphaned_names = orphaned_by_node.get(node.id, [])
+
+        pending_info = Config.objects.filter(
+            node__in=nodes, sync_status="pending"
+        ).values_list("node_id", "name")
+        pending_by_node = {}
+        pending_counts = {}
+        for node_id, name in pending_info:
+            pending_by_node.setdefault(node_id, []).append(name)
+            pending_counts[node_id] = len(pending_by_node[node_id])
+        for node in nodes:
+            node.pending_count = pending_counts.get(node.id, 0)
+            node.pending_names = pending_by_node.get(node.id, [])
+
+        per_page = self.get_paginate_by(None)
+        paginator = Paginator(nodes, per_page)
+        page_num = self.request.GET.get("page", 1)
+        page_obj = paginator.get_page(page_num)
+
+        paginated_node_configs = OrderedDict()
+        for node in page_obj.object_list:
+            paginated_node_configs[node] = node_configs[node]
+
+        context = {
+            "node_configs": paginated_node_configs,
+            "page_obj": page_obj,
+            "is_paginated": page_obj.has_other_pages(),
+            "search": search,
+            "env_filter": env_filter,
+            "status_filter": status_filter,
+            "has_any_filter": bool(search or env_filter or status_filter),
+            "per_page": per_page,
+            "per_page_options": self.per_page_options,
+        }
         return context
 
 
@@ -515,16 +562,21 @@ class ConfigSyncWizardView(
 
         group_search = self.request.GET.get("group_search", "")
         if group_search:
-            group_names = [
-                name.strip() for name in group_search.split(",") if name.strip()
+            tags = [
+                name.strip()
+                for name in group_search.replace("，", ",").split(",")
+                if name.strip()
             ]
-            if group_names:
-                from functools import reduce
-                import operator
+            if tags:
                 from django.db.models import Q
 
-                q_objects = [Q(groups__name__icontains=name) for name in group_names]
-                queryset = queryset.filter(reduce(operator.or_, q_objects)).distinct()
+                for tag in tags:
+                    queryset = queryset.filter(
+                        Q(groups__name__icontains=tag)
+                        | Q(hostname__icontains=tag)
+                        | Q(ip__icontains=tag)
+                    )
+                queryset = queryset.distinct()
 
         return queryset
 
@@ -537,6 +589,7 @@ class ConfigSyncWizardView(
         node_sync_paths = {}
         node_sync_summary = {}
         node_groups = {}
+        node_pending_configs = {}
         for node in context["nodes"]:
             setting = get_or_create_sync_setting(node)
             node_sync_paths[node.id] = setting.main_conf_path
@@ -565,10 +618,14 @@ class ConfigSyncWizardView(
                 }
             else:
                 node_sync_summary[node.id] = None
+            node_pending_configs[node.id] = [
+                c.name for c in configs if c.sync_status == "pending"
+            ]
 
         context["node_sync_paths"] = node_sync_paths
         context["node_sync_summary"] = node_sync_summary
         context["node_groups"] = node_groups
+        context["node_pending_configs"] = node_pending_configs
         return context
 
 
@@ -613,19 +670,21 @@ class ConfigSyncRemoteView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 nginx_conf_path=nginx_conf_path,
             )
 
-        created, updated, skipped = sync_discovered_configs(
+        created, updated, skipped, orphaned = sync_discovered_configs(
             node, discovered, request.user, remark="从远程节点全量同步"
         )
 
         if discovered:
             save_sync_path(node, nginx_conf_path, request.user)
 
-        if created or updated:
+        if created or updated or orphaned:
             parts = []
             if created:
                 parts.append(f"新增 {len(created)} 个")
             if updated:
                 parts.append(f"更新 {len(updated)} 个")
+            if orphaned:
+                parts.append(f"标记远程已删除 {len(orphaned)} 个")
             msg = f"节点 {node.hostname} 同步完成：{'，'.join(parts)}"
             if skipped:
                 msg += f"，{len(skipped)} 个未变化"
@@ -688,7 +747,7 @@ class ConfigSyncPartialView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 nginx_conf_path=nginx_conf_path,
             )
 
-        created, updated, skipped = sync_selected_configs(
+        created, updated, skipped, _ = sync_selected_configs(
             node,
             selected_paths,
             discovered,
@@ -745,6 +804,7 @@ class ConfigSyncBatchView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         total_created = 0
         total_updated = 0
+        total_orphaned = 0
         total_errors = []
         skip_nodes = []
 
@@ -784,11 +844,12 @@ class ConfigSyncBatchView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
             total_errors.extend(errors)
 
-            created, updated, _ = sync_discovered_configs(
+            created, updated, _, orphaned = sync_discovered_configs(
                 node, discovered, request.user, remark="批量节点全量同步"
             )
             total_created += len(created)
             total_updated += len(updated)
+            total_orphaned += len(orphaned)
 
             if discovered:
                 save_sync_path(node, nginx_conf_path, request.user)
@@ -798,6 +859,8 @@ class ConfigSyncBatchView(LoginRequiredMixin, PermissionRequiredMixin, View):
             parts.append(f"新增 {total_created} 个配置")
         if total_updated:
             parts.append(f"更新 {total_updated} 个配置")
+        if total_orphaned:
+            parts.append(f"标记远程已删除 {total_orphaned} 个配置")
         msg = f"批量同步完成：{'，'.join(parts)}"
         if skip_nodes:
             msg += (
@@ -807,7 +870,12 @@ class ConfigSyncBatchView(LoginRequiredMixin, PermissionRequiredMixin, View):
             msg += f"，{len(total_errors)} 个错误"
         messages.success(request, msg)
 
-        if total_errors and not total_created and not total_updated:
+        if (
+            total_errors
+            and not total_created
+            and not total_updated
+            and not total_orphaned
+        ):
             error_msg = f"批量同步失败：{'; '.join(total_errors[:5])}"
             url = reverse("configs:sync_wizard")
             return redirect(f"{url}?sync_error={quote(error_msg)}")
@@ -825,6 +893,14 @@ class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         config = get_object_or_404(Config, pk=pk)
         node = config.node
+
+        if config.sync_status == "orphaned":
+            messages.error(
+                request,
+                f"配置 {config.name} ({node.hostname}) 远程已删除，无法更新。您可以删除此配置的本地记录。",
+            )
+            return redirect("configs:list")
+
         if node.is_locked:
             messages.error(request, f"节点 {node.hostname} 已锁定，无法更新配置")
             return redirect("configs:list")
@@ -852,7 +928,19 @@ class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
 
         if not success:
-            messages.error(request, f"读取远程文件失败：{config.file_path} — {content}")
+            import re
+
+            if re.search(r"No such file|没有那个文件|不存在", content):
+                config.sync_status = "orphaned"
+                config.save(update_fields=["sync_status", "updated_at"])
+                messages.error(
+                    request,
+                    f"远程文件不存在：{config.file_path} → 已标记为远程已删除。您可以删除此配置的本地记录。",
+                )
+            else:
+                messages.error(
+                    request, f"读取远程文件失败：{config.file_path} — {content}"
+                )
             return redirect("configs:list")
 
         if config.content == content:
@@ -985,6 +1073,7 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
 
         form.instance.created_by = request.user
         form.instance.current_version = 1
+        form.instance.sync_status = "pending"
         remark = form.cleaned_data.get("remark", "")
 
         response = super().form_valid(form)
@@ -1080,6 +1169,7 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
                 file_path=file_path,
                 content=content,
                 current_version=1,
+                sync_status="pending",
                 created_by=self.request.user,
             )
             config.save()
@@ -1219,6 +1309,10 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "hostname": "",
                 "created": 0,
                 "updated": 0,
+                "orphaned": 0,
+                "skipped": 0,
+                "total_files": 0,
+                "completed_files": 0,
                 "error": "",
                 "time": 0,
             }
@@ -1227,6 +1321,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         total_created = 0
         total_updated = 0
+        total_orphaned = 0
         total_errors = []
 
         for node_id in node_ids:
@@ -1286,16 +1381,26 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 progress["nodes"][str(node_id)]["error"] = "; ".join(errors[:3])
 
             if discovered:
-                created, updated, _ = sync_discovered_configs(
-                    node, discovered, request.user, remark="批量节点全量同步"
+                created, updated, skipped, orphaned = sync_discovered_configs(
+                    node,
+                    discovered,
+                    request.user,
+                    remark="批量节点全量同步",
                 )
                 save_sync_path(node, nginx_conf_path, request.user)
-                files_detail = _build_files_detail(discovered, errors, created, updated)
+                files_detail = _build_files_detail(
+                    discovered, errors, created, updated, orphaned
+                )
+                progress["nodes"][str(node_id)]["files"] = files_detail
+                progress["nodes"][str(node_id)]["total_files"] = len(discovered)
+                progress["nodes"][str(node_id)]["completed_files"] = len(discovered)
                 progress["nodes"][str(node_id)]["created"] = len(created)
                 progress["nodes"][str(node_id)]["updated"] = len(updated)
-                progress["nodes"][str(node_id)]["files"] = files_detail
+                progress["nodes"][str(node_id)]["orphaned"] = len(orphaned)
+                progress["nodes"][str(node_id)]["skipped"] = len(skipped)
                 total_created += len(created)
                 total_updated += len(updated)
+                total_orphaned += len(orphaned)
             else:
                 progress["nodes"][str(node_id)]["error"] = (
                     progress["nodes"][str(node_id)]["error"]
@@ -1322,22 +1427,25 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "task_id": task_id,
                 "total_created": total_created,
                 "total_updated": total_updated,
+                "total_orphaned": total_orphaned,
                 "total_errors": len(total_errors),
                 "summary": {
                     "created": total_created,
                     "updated": total_updated,
+                    "orphaned": total_orphaned,
                     "errors": total_errors[:5],
                 },
             }
         )
 
 
-def _build_files_detail(discovered, errors, created, updated):
+def _build_files_detail(discovered, errors, created, updated, orphaned=None):
     import re
 
     files_detail = []
     created_set = set(created)
     updated_set = set(updated)
+    orphaned_set = set(orphaned) if orphaned else set()
 
     for item in discovered:
         file_status = "skipped"
@@ -1351,6 +1459,16 @@ def _build_files_detail(discovered, errors, created, updated):
                 "name": item["name"],
                 "status": file_status,
                 "error": "",
+            }
+        )
+
+    for name in orphaned_set:
+        files_detail.append(
+            {
+                "path": "",
+                "name": name,
+                "status": "orphaned",
+                "error": "远程已删除",
             }
         )
 
@@ -1410,6 +1528,9 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                     "created": 0,
                     "updated": 0,
                     "skipped": 0,
+                    "orphaned": 0,
+                    "total_files": 0,
+                    "completed_files": 0,
                     "error": "",
                     "time": 0,
                 }
@@ -1446,18 +1567,43 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                 nginx_conf_path=main_conf_path,
             )
 
-        created, updated, skipped = sync_discovered_configs(
-            node, discovered, request.user, remark="从远程节点全量同步"
+        progress["total"] = len(discovered)
+        progress["nodes"][str(node_id)]["total_files"] = len(discovered)
+        cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+
+        def _on_file_progress(action, name):
+            node_data = progress["nodes"][str(node_id)]
+            node_data["completed_files"] += 1
+            if action == "created":
+                node_data["created"] += 1
+            elif action == "updated":
+                node_data["updated"] += 1
+            elif action == "skipped":
+                node_data["skipped"] += 1
+            elif action == "orphaned":
+                node_data["orphaned"] += 1
+            progress["completed"] = node_data["completed_files"]
+            cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+
+        created, updated, skipped, orphaned = sync_discovered_configs(
+            node,
+            discovered,
+            request.user,
+            remark="从远程节点全量同步",
+            progress_callback=_on_file_progress,
         )
 
         if discovered:
             save_sync_path(node, main_conf_path, request.user)
 
-        files_detail = _build_files_detail(discovered, errors, created, updated)
+        files_detail = _build_files_detail(
+            discovered, errors, created, updated, orphaned
+        )
 
         progress["nodes"][str(node_id)]["created"] = len(created)
         progress["nodes"][str(node_id)]["updated"] = len(updated)
         progress["nodes"][str(node_id)]["skipped"] = len(skipped)
+        progress["nodes"][str(node_id)]["orphaned"] = len(orphaned)
         progress["nodes"][str(node_id)]["files"] = files_detail
 
         if errors:
@@ -1499,3 +1645,25 @@ class ConfigSyncProgressView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "message": "任务不存在或已过期"})
 
         return JsonResponse({"success": True, "progress": progress})
+
+
+class ConfigDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_resource = "configs"
+    permission_action = "delete"
+
+    def post(self, request, pk):
+        config = get_object_or_404(Config, pk=pk)
+        node_hostname = config.node.hostname
+        config_name = config.name
+
+        if config.sync_status not in ("orphaned", "pending"):
+            messages.error(
+                request,
+                f"只能删除「远程已删除」或「等待同步」的配置，"
+                f"{config_name} 当前状态为「{config.get_sync_status_display()}」",
+            )
+            return redirect("configs:list")
+
+        config.delete()
+        messages.success(request, f"已删除配置 {config_name}（节点 {node_hostname}）")
+        return redirect("configs:list")

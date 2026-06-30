@@ -50,10 +50,10 @@
                                 <div class="row">
                                     <div class="col-md-8">
                                         <div class="d-flex gap-2 mb-3 flex-wrap">
-                                            <div class="input-group input-group-sm flex-grow-1" style="max-width: 260px;">
-                                                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                                <input type="text" class="form-control" id="nodeSearch" placeholder="搜索节点名称 / IP">
+                                            <div class="tag-input-wrapper form-control" id="nodeSearchTagWrapper" style="max-width: 320px;">
+                                                <input type="text" class="tag-input-field" id="nodeSearchField" placeholder="主机名或 IP 或节点组">
                                             </div>
+                                            <input type="hidden" id="nodeSearchHidden" value="">
                                             <select class="form-select form-select-sm" id="envFilter" style="max-width: 120px;">
                                                 <option value="">全部环境</option>
                                                 <option value="dev">开发</option>
@@ -102,7 +102,7 @@
                                         <div class="card border-primary h-100">
                                             <div class="card-header bg-primary bg-opacity-10 border-primary py-2">
                                                 <strong><i class="bi bi-check2-square"></i> 已选节点</strong>
-                                                <span class="badge bg-primary ms-1" id="selectedNodeCount">0/5</span>
+                                                <span class="badge bg-primary ms-1" id="selectedNodeCount">0</span>
                                             </div>
                                             <div class="card-body p-0" style="max-height: 360px; overflow-y: auto;">
                                                 <div id="selectedNodeList" class="list-group list-group-flush">
@@ -133,37 +133,67 @@
                             <h5 class="mb-3">
                                 <span class="step-badge">2</span> 选择配置文件
                             </h5>
-                            <div class="alert alert-light border mb-3 py-2 ps-4">
-                                <i class="bi bi-server"></i>
-                                已选节点：<strong id="step2NodeList"></strong>
+                            <div class="alert alert-light border mb-3 py-2 px-3 d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="bi bi-server"></i>
+                                    <strong id="step2CurrentNodeTitle">当前节点 0/0</strong>
+                                </div>
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary" id="btnStep2NodePrev">
+                                        <i class="bi bi-chevron-left"></i> 上一个节点
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" id="btnStep2NodeNext">
+                                        下一个节点 <i class="bi bi-chevron-right"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="table-responsive border rounded" style="max-height: 400px; overflow-y: auto;">
-                                <table class="table table-sm table-hover mb-0">
-                                    <thead class="table-light sticky-top">
-                                        <tr>
-                                            <th style="width: 30px;"></th>
-                                            <th>配置名称</th>
-                                            <th>文件路径</th>
-                                            <th>所属节点</th>
-                                            <th style="width: 160px;">选择版本</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="configTableBody">
-                                        <tr>
-                                            <td colspan="5" class="text-center text-muted py-3">
-                                                <div class="spinner-border spinner-border-sm" role="status"></div>
-                                                加载配置中...
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+
+                            <div class="row g-3">
+                                <div class="col-md-8">
+                                    <div class="table-responsive border rounded" style="max-height: 400px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover mb-0">
+                                            <thead class="table-light sticky-top">
+                                                <tr>
+                                                    <th style="width: 30px;"></th>
+                                                    <th>配置名称</th>
+                                                    <th>文件路径</th>
+                                                    <th style="width: 160px;">选择版本</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="configTableBody">
+                                                <tr>
+                                                    <td colspan="4" class="text-center text-muted py-3">
+                                                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                                                        加载配置中...
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card border-primary h-100">
+                                        <div class="card-header bg-primary bg-opacity-10 border-primary py-2">
+                                            <strong><i class="bi bi-list-check"></i> 节点配置进度</strong>
+                                        </div>
+                                        <div class="card-body p-2" style="max-height: 360px; overflow-y: auto;">
+                                            <div id="step2NodeProgressList" class="list-group list-group-flush"></div>
+                                        </div>
+                                        <div class="card-footer bg-white py-2">
+                                            <small class="text-muted d-block">
+                                                已配置节点 <span id="step2ConfiguredNodeCount" class="fw-bold">0</span>/<span id="step2TotalNodeCount" class="fw-bold">0</span>
+                                            </small>
+                                            <small class="text-muted d-block">
+                                                已选配置总数 <span id="selectedConfigCount" class="fw-bold">0</span>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
+
                             <div class="d-flex justify-content-between align-items-center mt-2">
                                 <small class="text-muted">
-                                    已选 <span id="selectedConfigCount" class="fw-bold">0</span>/5 个配置
-                                </small>
-                                <small class="text-muted">
-                                    <i class="bi bi-info-circle"></i> 仅展示所选节点拥有的配置文件
+                                    <i class="bi bi-info-circle"></i> 当前仅展示所选节点自身配置
                                 </small>
                             </div>
                             <div class="d-flex justify-content-between mt-3">
@@ -186,7 +216,7 @@
                                 <div class="d-flex align-items-center justify-content-between">
                                     <div>
                                         <strong>共 <span id="previewTaskCount" class="text-primary">0</span> 个发布任务</strong>
-                                        <span class="text-muted ms-2">，按节点分组展示，可逐个确认</span>
+                                        <span class="text-muted ms-2" id="previewSummary">，按节点分组展示，可逐个确认</span>
                                     </div>
                                     <div>
                                         <small class="text-muted">
@@ -223,7 +253,7 @@
                                     <li>发布前将 <strong>自动备份</strong> 目标节点上的配置文件至 <code>/opt/mngxops_backup/</code></li>
                                     <li>上传完成后执行 <code>nginx -t</code> 语法检查，<strong>检查失败将自动回滚</strong></li>
                                     <li>检查通过后执行 <code>nginx -s reload</code></li>
-                                    <li>单次发布最多选择 <strong>5 个节点</strong> 和 <strong>5 个配置</strong></li>
+                                    <li>节点与配置数量不在当前页面限制，统一由任务中心执行阶段控制</li>
                                     <li>所有任务将归属同一批次，按序逐个执行</li>
                                 </ul>
                             </div>
@@ -248,6 +278,10 @@
                     <i class="bi bi-info-circle"></i>
                     选择一个节点组后，可全选该组所有节点或勾选部分节点，确认后加入发布目标
                 </div>
+                <div class="tag-input-wrapper form-control mb-3" id="groupModalSearchTagWrapper">
+                    <input type="text" class="tag-input-field" id="groupModalSearchField" placeholder="主机名或 IP">
+                </div>
+                <input type="hidden" id="groupModalSearchHidden" value="">
                 <div id="groupModalLoading" class="text-center py-4">
                     <div class="spinner-border" role="status"></div>
                     <p class="mt-2 text-muted">加载节点组...</p>
@@ -259,7 +293,7 @@
             <div class="modal-footer">
                 <div class="d-flex justify-content-between align-items-center w-100">
                     <small class="text-muted">
-                        已选 <span id="groupModalSelectedCount" class="fw-bold text-primary">0</span>/5 个节点
+                        已选 <span id="groupModalSelectedCount" class="fw-bold text-primary">0</span> 个节点
                     </small>
                     <div>
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
@@ -407,17 +441,59 @@
         transform: scale(1.05);
         transition: all 0.15s;
     }
+    .tag-input-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        min-height: 38px;
+        cursor: text;
+        overflow-y: auto;
+    }
+    .tag-input-wrapper .tag-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #e9ecef;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove:hover {
+        opacity: 1;
+        color: #dc3545;
+    }
+    .tag-input-wrapper .tag-input-field {
+        border: none;
+        outline: none;
+        flex: 1;
+        min-width: 120px;
+        padding: 0;
+        background: transparent;
+    }
 </style>
 <script>
 (function() {
-    const MAX_NODES = 5;
-    const MAX_CONFIGS = 5;
     const PAGE_SIZE = 10;
+    const RECOMMENDED_NODE_LIMIT = 5;
+    const RECOMMENDED_CONFIG_LIMIT = 10;
 
     let selectedNodes = {};
-    let selectedConfigs = {};
+    let selectedConfigsByNode = {};
+    let configCacheByNode = {};
+    let step2NodeOrder = [];
+    let currentStep2NodeIndex = 0;
     let currentNodePage = 1;
-    let currentFilters = { search: '', environment: '', status: '' };
+    let currentFilters = { search: '', group_search: '', environment: '', status: '' };
     let confirmCallback = null;
 
     const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
@@ -458,6 +534,7 @@
             page: page,
             page_size: PAGE_SIZE,
             search: filters.search || '',
+            group_search: filters.group_search || '',
             environment: filters.environment || '',
             status: filters.status || ''
         });
@@ -485,16 +562,15 @@
         } else {
             tbody.innerHTML = nodes.map(n => {
                 const isSelected = selectedNodes[n.id] !== undefined;
-                const isDisabled = !isSelected && Object.keys(selectedNodes).length >= MAX_NODES;
                 const noCred = !n.has_credential;
-                const rowClass = isSelected ? 'selected' : (isDisabled ? 'disabled' : '');
+                const rowClass = isSelected ? 'selected' : '';
                 const envLabel = { 'prod': '生产', 'test': '测试', 'dev': '开发' }[n.environment] || n.environment || '-';
                 const envCls = 'env-badge-' + (n.environment || 'dev');
                 const statusLabel = { 'online': '在线', 'offline': '离线' }[n.status] || '未知';
                 const statusCls = 'status-badge-' + (n.status || 'unknown');
                 const groups = n.groups.map(g => g.name).join(', ');
                 return `<tr class="${rowClass}" data-id="${n.id}" data-hostname="${n.hostname}" data-ip="${n.ip}" data-env="${n.environment}" data-status="${n.status}" data-no-cred="${noCred}">
-                    <td><input type="checkbox" class="form-check-input node-cb" ${isSelected ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}></td>
+                    <td><input type="checkbox" class="form-check-input node-cb" ${isSelected ? 'checked' : ''}></td>
                     <td>
                         <strong>${n.hostname}</strong>
                         ${noCred ? '<span class="badge bg-warning text-dark ms-1" title="未配置凭证"><i class="bi bi-exclamation-triangle"></i></span>' : ''}
@@ -519,11 +595,6 @@
                     const row = this.closest('tr');
                     const id = parseInt(row.dataset.id);
                     if (this.checked) {
-                        if (Object.keys(selectedNodes).length >= MAX_NODES) {
-                            this.checked = false;
-                            showToast('最多选择 ' + MAX_NODES + ' 个节点');
-                            return;
-                        }
                         selectedNodes[id] = {
                             id: id,
                             hostname: row.dataset.hostname,
@@ -550,7 +621,7 @@
 
     function refreshNodeSelection() {
         const count = Object.keys(selectedNodes).length;
-        document.getElementById('selectedNodeCount').textContent = count + '/' + MAX_NODES;
+        document.getElementById('selectedNodeCount').textContent = count;
 
         const listEl = document.getElementById('selectedNodeList');
         const ids = Object.keys(selectedNodes);
@@ -581,6 +652,11 @@
             });
         }
 
+        syncStep2NodeState();
+        if (document.getElementById('wizard-step-2').classList.contains('active')) {
+            renderCurrentNodeConfigTable();
+        }
+
         document.getElementById('btnStep1Next').disabled = (count === 0);
     }
 
@@ -607,7 +683,8 @@
 
     function doSearch() {
         currentFilters = {
-            search: document.getElementById('nodeSearch').value,
+            search: '',
+            group_search: document.getElementById('nodeSearchHidden').value,
             environment: document.getElementById('envFilter').value,
             status: document.getElementById('statusFilter').value
         };
@@ -615,15 +692,181 @@
         loadNodes(1, currentFilters);
     }
 
-    // ==================== Step 2: Config Selection ====================
-    function loadConfigs() {
-        const tbody = document.getElementById('configTableBody');
-        const nodeIds = Object.keys(selectedNodes).join(',');
-        if (!nodeIds) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">请先选择节点</td></tr>';
+    function initTagSearchInput(wrapperId, fieldId, hiddenId) {
+        var wrapper = document.getElementById(wrapperId);
+        var field = document.getElementById(fieldId);
+        var hidden = document.getElementById(hiddenId);
+
+        if (!wrapper || !field || !hidden) {
             return;
         }
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 加载配置中...</td></tr>';
+
+        function focusFieldWithCaret() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function(badge) {
+                values.push(badge.getAttribute('data-value'));
+            });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        field.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                }
+                updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
+                doSearch();
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
+                }
+            }
+        });
+
+        wrapper.addEventListener('click', function(e) {
+            if (e.target === wrapper) {
+                focusFieldWithCaret();
+            }
+        });
+
+        focusFieldWithCaret();
+    }
+
+    // ==================== Step 2: Config Selection ====================
+    function getSelectedConfigCount() {
+        return Object.values(selectedConfigsByNode).reduce(function(total, configs) {
+            return total + Object.keys(configs || {}).length;
+        }, 0);
+    }
+
+    function syncStep2NodeState() {
+        step2NodeOrder = Object.keys(selectedNodes).map(function(id) { return parseInt(id); });
+
+        Object.keys(selectedConfigsByNode).forEach(function(nodeId) {
+            if (!selectedNodes[nodeId]) {
+                delete selectedConfigsByNode[nodeId];
+            }
+        });
+        Object.keys(configCacheByNode).forEach(function(nodeId) {
+            if (!selectedNodes[nodeId]) {
+                delete configCacheByNode[nodeId];
+            }
+        });
+
+        step2NodeOrder.forEach(function(nodeId) {
+            if (!selectedConfigsByNode[nodeId]) {
+                selectedConfigsByNode[nodeId] = {};
+            }
+            if (!configCacheByNode[nodeId]) {
+                configCacheByNode[nodeId] = [];
+            }
+        });
+
+        if (currentStep2NodeIndex >= step2NodeOrder.length) {
+            currentStep2NodeIndex = Math.max(0, step2NodeOrder.length - 1);
+        }
+    }
+
+    function getCurrentStep2NodeId() {
+        if (!step2NodeOrder.length) {
+            return null;
+        }
+        return step2NodeOrder[currentStep2NodeIndex];
+    }
+
+    function refreshStep2Summary() {
+        const totalNodes = step2NodeOrder.length;
+        const selectedConfigCount = getSelectedConfigCount();
+        const configuredNodeCount = step2NodeOrder.filter(function(nodeId) {
+            return Object.keys(selectedConfigsByNode[nodeId] || {}).length > 0;
+        }).length;
+
+        const currentNodeId = getCurrentStep2NodeId();
+        const currentNode = currentNodeId ? selectedNodes[currentNodeId] : null;
+        const currentIndexDisplay = totalNodes === 0 ? 0 : (currentStep2NodeIndex + 1);
+        document.getElementById('step2CurrentNodeTitle').textContent =
+            totalNodes === 0
+                ? '当前节点 0/0'
+                : ('当前节点 ' + currentIndexDisplay + '/' + totalNodes + '：' + currentNode.hostname + ' (' + currentNode.ip + ')');
+
+        document.getElementById('selectedConfigCount').textContent = selectedConfigCount;
+        document.getElementById('step2ConfiguredNodeCount').textContent = configuredNodeCount;
+        document.getElementById('step2TotalNodeCount').textContent = totalNodes;
+        document.getElementById('btnStep2Next').disabled = selectedConfigCount === 0;
+
+        const prevBtn = document.getElementById('btnStep2NodePrev');
+        const nextBtn = document.getElementById('btnStep2NodeNext');
+        if (prevBtn) prevBtn.disabled = totalNodes <= 1 || currentStep2NodeIndex === 0;
+        if (nextBtn) nextBtn.disabled = totalNodes <= 1 || currentStep2NodeIndex >= totalNodes - 1;
+
+        const listEl = document.getElementById('step2NodeProgressList');
+        if (!listEl) return;
+        if (!totalNodes) {
+            listEl.innerHTML = '<div class="list-group-item text-center text-muted py-3 border-0"><small>暂无节点</small></div>';
+            return;
+        }
+
+        listEl.innerHTML = step2NodeOrder.map(function(nodeId, index) {
+            const node = selectedNodes[nodeId];
+            const configCount = Object.keys(selectedConfigsByNode[nodeId] || {}).length;
+            const activeCls = index === currentStep2NodeIndex ? 'active' : '';
+            return '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center step2-node-progress ' + activeCls + '" data-node-index="' + index + '">' +
+                '<span><strong>' + node.hostname + '</strong><small class="text-muted ms-1">' + node.ip + '</small></span>' +
+                '<span class="badge ' + (configCount > 0 ? 'bg-primary' : 'bg-secondary') + '">' + configCount + ' 个配置</span>' +
+            '</button>';
+        }).join('');
+
+        listEl.querySelectorAll('.step2-node-progress').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                currentStep2NodeIndex = parseInt(this.dataset.nodeIndex);
+                renderCurrentNodeConfigTable();
+            });
+        });
+    }
+
+    function loadConfigs() {
+        syncStep2NodeState();
+        const tbody = document.getElementById('configTableBody');
+        if (!step2NodeOrder.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">请先选择节点</td></tr>';
+            refreshStep2Summary();
+            return;
+        }
+
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 加载配置中...</td></tr>';
+        const nodeIds = step2NodeOrder.join(',');
 
         fetch('/configs/api/by-nodes/?node_ids=' + nodeIds, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -631,33 +874,51 @@
         .then(r => r.json())
         .then(res => {
             if (!res.success) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">加载失败: ' + (res.error || '') + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-3">加载失败: ' + (res.error || '') + '</td></tr>';
                 return;
             }
-            renderConfigTable(res.data);
+            const cache = {};
+            step2NodeOrder.forEach(function(nodeId) { cache[nodeId] = []; });
+            (res.data || []).forEach(function(cfg) {
+                if (!cache[cfg.node_id]) cache[cfg.node_id] = [];
+                cache[cfg.node_id].push(cfg);
+            });
+            configCacheByNode = cache;
+            renderCurrentNodeConfigTable();
         })
         .catch(() => {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">网络错误</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-3">网络错误</td></tr>';
         });
     }
 
-    function renderConfigTable(configs) {
+    function renderCurrentNodeConfigTable() {
+        syncStep2NodeState();
+        const nodeId = getCurrentStep2NodeId();
+        if (!nodeId) {
+            document.getElementById('configTableBody').innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">请先选择节点</td></tr>';
+            refreshStep2Summary();
+            return;
+        }
+        renderConfigTableForNode(configCacheByNode[nodeId] || [], nodeId);
+    }
+
+    function renderConfigTableForNode(configs, nodeId) {
         const tbody = document.getElementById('configTableBody');
         if (configs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">所选节点无配置文件</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">当前节点无配置文件</td></tr>';
+            refreshStep2Summary();
             return;
         }
 
-        const nodeNames = {};
-        Object.values(selectedNodes).forEach(n => { nodeNames[n.id] = n.hostname; });
+        if (!selectedConfigsByNode[nodeId]) {
+            selectedConfigsByNode[nodeId] = {};
+        }
 
         tbody.innerHTML = configs.map(c => {
-            const isSelected = selectedConfigs[c.id] !== undefined;
-            const isDisabled = !isSelected && Object.keys(selectedConfigs).length >= MAX_CONFIGS;
-            const rowClass = isSelected ? 'selected' : (isDisabled ? 'disabled' : '');
-            const nodeName = nodeNames[c.node_id] || c.node_name;
+            const isSelected = selectedConfigsByNode[nodeId][c.id] !== undefined;
+            const rowClass = isSelected ? 'selected' : '';
             const versions = c.versions || [];
-            const savedVersionId = selectedConfigs[c.id] ? selectedConfigs[c.id].version_id : null;
+            const savedVersionId = selectedConfigsByNode[nodeId][c.id] ? selectedConfigsByNode[nodeId][c.id].version_id : null;
             const currentVersionId = versions.length > 0 ? versions[0].id : null;
             const defaultVersionId = savedVersionId || currentVersionId || '';
 
@@ -677,11 +938,10 @@
                 </div>`;
             }
 
-            return `<tr class="${rowClass}" data-id="${c.id}" data-node-id="${c.node_id}" data-name="${c.name}" data-node-name="${nodeName}">
-                <td><input type="checkbox" class="form-check-input config-cb" ${isSelected ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}></td>
+            return `<tr class="${rowClass}" data-id="${c.id}" data-node-id="${c.node_id}" data-name="${c.name}" data-node-name="${c.node_name}">
+                <td><input type="checkbox" class="form-check-input config-cb" ${isSelected ? 'checked' : ''}></td>
                 <td><strong>${c.name}</strong></td>
                 <td><code class="small">${c.file_path}</code></td>
-                <td><i class="bi bi-server"></i> ${nodeName}</td>
                 <td>${versionHtml}</td>
             </tr>`;
         }).join('');
@@ -699,14 +959,9 @@
                 const row = this.closest('tr');
                 const id = parseInt(row.dataset.id);
                 if (this.checked) {
-                    if (Object.keys(selectedConfigs).length >= MAX_CONFIGS) {
-                        this.checked = false;
-                        showToast('最多选择 ' + MAX_CONFIGS + ' 个配置');
-                        return;
-                    }
                     const sel = row.querySelector('.version-select');
                     const versionNumber = sel ? 'v' + sel.options[sel.selectedIndex].text.match(/v(\d+)/)[1] : '最新';
-                    selectedConfigs[id] = {
+                    selectedConfigsByNode[nodeId][id] = {
                         id: id,
                         node_id: parseInt(row.dataset.nodeId),
                         name: row.dataset.name,
@@ -717,7 +972,7 @@
                     };
                     row.classList.add('selected');
                 } else {
-                    delete selectedConfigs[id];
+                    delete selectedConfigsByNode[nodeId][id];
                     row.classList.remove('selected');
                 }
                 refreshConfigSelection();
@@ -729,11 +984,11 @@
                 e.stopPropagation();
                 const row = this.closest('tr');
                 const id = parseInt(row.dataset.id);
-                if (selectedConfigs[id]) {
-                    selectedConfigs[id].version_id = parseInt(this.value);
-                    selectedConfigs[id].version_label = this.options[this.selectedIndex].text;
+                if (selectedConfigsByNode[nodeId][id]) {
+                    selectedConfigsByNode[nodeId][id].version_id = parseInt(this.value);
+                    selectedConfigsByNode[nodeId][id].version_label = this.options[this.selectedIndex].text;
                     const vMatch = this.options[this.selectedIndex].text.match(/v(\d+)/);
-                    selectedConfigs[id].version_number = vMatch ? 'v' + vMatch[1] : '最新';
+                    selectedConfigsByNode[nodeId][id].version_number = vMatch ? 'v' + vMatch[1] : '最新';
                 }
             });
         });
@@ -755,9 +1010,7 @@
     }
 
     function refreshConfigSelection() {
-        const count = Object.keys(selectedConfigs).length;
-        document.getElementById('selectedConfigCount').textContent = count;
-        document.getElementById('btnStep2Next').disabled = (count === 0);
+        refreshStep2Summary();
     }
 
     function showVersionContent(versionId, configName, versionLabel) {
@@ -799,9 +1052,9 @@
         }
         const emptyEl = cachedEmptyEl;
         const nodeIds = Object.keys(selectedNodes);
-        const configIds = Object.keys(selectedConfigs);
+        const selectedConfigCount = getSelectedConfigCount();
 
-        if (nodeIds.length === 0 || configIds.length === 0) {
+        if (nodeIds.length === 0 || selectedConfigCount === 0) {
             accordion.innerHTML = '';
             if (emptyEl && !emptyEl.parentNode) {
                 accordion.appendChild(emptyEl);
@@ -818,40 +1071,32 @@
             emptyEl.classList.add('d-none');
         }
         const nodes = Object.values(selectedNodes);
-        const configs = Object.values(selectedConfigs);
         let totalTasks = 0;
+        let configuredNodes = 0;
 
         let html = '';
         nodes.forEach((n, nodeIdx) => {
             const nodeLabel = { 'prod': '生产', 'test': '测试', 'dev': '开发' }[n.environment] || n.environment;
             const nodeId = 'preview-node-' + n.id;
-            const hash = nodeIdx + 1;
-            const configsForNode = configs.filter(c => c.node_id === n.id);
-            const crossConfigs = configs.filter(c => c.node_id !== n.id);
-
-            const crossedOut = crossConfigs.length > 0
-                ? '<span class="badge bg-warning text-dark ms-1" title="此配置属于其他节点，将不会在此节点上执行"><i class="bi bi-exclamation-triangle"></i> ' + crossConfigs.length + ' 个跨节点配置不适用</span>'
-                : '';
+            const configsForNode = Object.values(selectedConfigsByNode[n.id] || {});
+            if (configsForNode.length > 0) {
+                configuredNodes += 1;
+            }
 
             totalTasks += configsForNode.length;
 
-            const configRows = configs.length === 0
+            const configRows = configsForNode.length === 0
                 ? '<tr><td colspan="4" class="text-center text-muted py-2">无匹配配置</td></tr>'
-                : configs.map((c, ci) => {
-                    const isMine = c.node_id === n.id;
-                    const rowStyle = isMine ? '' : 'style="opacity:0.4; text-decoration: line-through;"';
-                    const rowLabel = isMine ? '' : ' <span class="badge bg-secondary" style="font-size:10px;">跳过</span>';
-                    return `<tr ${rowStyle}>
-                        <td>${ci + 1}${rowLabel}</td>
+                : configsForNode.map((c, ci) => {
+                    return `<tr>
+                        <td>${ci + 1}</td>
                         <td>
                             <strong>${c.name}</strong>
                             <br><small class="text-muted">${c.node_name}</small>
                         </td>
                         <td><span class="badge bg-info version-preview-badge" style="cursor: pointer;" data-version-id="${c.version_id || ''}" data-config-name="${c.name}" data-version-label="${c.version_label || ''}">${c.version_number || '最新'}</span></td>
                         <td>
-                            ${isMine
-                                ? '<span class="badge bg-success" style="font-size:10px;">将发布</span>'
-                                : '<span class="badge bg-secondary" style="font-size:10px;">不适用</span>'}
+                            <span class="badge bg-success" style="font-size:10px;">将发布</span>
                         </td>
                     </tr>`;
                 }).join('');
@@ -866,7 +1111,7 @@
                                 <code class="ms-1">${n.ip}</code>
                                 <span class="badge bg-secondary ms-1">${nodeLabel}</span>
                             </div>
-                            <span class="badge bg-primary">${configs.length} 个配置</span>
+                            <span class="badge bg-primary">${configsForNode.length} 个配置</span>
                         </div>
                     </button>
                 </h2>
@@ -885,7 +1130,6 @@
                             <tbody>${configRows}</tbody>
                         </table>
                         </div>
-                        ${crossedOut}
                     </div>
                 </div>
             </div>`;
@@ -893,6 +1137,8 @@
 
         accordion.innerHTML = html;
         document.getElementById('previewTaskCount').textContent = totalTasks;
+        document.getElementById('previewSummary').innerHTML =
+            '节点数 <strong>' + nodes.length + '</strong>，配置项 <strong>' + selectedConfigCount + '</strong>，将创建任务 <strong>' + totalTasks + '</strong>（已配置节点 ' + configuredNodes + '/' + nodes.length + '）';
         document.getElementById('btnConfirmPublish').disabled = (totalTasks === 0);
     }
 
@@ -911,7 +1157,10 @@
         if (Object.keys(selectedNodes).length > 0) {
             showConfirm('确认返回', '返回将清空已选节点，确定吗？', function() {
                 selectedNodes = {};
-                selectedConfigs = {};
+                selectedConfigsByNode = {};
+                configCacheByNode = {};
+                step2NodeOrder = [];
+                currentStep2NodeIndex = 0;
                 refreshNodeSelection();
                 document.getElementById('step1-selector').classList.add('d-none');
                 document.getElementById('step1-empty').classList.remove('d-none');
@@ -919,20 +1168,23 @@
             return;
         }
         selectedNodes = {};
-        selectedConfigs = {};
+        selectedConfigsByNode = {};
+        configCacheByNode = {};
+        step2NodeOrder = [];
+        currentStep2NodeIndex = 0;
         refreshNodeSelection();
         document.getElementById('step1-selector').classList.add('d-none');
         document.getElementById('step1-empty').classList.remove('d-none');
     });
 
-    document.getElementById('nodeSearch').addEventListener('input', debounce(doSearch, 300));
+    initTagSearchInput('nodeSearchTagWrapper', 'nodeSearchField', 'nodeSearchHidden');
     document.getElementById('envFilter').addEventListener('change', doSearch);
     document.getElementById('statusFilter').addEventListener('change', doSearch);
 
     document.getElementById('btnSelectAllPage').addEventListener('click', function() {
         const cbs = document.querySelectorAll('#nodeTableBody .node-cb:not(:disabled)');
         cbs.forEach(cb => {
-            if (!cb.checked && Object.keys(selectedNodes).length < MAX_NODES) {
+            if (!cb.checked) {
                 cb.checked = true;
                 cb.dispatchEvent(new Event('change'));
             }
@@ -941,17 +1193,33 @@
 
     document.getElementById('btnClearAll').addEventListener('click', function() {
         selectedNodes = {};
-        selectedConfigs = {};
+        selectedConfigsByNode = {};
+        configCacheByNode = {};
+        step2NodeOrder = [];
+        currentStep2NodeIndex = 0;
         refreshNodeSelection();
         loadNodes(currentNodePage, currentFilters);
     });
 
     document.getElementById('btnStep1Next').addEventListener('click', function() {
-        const nodeNames = Object.values(selectedNodes).map(n => n.hostname).join(', ');
-        document.getElementById('step2NodeList').textContent = nodeNames;
-        selectedConfigs = {};
+        syncStep2NodeState();
+        currentStep2NodeIndex = 0;
         showStep(2);
         loadConfigs();
+    });
+
+    document.getElementById('btnStep2NodePrev').addEventListener('click', function() {
+        if (currentStep2NodeIndex > 0) {
+            currentStep2NodeIndex -= 1;
+            renderCurrentNodeConfigTable();
+        }
+    });
+
+    document.getElementById('btnStep2NodeNext').addEventListener('click', function() {
+        if (currentStep2NodeIndex < step2NodeOrder.length - 1) {
+            currentStep2NodeIndex += 1;
+            renderCurrentNodeConfigTable();
+        }
     });
 
     document.getElementById('btnStep2Prev').addEventListener('click', function() {
@@ -980,13 +1248,20 @@
     document.getElementById('btnConfirmPublish').addEventListener('click', function(e) {
         e.preventDefault();
         const nodeIds = Object.keys(selectedNodes);
-        const configIds = Object.keys(selectedConfigs);
-        const total = nodeIds.length * configIds.length;
-        showConfirm('确认发布', '确认发布 ' + total + ' 个任务？点击确认后将立即开始执行。', function() {
+        const selectedPairs = [];
+        Object.keys(selectedConfigsByNode).forEach(function(nodeId) {
+            Object.keys(selectedConfigsByNode[nodeId] || {}).forEach(function(configId) {
+                selectedPairs.push({ node_id: nodeId, config_id: configId });
+            });
+        });
+        const total = selectedPairs.length;
+
+        function submitReleaseForm() {
             const form = document.getElementById('releaseForm');
             form.querySelectorAll('input[name="node_ids"]').forEach(el => el.remove());
             form.querySelectorAll('input[name="config_ids"]').forEach(el => el.remove());
             form.querySelectorAll('input[name="version_ids"]').forEach(el => el.remove());
+            form.querySelectorAll('input[name="node_config_pairs"]').forEach(el => el.remove());
 
             nodeIds.forEach(id => {
                 const input = document.createElement('input');
@@ -995,34 +1270,188 @@
                 input.value = id;
                 form.appendChild(input);
             });
-            configIds.forEach(id => {
+            selectedPairs.forEach(pair => {
                 const input = document.createElement('input');
                 input.type = 'hidden';
                 input.name = 'config_ids';
-                input.value = id;
+                input.value = pair.config_id;
                 form.appendChild(input);
+
+                const pairInput = document.createElement('input');
+                pairInput.type = 'hidden';
+                pairInput.name = 'node_config_pairs';
+                pairInput.value = pair.node_id + ':' + pair.config_id;
+                form.appendChild(pairInput);
             });
-            Object.entries(selectedConfigs).forEach(([configId, cfg]) => {
-                if (cfg.version_id) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = 'version_ids';
-                    input.value = configId + ':' + cfg.version_id;
-                    form.appendChild(input);
-                }
+            Object.keys(selectedConfigsByNode).forEach(function(nodeId) {
+                Object.entries(selectedConfigsByNode[nodeId] || {}).forEach(function(entry) {
+                    var configId = entry[0];
+                    var cfg = entry[1];
+                    if (cfg.version_id) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'version_ids';
+                        input.value = configId + ':' + cfg.version_id;
+                        form.appendChild(input);
+                    }
+                });
             });
 
             form.submit();
-        });
+        }
+
+        const warnings = [];
+        if (nodeIds.length > RECOMMENDED_NODE_LIMIT) {
+            warnings.push('当前选择 ' + nodeIds.length + ' 台节点，超过默认建议 ' + RECOMMENDED_NODE_LIMIT + ' 台。');
+        }
+        if (total > RECOMMENDED_CONFIG_LIMIT) {
+            warnings.push('当前选择 ' + total + ' 个配置，超过默认建议 ' + RECOMMENDED_CONFIG_LIMIT + ' 个。');
+        }
+
+        if (warnings.length > 0) {
+            showConfirm(
+                '超出默认建议',
+                warnings.join(' ') + ' 系统将继续创建任务，后续请在发布中心手动点击“发布”执行。是否继续？',
+                submitReleaseForm
+            );
+            return;
+        }
+
+        showConfirm(
+            '确认发布',
+            '确认创建 ' + total + ' 个任务？创建后需在发布中心手动点击“发布”执行。',
+            submitReleaseForm
+        );
     });
 
     // ==================== Group Modal ====================
     let groupModalData = [];
     let groupModalSelected = {};
 
+    function parseSearchTags(raw) {
+        return (raw || '')
+            .replace(/，/g, ',')
+            .split(',')
+            .map(function(t) { return t.trim().toLowerCase(); })
+            .filter(Boolean);
+    }
+
+    function applyGroupModalSearch() {
+        if (!groupModalData.length) return;
+        const hidden = document.getElementById('groupModalSearchHidden');
+        const tags = parseSearchTags(hidden ? hidden.value : '');
+        if (!tags.length) {
+            renderGroupAccordion(groupModalData);
+            return;
+        }
+
+        const filtered = groupModalData
+            .map(function(g) {
+                const nodes = (g.nodes || []).filter(function(n) {
+                    const hostname = (n.hostname || '').toLowerCase();
+                    const ip = (n.ip || '').toLowerCase();
+                    return tags.every(function(tag) {
+                        return hostname.indexOf(tag) !== -1 || ip.indexOf(tag) !== -1;
+                    });
+                });
+                return {
+                    id: g.id,
+                    name: g.name,
+                    description: g.description,
+                    node_count: nodes.length,
+                    nodes: nodes,
+                };
+            })
+            .filter(function(g) { return g.nodes.length > 0; });
+
+        renderGroupAccordion(filtered);
+    }
+
+    function initGroupModalSearchTagInput() {
+        const wrapper = document.getElementById('groupModalSearchTagWrapper');
+        const field = document.getElementById('groupModalSearchField');
+        const hidden = document.getElementById('groupModalSearchHidden');
+
+        if (!wrapper || !field || !hidden) return;
+
+        function focusFieldWithCaret() {
+            field.focus();
+            const len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
+        function updateHidden() {
+            const badges = wrapper.querySelectorAll('.tag-badge');
+            const values = [];
+            badges.forEach(function(badge) {
+                values.push(badge.getAttribute('data-value'));
+            });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            const badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                applyGroupModalSearch();
+                setTimeout(focusFieldWithCaret, 0);
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        field.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                }
+                updateHidden();
+                applyGroupModalSearch();
+                setTimeout(focusFieldWithCaret, 0);
+            }
+
+            if (e.key === 'Backspace' && field.value === '') {
+                const badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    applyGroupModalSearch();
+                    setTimeout(focusFieldWithCaret, 0);
+                }
+            }
+        });
+
+        wrapper.addEventListener('click', function(e) {
+            if (e.target === wrapper) {
+                focusFieldWithCaret();
+            }
+        });
+
+        document.getElementById('groupModal').addEventListener('shown.bs.modal', function() {
+            setTimeout(focusFieldWithCaret, 0);
+        });
+    }
+
     function openGroupModal() {
         const modal = new bootstrap.Modal(document.getElementById('groupModal'));
         groupModalSelected = {};
+        document.getElementById('groupModalSearchHidden').value = '';
+        const wrapper = document.getElementById('groupModalSearchTagWrapper');
+        if (wrapper) {
+            wrapper.querySelectorAll('.tag-badge').forEach(function(el) { el.remove(); });
+        }
+        const field = document.getElementById('groupModalSearchField');
+        if (field) field.value = '';
         document.getElementById('groupModalLoading').classList.remove('d-none');
         document.getElementById('groupModalContent').classList.add('d-none');
         document.getElementById('groupModalSelectedCount').textContent = '0';
@@ -1041,7 +1470,7 @@
                 return;
             }
             groupModalData = res.data;
-            renderGroupAccordion(res.data);
+            applyGroupModalSearch();
         })
         .catch(() => {
             document.getElementById('groupModalContent').classList.remove('d-none');
@@ -1128,11 +1557,6 @@
                 const groupId = parseInt(this.dataset.groupId);
                 const group = groupModalData.find(g => g.id === groupId);
                 if (this.checked) {
-                    if (Object.keys(groupModalSelected).length >= MAX_NODES) {
-                        this.checked = false;
-                        showToast('最多选择 ' + MAX_NODES + ' 个节点');
-                        return;
-                    }
                     const node = group.nodes.find(n => n.id === nodeId);
                     if (node) {
                         groupModalSelected[nodeId] = {
@@ -1152,6 +1576,7 @@
         container.querySelectorAll('.group-node-item').forEach(label => {
             label.addEventListener('click', function(e) {
                 if (e.target.tagName === 'INPUT') return;
+                e.preventDefault();
                 const cb = this.querySelector('.group-node-cb');
                 if (cb && !cb.disabled) cb.checked = !cb.checked;
                 cb.dispatchEvent(new Event('change'));
@@ -1163,20 +1588,14 @@
         const count = Object.keys(groupModalSelected).length;
         document.getElementById('groupModalSelectedCount').textContent = count;
         document.getElementById('btnGroupConfirm').disabled = (count === 0);
-
-        const groupModal = document.getElementById('groupModal');
-        groupModal.querySelectorAll('.group-node-cb').forEach(cb => {
-            if (!cb.checked && Object.keys(groupModalSelected).length >= MAX_NODES) {
-                cb.disabled = true;
-            } else {
-                cb.disabled = false;
-            }
-        });
     }
 
     document.getElementById('btnGroupConfirm').addEventListener('click', function() {
         selectedNodes = {};
-        selectedConfigs = {};
+        selectedConfigsByNode = {};
+        configCacheByNode = {};
+        step2NodeOrder = [];
+        currentStep2NodeIndex = 0;
         Object.assign(selectedNodes, groupModalSelected);
         refreshNodeSelection();
         document.getElementById('step1-empty').classList.add('d-none');
@@ -1185,13 +1604,8 @@
         bootstrap.Modal.getInstance(document.getElementById('groupModal')).hide();
     });
 
-    function debounce(fn, delay) {
-        let timer;
-        return function() {
-            clearTimeout(timer);
-            timer = setTimeout(() => fn.apply(this, arguments), delay);
-        };
-    }
+    initGroupModalSearchTagInput();
+
 })();
 </script>
 {% endblock %}

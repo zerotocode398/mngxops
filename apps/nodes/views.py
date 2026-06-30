@@ -1,14 +1,18 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.db.models import Q
+from django.utils import timezone
 from django.http import JsonResponse
 from django.shortcuts import redirect, get_object_or_404
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, View
 from django.urls import reverse_lazy
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .forms import NodeForm, NodeGroupForm
 from .models import Node, NodeGroup
 from apps.credentials.models import Credential
+from apps.releases.models import TaskCenterTask
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.ssh import test_ssh_connection, get_nginx_version, get_system_info
 from utils.pagination import PerPagePaginationMixin
@@ -39,7 +43,10 @@ class NodeGroupListView(
         queryset = super().get_queryset()
         search = self.request.GET.get("search", "")
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+            if terms:
+                for term in terms:
+                    queryset = queryset.filter(Q(name__icontains=term))
         return queryset
 
     def get_context_data(self, **kwargs):
@@ -155,8 +162,8 @@ class NodeListView(
 
     def get_queryset(self):
         queryset = super().get_queryset().prefetch_related("groups")
-        search = self.request.GET.get("search", "")
-        group_search = self.request.GET.get("group_search", "")
+        search = self.request.GET.get("search", "").strip()
+        group_search = self.request.GET.get("group_search", "").strip()
 
         if search:
             queryset = queryset.filter(
@@ -164,15 +171,20 @@ class NodeListView(
             )
 
         if group_search:
-            group_names = [
-                name.strip() for name in group_search.split(",") if name.strip()
+            tags = [
+                name.strip()
+                for name in group_search.replace("，", ",").split(",")
+                if name.strip()
             ]
-            if group_names:
-                from functools import reduce
-                import operator
-
-                q_objects = [Q(groups__name__icontains=name) for name in group_names]
-                queryset = queryset.filter(reduce(operator.or_, q_objects)).distinct()
+            if tags:
+                # Strict AND between tags; each tag can still match hostname/IP/group name.
+                for tag in tags:
+                    queryset = queryset.filter(
+                        Q(groups__name__icontains=tag)
+                        | Q(hostname__icontains=tag)
+                        | Q(ip__icontains=tag)
+                    )
+                queryset = queryset.distinct()
 
         return queryset
 
@@ -340,6 +352,16 @@ def node_lock(request):
                             "success": False,
                             "message": "未配置凭证",
                         }
+                    if not credential.is_enabled:
+                        node.status = "offline"
+                        node.save()
+                        return {
+                            "node_id": node.id,
+                            "hostname": node.hostname,
+                            "ip": node.ip,
+                            "success": False,
+                            "message": "关联凭证已禁用",
+                        }
 
                     if credential.auth_type == "password":
                         success, message = test_ssh_connection(
@@ -447,7 +469,12 @@ def test_node_connection(request):
                     return JsonResponse(
                         {"success": False, "message": "该节点已锁定，无法测试连接"}
                     )
-                credential = _get_node_credential(node)
+
+                if credential_id:
+                    credential = Credential.objects.get(id=credential_id)
+                else:
+                    credential = _get_node_credential(node)
+
                 if not credential:
                     return JsonResponse(
                         {
@@ -455,10 +482,24 @@ def test_node_connection(request):
                             "message": "节点未配置凭证，请先关联SSH凭证",
                         }
                     )
+                if not credential.is_enabled:
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "message": "节点关联凭证已禁用，请先在凭证列表启用",
+                        }
+                    )
                 host = ip if ip else node.ip
                 ssh_port = int(port) if port else node.port
             elif ip and port and credential_id:
                 credential = Credential.objects.get(id=credential_id)
+                if not credential.is_enabled:
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "message": "凭证已禁用，请先在凭证列表启用",
+                        }
+                    )
                 host = ip
                 ssh_port = int(port)
             else:
@@ -534,7 +575,6 @@ def batch_test_node_connection(request):
 
     if request.method == "POST":
         import json
-        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         data = json.loads(request.body)
         node_ids = data.get("node_ids", [])
@@ -548,9 +588,17 @@ def batch_test_node_connection(request):
                 {"success": False, "message": f"最多只能测试 {MAX_BATCH} 个节点"}
             )
 
-        nodes = Node.objects.filter(id__in=node_ids).order_by("id")
-        results = []
+        nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
         total = len(nodes)
+
+        task_center = TaskCenterTask.objects.create(
+            operation_type="node_batch_test",
+            status="pending",
+            detail="任务已创建，等待执行",
+            target_hostnames=",".join(node.hostname for node in nodes),
+            target_ips=",".join(node.ip for node in nodes),
+            trigger_user=request.user,
+        )
 
         def _test_one(node):
             try:
@@ -570,6 +618,14 @@ def batch_test_node_connection(request):
                         "ip": node.ip,
                         "success": False,
                         "message": "未配置凭证",
+                    }
+                if not credential.is_enabled:
+                    return {
+                        "node_id": node.id,
+                        "hostname": node.hostname,
+                        "ip": node.ip,
+                        "success": False,
+                        "message": "关联凭证已禁用",
                     }
 
                 if credential.auth_type == "password":
@@ -629,17 +685,70 @@ def batch_test_node_connection(request):
                     "message": str(e),
                 }
 
-        with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
-            future_to_node = {executor.submit(_test_one, node): node for node in nodes}
-            for future in as_completed(future_to_node):
-                result = future.result()
-                results.append(result)
+        def _run_batch_test_task(task_id, test_nodes):
+            TaskCenterTask.objects.filter(pk=task_id).update(
+                status="running",
+                started_at=timezone.now(),
+                progress=0,
+                detail=f"执行中：0/{len(test_nodes)}",
+            )
+
+            success_count = 0
+            fail_count = 0
+            done = 0
+            detail_lines = []
+
+            with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
+                future_to_node = {
+                    executor.submit(_test_one, node): node for node in test_nodes
+                }
+                for future in as_completed(future_to_node):
+                    result = future.result()
+                    done += 1
+                    if result.get("success"):
+                        success_count += 1
+                        detail_lines.append(
+                            f"[成功] {result['hostname']}({result['ip']}) - {result.get('message','')}"
+                        )
+                    else:
+                        fail_count += 1
+                        detail_lines.append(
+                            f"[失败] {result['hostname']}({result['ip']}) - {result.get('message','')}"
+                        )
+
+                    TaskCenterTask.objects.filter(pk=task_id).update(
+                        progress=int(done * 100 / len(test_nodes)) if test_nodes else 100,
+                        detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{len(test_nodes)}",
+                        updated_at=timezone.now(),
+                    )
+
+            status = "success" if fail_count == 0 else "failed"
+            TaskCenterTask.objects.filter(pk=task_id).update(
+                status=status,
+                progress=100,
+                finished_at=timezone.now(),
+                detail=f"执行完成：成功 {success_count}，失败 {fail_count}，共 {len(test_nodes)}",
+                result="\n".join(detail_lines),
+                updated_at=timezone.now(),
+            )
+
+        thread = threading.Thread(
+            target=_run_batch_test_task,
+            args=(task_center.id, nodes),
+            daemon=True,
+        )
+        thread.start()
 
         return JsonResponse(
             {
                 "success": True,
-                "total": total,
-                "results": results,
+                "async": True,
+                "message": f"已创建后台测试任务（{total} 台）",
+                "task_center_id": task_center.id,
+                "task_center_detail_url": str(
+                    reverse_lazy("releases:task_center_detail", args=[task_center.id])
+                ),
+                "task_center_home_url": str(reverse_lazy("releases:history")),
             }
         )
 
@@ -651,6 +760,7 @@ class NodeListAPIView(LoginRequiredMixin, View):
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 10))
         search = request.GET.get("search", "")
+        group_search = request.GET.get("group_search", "")
         env_filter = request.GET.get("environment", "")
         status_filter = request.GET.get("status", "")
 
@@ -662,9 +772,26 @@ class NodeListAPIView(LoginRequiredMixin, View):
         )
 
         if search:
-            queryset = queryset.filter(
-                Q(hostname__icontains=search) | Q(ip__icontains=search)
-            )
+            terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+            if terms:
+                for term in terms:
+                    queryset = queryset.filter(
+                        Q(hostname__icontains=term) | Q(ip__icontains=term)
+                    )
+        if group_search:
+            tags = [
+                name.strip()
+                for name in group_search.replace("，", ",").split(",")
+                if name.strip()
+            ]
+            if tags:
+                for tag in tags:
+                    queryset = queryset.filter(
+                        Q(groups__name__icontains=tag)
+                        | Q(hostname__icontains=tag)
+                        | Q(ip__icontains=tag)
+                    )
+                queryset = queryset.distinct()
         if env_filter:
             queryset = queryset.filter(environment=env_filter)
         if status_filter:
@@ -770,6 +897,12 @@ def get_node_detail(request):
 
             try:
                 if credential:
+                    if not credential.is_enabled:
+                        node.status = "offline"
+                        node.save()
+                        node_info["system_info"] = None
+                        return JsonResponse({"success": True, "node_info": node_info})
+
                     if credential.auth_type == "password":
                         success, system_info = get_system_info(
                             node.ip,
@@ -824,6 +957,8 @@ def get_node_system_info(request):
             credential = _get_node_credential(node)
             if not credential:
                 return JsonResponse({"success": False, "message": "节点未配置SSH凭证"})
+            if not credential.is_enabled:
+                return JsonResponse({"success": False, "message": "节点关联凭证已禁用"})
 
             if credential.auth_type == "password":
                 success, system_info = get_system_info(
@@ -872,6 +1007,8 @@ def get_node_nginx_version(request):
             credential = _get_node_credential(node)
             if not credential:
                 return JsonResponse({"success": False, "message": "节点未配置SSH凭证"})
+            if not credential.is_enabled:
+                return JsonResponse({"success": False, "message": "节点关联凭证已禁用"})
             nginx_path = node.nginx_path if node.nginx_path else None
 
             if credential.auth_type == "password":
