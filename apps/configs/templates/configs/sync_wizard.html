@@ -59,7 +59,7 @@
                     <div class="table-responsive">
                         <table class="table table-hover table-sm">
                             <thead>
-                                <tr>
+                                <tr class="sync-node-row">
                                     <th style="width:40px;">
                                         <input class="form-check-input" type="checkbox" id="selectAllNodes"
                                             onchange="toggleSelectAll(this)">
@@ -75,11 +75,11 @@
                             </thead>
                             <tbody>
                                 {% for node in nodes %}
-                                <tr>
+                                <tr class="sync-node-row">
                                     <td>
                                         <input class="form-check-input node-checkbox" type="checkbox"
                                             value="{{ node.id }}" data-hostname="{{ node.hostname }}"
-                                            onchange="updateBatchCount()">
+                                            onchange="updateBatchCount(this)">
                                     </td>
                                     <td>
                                         <strong>{{ node.hostname }}</strong>
@@ -164,7 +164,8 @@
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
                                                     <form id="syncForm{{ node.id }}" method="post"
-                                                        action="{% url 'configs:sync_remote' node.id %}">
+                                                        action="{% url 'configs:sync_remote' node.id %}"
+                                                        data-pending-configs="{{ node_pending_configs|dict_get:node.id|join:',' }}">
                                                         {% csrf_token %}
                                                         <div class="modal-header">
                                                             <h5 class="modal-title">
@@ -212,8 +213,8 @@
                                                                     <div class="mt-2 border rounded p-2" style="max-height: 220px; overflow-y: auto;">
                                                                         {% for c in node.config_set.all %}
                                                                         {% if c.name != 'mime.types' %}
-                                                                        <div class="form-check">
-                                                                            <input class="form-check-input" type="checkbox"
+                                                                        <div class="form-check sync-partial-item" style="cursor: pointer;">
+                                                                            <input class="form-check-input partial-sync-checkbox" type="checkbox"
                                                                                 name="selected_paths" value="{{ c.file_path }}"
                                                                                 form="partialSyncForm{{ node.id }}">
                                                                             <label class="form-check-label small">
@@ -362,6 +363,7 @@
 <script>
     var MAX_BATCH = 3;
     var pollTimer = null;
+    var syncAlertModalInstance = null;
 
     function initTagInput(wrapperId, fieldId, searchHiddenId, groupHiddenId) {
         var wrapper = document.getElementById(wrapperId);
@@ -411,6 +413,7 @@
                     field.value = '';
                     updateHidden();
                 }
+                document.getElementById('perPageForm').submit();
             }
             if (e.key === 'Backspace' && field.value === '') {
                 var badges = wrapper.querySelectorAll('.tag-badge');
@@ -437,6 +440,34 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         initTagInput('combinedTagSync', 'combinedSearchSync', 'searchHiddenSync', 'groupSearchHiddenSync');
+
+        document.querySelectorAll('.sync-node-row').forEach(function (row) {
+            row.addEventListener('click', function (e) {
+                if (e.target.closest('a,button,input,label,details,summary,.btn-group')) {
+                    return;
+                }
+                var cb = row.querySelector('.node-checkbox');
+                if (!cb) {
+                    return;
+                }
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change'));
+            });
+        });
+
+        document.querySelectorAll('.sync-partial-item').forEach(function (item) {
+            item.addEventListener('click', function (e) {
+                if (e.target.closest('input')) {
+                    return;
+                }
+                e.preventDefault();
+                var cb = item.querySelector('.partial-sync-checkbox');
+                if (!cb) {
+                    return;
+                }
+                cb.checked = !cb.checked;
+            });
+        });
     });
 
     function showCustomModal(title, message, showClose) {
@@ -444,33 +475,76 @@
         document.getElementById('syncAlertBody').innerHTML = message;
         document.getElementById('syncAlertClose').style.display = showClose ? 'inline-block' : 'none';
         document.getElementById('syncAlertClose').onclick = null;
-        var modal = new bootstrap.Modal(document.getElementById('syncAlertModal'));
-        modal.show();
+        if (!syncAlertModalInstance) {
+            syncAlertModalInstance = new bootstrap.Modal(document.getElementById('syncAlertModal'));
+        }
+        syncAlertModalInstance.show();
     }
 
-    function updateBatchCount() {
+    var syncConfirmModalInstance = null;
+    function showConfirmModal(title, message, onConfirm) {
+        document.getElementById('syncConfirmTitle').textContent = title;
+        document.getElementById('syncConfirmBody').innerHTML = message;
+        var okBtn = document.getElementById('syncConfirmOk');
+        okBtn.onclick = function() {
+            if (syncConfirmModalInstance) {
+                syncConfirmModalInstance.hide();
+            }
+            if (onConfirm) onConfirm();
+        };
+        if (!syncConfirmModalInstance) {
+            syncConfirmModalInstance = new bootstrap.Modal(document.getElementById('syncConfirmModal'));
+        }
+        syncConfirmModalInstance.show();
+    }
+
+    function updateBatchCount(changedCb) {
         var checked = document.querySelectorAll('.node-checkbox:checked');
         var count = checked.length;
+
+        if (count > MAX_BATCH) {
+            showCustomModal('提示', '最多只能选择 ' + MAX_BATCH + ' 个节点进行批量同步', true);
+            if (changedCb) {
+                changedCb.checked = false;
+            } else {
+                checked.forEach(function (cb, idx) {
+                    if (idx >= MAX_BATCH) cb.checked = false;
+                });
+            }
+            checked = document.querySelectorAll('.node-checkbox:checked');
+            count = checked.length;
+        }
+
         document.getElementById('batchCount').textContent = count;
         var btn = document.getElementById('applyBatchBtn');
         btn.disabled = count === 0;
 
-        if (count > MAX_BATCH) {
-            showCustomModal('提示', '最多只能选择 ' + MAX_BATCH + ' 个节点进行批量同步', true);
-            checked[checked.length - 1].checked = false;
-            updateBatchCount();
-            return;
-        }
-
         var selectAll = document.getElementById('selectAllNodes');
         var allBoxes = document.querySelectorAll('.node-checkbox');
-        selectAll.checked = allBoxes.length > 0 && count === allBoxes.length;
-        selectAll.indeterminate = count > 0 && count < allBoxes.length;
+        var maxSelectable = Math.min(MAX_BATCH, allBoxes.length);
+        selectAll.checked = allBoxes.length > 0 && count >= maxSelectable;
+        selectAll.indeterminate = count > 0 && count < maxSelectable;
     }
 
     function toggleSelectAll(el) {
         var allBoxes = document.querySelectorAll('.node-checkbox');
-        allBoxes.forEach(function(cb) { cb.checked = el.checked; });
+        var hasSelected = document.querySelectorAll('.node-checkbox:checked').length > 0;
+
+        if (hasSelected) {
+            allBoxes.forEach(function(cb) { cb.checked = false; });
+            updateBatchCount();
+            return;
+        }
+
+        var selected = 0;
+        allBoxes.forEach(function(cb) {
+            if (selected < MAX_BATCH) {
+                cb.checked = true;
+                selected += 1;
+            } else {
+                cb.checked = false;
+            }
+        });
         updateBatchCount();
     }
 
@@ -529,17 +603,20 @@
             'created': '<i class="bi bi-plus-circle text-success small"></i>',
             'updated': '<i class="bi bi-pencil text-warning small"></i>',
             'skipped': '<i class="bi bi-dash-circle text-muted small"></i>',
+            'orphaned': '<i class="bi bi-exclamation-triangle text-warning small"></i>',
             'failed': '<i class="bi bi-exclamation-circle text-danger small"></i>'
         };
         var fileStatusTexts = {
             'created': '新增',
             'updated': '更新',
             'skipped': '未变化',
+            'orphaned': '远程已删除',
             'failed': '失败'
         };
 
         var allDone = progress.completed >= progress.total;
-        document.getElementById('progressPercent').textContent = Math.round(progress.completed / progress.total * 100) + '%';
+        var pct = progress.total > 0 ? Math.round(progress.completed / progress.total * 100) : 0;
+        document.getElementById('progressPercent').textContent = progress.completed + '/' + progress.total + ' (' + pct + '%)';
 
         for (var nodeId in progress.nodes) {
             var node = progress.nodes[nodeId];
@@ -550,7 +627,15 @@
             var filesEl = document.getElementById('prog-files-' + nodeId);
 
             if (iconEl) iconEl.innerHTML = statusIcons[node.status] || statusIcons['waiting'];
-            if (nameEl) nameEl.textContent = node.hostname || ('节点 #' + nodeId);
+            if (nameEl) {
+                var nameText = node.hostname || ('节点 #' + nodeId);
+                if (node.total_files > 0 && node.status === 'syncing') {
+                    nameText += ' <small class="text-muted">(' + node.completed_files + '/' + node.total_files + ' 个文件)</small>';
+                } else if (node.total_files > 0) {
+                    nameText += ' <small class="text-muted">(' + node.total_files + ' 个文件)</small>';
+                }
+                nameEl.innerHTML = nameText;
+            }
             if (statusEl) {
                 statusEl.textContent = statusTexts[node.status] || node.status;
                 statusEl.className = 'badge me-2 ' + (statusBadges[node.status] || 'bg-secondary');
@@ -610,6 +695,29 @@
             return;
         }
 
+        var pendingConfigs = (modal.querySelector('form').getAttribute('data-pending-configs') || '').trim();
+        if (pendingConfigs) {
+            var pendingList = pendingConfigs.split(',').filter(function(n) { return n; });
+            var pendingHtml = pendingList.map(function(n) {
+                return '<code class="me-1">' + n + '</code>';
+            }).join('、');
+            var confirmHtml = '<div class="text-start mb-2"><i class="bi bi-exclamation-triangle text-warning fs-1"></i></div>' +
+                '<div class="alert alert-warning mb-0 text-start">' +
+                '<strong>以下配置为本地新增，不会从远程同步：</strong><br>' +
+                '<div class="mt-2">' + pendingHtml + '</div>' +
+                '<small class="text-muted mt-2 d-block">这些配置仅存在于本地，远程节点上无对应文件。</small>' +
+                '</div>' +
+                '<p class="mb-0 mt-2 text-muted small">确认后将继续同步其他远程配置。</p>';
+            showConfirmModal('本地新增配置提醒', confirmHtml, function() {
+                doFullSync(nodeId, modal, mainConfPath);
+            });
+            return;
+        }
+
+        doFullSync(nodeId, modal, mainConfPath);
+    }
+
+    function doFullSync(nodeId, modal, mainConfPath) {
         var bsModal = bootstrap.Modal.getInstance(modal);
         bsModal.hide();
 
@@ -617,7 +725,7 @@
         hostnames[nodeId] = document.getElementById('syncModal' + nodeId).querySelector('.modal-title').textContent.split('：')[1];
         var progressList = document.getElementById('progressList');
         progressList.innerHTML = buildProgressHTML([nodeId], hostnames);
-        document.getElementById('progressPercent').textContent = '0%';
+        document.getElementById('progressPercent').textContent = '0/0 (0%)';
         document.getElementById('progressSpinner').style.display = 'inline-block';
         document.getElementById('progressCloseBtn').disabled = true;
         document.getElementById('progressCloseBtn').textContent = '同步中...';
@@ -629,6 +737,8 @@
 
         var taskId = 'single_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
+        pollProgress(taskId, progressModal, 'single');
+
         fetch('{% url "configs:sync_single_api" %}', {
             method: 'POST',
             headers: {
@@ -639,15 +749,15 @@
         }).then(function(response) {
             return response.json();
         }).then(function(data) {
-            if (data.success) {
-                pollProgress(taskId, progressModal, 'single');
-            } else {
+            if (!data.success) {
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 updateProgressError(data.message || '同步请求失败');
                 document.getElementById('progressCloseBtn').disabled = false;
                 document.getElementById('progressCloseBtn').textContent = '关闭';
                 document.getElementById('progressSpinner').style.display = 'none';
             }
         })['catch'](function(err) {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             updateProgressError('网络请求失败: ' + err.message);
             document.getElementById('progressCloseBtn').disabled = false;
             document.getElementById('progressCloseBtn').textContent = '关闭';
@@ -675,7 +785,7 @@
 
         var progressList = document.getElementById('progressList');
         progressList.innerHTML = buildProgressHTML(nodeIds, hostnames);
-        document.getElementById('progressPercent').textContent = '0%';
+        document.getElementById('progressPercent').textContent = '0/' + nodeIds.length + ' (0%)';
         document.getElementById('progressSpinner').style.display = 'inline-block';
         document.getElementById('progressCloseBtn').disabled = true;
         document.getElementById('progressCloseBtn').textContent = '同步中...';
@@ -687,6 +797,8 @@
 
         var taskId = 'batch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
+        pollProgress(taskId, progressModal);
+
         fetch('{% url "configs:sync_batch_api" %}', {
             method: 'POST',
             headers: {
@@ -697,15 +809,15 @@
         }).then(function(response) {
             return response.json();
         }).then(function(data) {
-            if (data.success) {
-                pollProgress(taskId, progressModal);
-            } else {
+            if (!data.success) {
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 updateProgressError(data.message || '同步请求失败');
                 document.getElementById('progressCloseBtn').disabled = false;
                 document.getElementById('progressCloseBtn').textContent = '关闭';
                 document.getElementById('progressSpinner').style.display = 'none';
             }
         })['catch'](function(err) {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             updateProgressError('网络请求失败: ' + err.message);
             document.getElementById('progressCloseBtn').disabled = false;
             document.getElementById('progressCloseBtn').textContent = '关闭';
@@ -722,7 +834,7 @@
                     if (data.success && data.progress) {
                         updateProgressUI(data.progress);
                         if (data.progress.completed >= data.progress.total) {
-                            var totalCreated = 0, totalUpdated = 0, totalSkipped = 0, totalFailed = 0;
+                            var totalCreated = 0, totalUpdated = 0, totalSkipped = 0, totalOrphaned = 0, totalFailed = 0;
                             var summaryParts = [];
                             var nodeName = '';
                             for (var nid in data.progress.nodes) {
@@ -730,11 +842,13 @@
                                 totalCreated += n.created || 0;
                                 totalUpdated += n.updated || 0;
                                 totalSkipped += n.skipped || 0;
+                                totalOrphaned += n.orphaned || 0;
                                 nodeName = n.hostname || ('节点 #' + nid);
                                 if (n.status === 'failed') totalFailed++;
                             }
                             if (totalCreated) summaryParts.push('新增 ' + totalCreated + ' 个');
                             if (totalUpdated) summaryParts.push('更新 ' + totalUpdated + ' 个');
+                            if (totalOrphaned) summaryParts.push('远程已删除 ' + totalOrphaned + ' 个');
                             if (totalSkipped) summaryParts.push(totalSkipped + ' 个未变化');
                             if (totalFailed && syncType === 'batch') summaryParts.push(totalFailed + ' 个节点失败');
 
@@ -758,8 +872,8 @@
                                     if (files && files.length > 0) {
                                         fileListHtml += '<div class="border rounded p-2 mt-2 text-start" style="background:#f8f9fa; max-height:180px; overflow-y:auto;">';
                                         fileListHtml += '<div class="small fw-bold mb-1 text-muted">配置文件详情：</div>';
-                                        var fIcons = {'created': 'bi-plus-circle text-success', 'updated': 'bi-pencil text-warning', 'skipped': 'bi-dash-circle text-muted', 'failed': 'bi-exclamation-circle text-danger'};
-                                        var fTexts = {'created': '新增', 'updated': '更新', 'skipped': '未变化', 'failed': '失败'};
+                                        var fIcons = {'created': 'bi-plus-circle text-success', 'updated': 'bi-pencil text-warning', 'skipped': 'bi-dash-circle text-muted', 'orphaned': 'bi-exclamation-triangle text-warning', 'failed': 'bi-exclamation-circle text-danger'};
+                                        var fTexts = {'created': '新增', 'updated': '更新', 'skipped': '未变化', 'orphaned': '远程已删除', 'failed': '失败'};
                                         files.forEach(function(f) {
                                             fileListHtml += '<div class="d-flex align-items-center small mb-0">';
                                             fileListHtml += '<i class="bi ' + (fIcons[f.status] || 'bi-dash-circle text-muted') + ' me-1"></i>';
@@ -856,8 +970,8 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="progressModalTitle"><i class="bi bi-cloud-upload me-2"></i>批量同步进度</h5>
-                <span class="ms-2" id="progressSpinner"><i class="bi bi-arrow-repeat spin text-primary"></i></span>
-                <span class="ms-2 fw-bold" id="progressPercent">0%</span>
+                <span id="progressSpinner" style="display:none;"></span>
+                <span class="ms-2 fw-bold" id="progressPercent">0/0 (0%)</span>
             </div>
             <div class="modal-body">
                 <div id="progressList"></div>
@@ -882,6 +996,22 @@
             <div class="modal-body" id="syncAlertBody"></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="syncAlertClose">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="syncConfirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="syncConfirmTitle">确认</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="syncConfirmBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="syncConfirmOk">确认同步</button>
             </div>
         </div>
     </div>

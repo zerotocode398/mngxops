@@ -64,6 +64,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.audit.middleware.CurrentUserMiddleware",
+    "apps.audit.middleware.AjaxErrorMiddleware",
 ]
 
 ROOT_URLCONF = "ngxops.urls"

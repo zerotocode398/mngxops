@@ -204,6 +204,8 @@
 
 <script>
     var customModal;
+    var editTestTimer = null;
+    var editTestSeconds = 0;
 
     function showCustomModal(title, content, showConfirm, confirmCallback) {
         document.getElementById('customModalTitle').textContent = title;
@@ -246,18 +248,53 @@
         document.getElementById('loadingSpinner').style.display = 'none';
     }
 
+    function stopEditTestTimer() {
+        if (editTestTimer) {
+            clearInterval(editTestTimer);
+            editTestTimer = null;
+        }
+    }
+
     function testConnection() {
         var nodeId = document.getElementById('editNodeId').value;
         var ip = document.getElementById('id_ip').value.trim();
         var port = document.getElementById('id_port').value.trim();
+        var credentialId = document.getElementById('id_credential').value;
         var data = {
             node_id: parseInt(nodeId),
             ip: ip,
             port: port
         };
 
+        if (credentialId) {
+            data.credential_id = parseInt(credentialId);
+        }
+
         var testResult = document.getElementById('testResult');
         testResult.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> 测试中...</span>';
+
+        stopEditTestTimer();
+        editTestSeconds = 10;
+        showLoading('测试连接中');
+        document.getElementById('modalContent').innerHTML =
+            '<div class="text-center py-3">' +
+            '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + editTestSeconds + '</strong> 秒</p>' +
+            '</div>';
+        editTestTimer = setInterval(function () {
+            editTestSeconds--;
+            if (editTestSeconds <= 0) {
+                stopEditTestTimer();
+                document.getElementById('modalContent').innerHTML =
+                    '<div class="text-center py-3">' +
+                    '<p class="text-muted mb-0">即将完成...</p>' +
+                    '</div>';
+            } else {
+                document.getElementById('modalContent').innerHTML =
+                    '<div class="text-center py-3">' +
+                    '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + editTestSeconds + '</strong> 秒</p>' +
+                    '</div>';
+            }
+        }, 1000);
 
         var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
@@ -271,6 +308,8 @@
         })
             .then(function (response) { return response.json(); })
             .then(function (result) {
+                stopEditTestTimer();
+                hideLoading();
                 testResult.innerHTML = '';
 
                 if (result.success) {
@@ -288,6 +327,8 @@
                 }
             })
             .catch(function (error) {
+                stopEditTestTimer();
+                hideLoading();
                 testResult.innerHTML = '';
                 var content = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill"></i> <strong>测试失败</strong></div><p>网络错误或服务器异常</p>';
                 showCustomModal('错误', content);

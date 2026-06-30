@@ -14,23 +14,29 @@
                     </a>
                 </div>
                 <div class="card-body">
-                    <form method="get" class="mb-3">
-                        <div class="input-group">
-                            <input type="text" name="search" class="form-control" placeholder="搜索节点组名称"
-                                value="{{ search }}">
-                            <select name="per_page" class="form-select" style="max-width: 130px;">
-                                {% for size in per_page_options %}
-                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
-                                {% endfor %}
-                            </select>
-                            <button type="submit" class="btn btn-outline-primary">
-                                <i class="bi bi-search"></i> 搜索
-                            </button>
-                            {% if search %}
-                            <a href="{% url 'nodes:group_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary">
-                                <i class="bi bi-x-circle"></i> 清空
-                            </a>
-                            {% endif %}
+                    <form method="get" class="mb-3" id="groupSearchForm">
+                        <div class="row g-2">
+                            <div class="col-md-8">
+                                <div class="tag-input-wrapper form-control" id="groupCombinedTagWrapper">
+                                    <input type="text" class="tag-input-field" id="groupCombinedSearchField"
+                                        placeholder="输入节点组关键词后回车，可添加多个查询条件">
+                                </div>
+                                <input type="hidden" name="search" id="groupSearchHidden" value="{{ search }}">
+                            </div>
+                            <div class="col-md-2">
+                                <select name="per_page" class="form-select" onchange="document.getElementById('groupSearchForm').submit()">
+                                    {% for size in per_page_options %}
+                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                {% if search %}
+                                <a href="{% url 'nodes:group_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary w-100">
+                                    <i class="bi bi-x-circle"></i> 清空
+                                </a>
+                                {% endif %}
+                            </div>
                         </div>
                     </form>
 
@@ -51,7 +57,9 @@
                                 <tr>
                                     <td><strong>{{ group.name }}</strong></td>
                                     <td>
-                                        <span class="badge bg-secondary">{{ group.nodes.count }}</span>
+                                        <a href="{% url 'nodes:list' %}?group_search={{ group.name|urlencode }}" class="btn btn-sm btn-outline-primary node-count-btn group-node-count-link" title="查看该组节点列表">
+                                            {{ group.nodes.count }}
+                                        </a>
                                     </td>
                                     <td>{{ group.description|default:"-"|truncatewords:10 }}</td>
                                     <td>{{ group.created_by.username }}</td>
@@ -67,7 +75,9 @@
                                                 <i class="bi bi-pencil"></i>
                                             </a>
                                             <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
-                                                data-bs-target="#deleteModal{{ group.id }}" title="删除">
+                                                onclick="openGroupDeleteModal(this)"
+                                                data-group-name="{{ group.name|escapejs }}"
+                                                data-delete-url="{% url 'nodes:group_delete' group.id %}" title="删除">
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                         </div>
@@ -85,29 +95,6 @@
                     </div>
 
                     {% for group in node_groups %}
-                    <div class="modal fade" id="deleteModal{{ group.id }}" tabindex="-1">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">确认删除</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <div class="modal-body">
-                                    确定要删除节点组 <strong>{{ group.name }}</strong> 吗？
-                                    <br><br>
-                                    <small class="text-muted">此操作不可恢复！关联的节点不会删除</small>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                                    <form method="post" action="{% url 'nodes:group_delete' group.id %}">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn btn-danger">确认删除</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="modal fade" id="manageNodesModal{{ group.id }}" tabindex="-1">
                         <div class="modal-dialog modal-lg">
                             <div class="modal-content">
@@ -120,15 +107,18 @@
                                 <form method="post" action="{% url 'nodes:group_manage_nodes' group.id %}">
                                     {% csrf_token %}
                                     <div class="modal-body">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div class="input-group input-group-sm" style="max-width: 340px;">
+                                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                                <input type="text" class="form-control manage-node-search" data-group-id="{{ group.id }}" placeholder="搜索主机名或IP...">
+                                            </div>
+                                            <small class="text-muted">已选 <strong id="selectedCount{{ group.id }}">0</strong> 台</small>
+                                        </div>
                                         <table class="table table-sm table-bordered">
                                             <thead>
                                                 <tr>
                                                     <th style="width:40px">
-                                                        <input type="checkbox" class="form-check-input" onclick="
-                                                            document.querySelectorAll('#manageNodesModal{{ group.id }} .node-check').forEach(cb => {
-                                                                if (!cb.disabled) cb.checked = this.checked;
-                                                            });
-                                                        ">
+                                                        <input type="checkbox" class="form-check-input manage-select-all" data-group-id="{{ group.id }}">
                                                     </th>
                                                     <th>主机名</th>
                                                     <th>IP</th>
@@ -136,9 +126,9 @@
                                                     <th>状态</th>
                                                 </tr>
                                             </thead>
-                                            <tbody>
+                                            <tbody id="manageNodeTbody{{ group.id }}">
                                                 {% for node in all_nodes %}
-                                                <tr>
+                                                <tr class="manage-node-row" data-hostname="{{ node.hostname|lower }}" data-ip="{{ node.ip }}">
                                                     <td>
                                                         {% if node.groups.count >= 3 and node not in group.nodes.all %}
                                                         <input type="checkbox" name="node_ids" value="{{ node.id }}"
@@ -219,4 +209,253 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="groupDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                确定要删除节点组 <strong id="groupDeleteName">-</strong> 吗？
+                <br><br>
+                <small class="text-muted">此操作不可恢复！关联的节点不会删除</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <form method="post" id="groupDeleteForm" action="#">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">确认删除</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .node-count-btn {
+        min-width: 42px;
+    }
+    .group-node-count-link {
+        text-decoration: none;
+    }
+    .tag-input-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        min-height: 38px;
+        cursor: text;
+        overflow-y: auto;
+    }
+    .tag-input-wrapper .tag-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #e9ecef;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove:hover {
+        opacity: 1;
+        color: #dc3545;
+    }
+    .tag-input-wrapper .tag-input-field {
+        border: none;
+        outline: none;
+        flex: 1;
+        min-width: 100px;
+        padding: 0;
+        background: transparent;
+    }
+</style>
+
+<script>
+    let groupDeleteModal;
+
+    function initGroupTagSearch() {
+        const wrapper = document.getElementById('groupCombinedTagWrapper');
+        const field = document.getElementById('groupCombinedSearchField');
+        const hidden = document.getElementById('groupSearchHidden');
+        if (!wrapper || !field || !hidden) return;
+
+        function focusFieldWithCaret() {
+            field.focus();
+            const len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
+        function updateHidden() {
+            const badges = wrapper.querySelectorAll('.tag-badge');
+            const values = [];
+            badges.forEach(function (b) {
+                values.push(b.getAttribute('data-value'));
+            });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            const badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
+                document.getElementById('groupSearchForm').submit();
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        const initVal = hidden.value.trim();
+        if (initVal) {
+            initVal.split(',').map(function (t) { return t.trim(); }).filter(Boolean)
+                .forEach(function (tag) { createBadge(tag); });
+        }
+
+        field.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                    updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
+                    document.getElementById('groupSearchForm').submit();
+                }
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                const badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
+                    document.getElementById('groupSearchForm').submit();
+                }
+            }
+        });
+
+        wrapper.addEventListener('click', function (e) {
+            if (e.target === wrapper) {
+                focusFieldWithCaret();
+            }
+        });
+
+        focusFieldWithCaret();
+    }
+
+    function openGroupDeleteModal(el) {
+        const groupName = el.getAttribute('data-group-name') || '-';
+        const deleteUrl = el.getAttribute('data-delete-url') || '#';
+
+        document.getElementById('groupDeleteName').textContent = groupName;
+        document.getElementById('groupDeleteForm').setAttribute('action', deleteUrl);
+
+        if (!groupDeleteModal) {
+            groupDeleteModal = new bootstrap.Modal(document.getElementById('groupDeleteModal'));
+        }
+        groupDeleteModal.show();
+    }
+
+    function updateSelectedCount(groupId) {
+        const modal = document.getElementById('manageNodesModal' + groupId);
+        if (!modal) return;
+
+        const checks = modal.querySelectorAll('.node-check:checked');
+        const countEl = document.getElementById('selectedCount' + groupId);
+        if (countEl) {
+            countEl.textContent = String(checks.length);
+        }
+
+        const all = modal.querySelector('.manage-select-all');
+        if (!all) return;
+        const enabledChecks = modal.querySelectorAll('.node-check:not([disabled])');
+        if (!enabledChecks.length) {
+            all.checked = false;
+            all.indeterminate = false;
+            return;
+        }
+        const checkedEnabled = modal.querySelectorAll('.node-check:not([disabled]):checked');
+        if (checkedEnabled.length === 0) {
+            all.checked = false;
+            all.indeterminate = false;
+        } else if (checkedEnabled.length === enabledChecks.length) {
+            all.checked = true;
+            all.indeterminate = false;
+        } else {
+            all.checked = false;
+            all.indeterminate = true;
+        }
+    }
+
+    function initManageNodeModal(groupId) {
+        const modal = document.getElementById('manageNodesModal' + groupId);
+        if (!modal) return;
+
+        const searchInput = modal.querySelector('.manage-node-search');
+        const rows = modal.querySelectorAll('.manage-node-row');
+        const selectAll = modal.querySelector('.manage-select-all');
+        const checks = modal.querySelectorAll('.node-check');
+
+        if (searchInput) {
+            searchInput.addEventListener('input', function () {
+                const q = this.value.trim().toLowerCase();
+                rows.forEach(function (row) {
+                    const h = row.getAttribute('data-hostname') || '';
+                    const ip = row.getAttribute('data-ip') || '';
+                    row.style.display = (!q || h.indexOf(q) >= 0 || ip.indexOf(q) >= 0) ? '' : 'none';
+                });
+            });
+        }
+
+        if (selectAll) {
+            selectAll.addEventListener('change', function () {
+                checks.forEach(function (cb) {
+                    if (!cb.disabled && cb.closest('tr').style.display !== 'none') {
+                        cb.checked = selectAll.checked;
+                    }
+                });
+                updateSelectedCount(groupId);
+            });
+        }
+
+        checks.forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                updateSelectedCount(groupId);
+            });
+        });
+
+        modal.addEventListener('shown.bs.modal', function () {
+            updateSelectedCount(groupId);
+            if (searchInput) searchInput.focus();
+        });
+
+        updateSelectedCount(groupId);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        initGroupTagSearch();
+        document.querySelectorAll('.manage-select-all').forEach(function (el) {
+            const groupId = el.getAttribute('data-group-id');
+            if (groupId) initManageNodeModal(groupId);
+        });
+    });
+</script>
 {% endblock %}

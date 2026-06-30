@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}任务详情 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-card-text"></i> 任务详情</h5>
+                    <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-secondary">返回任务中心</a>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6"><strong>任务类型：</strong>{{ task.get_operation_type_display }}</div>
+                        <div class="col-md-3"><strong>状态：</strong>{{ task.get_status_display }}</div>
+                        <div class="col-md-3"><strong>来源批次：</strong>{{ task.source_batch|default:'-' }}</div>
+                        <div class="col-md-6"><strong>目标主机：</strong>{{ task.target_hostnames|default:'-' }}</div>
+                        <div class="col-md-6"><strong>目标IP：</strong>{{ task.target_ips|default:'-' }}</div>
+                        <div class="col-md-12"><strong>目标配置：</strong>{{ task.target_configs|default:'-' }}</div>
+                        <div class="col-md-3"><strong>进度：</strong>{{ task.progress }}%</div>
+                        <div class="col-md-3"><strong>触发人：</strong>{{ task.trigger_user.username|default:'-' }}</div>
+                        <div class="col-md-3"><strong>开始时间：</strong>{{ task.started_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
+                        <div class="col-md-3"><strong>结束时间：</strong>{{ task.finished_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
+                    </div>
+                    <hr>
+                    <p class="mb-1"><strong>任务说明</strong></p>
+                    <pre class="bg-light p-2 border rounded small mb-3">{{ task.detail|default:'-' }}</pre>
+                    <p class="mb-1"><strong>执行结果</strong></p>
+                    {% if has_grouped_result %}
+                    <div class="accordion" id="taskResultAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingSummary">
+                                <button class="accordion-button py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSummary" aria-expanded="true" aria-controls="collapseSummary">
+                                    概要
+                                </button>
+                            </h2>
+                            <div id="collapseSummary" class="accordion-collapse collapse show" aria-labelledby="headingSummary">
+                                <div class="accordion-body py-2">
+                                    <span class="badge bg-success me-1">成功 {{ task_result_groups.success|length }}</span>
+                                    <span class="badge bg-danger me-1">失败 {{ task_result_groups.failed|length }}</span>
+                                    <span class="badge bg-secondary">其他 {{ task_result_groups.other|length }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingFailed">
+                                <button class="accordion-button py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFailed" aria-expanded="true" aria-controls="collapseFailed">
+                                    失败明细（{{ task_result_groups.failed|length }}）
+                                </button>
+                            </h2>
+                            <div id="collapseFailed" class="accordion-collapse collapse show" aria-labelledby="headingFailed">
+                                <div class="accordion-body py-2">
+                                    {% if task_result_groups.failed %}
+                                    <pre class="bg-dark text-light p-2 border rounded small mb-0" style="white-space: pre-wrap;">{% for line in task_result_groups.failed %}{{ line }}
+{% endfor %}</pre>
+                                    {% else %}
+                                    <span class="text-muted">无失败记录</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingSuccess">
+                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSuccess" aria-expanded="false" aria-controls="collapseSuccess">
+                                    成功明细（{{ task_result_groups.success|length }}）
+                                </button>
+                            </h2>
+                            <div id="collapseSuccess" class="accordion-collapse collapse" aria-labelledby="headingSuccess">
+                                <div class="accordion-body py-2">
+                                    {% if task_result_groups.success %}
+                                    <pre class="bg-dark text-light p-2 border rounded small mb-0" style="white-space: pre-wrap;">{% for line in task_result_groups.success %}{{ line }}
+{% endfor %}</pre>
+                                    {% else %}
+                                    <span class="text-muted">无成功记录</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingOther">
+                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOther" aria-expanded="false" aria-controls="collapseOther">
+                                    其他日志（{{ task_result_groups.other|length }}）
+                                </button>
+                            </h2>
+                            <div id="collapseOther" class="accordion-collapse collapse" aria-labelledby="headingOther">
+                                <div class="accordion-body py-2">
+                                    {% if task_result_groups.other %}
+                                    <pre class="bg-dark text-light p-2 border rounded small mb-0" style="white-space: pre-wrap;">{% for line in task_result_groups.other %}{{ line }}
+{% endfor %}</pre>
+                                    {% else %}
+                                    <span class="text-muted">无额外日志</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <pre class="bg-dark text-light p-2 border rounded small mb-0" style="white-space: pre-wrap;">{{ task.result|default:'-' }}</pre>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

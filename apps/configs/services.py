@@ -24,7 +24,14 @@ def save_sync_path(node, main_conf_path, user=None):
     return setting
 
 
-def sync_discovered_configs(node, discovered, request_user, remark="从远程节点同步"):
+def sync_discovered_configs(
+    node,
+    discovered,
+    request_user,
+    remark="从远程节点同步",
+    mark_orphaned=True,
+    progress_callback=None,
+):
     created = []
     updated = []
     skipped = []
@@ -33,6 +40,8 @@ def sync_discovered_configs(node, discovered, request_user, remark="从远程节
 
     for item in discovered:
         if item["name"] in SKIP_FILES:
+            if progress_callback:
+                progress_callback("skipped", item["name"])
             continue
 
         config = Config.objects.filter(node=node, file_path=item["path"]).first()
@@ -55,6 +64,8 @@ def sync_discovered_configs(node, discovered, request_user, remark="从远程节
                 created_by=request_user,
             )
             created.append(item["name"])
+            if progress_callback:
+                progress_callback("created", item["name"])
         elif config.content != item["content"]:
             new_version = config.current_version + 1
             config.name = item["name"]
@@ -72,18 +83,53 @@ def sync_discovered_configs(node, discovered, request_user, remark="从远程节
             )
             config.prune_old_versions()
             updated.append(item["name"])
+            if progress_callback:
+                progress_callback("updated", item["name"])
         else:
             config.sync_status = "success"
             config.last_sync_time = now
             config.save(update_fields=["sync_status", "last_sync_time"])
             skipped.append(item["name"])
+            if progress_callback:
+                progress_callback("skipped", item["name"])
 
-    return created, updated, skipped
+    orphaned = []
+    if mark_orphaned:
+        discovered_paths = {item["path"] for item in discovered}
+        orphaned = _mark_orphaned_configs(node, discovered_paths)
+
+    return created, updated, skipped, orphaned
+
+
+def _mark_orphaned_configs(node, discovered_paths):
+    orphaned = []
+    stale_configs = Config.objects.filter(node=node, sync_status="success").exclude(
+        file_path__in=discovered_paths
+    )
+
+    for config in stale_configs:
+        config.sync_status = "orphaned"
+        config.save(update_fields=["sync_status", "updated_at"])
+        orphaned.append(config.name)
+
+    return orphaned
 
 
 def sync_selected_configs(
-    node, selected_paths, discovered, request_user, remark="部分配置同步"
+    node,
+    selected_paths,
+    discovered,
+    request_user,
+    remark="部分配置同步",
+    progress_callback=None,
 ):
     selected_set = set(selected_paths)
     filtered = [item for item in discovered if item["path"] in selected_set]
-    return sync_discovered_configs(node, filtered, request_user, remark=remark)
+    return sync_discovered_configs(
+        node,
+        filtered,
+        request_user,
+        remark=remark,
+        mark_orphaned=False,
+        progress_callback=progress_callback,
+    )

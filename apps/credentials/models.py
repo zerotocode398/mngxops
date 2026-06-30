@@ -23,6 +23,7 @@ class Credential(models.Model):
     )
     password = models.TextField(blank=True, verbose_name="密码")
     private_key = models.TextField(blank=True, verbose_name="私钥")
+    is_enabled = models.BooleanField(default=True, verbose_name="启用")
     description = models.TextField(blank=True, verbose_name="描述")
     created_by = models.ForeignKey(
         User, on_delete=models.CASCADE, verbose_name="创建人"
@@ -62,3 +63,36 @@ class Credential(models.Model):
     @staticmethod
     def _is_encrypted(value):
         return value.startswith("gAAAAA")
+
+
+class CredentialEnableTask(models.Model):
+    STATUS_CHOICES = (
+        ("pending", "待执行"),
+        ("running", "执行中"),
+        ("completed", "已完成"),
+        ("failed", "失败"),
+    )
+
+    credential = models.ForeignKey(
+        Credential, on_delete=models.CASCADE, related_name="enable_tasks", verbose_name="凭证"
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default="pending", verbose_name="状态"
+    )
+    total_count = models.IntegerField(default=0, verbose_name="总节点数")
+    completed_count = models.IntegerField(default=0, verbose_name="已完成数")
+    success_count = models.IntegerField(default=0, verbose_name="成功数")
+    failed_count = models.IntegerField(default=0, verbose_name="失败数")
+    skipped_count = models.IntegerField(default=0, verbose_name="跳过数")
+    task_center_id = models.BigIntegerField(null=True, blank=True, verbose_name="任务中心ID")
+    message = models.TextField(blank=True, verbose_name="结果说明")
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "凭证启用测试任务"
+        verbose_name_plural = verbose_name
+        ordering = ["-created_at"]
+

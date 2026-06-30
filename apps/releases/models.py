@@ -130,6 +130,64 @@ class ReleaseHistory(models.Model):
         return f"{self.get_action_display()} - {self.config.name} v{self.version}"
 
 
+class TaskCenterTask(models.Model):
+    OPERATION_TYPE_CHOICES = (
+        ("release_publish", "发布配置"),
+        ("release_rollback", "回滚配置"),
+        ("credential_enable_test", "凭证启用测试"),
+        ("node_batch_test", "节点批量测试"),
+        ("other", "其他任务"),
+    )
+
+    STATUS_CHOICES = (
+        ("pending", "等待中"),
+        ("running", "执行中"),
+        ("success", "成功"),
+        ("failed", "失败"),
+        ("cancelled", "已取消"),
+    )
+
+    id = models.BigAutoField(primary_key=True, verbose_name="ID")
+    operation_type = models.CharField(
+        max_length=40,
+        choices=OPERATION_TYPE_CHOICES,
+        default="other",
+        verbose_name="任务类型",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="pending",
+        verbose_name="状态",
+    )
+    detail = models.TextField(blank=True, verbose_name="任务说明")
+    result = models.TextField(blank=True, verbose_name="任务结果")
+    progress = models.IntegerField(default=0, verbose_name="进度")
+    source_batch = models.CharField(max_length=64, blank=True, verbose_name="来源批次")
+    target_hostnames = models.TextField(blank=True, verbose_name="目标主机名")
+    target_ips = models.TextField(blank=True, verbose_name="目标IP")
+    target_configs = models.TextField(blank=True, verbose_name="目标配置")
+    trigger_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="触发人",
+    )
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "任务中心"
+        verbose_name_plural = verbose_name
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.get_operation_type_display()} #{self.id}"
+
+
 def generate_batch_number():
     today = timezone.now().strftime("%y%m%d")
     prefix = f"release-{today}-"

@@ -5,7 +5,9 @@ app_name = "releases"
 
 urlpatterns = [
     path("create/", views.ReleaseCreateView.as_view(), name="create"),
-    path("history/", views.ReleaseListView.as_view(), name="history"),
+    path("history/", views.TaskCenterListView.as_view(), name="history"),
+    path("tasks/<int:pk>/", views.TaskCenterDetailView.as_view(), name="task_center_detail"),
+    path("tasks/progress/", views.TaskCenterProgressAPIView.as_view(), name="task_center_progress"),
     path("center/", views.ReleaseCenterView.as_view(), name="center"),
     path(
         "center/<str:batch_number>/execute/",

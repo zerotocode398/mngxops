@@ -9,20 +9,11 @@
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="card-header node-list-header">
                     <h5 class="mb-0"><i class="bi bi-server"></i> 节点列表</h5>
-                    <div class="d-flex gap-2 align-items-center">
-                        <button type="button" class="btn btn-outline-warning btn-sm" id="batchLockBtn" onclick="batchLockNodes()" disabled>
-                            <i class="bi bi-lock"></i> 批量锁定（0/3）
-                        </button>
-                        <button type="button" class="btn btn-outline-info btn-sm" id="batchUnlockBtn" onclick="batchUnlockNodes()" disabled>
-                            <i class="bi bi-unlock"></i> 批量解锁（0/3）
-                        </button>
-                        <button type="button" class="btn btn-outline-success btn-sm" id="batchTestBtn" onclick="batchTestConnection()" disabled>
-                            <i class="bi bi-lightning-charge"></i> 批量测试连接（0/3）
-                        </button>
+                    <div class="node-list-actions">
                         {% if user|has_perm_code:"nodes.create" %}
-                        <a href="{% url 'nodes:create' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-primary">
+                        <a href="{% url 'nodes:create' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-primary btn-sm node-list-create-btn">
                             <i class="bi bi-plus-circle"></i> 新增节点
                         </a>
                         {% endif %}
@@ -56,12 +47,29 @@
                         </div>
                     </form>
 
+                    <div class="node-list-batch-toolbar" role="group" aria-label="批量操作">
+                        <span class="node-list-selection-hint" id="batchSelectionHint">已选择 0/3</span>
+                        {% if user|has_perm_code:"nodes.update" %}
+                        <button type="button" class="btn btn-sm node-list-batch-btn" id="batchLockBtn" onclick="batchLockNodes()" disabled>
+                            <i class="bi bi-lock"></i> 批量锁定（0/3）
+                        </button>
+                        <button type="button" class="btn btn-sm node-list-batch-btn" id="batchUnlockBtn" onclick="batchUnlockNodes()" disabled>
+                            <i class="bi bi-unlock"></i> 批量解锁（0/3）
+                        </button>
+                        <button type="button" class="btn btn-sm node-list-batch-btn" id="batchTestBtn" onclick="batchTestConnection()" disabled>
+                            <i class="bi bi-lightning-charge"></i> 批量测试连接（0/3）
+                        </button>
+                        {% else %}
+                        <span class="text-muted small">当前账号无测试/锁定操作权限</span>
+                        {% endif %}
+                    </div>
+
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm">
+                        <table class="table table-hover table-sm align-middle">
                             <thead>
                                 <tr>
                                     <th style="width: 30px;">
-                                        <input type="checkbox" id="selectAllNodes">
+                                        <input type="checkbox" id="selectAllNodes" title="全选/取消（最多 3 台）" aria-label="全选或取消勾选节点，最多 3 台">
                                     </th>
                                     <th style="width: 14%">主机名</th>
                                     <th style="width: 14%">IP地址|端口</th>
@@ -77,7 +85,7 @@
                                 {% for node in nodes %}
                                 <tr class="{% if node.is_locked %}table-secondary{% endif %}">
                                     <td>
-                                        <input type="checkbox" class="node-checkbox" data-node-id="{{ node.id }}" data-node-locked="{{ node.is_locked|yesno:'true,false' }}">
+                                        <input type="checkbox" class="node-checkbox" data-node-id="{{ node.id }}" data-node-locked="{{ node.is_locked|yesno:'true,false' }}" aria-label="勾选节点 {{ node.hostname }}">
                                     </td>
                                     <td>
                                         <strong>{{ node.hostname }}</strong>
@@ -87,11 +95,13 @@
                                         <code>{{ node.ip }}:{{ node.port }}</code>
                                     </td>
                                     <td>
-                                        {% for group in node_groups|dict_get:node.id %}
-                                        <span class="badge bg-info text-dark">{{ group.name }}</span>
-                                        {% empty %}
-                                        <span class="text-muted small">-</span>
-                                        {% endfor %}
+                                        <div class="node-group-tags">
+                                            {% for group in node_groups|dict_get:node.id %}
+                                            <span class="badge bg-info text-dark">{{ group.name }}</span>
+                                            {% empty %}
+                                            <span class="text-muted small">-</span>
+                                            {% endfor %}
+                                        </div>
                                     </td>
                                     <td>
                                         {% if node.status == 'online' %}
@@ -117,7 +127,7 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
-                                            {% if not node.is_locked %}
+                                            {% if user|has_perm_code:"nodes.update" and not node.is_locked %}
                                             <button type="button" class="btn btn-outline-success"
                                                 onclick="testConnection(this)" data-node-id="{{ node.id }}"
                                                 title="测试连接">
@@ -146,39 +156,18 @@
                                             {% endif %}
                                             {% endif %}
                                             {% if user|has_perm_code:"nodes.delete" %}
-                                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
-                                                data-bs-target="#deleteModal{{ node.id }}" title="删除">
+                                            <button type="button" class="btn btn-outline-danger"
+                                                onclick="openDeleteModal(this)"
+                                                data-delete-url="{% url 'nodes:delete' node.id %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                                                data-node-hostname="{{ node.hostname }}"
+                                                data-node-ip="{{ node.ip }}"
+                                                title="删除">
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                             {% endif %}
                                         </div>
                                     </td>
                                 </tr>
-
-                                <div class="modal fade" id="deleteModal{{ node.id }}" tabindex="-1">
-                                    <div class="modal-dialog">
-                                        <div class="modal-content">
-                                            <div class="modal-header">
-                                                <h5 class="modal-title">确认删除</h5>
-                                                <button type="button" class="btn-close"
-                                                    data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                确定要删除节点 <strong>{{ node.hostname }} ({{ node.ip }})</strong> 吗？
-                                                <br><br>
-                                                <small class="text-muted">此操作不可恢复！</small>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary"
-                                                    data-bs-dismiss="modal">取消</button>
-                                                <form method="post" action="{% url 'nodes:delete' node.id %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}">
-                                                    {% csrf_token %}
-                                                    <button type="submit" class="btn btn-danger">确认删除</button>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                                 {% empty %}
                                 <tr>
                                     <td colspan="9" class="text-center text-muted py-4">
@@ -245,6 +234,29 @@
     </div>
 </div>
 
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                确定要删除节点 <strong id="deleteNodeDisplay">-</strong> 吗？
+                <br><br>
+                <small class="text-muted">此操作不可恢复！</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <form method="post" id="deleteNodeForm" action="#">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">确认删除</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 自定义弹窗 -->
 <div class="modal fade" id="customModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -271,6 +283,59 @@
 </div>
 
 <style>
+    .node-list-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .node-list-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+    }
+    .node-list-actions .btn {
+        white-space: nowrap;
+    }
+    .node-list-batch-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+    }
+    .node-list-selection-hint {
+        font-size: 0.82rem;
+        color: #6c757d;
+        margin-right: 2px;
+    }
+    .node-list-batch-btn {
+        color: #495057;
+        border: 1px solid #ced4da;
+        background-color: #ffffff;
+    }
+    .node-list-batch-btn:hover:enabled {
+        color: #212529;
+        border-color: #adb5bd;
+        background-color: #e9ecef;
+    }
+    .node-list-batch-btn:disabled {
+        opacity: 0.6;
+    }
+    .node-list-create-btn {
+        box-shadow: 0 0.125rem 0.25rem rgba(13, 110, 253, 0.2);
+    }
+    .node-group-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    @media (max-width: 992px) {
+        .node-list-actions {
+            justify-content: flex-start;
+        }
+    }
     .tag-input-wrapper {
         display: flex;
         flex-wrap: wrap;
@@ -314,6 +379,21 @@
 
 <script>
     let customModal;
+    let deleteConfirmModal;
+
+    function openDeleteModal(el) {
+        var deleteUrl = el.getAttribute('data-delete-url') || '#';
+        var hostname = el.getAttribute('data-node-hostname') || '';
+        var ip = el.getAttribute('data-node-ip') || '';
+
+        document.getElementById('deleteNodeDisplay').textContent = hostname + ' (' + ip + ')';
+        document.getElementById('deleteNodeForm').setAttribute('action', deleteUrl);
+
+        if (!deleteConfirmModal) {
+            deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+        }
+        deleteConfirmModal.show();
+    }
 
     function showCustomModal(title, content, showConfirm = false, confirmCallback = null) {
         document.getElementById('customModalTitle').textContent = title;
@@ -371,6 +451,11 @@
 
     function testConnection(el) {
         const nodeId = parseInt(el.getAttribute('data-node-id'));
+        var selectedNodeIds = getSelectedNodeIds();
+        if (selectedNodeIds.length > 1) {
+            batchTestConnection(selectedNodeIds);
+            return;
+        }
         const data = { node_id: nodeId };
 
         showLoading('测试连接');
@@ -455,7 +540,8 @@
         let versionStr = version.toString();
 
         if (versionStr.includes("nginx version:")) {
-            versionStr = versionStr.split("nginx version:")[-1].trim();
+            var parts = versionStr.split("nginx version:");
+            versionStr = parts[parts.length - 1].trim();
         }
 
         if (versionStr.startsWith("nginx/")) {
@@ -483,6 +569,18 @@
         var searchHidden = document.getElementById(searchHiddenId);
         var groupHidden = document.getElementById(groupHiddenId);
 
+        if (!wrapper || !field || !searchHidden || !groupHidden) {
+            return;
+        }
+
+        function focusFieldWithCaret() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
         function updateHidden() {
             var badges = wrapper.querySelectorAll('.tag-badge');
             var values = [];
@@ -502,6 +600,7 @@
                 e.stopPropagation();
                 badge.remove();
                 updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
             });
             wrapper.insertBefore(badge, field);
             updateHidden();
@@ -525,6 +624,7 @@
                     field.value = '';
                 }
                 updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
                 document.getElementById('searchForm').submit();
             }
             if (e.key === 'Backspace' && field.value === '') {
@@ -532,6 +632,7 @@
                 if (badges.length > 0) {
                     badges[badges.length - 1].remove();
                     updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
                 }
             }
         });
@@ -542,35 +643,82 @@
 
         wrapper.addEventListener('click', function (e) {
             if (e.target === wrapper) {
-                field.focus();
+                focusFieldWithCaret();
             }
         });
 
         loadInitial();
-        field.focus();
+        focusFieldWithCaret();
     }
 
     var selectAllCheckbox = document.getElementById('selectAllNodes');
     var batchTestBtn = document.getElementById('batchTestBtn');
     var batchLockBtn = document.getElementById('batchLockBtn');
     var batchUnlockBtn = document.getElementById('batchUnlockBtn');
+    var batchSelectionHint = document.getElementById('batchSelectionHint');
     var MAX_SELECT = 3;
+
+    function getNodeCheckboxes() {
+        return document.querySelectorAll('.node-checkbox');
+    }
+
+    function getSelectedNodeIds() {
+        var checked = document.querySelectorAll('.node-checkbox:checked');
+        var nodeIds = [];
+        checked.forEach(function (cb) {
+            nodeIds.push(parseInt(cb.getAttribute('data-node-id')));
+        });
+        return nodeIds;
+    }
+
+    function syncSelectAllState() {
+        if (!selectAllCheckbox) return;
+
+        var checkboxes = getNodeCheckboxes();
+        var checkedCount = document.querySelectorAll('.node-checkbox:checked').length;
+        var maxSelectable = Math.min(MAX_SELECT, checkboxes.length);
+
+        if (checkedCount === 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        } else if (checkedCount >= maxSelectable) {
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.indeterminate = false;
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = true;
+        }
+    }
 
     function updateBatchUI() {
         var checked = document.querySelectorAll('.node-checkbox:checked');
         var count = checked.length;
-        batchTestBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> 批量测试连接（' + count + '/' + MAX_SELECT + '）';
-        batchTestBtn.disabled = count === 0;
-        batchLockBtn.innerHTML = '<i class="bi bi-lock"></i> 批量锁定（' + count + '/' + MAX_SELECT + '）';
-        batchLockBtn.disabled = count === 0;
-        batchUnlockBtn.innerHTML = '<i class="bi bi-unlock"></i> 批量解锁（' + count + '/' + MAX_SELECT + '）';
-        batchUnlockBtn.disabled = count === 0;
+        if (batchTestBtn) {
+            batchTestBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> 批量测试连接（' + count + '/' + MAX_SELECT + '）';
+            batchTestBtn.disabled = count === 0;
+        }
+        if (batchLockBtn) {
+            batchLockBtn.innerHTML = '<i class="bi bi-lock"></i> 批量锁定（' + count + '/' + MAX_SELECT + '）';
+            batchLockBtn.disabled = count === 0;
+        }
+        if (batchUnlockBtn) {
+            batchUnlockBtn.innerHTML = '<i class="bi bi-unlock"></i> 批量解锁（' + count + '/' + MAX_SELECT + '）';
+            batchUnlockBtn.disabled = count === 0;
+        }
+        if (batchSelectionHint) {
+            batchSelectionHint.textContent = '已选择 ' + count + '/' + MAX_SELECT;
+        }
+        syncSelectAllState();
     }
 
     if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('change', function () {
-            var checkboxes = document.querySelectorAll('.node-checkbox');
-            if (selectAllCheckbox.checked) {
+        selectAllCheckbox.addEventListener('click', function () {
+            var checkboxes = getNodeCheckboxes();
+            var hasSelected = document.querySelectorAll('.node-checkbox:checked').length > 0;
+
+            if (hasSelected) {
+                checkboxes.forEach(function (cb) { cb.checked = false; });
+            } else {
                 var selected = 0;
                 checkboxes.forEach(function (cb) {
                     if (selected < MAX_SELECT) {
@@ -580,12 +728,8 @@
                         cb.checked = false;
                     }
                 });
-                if (selected >= MAX_SELECT) {
-                    selectAllCheckbox.checked = false;
-                }
-            } else {
-                checkboxes.forEach(function (cb) { cb.checked = false; });
             }
+
             updateBatchUI();
         });
     }
@@ -600,6 +744,22 @@
             updateBatchUI();
         });
     });
+
+    document.querySelectorAll('tbody tr').forEach(function (row) {
+        row.addEventListener('click', function (e) {
+            if (e.target.closest('a,button,input,label,.btn-group')) {
+                return;
+            }
+            var cb = row.querySelector('.node-checkbox');
+            if (!cb) {
+                return;
+            }
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change'));
+        });
+    });
+
+    updateBatchUI();
 
     function toggleLock(el) {
         var nodeId = parseInt(el.getAttribute('data-node-id'));
@@ -842,10 +1002,8 @@
         );
     }
 
-    function batchTestConnection() {
-        var checked = document.querySelectorAll('.node-checkbox:checked');
-        var nodeIds = [];
-        checked.forEach(function (cb) { nodeIds.push(parseInt(cb.getAttribute('data-node-id'))); });
+    function batchTestConnection(nodeIdsOverride) {
+        var nodeIds = Array.isArray(nodeIdsOverride) ? nodeIdsOverride : getSelectedNodeIds();
 
         if (nodeIds.length === 0) {
             showCustomModal('提示', '<p class="text-warning">请先选择要测试的节点</p>');
@@ -890,6 +1048,19 @@
 
                 if (!result.success) {
                     showCustomModal('测试失败', '<p class="text-danger">' + result.message + '</p>');
+                    return;
+                }
+
+                if (result.async) {
+                    var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
+                    var content =
+                        '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 已创建后台任务</div>' +
+                        '<p>' + result.message + '</p>' +
+                        '<p class="text-muted mb-0">即将跳转到任务详情...</p>';
+                    showCustomModal('批量测试已提交', content);
+                    setTimeout(function () {
+                        window.location.href = jumpUrl;
+                    }, 3000);
                     return;
                 }
 

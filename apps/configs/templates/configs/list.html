@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+ {% extends "base.html" %}
 {% load permission_tags %}
 
 {% block title %}配置列表 - MngxOps{% endblock %}
@@ -26,14 +26,17 @@
                     {% endif %}
                 </div>
                 <div class="card-body">
-                    <form method="get" class="mb-3">
+                    <form method="get" class="mb-3" id="configSearchForm">
                         <div class="row g-2">
-                            <div class="col-md-3">
-                                <input type="text" name="search" class="form-control" placeholder="搜索节点名称或配置名称"
-                                    value="{{ search }}">
+                            <div class="col-md-5">
+                                <div class="tag-input-wrapper form-control" id="configCombinedTagWrapper">
+                                    <input type="text" class="tag-input-field" id="configCombinedSearchField"
+                                        placeholder="输入查询条件后回车（配置名/主机名/IP）">
+                                </div>
+                                <input type="hidden" name="search" id="configSearchHidden" value="{{ search }}">
                             </div>
                             <div class="col-md-2">
-                                <select name="environment" class="form-select">
+                                <select name="environment" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
                                     <option value="">全部标签</option>
                                     <option value="dev" {% if env_filter == "dev" %}selected{% endif %}>开发</option>
                                     <option value="test" {% if env_filter == "test" %}selected{% endif %}>测试</option>
@@ -41,7 +44,7 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <select name="status" class="form-select">
+                                <select name="status" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
                                     <option value="">全部状态</option>
                                     <option value="online" {% if status_filter == "online" %}selected{% endif %}>在线
                                     </option>
@@ -52,16 +55,11 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <select name="per_page" class="form-select">
+                                <select name="per_page" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
                                     {% for size in per_page_options %}
                                     <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
                                     {% endfor %}
                                 </select>
-                            </div>
-                            <div class="col-md-2">
-                                <button type="submit" class="btn btn-outline-primary w-100">
-                                    <i class="bi bi-search"></i> 搜索
-                                </button>
                             </div>
                             <div class="col-md-1">
                                 {% if has_any_filter %}
@@ -102,6 +100,18 @@
                                         <span class="badge bg-secondary">未知</span>
                                         {% endif %}
                                         <span class="badge bg-info ms-auto">{{ configs|length }} 个配置</span>
+                                        {% if node.pending_count > 0 %}
+                                        <span class="badge bg-secondary ms-1"
+                                            title="本地新增：{% for name in node.pending_names %}{{ name }}{% if not forloop.last %}、{% endif %}{% endfor %}">
+                                            <i class="bi bi-plus-circle"></i> {{ node.pending_count }} 个本地新增
+                                        </span>
+                                        {% endif %}
+                                        {% if node.orphaned_count > 0 %}
+                                        <span class="badge bg-warning text-dark ms-1"
+                                            title="远程已删除：{% for name in node.orphaned_names %}{{ name }}{% if not forloop.last %}、{% endif %}{% endfor %}">
+                                            <i class="bi bi-exclamation-triangle"></i> {{ node.orphaned_count }} 个远程已删除
+                                        </span>
+                                        {% endif %}
                                     </div>
                                 </button>
                             </h2>
@@ -127,6 +137,12 @@
                                                     <td>
                                                         <i class="bi bi-file-earmark-code text-primary"></i>
                                                         <code>{{ config.name }}</code>
+                                                        {% if config.sync_status == 'pending' %}
+                                                        <span class="badge bg-secondary ms-1" title="本地手动新增，尚未同步到远程"><i class="bi bi-plus-circle"></i> 本地新增</span>
+                                                        {% endif %}
+                                                        {% if config.sync_status == 'orphaned' %}
+                                                        <span class="badge bg-warning text-dark ms-1" title="远程已删除此文件"><i class="bi bi-exclamation-triangle"></i> 远程已删除</span>
+                                                        {% endif %}
                                                     </td>
                                                     <td>
                                                         <small class="text-muted">{{ config.file_path }}</small>
@@ -152,6 +168,7 @@
                                                                 class="btn btn-outline-primary" title="编辑">
                                                                 <i class="bi bi-pencil"></i>
                                                             </a>
+                                                            {% if config.sync_status != 'orphaned' %}
                                                             <form method="post"
                                                                 action="{% url 'configs:update' config.id %}"
                                                                 style="display:inline" class="update-form">
@@ -165,10 +182,23 @@
                                                             </form>
                                                             {% endif %}
                                                             {% endif %}
+                                                            {% endif %}
                                                             <a href="{% url 'configs:versions' config.id %}"
                                                                 class="btn btn-outline-secondary" title="版本">
                                                                 <i class="bi bi-clock-history"></i>
                                                             </a>
+                                                            {% if user|has_perm_code:"configs.delete" and config.sync_status == 'orphaned' or config.sync_status == 'pending' %}
+                                                            <form method="post"
+                                                                action="{% url 'configs:delete' config.id %}"
+                                                                style="display:inline"
+                                                                onsubmit="return confirm('确定要删除此配置吗？\n配置文件会保留在本地数据库版本历史中，删除操作不可恢复。')">
+                                                                {% csrf_token %}
+                                                                <button type="submit" class="btn btn-outline-danger"
+                                                                    title="{% if config.sync_status == 'orphaned' %}远程已删除，可删除本地记录{% else %}删除配置记录{% endif %}">
+                                                                    <i class="bi bi-trash"></i>
+                                                                </button>
+                                                            </form>
+                                                            {% endif %}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -280,9 +310,131 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+    .tag-input-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        min-height: 38px;
+        cursor: text;
+        overflow-y: auto;
+    }
+    .tag-input-wrapper .tag-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #e9ecef;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove:hover {
+        opacity: 1;
+        color: #dc3545;
+    }
+    .tag-input-wrapper .tag-input-field {
+        border: none;
+        outline: none;
+        flex: 1;
+        min-width: 100px;
+        padding: 0;
+        background: transparent;
+    }
+</style>
 <script>
     var pendingForm = null;
     var updateModal = new bootstrap.Modal(document.getElementById('updateConfirmModal'));
+
+    function initConfigTagInput(wrapperId, fieldId, hiddenId, formId) {
+        var wrapper = document.getElementById(wrapperId);
+        var field = document.getElementById(fieldId);
+        var hidden = document.getElementById(hiddenId);
+        var form = document.getElementById(formId);
+
+        if (!wrapper || !field || !hidden || !form) {
+            return;
+        }
+
+        function focusFieldWithCaret() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function (b) {
+                values.push(b.getAttribute('data-value'));
+            });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
+                form.submit();
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        var initialVal = hidden.value.trim();
+        if (initialVal) {
+            initialVal.split(',').map(function (t) { return t.trim(); }).filter(Boolean)
+                .forEach(function (tag) { createBadge(tag); });
+        }
+
+        field.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                    updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
+                    form.submit();
+                }
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
+                    form.submit();
+                }
+            }
+        });
+
+        wrapper.addEventListener('click', function (e) {
+            if (e.target === wrapper) {
+                focusFieldWithCaret();
+            }
+        });
+
+        focusFieldWithCaret();
+    }
 
     document.querySelectorAll('.update-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -298,6 +450,8 @@
             pendingForm.submit();
         }
     });
+
+    initConfigTagInput('configCombinedTagWrapper', 'configCombinedSearchField', 'configSearchHidden', 'configSearchForm');
 
     (function() {
         const currentUrl = window.location.href;

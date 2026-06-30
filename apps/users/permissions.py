@@ -1,8 +1,17 @@
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, JsonResponse
 
 from .perm_defs import permission_code, all_permission_items
 from .models import UserProfile
 
+
+def is_ajax_request(request):
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+
+def forbidden_response(request, message):
+    if is_ajax_request(request):
+        return JsonResponse({"success": False, "message": message}, status=403)
+    return HttpResponseForbidden(message)
 
 
 def user_has_permission(user, resource, action):
@@ -31,10 +40,9 @@ class PermissionRequiredMixin:
         resource = getattr(self, "permission_resource", None)
         action = getattr(self, "permission_action", None)
         if not resource or not action:
-            return HttpResponseForbidden("权限配置错误")
+            return forbidden_response(request, "权限配置错误")
 
         if not user_has_permission(request.user, resource, action):
-            return HttpResponseForbidden("当前账号无权限访问该功能")
+            return forbidden_response(request, "当前账号无权限访问该功能")
 
         return super().dispatch(request, *args, **kwargs)
-
