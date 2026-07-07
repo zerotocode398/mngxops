@@ -909,6 +909,9 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 result["created"] = len(created)
                 result["updated"] = len(updated)
                 result["orphaned"] = len(orphaned)
+                result["created_names"] = created
+                result["updated_names"] = updated
+                result["orphaned_names"] = orphaned
 
             if result["errors"]:
                 result["message"] = "; ".join(result["errors"][:3])
@@ -952,10 +955,23 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                         total_created += result["created"]
                         total_updated += result["updated"]
                         total_orphaned += result["orphaned"]
-                        detail_lines.append(
-                            f"[成功] {result['hostname']}({result['ip']}) - {result.get('message','')} "
-                            f"(新增 {result['created']}, 更新 {result['updated']}, 已删除 {result['orphaned']})"
-                        )
+
+                        parts = [
+                            f"[成功] {result['hostname']}({result['ip']}) - {result.get('message','')}"
+                        ]
+                        if result.get("created_names"):
+                            parts.append(
+                                f"  [新增] {', '.join(result['created_names'])}"
+                            )
+                        if result.get("updated_names"):
+                            parts.append(
+                                f"  [更新] {', '.join(result['updated_names'])}"
+                            )
+                        if result.get("orphaned_names"):
+                            parts.append(
+                                f"  [删除] {', '.join(result['orphaned_names'])}"
+                            )
+                        detail_lines.append("\n".join(parts))
                     else:
                         fail_count += 1
                         detail_lines.append(
@@ -1280,24 +1296,33 @@ class ConfigByNodesAPIView(LoginRequiredMixin, View):
 
         for node in nodes:
             configs = Config.objects.filter(node=node).exclude(name__in=["mime.types"])
-            config_list = []
             for config in configs:
-                config_list.append(
+                versions = config.versions.order_by("-version").values(
+                    "id", "version", "created_at"
+                )
+                result.append(
                     {
                         "id": config.id,
                         "name": config.name,
                         "file_path": config.file_path,
+                        "node_id": node.id,
+                        "node_name": node.hostname,
                         "current_version": config.current_version,
                         "sync_status": config.sync_status,
+                        "versions": [
+                            {
+                                "id": v["id"],
+                                "version": v["version"],
+                                "created_at": (
+                                    v["created_at"].strftime("%Y-%m-%d %H:%M")
+                                    if v["created_at"]
+                                    else ""
+                                ),
+                            }
+                            for v in versions
+                        ],
                     }
                 )
-            result.append(
-                {
-                    "node_id": node.id,
-                    "hostname": node.hostname,
-                    "configs": config_list,
-                }
-            )
 
         return JsonResponse({"success": True, "data": result})
 
