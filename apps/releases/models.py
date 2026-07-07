@@ -136,6 +136,7 @@ class TaskCenterTask(models.Model):
         ("release_rollback", "回滚配置"),
         ("credential_enable_test", "凭证启用测试"),
         ("node_batch_test", "节点批量测试"),
+        ("config_batch_sync", "配置批量同步"),
         ("other", "其他任务"),
     )
 
