@@ -13,6 +13,7 @@ import uuid
 from collections import OrderedDict
 from urllib.parse import quote
 from django.core.cache import cache
+import threading
 
 from .forms import ConfigForm
 from .models import Config, ConfigVersion
@@ -818,166 +819,184 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         from apps.nodes.models import Node
         from apps.nodes.views import _get_node_credential
         from utils.ssh import discover_nginx_configs
+        from apps.releases.models import TaskCenterTask
         from django.utils import timezone
+        from django.db import close_old_connections
 
         data = json.loads(request.body)
         node_ids = data.get("node_ids", [])
-        task_id = data.get("task_id", str(uuid.uuid4()))
 
         if not node_ids:
             return JsonResponse({"success": False, "message": "请至少选择一个节点"})
 
-        if len(node_ids) > 3:
-            return JsonResponse({"success": False, "message": "最多只能选择 3 个节点"})
+        MAX_BATCH = 3
+        if len(node_ids) > MAX_BATCH:
+            return JsonResponse(
+                {"success": False, "message": f"最多只能选择 {MAX_BATCH} 个节点"}
+            )
 
-        progress = {
-            "task_id": task_id,
-            "total": len(node_ids),
-            "completed": 0,
-            "nodes": {},
-        }
+        nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
+        total = len(nodes)
 
-        for node_id in node_ids:
-            progress["nodes"][str(node_id)] = {
-                "status": "waiting",
-                "hostname": "",
+        task_center = TaskCenterTask.objects.create(
+            operation_type="config_batch_sync",
+            status="pending",
+            detail="任务已创建，等待执行",
+            target_hostnames=",".join(node.hostname for node in nodes),
+            target_ips=",".join(node.ip for node in nodes),
+            trigger_user=request.user,
+        )
+
+        def _sync_one(node):
+            close_old_connections()
+
+            result = {
+                "node_id": node.id,
+                "hostname": node.hostname,
+                "ip": node.ip,
+                "success": False,
+                "message": "",
                 "created": 0,
                 "updated": 0,
                 "orphaned": 0,
-                "skipped": 0,
-                "total_files": 0,
-                "completed_files": 0,
-                "error": "",
-                "time": 0,
+                "errors": [],
             }
 
-        cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+            if node.is_locked:
+                result["message"] = "节点已锁定"
+                return result
 
-        total_created = 0
-        total_updated = 0
-        total_orphaned = 0
-        total_errors = []
+            credential = _get_node_credential(node)
+            if not credential:
+                result["message"] = "未配置SSH凭证"
+                return result
 
-        for node_id in node_ids:
-            node = get_object_or_404(Node, id=node_id)
-            progress["nodes"][str(node_id)]["hostname"] = node.hostname
-            progress["nodes"][str(node_id)]["status"] = "syncing"
-            cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+            setting = get_or_create_sync_setting(node)
+            nginx_conf_path = setting.main_conf_path
+            if not nginx_conf_path:
+                result["message"] = "未配置nginx路径"
+                return result
 
-            start_time = timezone.now()
+            if credential.auth_type == "password":
+                discovered, errors = discover_nginx_configs(
+                    node.ip,
+                    node.port,
+                    credential.username,
+                    password=credential.get_password(),
+                    nginx_conf_path=nginx_conf_path,
+                )
+            else:
+                discovered, errors = discover_nginx_configs(
+                    node.ip,
+                    node.port,
+                    credential.username,
+                    private_key=credential.get_private_key(),
+                    nginx_conf_path=nginx_conf_path,
+                )
 
-            try:
-                if node.is_locked:
-                    progress["nodes"][str(node_id)]["status"] = "failed"
-                    progress["nodes"][str(node_id)]["error"] = "节点已锁定"
-                    progress["completed"] += 1
-                    cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-                    total_errors.append(f"{node.hostname}: 节点已锁定")
-                    continue
+            if errors:
+                mark_discovery_failed_configs(node, errors, request.user)
+                result["errors"].extend(errors)
 
-                credential = _get_node_credential(node)
+            if discovered:
+                created, updated, skipped, orphaned = sync_discovered_configs(
+                    node,
+                    discovered,
+                    request.user,
+                    remark="批量节点全量同步",
+                )
+                save_sync_path(node, nginx_conf_path, request.user)
+                result["created"] = len(created)
+                result["updated"] = len(updated)
+                result["orphaned"] = len(orphaned)
 
-                if not credential:
-                    progress["nodes"][str(node_id)]["status"] = "failed"
-                    progress["nodes"][str(node_id)]["error"] = "未配置SSH凭证"
-                    progress["completed"] += 1
-                    cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-                    total_errors.append(f"{node.hostname}: 未配置SSH凭证")
-                    continue
+            if result["errors"]:
+                result["message"] = "; ".join(result["errors"][:3])
+                result["success"] = False
+            elif not discovered:
+                result["message"] = "未发现配置文件"
+                result["success"] = False
+            else:
+                result["success"] = True
+                result["message"] = f"已同步 {len(discovered)} 个配置文件"
 
-                setting = get_or_create_sync_setting(node)
-                nginx_conf_path = setting.main_conf_path
-                if not nginx_conf_path:
-                    progress["nodes"][str(node_id)]["status"] = "failed"
-                    progress["nodes"][str(node_id)]["error"] = "未配置nginx路径"
-                    progress["completed"] += 1
-                    cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-                    total_errors.append(f"{node.hostname}: 未配置nginx路径")
-                    continue
+            return result
 
-                if credential.auth_type == "password":
-                    discovered, errors = discover_nginx_configs(
-                        node.ip,
-                        node.port,
-                        credential.username,
-                        password=credential.get_password(),
-                        nginx_conf_path=nginx_conf_path,
+        def _run_batch_sync_task(task_id, sync_nodes):
+            TaskCenterTask.objects.filter(pk=task_id).update(
+                status="running",
+                started_at=timezone.now(),
+                progress=0,
+                detail=f"执行中：0/{len(sync_nodes)}",
+            )
+
+            success_count = 0
+            fail_count = 0
+            done = 0
+            total_created = 0
+            total_updated = 0
+            total_orphaned = 0
+            detail_lines = []
+
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
+                future_to_node = {
+                    executor.submit(_sync_one, node): node for node in sync_nodes
+                }
+                for future in as_completed(future_to_node):
+                    result = future.result()
+                    done += 1
+                    if result.get("success"):
+                        success_count += 1
+                        total_created += result["created"]
+                        total_updated += result["updated"]
+                        total_orphaned += result["orphaned"]
+                        detail_lines.append(
+                            f"[成功] {result['hostname']}({result['ip']}) - {result.get('message','')} "
+                            f"(新增 {result['created']}, 更新 {result['updated']}, 已删除 {result['orphaned']})"
+                        )
+                    else:
+                        fail_count += 1
+                        detail_lines.append(
+                            f"[失败] {result['hostname']}({result['ip']}) - {result.get('message','')}"
+                        )
+
+                    TaskCenterTask.objects.filter(pk=task_id).update(
+                        progress=(
+                            int(done * 100 / len(sync_nodes)) if sync_nodes else 100
+                        ),
+                        detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{len(sync_nodes)}",
+                        updated_at=timezone.now(),
                     )
-                else:
-                    discovered, errors = discover_nginx_configs(
-                        node.ip,
-                        node.port,
-                        credential.username,
-                        private_key=credential.get_private_key(),
-                        nginx_conf_path=nginx_conf_path,
-                    )
 
-                if errors:
-                    progress["nodes"][str(node_id)]["error"] = "; ".join(errors[:3])
-                    mark_discovery_failed_configs(node, errors, request.user)
+            status = "success" if fail_count == 0 else "failed"
+            TaskCenterTask.objects.filter(pk=task_id).update(
+                status=status,
+                progress=100,
+                finished_at=timezone.now(),
+                detail=f"执行完成：成功 {success_count}，失败 {fail_count}，共 {len(sync_nodes)}，新增 {total_created}，更新 {total_updated}",
+                result="\n".join(detail_lines),
+                updated_at=timezone.now(),
+            )
 
-                if discovered:
-                    created, updated, skipped, orphaned = sync_discovered_configs(
-                        node,
-                        discovered,
-                        request.user,
-                        remark="批量节点全量同步",
-                    )
-                    save_sync_path(node, nginx_conf_path, request.user)
-                    files_detail = _build_files_detail(
-                        discovered, errors, created, updated, orphaned
-                    )
-                    progress["nodes"][str(node_id)]["files"] = files_detail
-                    progress["nodes"][str(node_id)]["total_files"] = len(discovered)
-                    progress["nodes"][str(node_id)]["completed_files"] = len(discovered)
-                    progress["nodes"][str(node_id)]["created"] = len(created)
-                    progress["nodes"][str(node_id)]["updated"] = len(updated)
-                    progress["nodes"][str(node_id)]["orphaned"] = len(orphaned)
-                    progress["nodes"][str(node_id)]["skipped"] = len(skipped)
-                    total_created += len(created)
-                    total_updated += len(updated)
-                    total_orphaned += len(orphaned)
-                else:
-                    progress["nodes"][str(node_id)]["error"] = (
-                        progress["nodes"][str(node_id)]["error"]
-                        or f"未发现配置文件（路径: {nginx_conf_path}）"
-                    )
-
-                elapsed = (timezone.now() - start_time).total_seconds()
-                progress["nodes"][str(node_id)]["time"] = round(elapsed, 1)
-
-                if progress["nodes"][str(node_id)]["error"] and not discovered:
-                    progress["nodes"][str(node_id)]["status"] = "failed"
-                    total_errors.append(
-                        f"{node.hostname}: {progress['nodes'][str(node_id)]['error']}"
-                    )
-                else:
-                    progress["nodes"][str(node_id)]["status"] = "success"
-
-                progress["completed"] += 1
-                cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-
-            except Exception as e:
-                progress["nodes"][str(node_id)]["status"] = "failed"
-                progress["nodes"][str(node_id)]["error"] = f"同步异常: {str(e)}"
-                progress["completed"] += 1
-                cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-                total_errors.append(f"{node.hostname}: 同步异常 - {str(e)}")
+        thread = threading.Thread(
+            target=_run_batch_sync_task,
+            args=(task_center.id, nodes),
+            daemon=True,
+        )
+        thread.start()
 
         return JsonResponse(
             {
                 "success": True,
-                "task_id": task_id,
-                "total_created": total_created,
-                "total_updated": total_updated,
-                "total_orphaned": total_orphaned,
-                "total_errors": len(total_errors),
-                "summary": {
-                    "created": total_created,
-                    "updated": total_updated,
-                    "orphaned": total_orphaned,
-                    "errors": total_errors[:5],
-                },
+                "async": True,
+                "message": f"已创建后台批量同步任务（{total} 台节点）",
+                "task_center_id": task_center.id,
+                "task_center_detail_url": str(
+                    reverse_lazy("releases:task_center_detail", args=[task_center.id])
+                ),
+                "task_center_home_url": str(reverse_lazy("releases:history")),
             }
         )
 
@@ -1145,7 +1164,7 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
             elapsed = (timezone.now() - start_time).total_seconds()
             progress["nodes"][str(node_id)]["time"] = round(elapsed, 1)
 
-            if errors and not discovered:
+            if errors:
                 progress["nodes"][str(node_id)]["status"] = "failed"
             else:
                 progress["nodes"][str(node_id)]["status"] = "success"
@@ -1556,6 +1575,8 @@ class ConfigBatchDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 
 def _build_files_detail(discovered, errors, created, updated, orphaned):
+    import re
+
     files_detail = []
     for item in discovered:
         file_name = item["name"]
@@ -1574,4 +1595,20 @@ def _build_files_detail(discovered, errors, created, updated, orphaned):
                 "status": status,
             }
         )
+    if errors:
+        pattern = re.compile(r"^读取 (.+?) 失败: (.+)$")
+        for error in errors:
+            match = pattern.match(error)
+            if match:
+                failed_path = match.group(1)
+                failed_name = failed_path.split("/")[-1]
+                failed_detail = match.group(2)
+                files_detail.append(
+                    {
+                        "name": failed_name,
+                        "path": failed_path,
+                        "status": "failed",
+                        "error": failed_detail,
+                    }
+                )
     return files_detail

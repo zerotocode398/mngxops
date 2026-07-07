@@ -505,6 +505,38 @@
         syncAlertModalInstance.show();
     }
 
+    function showLoading(title) {
+        document.getElementById('syncAlertTitle').innerHTML = '<i class="bi bi-hourglass-split text-primary me-2"></i>' + title;
+        document.getElementById('syncAlertBody').innerHTML =
+            '<div class="text-center py-3">' +
+            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+            '<p class="text-muted mb-0">正在提交任务...</p>' +
+            '</div>';
+        document.getElementById('syncAlertClose').style.display = 'none';
+        if (!syncAlertModalInstance) {
+            syncAlertModalInstance = new bootstrap.Modal(document.getElementById('syncAlertModal'));
+        }
+        syncAlertModalInstance.show();
+    }
+
+    function updateLoadingContent(html) {
+        document.getElementById('syncAlertBody').innerHTML = html;
+    }
+
+    var batchSyncTimer = null;
+    var batchSyncSeconds = 0;
+
+    function stopBatchSyncTimer() {
+        if (batchSyncTimer) {
+            clearInterval(batchSyncTimer);
+            batchSyncTimer = null;
+        }
+    }
+
+    function hideLoading() {
+        document.getElementById('syncAlertBody').innerHTML = '';
+    }
+
     var syncConfirmModalInstance = null;
     function showConfirmModal(title, message, onConfirm) {
         document.getElementById('syncConfirmTitle').textContent = title;
@@ -667,29 +699,19 @@
             if (timeEl && node.time > 0) {
                 timeEl.textContent = node.time + 's';
             }
-            if (node.error && node.status === 'failed') {
-                var row = document.getElementById('prog-node-' + nodeId);
-                if (row && !row.querySelector('.text-danger.small')) {
-                    var errDiv = document.createElement('div');
-                    errDiv.className = 'text-danger small mt-1';
-                    errDiv.textContent = node.error;
-                    row.appendChild(errDiv);
-                }
-            }
-
             if (node.files && node.files.length > 0 && filesEl) {
-                var fileHtml = '<div class="border rounded p-2 mt-1" style="background:#f8f9fa; max-height:200px; overflow-y:auto;">';
+                var fileHtml = '<div class="border rounded p-2 mt-1" style="background:#f8f9fa; max-height:240px; overflow-y:auto;">';
                 fileHtml += '<div class="small fw-bold mb-1 text-muted">配置文件详情：</div>';
                 node.files.forEach(function(f) {
                     var icon = fileStatusIcons[f.status] || fileStatusIcons['skipped'];
                     var text = fileStatusTexts[f.status] || f.status;
                     var rowClass = f.status === 'failed' ? 'text-danger' : '';
-                    fileHtml += '<div class="d-flex align-items-center small ' + rowClass + ' mb-0">';
+                    fileHtml += '<div class="small ' + rowClass + ' mb-1">';
                     fileHtml += '<span class="me-1">' + icon + '</span>';
                     fileHtml += '<span class="me-1 badge bg-light text-dark border" style="font-size:0.65rem;">' + text + '</span>';
-                    fileHtml += '<code class="text-truncate" style="font-size:0.75rem; max-width:280px;" title="' + f.path + '">' + f.path + '</code>';
+                    fileHtml += '<code class="text-break" style="font-size:0.75rem;" title="' + f.path + '">' + f.path + '</code>';
                     if (f.error) {
-                        fileHtml += ' <span class="text-danger" style="font-size:0.7rem;" title="' + f.error + '">' + f.error + '</span>';
+                        fileHtml += '<div class="text-danger ps-4" style="font-size:0.7rem; word-break:break-all;">' + f.error + '</div>';
                     }
                     fileHtml += '</div>';
                 });
@@ -801,27 +823,32 @@
         }
 
         var nodeIds = [];
-        var hostnames = {};
         checked.forEach(function(cb) {
             nodeIds.push(parseInt(cb.value));
-            hostnames[cb.value] = cb.getAttribute('data-hostname');
         });
 
-        var progressList = document.getElementById('progressList');
-        progressList.innerHTML = buildProgressHTML(nodeIds, hostnames);
-        document.getElementById('progressPercent').textContent = '0/' + nodeIds.length + ' (0%)';
-        document.getElementById('progressSpinner').style.display = 'inline-block';
-        document.getElementById('progressCloseBtn').disabled = true;
-        document.getElementById('progressCloseBtn').textContent = '同步中...';
-        document.getElementById('progressSummary').style.display = 'none';
-
-        var progressModal = new bootstrap.Modal(document.getElementById('syncProgressModal'), {backdrop: 'static', keyboard: false});
-        document.getElementById('progressModalTitle').innerHTML = '<i class="bi bi-cloud-upload me-2"></i>批量同步进度';
-        progressModal.show();
-
-        var taskId = 'batch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-
-        pollProgress(taskId, progressModal);
+        showLoading('批量同步提交中');
+        stopBatchSyncTimer();
+        batchSyncSeconds = 10;
+        batchSyncTimer = setInterval(function () {
+            batchSyncSeconds--;
+            if (batchSyncSeconds <= 0) {
+                stopBatchSyncTimer();
+                updateLoadingContent(
+                    '<div class="text-center py-3">' +
+                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                    '<p class="text-muted mb-0">即将完成...</p>' +
+                    '</div>'
+                );
+            } else {
+                updateLoadingContent(
+                    '<div class="text-center py-3">' +
+                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                    '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchSyncSeconds + '</strong> 秒</p>' +
+                    '</div>'
+                );
+            }
+        }, 1000);
 
         fetch('{% url "configs:sync_batch_api" %}', {
             method: 'POST',
@@ -829,23 +856,35 @@
                 'Content-Type': 'application/json',
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             },
-            body: JSON.stringify({ node_ids: nodeIds, task_id: taskId })
-        }).then(function(response) {
-            return response.json();
-        }).then(function(data) {
-            if (!data.success) {
-                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-                updateProgressError(data.message || '同步请求失败');
-                document.getElementById('progressCloseBtn').disabled = false;
-                document.getElementById('progressCloseBtn').textContent = '关闭';
-                document.getElementById('progressSpinner').style.display = 'none';
+            body: JSON.stringify({ node_ids: nodeIds })
+        }).then(function (response) { return response.json(); })
+        .then(function (result) {
+            stopBatchSyncTimer();
+            hideLoading();
+
+            if (!result.success) {
+                showCustomModal('同步失败', '<p class="text-danger">' + result.message + '</p>', true);
+                return;
             }
-        })['catch'](function(err) {
-            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-            updateProgressError('网络请求失败: ' + err.message);
-            document.getElementById('progressCloseBtn').disabled = false;
-            document.getElementById('progressCloseBtn').textContent = '关闭';
-            document.getElementById('progressSpinner').style.display = 'none';
+
+            if (result.async) {
+                var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
+                var content =
+                    '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 已创建后台任务</div>' +
+                    '<p>' + result.message + '</p>' +
+                    '<p class="text-muted mb-0">即将跳转到任务详情...</p>';
+                showCustomModal('批量同步已提交', content, false);
+                setTimeout(function () {
+                    window.location.href = jumpUrl;
+                }, 3000);
+                return;
+            }
+
+            showCustomModal('同步完成', '<p class="text-success">' + result.message + '</p>', true);
+        })['catch'](function (err) {
+            stopBatchSyncTimer();
+            hideLoading();
+            showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>', true);
         });
     }
 
