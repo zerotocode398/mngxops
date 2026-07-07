@@ -28,20 +28,12 @@
                 <div class="card-body">
                     <form method="get" class="mb-3" id="configSearchForm">
                         <div class="row g-2">
-                            <div class="col-md-5">
+                            <div class="col-md-6">
                                 <div class="tag-input-wrapper form-control" id="configCombinedTagWrapper">
                                     <input type="text" class="tag-input-field" id="configCombinedSearchField"
                                         placeholder="输入查询条件后回车（配置名/主机名/IP）">
                                 </div>
                                 <input type="hidden" name="search" id="configSearchHidden" value="{{ search }}">
-                            </div>
-                            <div class="col-md-2">
-                                <select name="environment" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
-                                    <option value="">全部标签</option>
-                                    <option value="dev" {% if env_filter == "dev" %}selected{% endif %}>开发</option>
-                                    <option value="test" {% if env_filter == "test" %}selected{% endif %}>测试</option>
-                                    <option value="prod" {% if env_filter == "prod" %}selected{% endif %}>生产</option>
-                                </select>
                             </div>
                             <div class="col-md-2">
                                 <select name="status" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
@@ -54,14 +46,14 @@
                                     </option>
                                 </select>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-1">
                                 <select name="per_page" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
                                     {% for size in per_page_options %}
                                     <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-1">
+                            <div class="col-md-3">
                                 {% if has_any_filter %}
                                 <a href="{% url 'configs:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary w-100" onclick="sessionStorage.removeItem('configs_list_query')">
                                     <i class="bi bi-x-circle"></i> 清空筛选
@@ -80,36 +72,29 @@
                                     type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ node.id }}"
                                     aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}"
                                     aria-controls="collapse{{ node.id }}">
-                                    <div class="d-flex align-items-center gap-3 w-100 me-3">
+                                    <div class="d-flex align-items-center gap-2 w-100 me-3">
                                         <i class="bi bi-server fs-5"></i>
                                         <strong>{{ node.hostname }}</strong>
                                         {% if node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
                                         <code class="text-muted">{{ node.ip }}:{{ node.port }}</code>
-                                        {% if node.environment == 'dev' %}
-                                        <span class="badge bg-secondary">开发</span>
-                                        {% elif node.environment == 'test' %}
-                                        <span class="badge bg-warning text-dark">测试</span>
-                                        {% else %}
-                                        <span class="badge bg-danger">生产</span>
-                                        {% endif %}
-                                        {% if node.status == 'online' %}
-                                        <span class="badge bg-success">在线</span>
-                                        {% elif node.status == 'offline' %}
-                                        <span class="badge bg-danger">离线</span>
-                                        {% else %}
-                                        <span class="badge bg-secondary">未知</span>
-                                        {% endif %}
-                                        <span class="badge bg-info ms-auto">{{ configs|length }} 个配置</span>
+                                        <span class="ms-auto"></span>
+                                        <span class="badge bg-info">{{ configs|length }} 个配置</span>
                                         {% if node.pending_count > 0 %}
-                                        <span class="badge bg-secondary ms-1"
+                                        <span class="badge bg-secondary"
                                             title="本地新增：{% for name in node.pending_names %}{{ name }}{% if not forloop.last %}、{% endif %}{% endfor %}">
-                                            <i class="bi bi-plus-circle"></i> {{ node.pending_count }} 个本地新增
+                                            本地新增{{ node.pending_count }}
                                         </span>
                                         {% endif %}
                                         {% if node.orphaned_count > 0 %}
-                                        <span class="badge bg-warning text-dark ms-1"
+                                        <span class="badge bg-warning text-dark"
                                             title="远程已删除：{% for name in node.orphaned_names %}{{ name }}{% if not forloop.last %}、{% endif %}{% endfor %}">
-                                            <i class="bi bi-exclamation-triangle"></i> {{ node.orphaned_count }} 个远程已删除
+                                            远程已删除{{ node.orphaned_count }}
+                                        </span>
+                                        {% endif %}
+                                        {% if node.failed_count > 0 %}
+                                        <span class="badge bg-danger"
+                                            title="同步失败：{% for name in node.failed_names %}{{ name }}{% if not forloop.last %}、{% endif %}{% endfor %}">
+                                            同步失败{{ node.failed_count }}
                                         </span>
                                         {% endif %}
                                     </div>
@@ -119,33 +104,61 @@
                                 class="accordion-collapse collapse {% if forloop.first %}show{% endif %}"
                                 aria-labelledby="heading{{ node.id }}" data-bs-parent="#configAccordion">
                                 <div class="accordion-body p-0">
+                                    <div class="px-3 py-2 bg-light border-bottom d-flex justify-content-between align-items-center">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="selectAll{{ node.id }}" onchange="toggleSelectAll({{ node.id }})">
+                                            <label class="form-check-label" for="selectAll{{ node.id }}">全选</label>
+                                        </div>
+                                        {% if user|has_perm_code:"configs.delete" %}
+                                        <div>
+                                            <form method="post" action="{% url 'configs:node_delete' node.id %}" style="display:inline" onsubmit="return confirm('确定要删除节点 {{ node.hostname }} 的所有配置吗？\n此操作将删除该节点的所有配置文件，删除操作不可恢复。')">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                    <i class="bi bi-trash"></i> 删除节点所有配置
+                                                </button>
+                                            </form>
+                                        </div>
+                                        {% endif %}
+                                    </div>
                                     <div class="table-responsive px-3">
                                         <table class="table table-hover table-sm mb-0">
                                             <thead class="table-light">
                                                 <tr>
-                                                    <th style="width: 20%">配置名称</th>
-                                                    <th style="width: 30%">配置路径</th>
-                                                    <th style="width: 10%">版本</th>
-                                                    <th style="width: 12%">创建人</th>
-                                                    <th style="width: 15%">更新时间</th>
-                                                    <th style="width: 13%">操作</th>
+                                                    <th style="width: 3%"></th>
+                                                    <th style="width: 18%">配置名称</th>
+                                                    <th style="width: 25%">配置路径</th>
+                                                    <th style="width: 8%">状态</th>
+                                                    <th style="width: 7%">版本</th>
+                                                    <th style="width: 10%">创建人</th>
+                                                    <th style="width: 14%">更新时间</th>
+                                                    <th style="width: 10%">操作</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {% for config in configs %}
                                                 <tr>
                                                     <td>
+                                                        <input type="checkbox" class="config-checkbox" data-config-id="{{ config.id }}" data-node-id="{{ node.id }}">
+                                                    </td>
+                                                    <td>
                                                         <i class="bi bi-file-earmark-code text-primary"></i>
                                                         <code>{{ config.name }}</code>
-                                                        {% if config.sync_status == 'pending' %}
-                                                        <span class="badge bg-secondary ms-1" title="本地手动新增，尚未同步到远程"><i class="bi bi-plus-circle"></i> 本地新增</span>
-                                                        {% endif %}
-                                                        {% if config.sync_status == 'orphaned' %}
-                                                        <span class="badge bg-warning text-dark ms-1" title="远程已删除此文件"><i class="bi bi-exclamation-triangle"></i> 远程已删除</span>
-                                                        {% endif %}
                                                     </td>
                                                     <td>
                                                         <small class="text-muted">{{ config.file_path }}</small>
+                                                    </td>
+                                                    <td>
+                                                        {% if config.sync_status == 'success' %}
+                                                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> 成功</span>
+                                                        {% elif config.sync_status == 'pending' %}
+                                                        <span class="badge bg-secondary" title="本地手动新增，尚未同步到远程"><i class="bi bi-plus-circle"></i> 本地新增</span>
+                                                        {% elif config.sync_status == 'orphaned' %}
+                                                        <span class="badge bg-warning text-dark" title="远程已删除此文件"><i class="bi bi-exclamation-triangle"></i> 远程已删除</span>
+                                                        {% elif config.sync_status == 'failed' %}
+                                                        <span class="badge bg-danger" title="{{ config.last_sync_error|default:''|truncatechars:100 }}"><i class="bi bi-x-circle"></i> 失败</span>
+                                                        {% else %}
+                                                        <span class="badge bg-light text-dark">-</span>
+                                                        {% endif %}
                                                     </td>
                                                     <td>
                                                         <span class="badge bg-info">v{{ config.current_version }}</span>
@@ -175,6 +188,7 @@
                                                                 {% csrf_token %}
                                                                 <button type="button" class="btn btn-outline-success update-btn"
                                                                     title="从远程节点更新"
+                                                                    data-config-id="{{ config.id }}"
                                                                     data-config-name="{{ config.name }}"
                                                                     data-node-hostname="{{ node.hostname }}">
                                                                     <i class="bi bi-arrow-repeat"></i>
@@ -231,12 +245,12 @@
                         <ul class="pagination justify-content-center">
                             {% if page_obj.has_previous %}
                             <li class="page-item">
-                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if env_filter %}&environment={{ env_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
                                     <i class="bi bi-chevron-double-left"></i> 首页
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if env_filter %}&environment={{ env_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
                                     <i class="bi bi-chevron-left"></i> 上一页
                                 </a>
                             </li>
@@ -248,12 +262,12 @@
 
                             {% if page_obj.has_next %}
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if env_filter %}&environment={{ env_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
                                     下一页 <i class="bi bi-chevron-right"></i>
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if env_filter %}&environment={{ env_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
                                     末页 <i class="bi bi-chevron-double-right"></i>
                                 </a>
                             </li>
@@ -290,6 +304,38 @@
                         </div>
                     </div>
                 </div>
+
+                <div id="updatePreviewLoading" class="text-center py-3" style="display:none;">
+                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                    <span class="text-muted">正在解析 include 指令，发现关联配置文件...</span>
+                </div>
+
+                <div id="updatePreviewError" class="alert alert-danger mt-2 py-2" style="display:none;"></div>
+
+                <div id="updatePreviewSection" class="mt-2" style="display:none;">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <i class="bi bi-diagram-3 text-info"></i>
+                        <small class="text-muted fw-bold">include 解析结果（共 <span id="updatePreviewCount">0</span> 个文件）</small>
+                    </div>
+                    <div class="border rounded" style="max-height: 220px; overflow-y: auto;">
+                        <table class="table table-sm table-borderless mb-0 small">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th style="width: 5%;">#</th>
+                                    <th style="width: 30%;">文件名</th>
+                                    <th>路径</th>
+                                </tr>
+                            </thead>
+                            <tbody id="updatePreviewList"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="updatePreviewErrors" class="text-danger small mt-2" style="display:none;">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span id="updatePreviewErrorsText"></span>
+                </div>
+
                 <div class="alert alert-warning mt-2 mb-0 py-2">
                     <i class="bi bi-exclamation-triangle"></i>
                     <small>更新后将生成新版本，覆盖当前内容。</small>
@@ -299,7 +345,7 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="bi bi-x-circle"></i> 取消
                 </button>
-                <button type="button" class="btn btn-success" id="confirmUpdateBtn">
+                <button type="button" class="btn btn-success" id="confirmUpdateBtn" disabled>
                     <i class="bi bi-check-circle"></i> 确认更新
                 </button>
             </div>
@@ -427,6 +473,15 @@
             }
         });
 
+        field.addEventListener('blur', function () {
+            var text = field.value.trim();
+            if (text) {
+                createBadge(text);
+                field.value = '';
+                updateHidden();
+            }
+        });
+
         wrapper.addEventListener('click', function (e) {
             if (e.target === wrapper) {
                 focusFieldWithCaret();
@@ -439,9 +494,68 @@
     document.querySelectorAll('.update-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             pendingForm = this.closest('form');
+            var configId = this.dataset.configId;
             document.getElementById('modalConfigName').textContent = this.dataset.configName;
             document.getElementById('modalNodeHostname').textContent = this.dataset.nodeHostname;
+
+            var previewSection = document.getElementById('updatePreviewSection');
+            var previewList = document.getElementById('updatePreviewList');
+            var previewCount = document.getElementById('updatePreviewCount');
+            var previewLoading = document.getElementById('updatePreviewLoading');
+            var previewError = document.getElementById('updatePreviewError');
+            var previewErrors = document.getElementById('updatePreviewErrors');
+            var previewErrorsText = document.getElementById('updatePreviewErrorsText');
+            var confirmBtn = document.getElementById('confirmUpdateBtn');
+
+            previewSection.style.display = 'none';
+            previewErrors.style.display = 'none';
+            previewError.style.display = 'none';
+            previewList.innerHTML = '';
+            confirmBtn.disabled = true;
+            previewLoading.style.display = 'block';
+
             updateModal.show();
+
+            fetch('{% url "configs:api_update_preview" %}?config_id=' + encodeURIComponent(configId))
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    previewLoading.style.display = 'none';
+                    console.log('Update preview response:', data);
+                    if (data.success) {
+                        if (data.data && data.data.length > 0) {
+                            previewCount.textContent = data.total;
+                            data.data.forEach(function (item, index) {
+                                var row = document.createElement('tr');
+                                var isTarget = (item.name === data.config_name);
+                                row.innerHTML = '<td>' + (index + 1) + '</td>'
+                                    + '<td><code class="' + (isTarget ? 'fw-bold' : '') + '">' + escapeHtml(item.name) + '</code>'
+                                    + (isTarget ? ' <span class="badge bg-success">目标</span>' : '')
+                                    + '</td>'
+                                    + '<td><small class="text-muted">' + escapeHtml(item.path) + '</small></td>';
+                                previewList.appendChild(row);
+                            });
+                            previewSection.style.display = 'block';
+                            if (data.errors && data.errors.length > 0) {
+                                previewErrorsText.textContent = data.errors.map(function (e) { return e; }).join('；');
+                                previewErrors.style.display = 'block';
+                            }
+                        } else {
+                            previewError.textContent = '远程节点未发现配置文件，请检查节点状态';
+                            previewError.style.display = 'block';
+                        }
+                        if (data.data && data.data.length > 0) {
+                            confirmBtn.disabled = false;
+                        }
+                    } else {
+                        previewError.textContent = data.message || '预览失败';
+                        previewError.style.display = 'block';
+                    }
+                })
+                ['catch'](function (err) {
+                    previewLoading.style.display = 'none';
+                    previewError.textContent = '网络请求失败，请检查连接';
+                    previewError.style.display = 'block';
+                });
         });
     });
 
@@ -451,6 +565,14 @@
         }
     });
 
+    function toggleSelectAll(nodeId) {
+        var selectAll = document.getElementById('selectAll' + nodeId);
+        var checkboxes = document.querySelectorAll('.config-checkbox[data-node-id="' + nodeId + '"]');
+        checkboxes.forEach(function(checkbox) {
+            checkbox.checked = selectAll.checked;
+        });
+    }
+
     initConfigTagInput('configCombinedTagWrapper', 'configCombinedSearchField', 'configSearchHidden', 'configSearchForm');
 
     (function() {
@@ -459,5 +581,11 @@
             sessionStorage.setItem('configs_list_query', currentUrl);
         }
     })();
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
 </script>
 {% endblock %}

@@ -387,7 +387,7 @@ def backup_remote_file(
     password=None,
     private_key=None,
     file_path=None,
-    backup_dir="/opt/app/mascloud/ansible",
+    backup_dir="/opt/app/mascloud/ansible/mngxops",
 ):
     try:
         client = paramiko.SSHClient()

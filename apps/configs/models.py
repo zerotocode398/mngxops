@@ -35,6 +35,7 @@ class Config(models.Model):
     last_sync_time = models.DateTimeField(
         null=True, blank=True, verbose_name="最后同步时间"
     )
+    last_sync_error = models.TextField(blank=True, verbose_name="最后同步错误信息")
     created_by = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
