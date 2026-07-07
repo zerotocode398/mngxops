@@ -5,15 +5,19 @@ app_name = "configs"
 
 urlpatterns = [
     path("", views.ConfigListView.as_view(), name="list"),
-    path("api/by-nodes/", views.ConfigByNodesAPIView.as_view(), name="api_by_nodes"),
     path("create/", views.ConfigCreateView.as_view(), name="create"),
+    path("api/by-nodes/", views.ConfigByNodesAPIView.as_view(), name="api_by_nodes"),
     path(
         "api/preview-glob/",
         views.ConfigGlobPreviewView.as_view(),
         name="api_preview_glob",
     ),
+    path(
+        "api/update-preview/",
+        views.ConfigUpdatePreviewView.as_view(),
+        name="api_update_preview",
+    ),
     path("sync/", views.ConfigSyncWizardView.as_view(), name="sync_wizard"),
-    path("sync/batch/", views.ConfigSyncBatchView.as_view(), name="sync_batch"),
     path(
         "sync/api/batch/",
         views.ConfigSyncBatchAPIView.as_view(),
@@ -29,18 +33,15 @@ urlpatterns = [
         views.ConfigSyncProgressView.as_view(),
         name="sync_progress",
     ),
-    path(
-        "sync/<int:node_id>/partial/",
-        views.ConfigSyncPartialView.as_view(),
-        name="sync_partial",
-    ),
-    path(
-        "sync/<int:node_id>/", views.ConfigSyncRemoteView.as_view(), name="sync_remote"
-    ),
     path("<int:pk>/", views.ConfigDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", views.ConfigEditView.as_view(), name="edit"),
     path("<int:pk>/delete/", views.ConfigDeleteView.as_view(), name="delete"),
     path("<int:pk>/update/", views.ConfigUpdateView.as_view(), name="update"),
+    path(
+        "node/<int:pk>/delete/",
+        views.ConfigNodeDeleteView.as_view(),
+        name="node_delete",
+    ),
     path("<int:pk>/versions/", views.ConfigVersionListView.as_view(), name="versions"),
     path(
         "<int:pk>/versions/compare/",
@@ -61,10 +62,5 @@ urlpatterns = [
         "<int:pk>/versions/<int:version_id>/restore/",
         views.ConfigVersionRestoreView.as_view(),
         name="restore",
-    ),
-    path(
-        "api/version-content/<int:version_id>/",
-        views.ConfigVersionContentAPIView.as_view(),
-        name="api_version_content",
     ),
 ]

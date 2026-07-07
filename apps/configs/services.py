@@ -133,3 +133,54 @@ def sync_selected_configs(
         mark_orphaned=False,
         progress_callback=progress_callback,
     )
+
+
+def mark_sync_failed(node, error_message):
+    failed = []
+    now = timezone.now()
+
+    configs = Config.objects.filter(node=node).exclude(
+        sync_status__in=["orphaned", "pending"]
+    )
+
+    for config in configs:
+        config.sync_status = "failed"
+        config.last_sync_error = error_message
+        config.save(update_fields=["sync_status", "last_sync_error", "updated_at"])
+        failed.append(config.name)
+
+    return failed
+
+
+def mark_discovery_failed_configs(node, errors, request_user=None):
+    import re
+    from django.utils import timezone
+
+    failed = []
+    pattern = re.compile(r"读取 (.+?) 失败:")
+    for error in errors:
+        match = pattern.match(error)
+        if not match:
+            continue
+        failed_path = match.group(1)
+        config = Config.objects.filter(node=node, file_path=failed_path).first()
+        if config:
+            config.sync_status = "failed"
+            config.last_sync_error = error
+            config.save(update_fields=["sync_status", "last_sync_error", "updated_at"])
+            failed.append(config.name)
+        elif request_user:
+            failed_name = failed_path.split("/")[-1]
+            Config.objects.create(
+                node=node,
+                name=failed_name,
+                file_path=failed_path,
+                content="",
+                current_version=0,
+                sync_status="failed",
+                last_sync_error=error,
+                last_sync_time=timezone.now(),
+                created_by=request_user,
+            )
+            failed.append(failed_name)
+    return failed

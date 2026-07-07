@@ -21,6 +21,7 @@ from .services import (
     save_sync_path,
     sync_discovered_configs,
     sync_selected_configs,
+    mark_discovery_failed_configs,
 )
 from apps.users.permissions import PermissionRequiredMixin
 from utils.pagination import PerPagePaginationMixin
@@ -39,32 +40,66 @@ class ConfigListView(
 
     SKIP_FILES = {"mime.types"}
 
+    def _parse_search_terms(self, search):
+        env_map = {"开发": "dev", "测试": "test", "生产": "prod"}
+        sync_map = {
+            "同步成功": "success",
+            "同步失败": "failed",
+            "等待同步": "pending",
+            "远程已删除": "orphaned",
+        }
+        status_map = {"在线": "online", "离线": "offline", "未知": "unknown"}
+
+        env_filter = self.request.GET.get("environment", "")
+        status_filter = self.request.GET.get("status", "")
+        sync_status_filter = self.request.GET.get("sync_status", "")
+
+        if not search:
+            return [], env_filter, status_filter, sync_status_filter
+
+        terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+        config_terms = []
+
+        for term in terms:
+            if term in env_map and not env_filter:
+                env_filter = env_map[term]
+            elif term in sync_map and not sync_status_filter:
+                sync_status_filter = sync_map[term]
+            elif term in status_map and not status_filter:
+                status_filter = status_map[term]
+            else:
+                config_terms.append(term)
+
+        return config_terms, env_filter, status_filter, sync_status_filter
+
     def get_queryset(self):
         queryset = super().get_queryset().exclude(name__in=self.SKIP_FILES)
         search = self.request.GET.get("search", "")
-        env_filter = self.request.GET.get("environment", "")
-        status_filter = self.request.GET.get("status", "")
-        if search:
-            search_terms = [
-                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
-            ]
-            if search_terms:
-                for term in search_terms:
-                    queryset = queryset.filter(
-                        Q(name__icontains=term)
-                        | Q(node__hostname__icontains=term)
-                        | Q(node__ip__icontains=term)
-                    )
+
+        config_terms, env_filter, status_filter, sync_status_filter = (
+            self._parse_search_terms(search)
+        )
+
+        if config_terms:
+            for term in config_terms:
+                queryset = queryset.filter(
+                    Q(name__icontains=term)
+                    | Q(node__hostname__icontains=term)
+                    | Q(node__ip__icontains=term)
+                )
         if env_filter:
             queryset = queryset.filter(node__environment=env_filter)
         if status_filter:
             queryset = queryset.filter(node__status=status_filter)
+        if sync_status_filter:
+            queryset = queryset.filter(sync_status=sync_status_filter)
         return queryset.select_related("node", "created_by")
 
     def get_context_data(self, **kwargs):
         search = self.request.GET.get("search", "")
-        env_filter = self.request.GET.get("environment", "")
-        status_filter = self.request.GET.get("status", "")
+        _, env_filter, status_filter, sync_status_filter = self._parse_search_terms(
+            search
+        )
 
         configs = self.get_queryset()
 
@@ -98,6 +133,18 @@ class ConfigListView(
             node.pending_count = pending_counts.get(node.id, 0)
             node.pending_names = pending_by_node.get(node.id, [])
 
+        failed_info = Config.objects.filter(
+            node__in=nodes, sync_status="failed"
+        ).values_list("node_id", "name")
+        failed_by_node = {}
+        failed_counts = {}
+        for node_id, name in failed_info:
+            failed_by_node.setdefault(node_id, []).append(name)
+            failed_counts[node_id] = len(failed_by_node[node_id])
+        for node in nodes:
+            node.failed_count = failed_counts.get(node.id, 0)
+            node.failed_names = failed_by_node.get(node.id, [])
+
         per_page = self.get_paginate_by(None)
         paginator = Paginator(nodes, per_page)
         page_num = self.request.GET.get("page", 1)
@@ -114,11 +161,153 @@ class ConfigListView(
             "search": search,
             "env_filter": env_filter,
             "status_filter": status_filter,
-            "has_any_filter": bool(search or env_filter or status_filter),
+            "sync_status_filter": sync_status_filter,
+            "has_any_filter": bool(
+                search or env_filter or status_filter or sync_status_filter
+            ),
             "per_page": per_page,
             "per_page_options": self.per_page_options,
         }
         return context
+
+
+class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    model = Config
+    form_class = ConfigForm
+    template_name = "configs/create.html"
+    permission_resource = "configs"
+    permission_action = "create"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        from apps.nodes.models import Node
+
+        context["all_nodes"] = Node.objects.filter(is_locked=False).order_by("hostname")
+        context["selected_node_id"] = self.request.GET.get("node_id", "")
+        return context
+
+    def form_valid(self, form):
+        config = form.save(commit=False)
+        config.created_by = self.request.user
+        config.current_version = 1
+        config.sync_status = "pending"
+        config.save()
+
+        ConfigVersion.objects.create(
+            config=config,
+            version=1,
+            content=config.content,
+            remark="手动创建",
+            created_by=self.request.user,
+        )
+
+        messages.success(self.request, f"配置 {config.name} 创建成功")
+        return redirect("configs:detail", pk=config.pk)
+
+    def post(self, request, *args, **kwargs):
+        use_glob = request.POST.get("use_glob") == "1"
+
+        if use_glob:
+            return self._handle_glob_import(request)
+
+        return super().post(request, *args, **kwargs)
+
+    def _handle_glob_import(self, request):
+        from apps.nodes.models import Node
+        from apps.nodes.views import _get_node_credential
+        from utils.ssh import read_remote_file
+        from django.utils import timezone
+
+        node_id = request.POST.get("node")
+        selected_files = request.POST.getlist("selected_files")
+        batch_remark = request.POST.get("batch_remark", "批量导入")
+
+        if not node_id:
+            messages.error(request, "请选择关联节点")
+            return redirect("configs:create")
+
+        if not selected_files:
+            messages.error(request, "请至少选择一个文件")
+            return redirect("configs:create")
+
+        node = get_object_or_404(Node, id=node_id)
+
+        if node.is_locked:
+            messages.error(request, f"节点 {node.hostname} 已锁定，无法导入配置")
+            return redirect("configs:create")
+
+        try:
+            credential = _get_node_credential(node)
+            if not credential:
+                messages.error(request, f"节点 {node.hostname} 未配置SSH凭证")
+                return redirect("configs:create")
+
+            auth_kwargs = {}
+            if credential.auth_type == "password":
+                auth_kwargs["password"] = credential.get_password()
+            else:
+                auth_kwargs["private_key"] = credential.get_private_key()
+
+            created_count = 0
+            failed_files = []
+
+            for file_path in selected_files:
+                success, content = read_remote_file(
+                    host=node.ip,
+                    port=node.port,
+                    username=credential.username,
+                    file_path=file_path,
+                    **auth_kwargs,
+                )
+
+                if not success:
+                    failed_files.append(f"{file_path}: {content}")
+                    continue
+
+                config_name = file_path.split("/")[-1]
+
+                existing_config = Config.objects.filter(
+                    node=node, file_path=file_path
+                ).first()
+
+                if existing_config:
+                    failed_files.append(f"{file_path}: 配置已存在")
+                    continue
+
+                config = Config.objects.create(
+                    node=node,
+                    name=config_name,
+                    file_path=file_path,
+                    content=content,
+                    current_version=1,
+                    sync_status="success",
+                    last_sync_time=timezone.now(),
+                    created_by=request.user,
+                )
+
+                ConfigVersion.objects.create(
+                    config=config,
+                    version=1,
+                    content=content,
+                    remark=batch_remark or "批量导入",
+                    created_by=request.user,
+                )
+
+                created_count += 1
+
+            if created_count > 0:
+                messages.success(request, f"成功导入 {created_count} 个配置文件")
+
+            if failed_files:
+                messages.warning(
+                    request, f"以下文件导入失败：{'; '.join(failed_files[:5])}"
+                )
+
+            return redirect("configs:list")
+
+        except Exception as e:
+            messages.error(request, f"批量导入失败：{str(e)}")
+            return redirect("configs:create")
 
 
 class ConfigDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
@@ -548,19 +737,18 @@ class ConfigSyncWizardView(
         queryset = (
             Node.objects.filter(is_locked=False)
             .select_related("created_by")
-            .prefetch_related("config_set", "groups")
-            .order_by("-created_at")
+            .prefetch_related("groups")
+            .order_by("hostname")
         )
 
-        search = self.request.GET.get("search", "")
-        if search:
-            from django.db.models import Q
+        search = self.request.GET.get("search", "").strip()
+        group_search = self.request.GET.get("group_search", "").strip()
 
+        if search:
             queryset = queryset.filter(
                 Q(hostname__icontains=search) | Q(ip__icontains=search)
             )
 
-        group_search = self.request.GET.get("group_search", "")
         if group_search:
             tags = [
                 name.strip()
@@ -568,8 +756,6 @@ class ConfigSyncWizardView(
                 if name.strip()
             ]
             if tags:
-                from django.db.models import Q
-
                 for tag in tags:
                     queryset = queryset.filter(
                         Q(groups__name__icontains=tag)
@@ -582,698 +768,46 @@ class ConfigSyncWizardView(
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        nodes = context["nodes"]
 
-        context["search"] = self.request.GET.get("search", "")
-        context["group_search"] = self.request.GET.get("group_search", "")
+        search = self.request.GET.get("search", "")
+        group_search = self.request.GET.get("group_search", "")
 
+        node_stats = {}
         node_sync_paths = {}
-        node_sync_summary = {}
-        node_groups = {}
         node_pending_configs = {}
-        for node in context["nodes"]:
+        node_groups = {}
+
+        for node in nodes:
+            configs = Config.objects.filter(node=node).exclude(name__in=["mime.types"])
+            node_stats[node.id] = {
+                "success": configs.filter(sync_status="success").count(),
+                "failed": configs.filter(sync_status="failed").count(),
+                "syncing": configs.filter(sync_status="syncing").count(),
+                "pending": configs.filter(sync_status="pending").count(),
+                "orphaned": configs.filter(sync_status="orphaned").count(),
+                "total": configs.count(),
+            }
+
             setting = get_or_create_sync_setting(node)
-            node_sync_paths[node.id] = setting.main_conf_path
+            node_sync_paths[node.id] = (
+                setting.main_conf_path if setting.main_conf_path else ""
+            )
+
+            pending_configs = list(
+                configs.filter(sync_status="pending").values_list("name", flat=True)
+            )
+            node_pending_configs[node.id] = pending_configs
+
             node_groups[node.id] = list(node.groups.all())
 
-            configs = node.config_set.all()
-            total = len(configs)
-            if total > 0:
-                success_count = sum(1 for c in configs if c.sync_status == "success")
-                failed_count = sum(1 for c in configs if c.sync_status == "failed")
-                syncing_count = sum(1 for c in configs if c.sync_status == "syncing")
-                last_sync = max(
-                    (c.last_sync_time for c in configs if c.last_sync_time),
-                    default=None,
-                )
-                node_sync_summary[node.id] = {
-                    "total": total,
-                    "success": success_count,
-                    "failed": failed_count,
-                    "syncing": syncing_count,
-                    "last_sync": last_sync,
-                    "fallback_time": max(
-                        (c.updated_at for c in configs),
-                        default=None,
-                    ),
-                }
-            else:
-                node_sync_summary[node.id] = None
-            node_pending_configs[node.id] = [
-                c.name for c in configs if c.sync_status == "pending"
-            ]
-
+        context["node_stats"] = node_stats
         context["node_sync_paths"] = node_sync_paths
-        context["node_sync_summary"] = node_sync_summary
-        context["node_groups"] = node_groups
         context["node_pending_configs"] = node_pending_configs
+        context["node_groups"] = node_groups
+        context["search"] = search
+        context["group_search"] = group_search
         return context
-
-
-class ConfigSyncRemoteView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    permission_resource = "configs"
-    permission_action = "update"
-
-    def post(self, request, node_id):
-        from apps.nodes.models import Node
-        from apps.nodes.views import _get_node_credential
-        from utils.ssh import discover_nginx_configs
-
-        node = get_object_or_404(Node, id=node_id)
-        if node.is_locked:
-            messages.error(request, f"节点 {node.hostname} 已锁定，无法同步")
-            return redirect("configs:sync_wizard")
-        credential = _get_node_credential(node)
-
-        if not credential:
-            messages.error(request, f"节点 {node.hostname} 未配置 SSH 凭证，请先配置")
-            return redirect("configs:sync_wizard")
-
-        nginx_conf_path = request.POST.get("main_conf_path", "").strip()
-        if not nginx_conf_path:
-            messages.error(request, "请输入 nginx.conf 主配置文件路径")
-            return redirect("configs:sync_wizard")
-
-        if credential.auth_type == "password":
-            discovered, errors = discover_nginx_configs(
-                node.ip,
-                node.port,
-                credential.username,
-                password=credential.get_password(),
-                nginx_conf_path=nginx_conf_path,
-            )
-        else:
-            discovered, errors = discover_nginx_configs(
-                node.ip,
-                node.port,
-                credential.username,
-                private_key=credential.get_private_key(),
-                nginx_conf_path=nginx_conf_path,
-            )
-
-        created, updated, skipped, orphaned = sync_discovered_configs(
-            node, discovered, request.user, remark="从远程节点全量同步"
-        )
-
-        if discovered:
-            save_sync_path(node, nginx_conf_path, request.user)
-
-        if created or updated or orphaned:
-            parts = []
-            if created:
-                parts.append(f"新增 {len(created)} 个")
-            if updated:
-                parts.append(f"更新 {len(updated)} 个")
-            if orphaned:
-                parts.append(f"标记远程已删除 {len(orphaned)} 个")
-            msg = f"节点 {node.hostname} 同步完成：{'，'.join(parts)}"
-            if skipped:
-                msg += f"，{len(skipped)} 个未变化"
-            if errors:
-                msg += f"，失败 {len(errors)} 个"
-            messages.success(request, msg)
-        else:
-            if errors:
-                error_msg = f"节点 {node.hostname} 同步失败：{'; '.join(errors[:5])}"
-                messages.warning(request, error_msg)
-                url = reverse("configs:sync_wizard")
-                return redirect(f"{url}?sync_error={quote(error_msg)}")
-            else:
-                messages.info(request, f"节点 {node.hostname} 未发现新的配置文件")
-
-        return redirect("configs:sync_wizard")
-
-
-class ConfigSyncPartialView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    permission_resource = "configs"
-    permission_action = "update"
-
-    def post(self, request, node_id):
-        from apps.nodes.models import Node
-        from apps.nodes.views import _get_node_credential
-        from utils.ssh import discover_nginx_configs
-
-        node = get_object_or_404(Node, id=node_id)
-        if node.is_locked:
-            messages.error(request, f"节点 {node.hostname} 已锁定，无法同步")
-            return redirect("configs:sync_wizard")
-        credential = _get_node_credential(node)
-        if not credential:
-            messages.error(request, f"节点 {node.hostname} 未配置 SSH 凭证，请先配置")
-            return redirect("configs:sync_wizard")
-
-        nginx_conf_path = request.POST.get("main_conf_path", "").strip()
-        if not nginx_conf_path:
-            messages.error(request, "请输入 nginx.conf 主配置文件路径")
-            return redirect("configs:sync_wizard")
-        selected_paths = request.POST.getlist("selected_paths")
-        if not selected_paths:
-            messages.error(request, "请至少选择一个配置文件")
-            return redirect("configs:sync_wizard")
-
-        if credential.auth_type == "password":
-            discovered, errors = discover_nginx_configs(
-                node.ip,
-                node.port,
-                credential.username,
-                password=credential.get_password(),
-                nginx_conf_path=nginx_conf_path,
-            )
-        else:
-            discovered, errors = discover_nginx_configs(
-                node.ip,
-                node.port,
-                credential.username,
-                private_key=credential.get_private_key(),
-                nginx_conf_path=nginx_conf_path,
-            )
-
-        created, updated, skipped, _ = sync_selected_configs(
-            node,
-            selected_paths,
-            discovered,
-            request.user,
-            remark="从远程节点部分同步",
-        )
-
-        if discovered:
-            save_sync_path(node, nginx_conf_path, request.user)
-
-        if created or updated:
-            parts = []
-            if created:
-                parts.append(f"新增 {len(created)} 个")
-            if updated:
-                parts.append(f"更新 {len(updated)} 个")
-            msg = f"节点 {node.hostname} 部分同步完成：{'，'.join(parts)}"
-            if skipped:
-                msg += f"，{len(skipped)} 个未变化"
-            if errors:
-                msg += f"，失败 {len(errors)} 个"
-            messages.success(request, msg)
-        else:
-            if errors:
-                error_msg = (
-                    f"节点 {node.hostname} 部分同步失败：{'; '.join(errors[:5])}"
-                )
-                messages.warning(request, error_msg)
-                url = reverse("configs:sync_wizard")
-                return redirect(f"{url}?sync_error={quote(error_msg)}")
-            else:
-                messages.info(request, f"节点 {node.hostname} 所选配置均未变化")
-
-        return redirect("configs:sync_wizard")
-
-
-class ConfigSyncBatchView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    permission_resource = "configs"
-    permission_action = "update"
-
-    def post(self, request):
-        from apps.nodes.models import Node
-        from apps.nodes.views import _get_node_credential
-        from utils.ssh import discover_nginx_configs
-
-        node_ids = request.POST.getlist("node_ids")
-        if not node_ids:
-            messages.error(request, "请至少选择一个节点")
-            return redirect("configs:sync_wizard")
-
-        if len(node_ids) > 3:
-            messages.error(request, "最多只能选择 3 个节点进行批量同步")
-            return redirect("configs:sync_wizard")
-
-        total_created = 0
-        total_updated = 0
-        total_orphaned = 0
-        total_errors = []
-        skip_nodes = []
-
-        for node_id in node_ids:
-            node = get_object_or_404(Node, id=node_id)
-            if node.is_locked:
-                skip_nodes.append(f"{node.hostname}(已锁定)")
-                continue
-            credential = _get_node_credential(node)
-
-            if not credential:
-                skip_nodes.append(node.hostname)
-                continue
-
-            setting = get_or_create_sync_setting(node)
-            nginx_conf_path = setting.main_conf_path
-            if not nginx_conf_path:
-                skip_nodes.append(f"{node.hostname}(未配置路径)")
-                continue
-
-            if credential.auth_type == "password":
-                discovered, errors = discover_nginx_configs(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    password=credential.get_password(),
-                    nginx_conf_path=nginx_conf_path,
-                )
-            else:
-                discovered, errors = discover_nginx_configs(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    private_key=credential.get_private_key(),
-                    nginx_conf_path=nginx_conf_path,
-                )
-
-            total_errors.extend(errors)
-
-            created, updated, _, orphaned = sync_discovered_configs(
-                node, discovered, request.user, remark="批量节点全量同步"
-            )
-            total_created += len(created)
-            total_updated += len(updated)
-            total_orphaned += len(orphaned)
-
-            if discovered:
-                save_sync_path(node, nginx_conf_path, request.user)
-
-        parts = [f"{len(node_ids)} 个节点"]
-        if total_created:
-            parts.append(f"新增 {total_created} 个配置")
-        if total_updated:
-            parts.append(f"更新 {total_updated} 个配置")
-        if total_orphaned:
-            parts.append(f"标记远程已删除 {total_orphaned} 个配置")
-        msg = f"批量同步完成：{'，'.join(parts)}"
-        if skip_nodes:
-            msg += (
-                f"，跳过 {len(skip_nodes)} 个节点（{', '.join(skip_nodes[:5])} 无凭证）"
-            )
-        if total_errors:
-            msg += f"，{len(total_errors)} 个错误"
-        messages.success(request, msg)
-
-        if (
-            total_errors
-            and not total_created
-            and not total_updated
-            and not total_orphaned
-        ):
-            error_msg = f"批量同步失败：{'; '.join(total_errors[:5])}"
-            url = reverse("configs:sync_wizard")
-            return redirect(f"{url}?sync_error={quote(error_msg)}")
-
-        return redirect("configs:sync_wizard")
-
-
-class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    permission_resource = "configs"
-    permission_action = "update"
-
-    def post(self, request, pk):
-        from apps.nodes.views import _get_node_credential
-        from utils.ssh import read_remote_file
-
-        config = get_object_or_404(Config, pk=pk)
-        node = config.node
-
-        if config.sync_status == "orphaned":
-            messages.error(
-                request,
-                f"配置 {config.name} ({node.hostname}) 远程已删除，无法更新。您可以删除此配置的本地记录。",
-            )
-            return redirect("configs:list")
-
-        if node.is_locked:
-            messages.error(request, f"节点 {node.hostname} 已锁定，无法更新配置")
-            return redirect("configs:list")
-        credential = _get_node_credential(node)
-
-        if not credential:
-            messages.error(request, f"节点 {node.hostname} 未配置 SSH 凭证，无法更新")
-            return redirect("configs:list")
-
-        if credential.auth_type == "password":
-            success, content = read_remote_file(
-                node.ip,
-                node.port,
-                credential.username,
-                password=credential.get_password(),
-                file_path=config.file_path,
-            )
-        else:
-            success, content = read_remote_file(
-                node.ip,
-                node.port,
-                credential.username,
-                private_key=credential.get_private_key(),
-                file_path=config.file_path,
-            )
-
-        if not success:
-            import re
-
-            if re.search(r"No such file|没有那个文件|不存在", content):
-                config.sync_status = "orphaned"
-                config.save(update_fields=["sync_status", "updated_at"])
-                messages.error(
-                    request,
-                    f"远程文件不存在：{config.file_path} → 已标记为远程已删除。您可以删除此配置的本地记录。",
-                )
-            else:
-                messages.error(
-                    request, f"读取远程文件失败：{config.file_path} — {content}"
-                )
-            return redirect("configs:list")
-
-        if config.content == content:
-            messages.info(
-                request, f"配置 {config.name} ({node.hostname}) 内容未变化，无需更新"
-            )
-            return redirect("configs:list")
-
-        new_version = config.current_version + 1
-        config.content = content
-        config.current_version = new_version
-        config.save()
-
-        ConfigVersion.objects.create(
-            config=config,
-            version=new_version,
-            content=content,
-            remark="从远程节点更新",
-            created_by=request.user,
-        )
-
-        config.prune_old_versions()
-
-        messages.success(
-            request,
-            f"配置 {config.name} ({node.hostname}) 更新成功 → v{new_version}",
-        )
-        return redirect("configs:list")
-
-
-class ConfigGlobPreviewView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    permission_resource = "configs"
-    permission_action = "create"
-
-    def post(self, request):
-        from apps.nodes.models import Node
-        from apps.nodes.views import _get_node_credential
-        from utils.ssh import expand_remote_glob
-
-        node_id = request.POST.get("node_id")
-        pattern = request.POST.get("pattern", "").strip()
-
-        if not node_id or not pattern:
-            return JsonResponse({"success": False, "message": "参数不完整"}, status=400)
-
-        node = get_object_or_404(Node, id=node_id)
-        if node.is_locked:
-            return JsonResponse(
-                {"success": False, "message": "节点已锁定，无法预览文件"},
-                status=400,
-            )
-        credential = _get_node_credential(node)
-
-        if not credential:
-            return JsonResponse(
-                {"success": False, "message": "节点未配置SSH凭证"}, status=400
-            )
-
-        if credential.auth_type == "password":
-            files = expand_remote_glob(
-                node.ip,
-                node.port,
-                credential.username,
-                password=credential.get_password(),
-                pattern=pattern,
-            )
-        else:
-            files = expand_remote_glob(
-                node.ip,
-                node.port,
-                credential.username,
-                private_key=credential.get_private_key(),
-                pattern=pattern,
-            )
-
-        return JsonResponse({"success": True, "files": files, "count": len(files)})
-
-
-class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
-    model = Config
-    form_class = ConfigForm
-    template_name = "configs/create.html"
-    success_url = reverse_lazy("configs:list")
-    permission_resource = "configs"
-    permission_action = "create"
-
-    def get_form_kwargs(self):
-        from apps.nodes.models import Node
-
-        kwargs = super().get_form_kwargs()
-        self.node_id = self.request.GET.get("node_id")
-        if self.node_id:
-            self.node = get_object_or_404(Node, id=self.node_id)
-        return kwargs
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        from apps.nodes.models import Node
-
-        context["all_nodes"] = (
-            Node.objects.filter(is_locked=False)
-            .select_related("created_by")
-            .order_by("hostname")
-        )
-        context["selected_node_id"] = self.request.GET.get("node_id", "")
-        return context
-
-    def form_valid(self, form):
-        request = self.request
-        use_glob = request.POST.get("use_glob") == "1"
-        glob_pattern = request.POST.get("glob_pattern", "").strip()
-        batch_remark = request.POST.get("batch_remark", "").strip()
-
-        if use_glob and glob_pattern:
-            return self._handle_glob_creation(form, glob_pattern, batch_remark)
-
-        if not form.cleaned_data.get("name") or not form.cleaned_data.get("file_path"):
-            form.add_error("name", "配置名称和文件路径为必填项")
-            return self.form_invalid(form)
-
-        node_id = request.POST.get("node")
-        if node_id:
-            from apps.nodes.models import Node
-
-            node = get_object_or_404(Node, id=node_id)
-            if node.is_locked:
-                form.add_error(None, f"节点 {node.hostname} 已锁定，无法创建配置")
-                return self.form_invalid(form)
-            form.instance.node_id = node_id
-
-        form.instance.created_by = request.user
-        form.instance.current_version = 1
-        form.instance.sync_status = "pending"
-        remark = form.cleaned_data.get("remark", "")
-
-        response = super().form_valid(form)
-
-        ConfigVersion.objects.create(
-            config=self.object,
-            version=1,
-            content=self.object.content,
-            remark=remark or "手动创建",
-            created_by=request.user,
-        )
-
-        messages.success(
-            request,
-            f"配置 {self.object.name} 创建成功（v1）",
-        )
-        return response
-
-    def _handle_glob_creation(self, form, glob_pattern, batch_remark):
-        from apps.nodes.models import Node
-        from apps.nodes.views import _get_node_credential
-        from utils.ssh import expand_remote_glob, read_remote_file
-
-        node_id = self.request.POST.get("node")
-        selected_files = self.request.POST.getlist("selected_files")
-
-        if not node_id:
-            form.add_error(None, "请选择关联节点")
-            return self.form_invalid(form)
-
-        node = get_object_or_404(Node, id=node_id)
-        if node.is_locked:
-            form.add_error(None, f"节点 {node.hostname} 已锁定，无法创建配置")
-            return self.form_invalid(form)
-        credential = _get_node_credential(node)
-
-        if not credential:
-            form.add_error(None, f"节点 {node.hostname} 未配置 SSH 凭证")
-            return self.form_invalid(form)
-
-        if not selected_files:
-            if credential.auth_type == "password":
-                matched = expand_remote_glob(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    password=credential.get_password(),
-                    pattern=glob_pattern,
-                )
-            else:
-                matched = expand_remote_glob(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    private_key=credential.get_private_key(),
-                    pattern=glob_pattern,
-                )
-            if not matched:
-                form.add_error(None, f"未匹配到任何文件：{glob_pattern}")
-                return self.form_invalid(form)
-            selected_files = matched
-
-        created = []
-        failed = []
-        for file_path in selected_files:
-            file_path = file_path.strip()
-            if not file_path:
-                continue
-            if credential.auth_type == "password":
-                success, content = read_remote_file(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    password=credential.get_password(),
-                    file_path=file_path,
-                )
-            else:
-                success, content = read_remote_file(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    private_key=credential.get_private_key(),
-                    file_path=file_path,
-                )
-            if not success:
-                failed.append((file_path, content))
-                continue
-
-            config_name = file_path.split("/")[-1]
-            config = Config(
-                node=node,
-                name=config_name,
-                file_path=file_path,
-                content=content,
-                current_version=1,
-                sync_status="pending",
-                created_by=self.request.user,
-            )
-            config.save()
-
-            ConfigVersion.objects.create(
-                config=config,
-                version=1,
-                content=content,
-                remark=batch_remark or "批量导入",
-                created_by=self.request.user,
-            )
-            created.append(config_name)
-
-        if created:
-            messages.success(
-                self.request,
-                f"批量导入完成：{len(created)} 个文件（{', '.join(created[:5])}"
-                + (f" 等" if len(created) > 5 else "")
-                + "）",
-            )
-        if failed:
-            messages.warning(
-                self.request,
-                f"{len(failed)} 个文件读取失败："
-                + "; ".join(f"{f[0]}: {f[1][:50]}" for f in failed[:3]),
-            )
-        if not created and not failed:
-            form.add_error(None, "没有成功创建任何配置")
-            return self.form_invalid(form)
-
-        return redirect(self.success_url)
-
-    def form_invalid(self, form):
-        messages.error(self.request, "配置创建失败，请检查输入")
-        return super().form_invalid(form)
-
-
-class ConfigByNodesAPIView(LoginRequiredMixin, View):
-    def get(self, request):
-        node_ids_str = request.GET.get("node_ids", "")
-        if not node_ids_str:
-            return JsonResponse({"success": False, "error": "缺少 node_ids 参数"})
-
-        try:
-            node_ids = [int(x.strip()) for x in node_ids_str.split(",") if x.strip()]
-        except (ValueError, TypeError):
-            return JsonResponse({"success": False, "error": "node_ids 格式错误"})
-
-        if not node_ids:
-            return JsonResponse({"success": False, "error": "node_ids 为空"})
-
-        configs = (
-            Config.objects.filter(node_id__in=node_ids)
-            .select_related("node")
-            .prefetch_related("versions")
-            .order_by("node__hostname", "name")
-        )
-
-        data = []
-        for cfg in configs:
-            versions = cfg.versions.order_by("-version")[:10]
-            data.append(
-                {
-                    "id": cfg.id,
-                    "node_id": cfg.node_id,
-                    "node_name": cfg.node.hostname,
-                    "name": cfg.name,
-                    "file_path": cfg.file_path,
-                    "current_version": cfg.current_version,
-                    "versions": [
-                        {
-                            "id": v.id,
-                            "version": v.version,
-                            "created_at": v.created_at.strftime("%Y-%m-%d %H:%M"),
-                        }
-                        for v in versions
-                    ],
-                }
-            )
-
-        return JsonResponse({"success": True, "data": data})
-
-
-class ConfigVersionContentAPIView(LoginRequiredMixin, View):
-    def get(self, request, version_id):
-        version = get_object_or_404(
-            ConfigVersion.objects.select_related("config", "config__node"),
-            pk=version_id,
-        )
-
-        return JsonResponse(
-            {
-                "success": True,
-                "data": {
-                    "id": version.id,
-                    "version": version.version,
-                    "config_name": version.config.name,
-                    "file_path": version.config.file_path,
-                    "node_name": version.config.node.hostname,
-                    "content": version.content,
-                    "created_at": version.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                },
-            }
-        )
 
 
 class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -1332,94 +866,103 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
             start_time = timezone.now()
 
-            if node.is_locked:
-                progress["nodes"][str(node_id)]["status"] = "failed"
-                progress["nodes"][str(node_id)]["error"] = "节点已锁定"
+            try:
+                if node.is_locked:
+                    progress["nodes"][str(node_id)]["status"] = "failed"
+                    progress["nodes"][str(node_id)]["error"] = "节点已锁定"
+                    progress["completed"] += 1
+                    cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+                    total_errors.append(f"{node.hostname}: 节点已锁定")
+                    continue
+
+                credential = _get_node_credential(node)
+
+                if not credential:
+                    progress["nodes"][str(node_id)]["status"] = "failed"
+                    progress["nodes"][str(node_id)]["error"] = "未配置SSH凭证"
+                    progress["completed"] += 1
+                    cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+                    total_errors.append(f"{node.hostname}: 未配置SSH凭证")
+                    continue
+
+                setting = get_or_create_sync_setting(node)
+                nginx_conf_path = setting.main_conf_path
+                if not nginx_conf_path:
+                    progress["nodes"][str(node_id)]["status"] = "failed"
+                    progress["nodes"][str(node_id)]["error"] = "未配置nginx路径"
+                    progress["completed"] += 1
+                    cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+                    total_errors.append(f"{node.hostname}: 未配置nginx路径")
+                    continue
+
+                if credential.auth_type == "password":
+                    discovered, errors = discover_nginx_configs(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        password=credential.get_password(),
+                        nginx_conf_path=nginx_conf_path,
+                    )
+                else:
+                    discovered, errors = discover_nginx_configs(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        private_key=credential.get_private_key(),
+                        nginx_conf_path=nginx_conf_path,
+                    )
+
+                if errors:
+                    progress["nodes"][str(node_id)]["error"] = "; ".join(errors[:3])
+                    mark_discovery_failed_configs(node, errors, request.user)
+
+                if discovered:
+                    created, updated, skipped, orphaned = sync_discovered_configs(
+                        node,
+                        discovered,
+                        request.user,
+                        remark="批量节点全量同步",
+                    )
+                    save_sync_path(node, nginx_conf_path, request.user)
+                    files_detail = _build_files_detail(
+                        discovered, errors, created, updated, orphaned
+                    )
+                    progress["nodes"][str(node_id)]["files"] = files_detail
+                    progress["nodes"][str(node_id)]["total_files"] = len(discovered)
+                    progress["nodes"][str(node_id)]["completed_files"] = len(discovered)
+                    progress["nodes"][str(node_id)]["created"] = len(created)
+                    progress["nodes"][str(node_id)]["updated"] = len(updated)
+                    progress["nodes"][str(node_id)]["orphaned"] = len(orphaned)
+                    progress["nodes"][str(node_id)]["skipped"] = len(skipped)
+                    total_created += len(created)
+                    total_updated += len(updated)
+                    total_orphaned += len(orphaned)
+                else:
+                    progress["nodes"][str(node_id)]["error"] = (
+                        progress["nodes"][str(node_id)]["error"]
+                        or f"未发现配置文件（路径: {nginx_conf_path}）"
+                    )
+
+                elapsed = (timezone.now() - start_time).total_seconds()
+                progress["nodes"][str(node_id)]["time"] = round(elapsed, 1)
+
+                if progress["nodes"][str(node_id)]["error"] and not discovered:
+                    progress["nodes"][str(node_id)]["status"] = "failed"
+                    total_errors.append(
+                        f"{node.hostname}: {progress['nodes'][str(node_id)]['error']}"
+                    )
+                else:
+                    progress["nodes"][str(node_id)]["status"] = "success"
+
                 progress["completed"] += 1
                 cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-                total_errors.append(f"{node.hostname}: 节点已锁定")
-                continue
 
-            credential = _get_node_credential(node)
-
-            if not credential:
+            except Exception as e:
                 progress["nodes"][str(node_id)]["status"] = "failed"
-                progress["nodes"][str(node_id)]["error"] = "未配置SSH凭证"
+                progress["nodes"][str(node_id)]["error"] = f"同步异常: {str(e)}"
                 progress["completed"] += 1
                 cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-                total_errors.append(f"{node.hostname}: 未配置SSH凭证")
-                continue
-
-            setting = get_or_create_sync_setting(node)
-            nginx_conf_path = setting.main_conf_path
-            if not nginx_conf_path:
-                progress["nodes"][str(node_id)]["status"] = "failed"
-                progress["nodes"][str(node_id)]["error"] = "未配置nginx路径"
-                progress["completed"] += 1
-                cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-                total_errors.append(f"{node.hostname}: 未配置nginx路径")
-                continue
-
-            if credential.auth_type == "password":
-                discovered, errors = discover_nginx_configs(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    password=credential.get_password(),
-                    nginx_conf_path=nginx_conf_path,
-                )
-            else:
-                discovered, errors = discover_nginx_configs(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    private_key=credential.get_private_key(),
-                    nginx_conf_path=nginx_conf_path,
-                )
-
-            if errors:
-                progress["nodes"][str(node_id)]["error"] = "; ".join(errors[:3])
-
-            if discovered:
-                created, updated, skipped, orphaned = sync_discovered_configs(
-                    node,
-                    discovered,
-                    request.user,
-                    remark="批量节点全量同步",
-                )
-                save_sync_path(node, nginx_conf_path, request.user)
-                files_detail = _build_files_detail(
-                    discovered, errors, created, updated, orphaned
-                )
-                progress["nodes"][str(node_id)]["files"] = files_detail
-                progress["nodes"][str(node_id)]["total_files"] = len(discovered)
-                progress["nodes"][str(node_id)]["completed_files"] = len(discovered)
-                progress["nodes"][str(node_id)]["created"] = len(created)
-                progress["nodes"][str(node_id)]["updated"] = len(updated)
-                progress["nodes"][str(node_id)]["orphaned"] = len(orphaned)
-                progress["nodes"][str(node_id)]["skipped"] = len(skipped)
-                total_created += len(created)
-                total_updated += len(updated)
-                total_orphaned += len(orphaned)
-            else:
-                progress["nodes"][str(node_id)]["error"] = (
-                    progress["nodes"][str(node_id)]["error"]
-                    or f"未发现配置文件（路径: {nginx_conf_path}）"
-                )
-
-            elapsed = (timezone.now() - start_time).total_seconds()
-            progress["nodes"][str(node_id)]["time"] = round(elapsed, 1)
-
-            if progress["nodes"][str(node_id)]["error"] and not discovered:
-                progress["nodes"][str(node_id)]["status"] = "failed"
-                total_errors.append(
-                    f"{node.hostname}: {progress['nodes'][str(node_id)]['error']}"
-                )
-            else:
-                progress["nodes"][str(node_id)]["status"] = "success"
-
-            progress["completed"] += 1
-            cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+                total_errors.append(f"{node.hostname}: 同步异常 - {str(e)}")
 
         return JsonResponse(
             {
@@ -1439,55 +982,6 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
 
 
-def _build_files_detail(discovered, errors, created, updated, orphaned=None):
-    import re
-
-    files_detail = []
-    created_set = set(created)
-    updated_set = set(updated)
-    orphaned_set = set(orphaned) if orphaned else set()
-
-    for item in discovered:
-        file_status = "skipped"
-        if item["name"] in created_set:
-            file_status = "created"
-        elif item["name"] in updated_set:
-            file_status = "updated"
-        files_detail.append(
-            {
-                "path": item["path"],
-                "name": item["name"],
-                "status": file_status,
-                "error": "",
-            }
-        )
-
-    for name in orphaned_set:
-        files_detail.append(
-            {
-                "path": "",
-                "name": name,
-                "status": "orphaned",
-                "error": "远程已删除",
-            }
-        )
-
-    for err in errors:
-        m = re.match(r"读取\s+(.+?)\s+失败", err)
-        if m:
-            fail_path = m.group(1)
-            files_detail.append(
-                {
-                    "path": fail_path,
-                    "name": fail_path.split("/")[-1],
-                    "status": "failed",
-                    "error": err,
-                }
-            )
-
-    return files_detail
-
-
 class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "configs"
     permission_action = "update"
@@ -1501,6 +995,7 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         data = json.loads(request.body)
         node_id = data.get("node_id")
         main_conf_path = data.get("main_conf_path", "").strip()
+        selected_paths = data.get("selected_paths", [])
         task_id = data.get("task_id", str(uuid.uuid4()))
 
         if not node_id:
@@ -1542,96 +1037,155 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         progress["nodes"][str(node_id)]["status"] = "syncing"
         cache.set(f"batch_sync:{task_id}", progress, timeout=300)
 
-        credential = _get_node_credential(node)
-        if not credential:
-            progress["nodes"][str(node_id)]["status"] = "failed"
-            progress["nodes"][str(node_id)]["error"] = "未配置SSH凭证"
-            progress["completed"] = 1
+        try:
+            credential = _get_node_credential(node)
+            if not credential:
+                progress["nodes"][str(node_id)]["status"] = "failed"
+                progress["nodes"][str(node_id)]["error"] = "未配置SSH凭证"
+                progress["completed"] = 1
+                cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+                return JsonResponse({"success": True, "task_id": task_id})
+
+            if credential.auth_type == "password":
+                discovered, errors = discover_nginx_configs(
+                    node.ip,
+                    node.port,
+                    credential.username,
+                    password=credential.get_password(),
+                    nginx_conf_path=main_conf_path,
+                )
+            else:
+                discovered, errors = discover_nginx_configs(
+                    node.ip,
+                    node.port,
+                    credential.username,
+                    private_key=credential.get_private_key(),
+                    nginx_conf_path=main_conf_path,
+                )
+
+            if errors:
+                progress["nodes"][str(node_id)]["error"] = "; ".join(errors[:5])
+                mark_discovery_failed_configs(node, errors, request.user)
+
+            if not discovered:
+                error_msg = (
+                    progress["nodes"][str(node_id)]["error"]
+                    or f"未发现配置文件（路径: {main_conf_path}）"
+                )
+                progress["nodes"][str(node_id)]["error"] = error_msg
+                progress["nodes"][str(node_id)]["status"] = "failed"
+                progress["completed"] = 1
+                cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "task_id": task_id,
+                        "summary": {
+                            "created": 0,
+                            "updated": 0,
+                            "skipped": 0,
+                            "orphaned": 0,
+                            "errors": [error_msg],
+                        },
+                    }
+                )
+
+            progress["total"] = len(discovered)
+            progress["nodes"][str(node_id)]["total_files"] = len(discovered)
             cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-            return JsonResponse({"success": True, "task_id": task_id})
 
-        if credential.auth_type == "password":
-            discovered, errors = discover_nginx_configs(
-                node.ip,
-                node.port,
-                credential.username,
-                password=credential.get_password(),
-                nginx_conf_path=main_conf_path,
+            def _on_file_progress(action, name):
+                node_data = progress["nodes"][str(node_id)]
+                node_data["completed_files"] += 1
+                if action == "created":
+                    node_data["created"] += 1
+                elif action == "updated":
+                    node_data["updated"] += 1
+                elif action == "skipped":
+                    node_data["skipped"] += 1
+                elif action == "orphaned":
+                    node_data["orphaned"] += 1
+                progress["completed"] = node_data["completed_files"]
+                cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+
+            if selected_paths:
+                created, updated, skipped, orphaned = sync_selected_configs(
+                    node,
+                    selected_paths,
+                    discovered,
+                    request.user,
+                    remark="从远程节点部分同步",
+                    progress_callback=_on_file_progress,
+                )
+            else:
+                created, updated, skipped, orphaned = sync_discovered_configs(
+                    node,
+                    discovered,
+                    request.user,
+                    remark="从远程节点全量同步",
+                    progress_callback=_on_file_progress,
+                )
+
+            if discovered:
+                save_sync_path(node, main_conf_path, request.user)
+
+            files_detail = _build_files_detail(
+                discovered, errors, created, updated, orphaned
             )
-        else:
-            discovered, errors = discover_nginx_configs(
-                node.ip,
-                node.port,
-                credential.username,
-                private_key=credential.get_private_key(),
-                nginx_conf_path=main_conf_path,
-            )
 
-        progress["total"] = len(discovered)
-        progress["nodes"][str(node_id)]["total_files"] = len(discovered)
-        cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+            progress["nodes"][str(node_id)]["created"] = len(created)
+            progress["nodes"][str(node_id)]["updated"] = len(updated)
+            progress["nodes"][str(node_id)]["skipped"] = len(skipped)
+            progress["nodes"][str(node_id)]["orphaned"] = len(orphaned)
+            progress["nodes"][str(node_id)]["files"] = files_detail
 
-        def _on_file_progress(action, name):
-            node_data = progress["nodes"][str(node_id)]
-            node_data["completed_files"] += 1
-            if action == "created":
-                node_data["created"] += 1
-            elif action == "updated":
-                node_data["updated"] += 1
-            elif action == "skipped":
-                node_data["skipped"] += 1
-            elif action == "orphaned":
-                node_data["orphaned"] += 1
-            progress["completed"] = node_data["completed_files"]
+            if errors:
+                progress["nodes"][str(node_id)]["error"] = "; ".join(errors[:5])
+
+            elapsed = (timezone.now() - start_time).total_seconds()
+            progress["nodes"][str(node_id)]["time"] = round(elapsed, 1)
+
+            if errors and not discovered:
+                progress["nodes"][str(node_id)]["status"] = "failed"
+            else:
+                progress["nodes"][str(node_id)]["status"] = "success"
+
+            progress["completed"] = progress["total"]
             cache.set(f"batch_sync:{task_id}", progress, timeout=300)
 
-        created, updated, skipped, orphaned = sync_discovered_configs(
-            node,
-            discovered,
-            request.user,
-            remark="从远程节点全量同步",
-            progress_callback=_on_file_progress,
-        )
+            return JsonResponse(
+                {
+                    "success": True,
+                    "task_id": task_id,
+                    "summary": {
+                        "created": len(created),
+                        "updated": len(updated),
+                        "skipped": len(skipped),
+                        "orphaned": len(orphaned),
+                        "errors": errors[:5],
+                    },
+                }
+            )
 
-        if discovered:
-            save_sync_path(node, main_conf_path, request.user)
-
-        files_detail = _build_files_detail(
-            discovered, errors, created, updated, orphaned
-        )
-
-        progress["nodes"][str(node_id)]["created"] = len(created)
-        progress["nodes"][str(node_id)]["updated"] = len(updated)
-        progress["nodes"][str(node_id)]["skipped"] = len(skipped)
-        progress["nodes"][str(node_id)]["orphaned"] = len(orphaned)
-        progress["nodes"][str(node_id)]["files"] = files_detail
-
-        if errors:
-            progress["nodes"][str(node_id)]["error"] = "; ".join(errors[:5])
-
-        elapsed = (timezone.now() - start_time).total_seconds()
-        progress["nodes"][str(node_id)]["time"] = round(elapsed, 1)
-
-        if errors and not discovered:
+        except Exception as e:
+            error_msg = f"同步异常: {str(e)}"
             progress["nodes"][str(node_id)]["status"] = "failed"
-        else:
-            progress["nodes"][str(node_id)]["status"] = "success"
-
-        progress["completed"] = 1
-        cache.set(f"batch_sync:{task_id}", progress, timeout=300)
-
-        return JsonResponse(
-            {
-                "success": True,
-                "task_id": task_id,
-                "summary": {
-                    "created": len(created),
-                    "updated": len(updated),
-                    "skipped": len(skipped),
-                    "errors": errors[:5],
-                },
-            }
-        )
+            progress["nodes"][str(node_id)]["error"] = error_msg
+            progress["completed"] = progress["total"]
+            cache.set(f"batch_sync:{task_id}", progress, timeout=300)
+            return JsonResponse(
+                {
+                    "success": True,
+                    "task_id": task_id,
+                    "summary": {
+                        "created": 0,
+                        "updated": 0,
+                        "skipped": 0,
+                        "orphaned": 0,
+                        "errors": [error_msg],
+                    },
+                }
+            )
 
 
 class ConfigSyncProgressView(LoginRequiredMixin, View):
@@ -1667,3 +1221,357 @@ class ConfigDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         config.delete()
         messages.success(request, f"已删除配置 {config_name}（节点 {node_hostname}）")
         return redirect("configs:list")
+
+
+class ConfigNodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_resource = "configs"
+    permission_action = "delete"
+
+    def post(self, request, pk):
+        from apps.nodes.models import Node
+
+        node = get_object_or_404(Node, pk=pk)
+        configs = Config.objects.filter(node=node)
+        count = configs.count()
+
+        if count == 0:
+            messages.info(request, f"节点 {node.hostname} 没有配置文件")
+            return redirect("configs:list")
+
+        configs.delete()
+        messages.success(request, f"已删除节点 {node.hostname} 的 {count} 个配置文件")
+        return redirect("configs:list")
+
+
+class ConfigByNodesAPIView(LoginRequiredMixin, View):
+    def get(self, request):
+        from apps.nodes.models import Node
+
+        node_ids_str = request.GET.get("node_ids", "")
+        if not node_ids_str:
+            return JsonResponse({"success": False, "message": "缺少node_ids参数"})
+
+        try:
+            node_ids = [int(nid) for nid in node_ids_str.split(",")]
+        except ValueError:
+            return JsonResponse({"success": False, "message": "node_ids格式错误"})
+
+        nodes = Node.objects.filter(id__in=node_ids)
+        result = []
+
+        for node in nodes:
+            configs = Config.objects.filter(node=node).exclude(name__in=["mime.types"])
+            config_list = []
+            for config in configs:
+                config_list.append(
+                    {
+                        "id": config.id,
+                        "name": config.name,
+                        "file_path": config.file_path,
+                        "current_version": config.current_version,
+                        "sync_status": config.sync_status,
+                    }
+                )
+            result.append(
+                {
+                    "node_id": node.id,
+                    "hostname": node.hostname,
+                    "configs": config_list,
+                }
+            )
+
+        return JsonResponse({"success": True, "data": result})
+
+
+class ConfigGlobPreviewView(LoginRequiredMixin, View):
+    def get(self, request):
+        from apps.nodes.models import Node
+        from apps.nodes.views import _get_node_credential
+        from utils.ssh import discover_nginx_configs
+
+        node_id = request.GET.get("node_id")
+        main_conf_path = request.GET.get("main_conf_path", "").strip()
+
+        if not node_id:
+            return JsonResponse({"success": False, "message": "缺少node_id参数"})
+        if not main_conf_path:
+            return JsonResponse(
+                {"success": False, "message": "请输入 nginx.conf 主配置文件路径"}
+            )
+
+        node = get_object_or_404(Node, id=node_id)
+
+        if node.is_locked:
+            return JsonResponse(
+                {"success": False, "message": f"节点 {node.hostname} 已锁定"}
+            )
+
+        credential = _get_node_credential(node)
+        if not credential:
+            return JsonResponse(
+                {"success": False, "message": f"节点 {node.hostname} 未配置SSH凭证"}
+            )
+
+        try:
+            if credential.auth_type == "password":
+                discovered, errors = discover_nginx_configs(
+                    node.ip,
+                    node.port,
+                    credential.username,
+                    password=credential.get_password(),
+                    nginx_conf_path=main_conf_path,
+                )
+            else:
+                discovered, errors = discover_nginx_configs(
+                    node.ip,
+                    node.port,
+                    credential.username,
+                    private_key=credential.get_private_key(),
+                    nginx_conf_path=main_conf_path,
+                )
+
+            result = []
+            for item in discovered:
+                result.append(
+                    {
+                        "name": item["name"],
+                        "path": item["path"],
+                    }
+                )
+
+            return JsonResponse(
+                {
+                    "success": True,
+                    "data": result,
+                    "errors": errors[:5],
+                }
+            )
+
+        except Exception as e:
+            return JsonResponse({"success": False, "message": f"预览失败: {str(e)}"})
+
+
+class ConfigUpdatePreviewView(LoginRequiredMixin, View):
+    def get(self, request):
+        from apps.nodes.views import _get_node_credential
+        from utils.ssh import discover_nginx_configs
+
+        config_id = request.GET.get("config_id")
+        if not config_id:
+            return JsonResponse({"success": False, "message": "缺少config_id参数"})
+
+        config = get_object_or_404(Config, pk=config_id)
+        node = config.node
+
+        if node.is_locked:
+            return JsonResponse(
+                {"success": False, "message": f"节点 {node.hostname} 已锁定"}
+            )
+
+        credential = _get_node_credential(node)
+        if not credential:
+            return JsonResponse(
+                {"success": False, "message": f"节点 {node.hostname} 未配置SSH凭证"}
+            )
+
+        if not credential.is_enabled:
+            return JsonResponse(
+                {"success": False, "message": f"节点 {node.hostname} 关联凭证已禁用"}
+            )
+
+        try:
+            auth_kwargs = {}
+            if credential.auth_type == "password":
+                auth_kwargs["password"] = credential.get_password()
+            else:
+                auth_kwargs["private_key"] = credential.get_private_key()
+
+            discovered, errors = discover_nginx_configs(
+                host=node.ip,
+                port=node.port,
+                username=credential.username,
+                nginx_conf_path=config.file_path,
+                **auth_kwargs,
+            )
+
+            result = []
+            for item in discovered:
+                result.append(
+                    {
+                        "name": item["name"],
+                        "path": item["path"],
+                    }
+                )
+
+            return JsonResponse(
+                {
+                    "success": True,
+                    "data": result,
+                    "total": len(result),
+                    "errors": errors[:5],
+                    "config_name": config.name,
+                    "node_hostname": node.hostname,
+                }
+            )
+
+        except Exception as e:
+            return JsonResponse({"success": False, "message": f"预览失败: {str(e)}"})
+
+
+class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_resource = "configs"
+    permission_action = "update"
+
+    def post(self, request, pk):
+        from apps.nodes.views import _get_node_credential
+        from utils.ssh import discover_nginx_configs
+
+        config = get_object_or_404(Config, pk=pk)
+        node = config.node
+
+        if node.is_locked:
+            messages.error(request, f"节点 {node.hostname} 已锁定，无法更新配置")
+            return redirect("configs:list")
+
+        if config.sync_status == "orphaned":
+            messages.error(request, f"配置 {config.name} 已从远程删除，无法更新")
+            return redirect("configs:list")
+
+        try:
+            credential = _get_node_credential(node)
+            if not credential:
+                messages.error(request, f"节点 {node.hostname} 未配置凭证")
+                return redirect("configs:list")
+
+            if not credential.is_enabled:
+                messages.error(request, f"节点 {node.hostname} 关联凭证已禁用")
+                return redirect("configs:list")
+
+            host = node.ip
+            ssh_port = node.port
+            username = credential.username
+
+            auth_kwargs = {}
+            if credential.auth_type == "password":
+                auth_kwargs["password"] = credential.get_password()
+            else:
+                auth_kwargs["private_key"] = credential.get_private_key()
+
+            discovered, errors = discover_nginx_configs(
+                host=host,
+                port=ssh_port,
+                username=username,
+                nginx_conf_path=config.file_path,
+                **auth_kwargs,
+            )
+
+            if errors:
+                mark_discovery_failed_configs(config.node, errors, request.user)
+
+            if not discovered:
+                error_msg = "; ".join(errors) if errors else "未发现配置文件"
+                config.sync_status = "failed"
+                config.last_sync_error = error_msg
+                config.save(
+                    update_fields=["sync_status", "last_sync_error", "updated_at"]
+                )
+                messages.error(request, f"读取远程文件失败：{error_msg}")
+                return redirect("configs:list")
+
+            created, updated, skipped, orphaned = sync_discovered_configs(
+                node,
+                discovered,
+                request.user,
+                remark="从远程节点更新",
+                mark_orphaned=False,
+            )
+
+            total_affected = len(created) + len(updated)
+            if total_affected > 0:
+                if total_affected > 1:
+                    messages.success(
+                        request,
+                        f"配置 {config.name} 已从远程节点更新，共更新 {total_affected} 个文件"
+                        f"（新增 {len(created)}，更新 {len(updated)}"
+                        + (f"，未变化 {len(skipped)}" if skipped else "")
+                        + "）",
+                    )
+                else:
+                    messages.success(request, f"配置 {config.name} 已从远程节点更新")
+            elif skipped:
+                messages.info(
+                    request,
+                    f"配置 {config.name} 无变化"
+                    + (f"（共 {len(skipped)} 个文件）" if len(skipped) > 1 else ""),
+                )
+            else:
+                messages.info(request, f"配置 {config.name} 无变化")
+
+            if errors:
+                messages.warning(request, f"部分文件读取失败：{'; '.join(errors[:3])}")
+
+            return redirect("configs:detail", pk=config.pk)
+
+        except Exception as e:
+            config.sync_status = "failed"
+            config.last_sync_error = str(e)
+            config.save(update_fields=["sync_status", "last_sync_error", "updated_at"])
+            messages.error(request, f"更新配置失败：{str(e)}")
+            return redirect("configs:list")
+
+
+class ConfigBatchDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_resource = "configs"
+    permission_action = "delete"
+
+    def post(self, request):
+        config_ids = request.POST.getlist("config_ids")
+
+        if not config_ids:
+            messages.error(request, "请选择要删除的配置")
+            return redirect("configs:list")
+
+        configs = Config.objects.filter(id__in=config_ids)
+        deleted_count = 0
+        failed_configs = []
+
+        for config in configs:
+            if config.sync_status in ("orphaned", "pending"):
+                config.delete()
+                deleted_count += 1
+            else:
+                failed_configs.append(
+                    f"{config.name}（{config.node.hostname}）- {config.get_sync_status_display()}"
+                )
+
+        if deleted_count > 0:
+            messages.success(request, f"已删除 {deleted_count} 个配置")
+        if failed_configs:
+            messages.warning(
+                request,
+                f"以下配置无法删除：{'; '.join(failed_configs[:5])}",
+            )
+
+        return redirect("configs:list")
+
+
+def _build_files_detail(discovered, errors, created, updated, orphaned):
+    files_detail = []
+    for item in discovered:
+        file_name = item["name"]
+        file_path = item["path"]
+        status = "skipped"
+        if file_name in created:
+            status = "created"
+        elif file_name in updated:
+            status = "updated"
+        elif file_name in orphaned:
+            status = "orphaned"
+        files_detail.append(
+            {
+                "name": file_name,
+                "path": file_path,
+                "status": status,
+            }
+        )
+    return files_detail

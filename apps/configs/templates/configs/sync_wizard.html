@@ -163,8 +163,7 @@
                                         <div class="modal fade" id="syncModal{{ node.id }}" tabindex="-1">
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
-                                                    <form id="syncForm{{ node.id }}" method="post"
-                                                        action="{% url 'configs:sync_remote' node.id %}"
+                                                    <div id="syncForm{{ node.id }}"
                                                         data-pending-configs="{{ node_pending_configs|dict_get:node.id|join:',' }}">
                                                         {% csrf_token %}
                                                         <div class="modal-header">
@@ -241,14 +240,12 @@
                                                                 <i class="bi bi-cloud-download"></i> 开始同步
                                                             </button>
                                                         </div>
-                                                    </form>
+                                                    </div>
 
-                                                    <form id="partialSyncForm{{ node.id }}" method="post"
-                                                        action="{% url 'configs:sync_partial' node.id %}">
-                                                        {% csrf_token %}
+                                                    <div id="partialSyncForm{{ node.id }}" style="display:none;">
                                                         <input type="hidden" name="main_conf_path"
                                                             value="{{ node_sync_paths|dict_get:node.id }}">
-                                                    </form>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -275,30 +272,52 @@
                             {% if page_obj.has_previous %}
                             <li class="page-item">
                                 <a class="page-link" href="?page=1&per_page={{ per_page }}">
-                                    <i class="bi bi-chevron-double-left"></i> 首页
+                                    <i class="bi bi-chevron-double-left"></i>
                                 </a>
                             </li>
                             <li class="page-item">
                                 <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}">
-                                    <i class="bi bi-chevron-left"></i> 上一页
+                                    <i class="bi bi-chevron-left"></i>
                                 </a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link"><i class="bi bi-chevron-double-left"></i></span>
+                            </li>
+                            <li class="page-item disabled">
+                                <span class="page-link"><i class="bi bi-chevron-left"></i></span>
                             </li>
                             {% endif %}
 
+                            {% for num in page_obj.paginator.page_range %}
+                            {% if page_obj.number == num %}
                             <li class="page-item active">
-                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                                <span class="page-link">{{ num }}</span>
                             </li>
+                            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ num }}&per_page={{ per_page }}">{{ num }}</a>
+                            </li>
+                            {% endif %}
+                            {% endfor %}
 
                             {% if page_obj.has_next %}
                             <li class="page-item">
                                 <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}">
-                                    下一页 <i class="bi bi-chevron-right"></i>
+                                    <i class="bi bi-chevron-right"></i>
                                 </a>
                             </li>
                             <li class="page-item">
                                 <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}">
-                                    末页 <i class="bi bi-chevron-double-right"></i>
+                                    <i class="bi bi-chevron-double-right"></i>
                                 </a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link"><i class="bi bi-chevron-right"></i></span>
+                            </li>
+                            <li class="page-item disabled">
+                                <span class="page-link"><i class="bi bi-chevron-double-right"></i></span>
                             </li>
                             {% endif %}
                         </ul>
@@ -309,17 +328,8 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block extra_js %}
 <style>
-    .spin {
-        animation: sync-spin 1s linear infinite;
-    }
-    @keyframes sync-spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-    }
     .tag-input-wrapper {
         display: flex;
         flex-wrap: wrap;
@@ -327,43 +337,57 @@
         gap: 4px;
         padding: 4px 8px;
         min-height: 38px;
-        cursor: text;
-        overflow-y: auto;
     }
-    .tag-input-wrapper .tag-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: #e9ecef;
-        border: 1px solid #ced4da;
-        border-radius: 4px;
-        padding: 2px 8px;
-        font-size: 0.82rem;
-        white-space: nowrap;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove {
-        cursor: pointer;
-        opacity: 0.5;
-        font-size: 1rem;
-        line-height: 1;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove:hover {
-        opacity: 1;
-        color: #dc3545;
-    }
-    .tag-input-wrapper .tag-input-field {
+
+    .tag-input-field {
         border: none;
         outline: none;
         flex: 1;
         min-width: 100px;
-        padding: 0;
         background: transparent;
+    }
+
+    .tag-badge {
+        background-color: #0d6efd;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.875rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .tag-remove {
+        cursor: pointer;
+        font-weight: bold;
+    }
+
+    .tag-remove:hover {
+        opacity: 0.8;
+    }
+
+    .spin {
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
+        to {
+            transform: rotate(360deg);
+        }
     }
 </style>
 <script>
     var MAX_BATCH = 3;
     var pollTimer = null;
     var syncAlertModalInstance = null;
+    var pollStartTime = null;
+    var POLL_TIMEOUT = 120000;
+    var MAX_POLL_FAILURES = 10;
+    var pollFailureCount = 0;
 
     function initTagInput(wrapperId, fieldId, searchHiddenId, groupHiddenId) {
         var wrapper = document.getElementById(wrapperId);
@@ -695,7 +719,7 @@
             return;
         }
 
-        var pendingConfigs = (modal.querySelector('form').getAttribute('data-pending-configs') || '').trim();
+        var pendingConfigs = (modal.querySelector('#syncForm' + nodeId).getAttribute('data-pending-configs') || '').trim();
         if (pendingConfigs) {
             var pendingList = pendingConfigs.split(',').filter(function(n) { return n; });
             var pendingHtml = pendingList.map(function(n) {
@@ -827,10 +851,27 @@
 
     function pollProgress(taskId, progressModal, syncType) {
         syncType = syncType || 'batch';
+        pollStartTime = Date.now();
+        pollFailureCount = 0;
+        
         pollTimer = setInterval(function() {
+            var elapsed = Date.now() - pollStartTime;
+            
+            if (elapsed > POLL_TIMEOUT) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+                updateProgressError('同步超时（超过 ' + (POLL_TIMEOUT / 1000) + ' 秒），请检查网络连接或节点状态');
+                document.getElementById('progressCloseBtn').disabled = false;
+                document.getElementById('progressCloseBtn').textContent = '关闭';
+                document.getElementById('progressSpinner').style.display = 'none';
+                return;
+            }
+
             fetch('{% url "configs:sync_progress" %}?task_id=' + encodeURIComponent(taskId))
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
+                    pollFailureCount = 0;
+                    
                     if (data.success && data.progress) {
                         updateProgressUI(data.progress);
                         if (data.progress.completed >= data.progress.total) {
@@ -909,6 +950,27 @@
                             document.getElementById('progressCloseBtn').disabled = false;
                             document.getElementById('progressSpinner').style.display = 'none';
                         }
+                    } else if (!data.success) {
+                        pollFailureCount++;
+                        if (pollFailureCount >= MAX_POLL_FAILURES) {
+                            clearInterval(pollTimer);
+                            pollTimer = null;
+                            updateProgressError('同步状态获取失败，请刷新页面重试');
+                            document.getElementById('progressCloseBtn').disabled = false;
+                            document.getElementById('progressCloseBtn').textContent = '关闭';
+                            document.getElementById('progressSpinner').style.display = 'none';
+                        }
+                    }
+                })
+                ['catch'](function(err) {
+                    pollFailureCount++;
+                    if (pollFailureCount >= MAX_POLL_FAILURES) {
+                        clearInterval(pollTimer);
+                        pollTimer = null;
+                        updateProgressError('网络错误：' + err.message + '，请刷新页面重试');
+                        document.getElementById('progressCloseBtn').disabled = false;
+                        document.getElementById('progressCloseBtn').textContent = '关闭';
+                        document.getElementById('progressSpinner').style.display = 'none';
                     }
                 });
         }, 800);
@@ -916,38 +978,83 @@
 
     function updateProgressError(msg) {
         document.getElementById('progressSummaryText').textContent = msg;
+        document.getElementById('progressSummary').className = 'alert alert-danger mt-3 mb-0';
         document.getElementById('progressSummary').style.display = 'block';
     }
 
     function submitPartialSync(nodeId) {
         var modal = document.getElementById('syncModal' + nodeId);
         var sourceChecks = modal.querySelectorAll('input[name="selected_paths"]');
-        var partialForm = document.getElementById('partialSyncForm' + nodeId);
+        var pathInput = modal.querySelector('input[name="main_conf_path"]');
+        var mainConfPath = pathInput.value.trim();
 
-        partialForm.querySelectorAll('input[name="selected_paths"]').forEach(function (el) {
-            el.remove();
-        });
+        if (!mainConfPath) {
+            showCustomModal('提示', '<p class="mb-0"><i class="bi bi-info-circle text-warning"></i> 请输入 nginx.conf 主配置文件路径</p>', true);
+            return;
+        }
 
-        var checkedCount = 0;
+        var selectedPaths = [];
         sourceChecks.forEach(function (cb) {
             if (cb.checked) {
-                checkedCount += 1;
-                var hidden = document.createElement('input');
-                hidden.type = 'hidden';
-                hidden.name = 'selected_paths';
-                hidden.value = cb.value;
-                partialForm.appendChild(hidden);
+                selectedPaths.push(cb.value);
             }
         });
 
-        var sourcePath = modal.querySelector('input[name="main_conf_path"]');
-        partialForm.querySelector('input[name="main_conf_path"]').value = sourcePath.value;
-
-        if (checkedCount === 0) {
+        if (selectedPaths.length === 0) {
             showCustomModal('提示', '<p class="mb-0"><i class="bi bi-info-circle text-warning"></i> 请至少勾选一个配置文件</p>', true);
             return;
         }
-        partialForm.submit();
+
+        var bsModal = bootstrap.Modal.getInstance(modal);
+        bsModal.hide();
+
+        var hostnames = {};
+        hostnames[nodeId] = document.getElementById('syncModal' + nodeId).querySelector('.modal-title').textContent.split('：')[1];
+        var progressList = document.getElementById('progressList');
+        progressList.innerHTML = buildProgressHTML([nodeId], hostnames);
+        document.getElementById('progressPercent').textContent = '0/0 (0%)';
+        document.getElementById('progressSpinner').style.display = 'inline-block';
+        document.getElementById('progressCloseBtn').disabled = true;
+        document.getElementById('progressCloseBtn').textContent = '同步中...';
+        document.getElementById('progressSummary').style.display = 'none';
+
+        var progressModal = new bootstrap.Modal(document.getElementById('syncProgressModal'), {backdrop: 'static', keyboard: false});
+        document.getElementById('progressModalTitle').innerHTML = '<i class="bi bi-cloud-download me-2"></i>部分同步进度';
+        progressModal.show();
+
+        var taskId = 'partial_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+        pollProgress(taskId, progressModal, 'partial');
+
+        fetch('{% url "configs:sync_single_api" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ 
+                node_id: nodeId, 
+                main_conf_path: mainConfPath, 
+                selected_paths: selectedPaths,
+                task_id: taskId 
+            })
+        }).then(function(response) {
+            return response.json();
+        }).then(function(data) {
+            if (!data.success) {
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                updateProgressError(data.message || '同步请求失败');
+                document.getElementById('progressCloseBtn').disabled = false;
+                document.getElementById('progressCloseBtn').textContent = '关闭';
+                document.getElementById('progressSpinner').style.display = 'none';
+            }
+        })['catch'](function(err) {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            updateProgressError('网络请求失败: ' + err.message);
+            document.getElementById('progressCloseBtn').disabled = false;
+            document.getElementById('progressCloseBtn').textContent = '关闭';
+            document.getElementById('progressSpinner').style.display = 'none';
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -960,10 +1067,6 @@
         }
     });
 </script>
-
-<form id="batchSyncForm" method="post" action="{% url 'configs:sync_batch' %}" style="display:none;">
-    {% csrf_token %}
-</form>
 
 <div class="modal fade" id="syncProgressModal" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered">
