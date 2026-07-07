@@ -82,21 +82,13 @@
                                         <small class="text-muted">-</small>
                                         {% endif %}
                                     </td>
-                                    <td>
-                                        <small class="d-block target-line"><span class="text-muted">主机：</span><span class="target-value">{{ task.target_hostnames|default:'-' }}</span></small>
-                                        <small class="d-block target-line"><span class="text-muted">IP：</span><span class="target-value">{{ task.target_ips|default:'-' }}</span></small>
-                                        <small class="d-block target-line"><span class="text-muted">配置：</span><span class="target-value">{{ task.target_configs|default:'-' }}</span></small>
+                                    <td class="target-cell" data-ips="{{ task.target_ips }}" data-hostnames="{{ task.target_hostnames }}">
                                     </td>
                                     <td>
                                         <div class="progress" style="height: 6px; min-width: 110px;">
                                             <div class="progress-bar task-progress-bar" id="taskProgressBar{{ task.id }}" role="progressbar" style="width: {{ task.progress }}%;"></div>
                                         </div>
                                         <small class="text-muted" id="taskProgressText{{ task.id }}">{{ task.progress }}%</small>
-                                        {% if task.detail %}
-                                        <br><small class="text-muted" id="taskRuntimeDetail{{ task.id }}">{{ task.detail }}</small>
-                                        {% else %}
-                                        <br><small class="text-muted" id="taskRuntimeDetail{{ task.id }}">-</small>
-                                        {% endif %}
                                     </td>
                                     <td id="taskStatus{{ task.id }}">
                                         {% if task.status == 'success' %}
@@ -302,43 +294,76 @@
             return '<span class="badge bg-warning text-dark">已取消</span>';
         }
 
+        var targetListModalInstance = null;
+
         function applyTargetCollapse() {
-            const lines = Array.from(document.querySelectorAll('.target-line'));
-            lines.forEach(function (line) {
-                const valueEl = line.querySelector('.target-value');
-                if (!valueEl) return;
+            const cells = Array.from(document.querySelectorAll('.target-cell'));
+            cells.forEach(function (cell) {
+                var ips = (cell.getAttribute('data-ips') || '').trim();
+                var hostnames = (cell.getAttribute('data-hostnames') || '').trim();
 
-                const fullText = (valueEl.textContent || '').trim();
-                if (!fullText || fullText === '-') return;
+                if (!ips) {
+                    cell.innerHTML = '<small class="text-muted">-</small>';
+                    return;
+                }
 
-                const items = fullText.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-                const byItems = items.length > 3;
-                const byLength = fullText.length > 64;
-                if (!byItems && !byLength) return;
+                function esc(s) {
+                    var d = document.createElement('div');
+                    d.textContent = s;
+                    return d.innerHTML;
+                }
 
-                const collapsedText = byItems
-                    ? items.slice(0, 3).join(', ') + ' ...'
-                    : fullText.slice(0, 64) + '...';
+                var ipList = ips.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+                var hostList = hostnames.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
 
-                valueEl.textContent = collapsedText;
-                valueEl.dataset.fullText = fullText;
-                valueEl.dataset.collapsedText = collapsedText;
-                valueEl.dataset.expanded = 'false';
+                // Deduplicate by IP (same node may appear multiple times for different configs)
+                var seen = {};
+                var uniquePairs = [];
+                for (var i = 0; i < ipList.length; i++) {
+                    var ip = ipList[i];
+                    if (!seen[ip]) {
+                        seen[ip] = true;
+                        uniquePairs.push({ ip: ip, host: hostList[i] || '' });
+                    }
+                }
+                var total = uniquePairs.length;
 
-                const toggle = document.createElement('a');
-                toggle.href = '#';
-                toggle.className = 'target-toggle small';
-                toggle.textContent = '展开';
-                toggle.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const expanded = valueEl.dataset.expanded === 'true';
-                    valueEl.textContent = expanded
-                        ? (valueEl.dataset.collapsedText || fullText)
-                        : (valueEl.dataset.fullText || fullText);
-                    valueEl.dataset.expanded = expanded ? 'false' : 'true';
-                    toggle.textContent = expanded ? '展开' : '收起';
-                });
-                line.appendChild(toggle);
+                var firstIp = uniquePairs[0].ip;
+                var firstHost = uniquePairs[0].host;
+
+                var html = '<code class="me-1">' + esc(firstIp) + '</code>' +
+                    '<small class="text-muted">(' + esc(firstHost) + ')</small>';
+
+                if (total > 1) {
+                    html += ' <a href="#" class="target-toggle small ms-1">展开 (' + total + ')</a>';
+                }
+
+                cell.innerHTML = html;
+
+                if (total > 1) {
+                    cell.addEventListener('click', function (e) {
+                        var toggle = e.target.closest('.target-toggle');
+                        if (!toggle) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        var modalBody = document.getElementById('targetListModalBody');
+                        var modalTitle = document.getElementById('targetListModalTitle');
+
+                        modalTitle.textContent = '目标列表（' + total + '台）';
+
+                        var listHtml = '';
+                        for (var i = 0; i < total; i++) {
+                            listHtml += '<div class="small mb-1"><code>' + esc(uniquePairs[i].ip) + '</code> <small class="text-muted">(' + esc(uniquePairs[i].host) + ')</small></div>';
+                        }
+                        modalBody.innerHTML = listHtml;
+
+                        if (!targetListModalInstance) {
+                            targetListModalInstance = new bootstrap.Modal(document.getElementById('targetListModal'));
+                        }
+                        targetListModalInstance.show();
+                    });
+                }
             });
         }
 
@@ -371,12 +396,10 @@
                         const bar = document.getElementById('taskProgressBar' + task.id);
                         const text = document.getElementById('taskProgressText' + task.id);
                         const status = document.getElementById('taskStatus' + task.id);
-                        const detail = document.getElementById('taskRuntimeDetail' + task.id);
 
                         if (bar) bar.style.width = String(task.progress || 0) + '%';
                         if (text) text.textContent = String(task.progress || 0) + '%';
                         if (status) status.innerHTML = renderStatusBadge(task.status);
-                        if (detail) detail.textContent = task.detail || '-';
 
                         if (isFinished) {
                             row.setAttribute('data-task-finished', 'true');
@@ -401,5 +424,20 @@
         setInterval(pollTaskCenterProgress, 2000);
     })();
 </script>
-{% endblock %}
 
+<div class="modal fade" id="targetListModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="targetListModalTitle">目标列表</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="targetListModalBody" style="max-height:400px;overflow-y:auto;"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

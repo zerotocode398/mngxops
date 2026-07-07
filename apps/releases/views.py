@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 import logging
 from datetime import datetime
@@ -561,16 +562,30 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         other_lines = []
 
         if result_text:
+            current_group = None
             for raw in result_text.splitlines():
-                line = raw.strip()
-                if not line:
+                stripped = raw.strip()
+                if not stripped:
                     continue
-                if line.startswith("[成功]"):
-                    success_lines.append(line)
-                elif line.startswith("[失败]"):
-                    failed_lines.append(line)
+
+                if stripped.startswith("[节点] "):
+                    other_lines.append(stripped)
+                    current_group = "node"
+                elif raw.startswith("  [") and current_group:
+                    if current_group == "success" and success_lines:
+                        success_lines[-1] = success_lines[-1] + "\n" + stripped
+                    elif current_group == "failed" and failed_lines:
+                        failed_lines[-1] = failed_lines[-1] + "\n" + stripped
+                    elif current_group == "node" and other_lines:
+                        other_lines[-1] = other_lines[-1] + "\n" + stripped
+                elif stripped.startswith("[成功]"):
+                    success_lines.append(stripped)
+                    current_group = "success"
+                elif stripped.startswith("[失败]"):
+                    failed_lines.append(stripped)
+                    current_group = "failed"
                 else:
-                    other_lines.append(line)
+                    other_lines.append(stripped)
 
         context["task_result_groups"] = {
             "success": success_lines,
@@ -580,6 +595,105 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         context["has_grouped_result"] = bool(
             success_lines or failed_lines or other_lines
         )
+
+        # Parse tree-structured result (for release tasks)
+        result_tree = []
+        if result_text:
+            current_node = None
+            for raw in result_text.splitlines():
+                stripped = raw.strip()
+                if stripped.startswith("[节点] "):
+                    current_node = {
+                        "node": stripped[len("[节点] ") :],
+                        "configs": [],
+                    }
+                    result_tree.append(current_node)
+                elif raw.startswith("  [") and current_node is not None:
+                    if stripped.startswith("[成功] "):
+                        status = "success"
+                        rest = stripped[len("[成功] ") :]
+                    elif stripped.startswith("[失败] "):
+                        status = "failed"
+                        rest = stripped[len("[失败] ") :]
+                    else:
+                        continue
+                    current_node["configs"].append(
+                        {
+                            "name": rest,
+                            "status": status,
+                        }
+                    )
+        context["result_tree"] = result_tree
+        context["has_result_tree"] = len(result_tree) > 0
+
+        tree_success = 0
+        tree_failed = 0
+        for node in result_tree:
+            for cfg in node["configs"]:
+                if cfg["status"] == "success":
+                    tree_success += 1
+                else:
+                    tree_failed += 1
+        context["tree_summary"] = {
+            "success": tree_success,
+            "failed": tree_failed,
+            "other": 0,
+        }
+
+        detail_text = (task.detail or "").strip()
+        detail_summary = {"raw": detail_text, "kind": "raw"}
+
+        done_match = re.search(
+            r"执行完成：成功\s*(\d+)，失败\s*(\d+)，共\s*(\d+)(?:，新增\s*(\d+))?(?:，更新\s*(\d+))?",
+            detail_text,
+        )
+        if done_match:
+            detail_summary["kind"] = "done"
+            detail_summary["success"] = int(done_match.group(1))
+            detail_summary["failed"] = int(done_match.group(2))
+            detail_summary["total"] = int(done_match.group(3))
+            detail_summary["created"] = (
+                int(done_match.group(4)) if done_match.group(4) else None
+            )
+            detail_summary["updated"] = (
+                int(done_match.group(5)) if done_match.group(5) else None
+            )
+        else:
+            running_match = re.search(
+                r"执行中：成功\s*(\d+)，失败\s*(\d+)，已完成\s*(\d+)/(\d+)",
+                detail_text,
+            )
+            if running_match:
+                detail_summary["kind"] = "running"
+                detail_summary["success"] = int(running_match.group(1))
+                detail_summary["failed"] = int(running_match.group(2))
+                detail_summary["done"] = int(running_match.group(3))
+                detail_summary["total"] = int(running_match.group(4))
+            else:
+                detail_summary["kind"] = "raw"
+
+        context["detail_summary"] = detail_summary
+
+        node_config_map = {}
+        if task.source_batch and task.operation_type in (
+            "release_publish",
+            "release_rollback",
+        ):
+            from apps.releases.models import ReleaseTask as RT
+
+            release_tasks = (
+                RT.objects.filter(batch_number=task.source_batch)
+                .select_related("node", "config")
+                .order_by("node__hostname", "config__name")
+            )
+            for rt in release_tasks:
+                node_key = f"{rt.node.ip} ({rt.node.hostname})"
+                if node_key not in node_config_map:
+                    node_config_map[node_key] = []
+                if rt.config.name not in node_config_map[node_key]:
+                    node_config_map[node_key].append(rt.config.name)
+
+        context["node_config_map"] = node_config_map
         return context
 
 
@@ -766,22 +880,35 @@ def _run_release_tasks(task_ids, task_center_id=None):
             progress=0,
         )
 
+    # Group by node (ip + hostname)
+    node_tasks = {}
     for task_id in task_ids:
         try:
             task = ReleaseTask.objects.select_related(
                 "node", "config", "version", "operator"
             ).get(pk=task_id)
+            node_key = f"{task.node.ip} ({task.node.hostname})"
+            if node_key not in node_tasks:
+                node_tasks[node_key] = []
+            node_tasks[node_key].append(task)
+        except ReleaseTask.DoesNotExist:
+            failed += 1
+            detail_lines.append(f"[失败] 任务#{task_id} 不存在")
+
+    for node_key, tasks in node_tasks.items():
+        detail_lines.append(f"[节点] {node_key}")
+        for task in tasks:
             ok, _ = executor._execute_release(task, "publish")
             if ok:
                 success += 1
                 detail_lines.append(
-                    f"[成功] {task.node.hostname} / {task.config.name} v{task.version.version}"
+                    f"  [成功] {task.config.name} v{task.version.version}"
                 )
             else:
                 failed += 1
                 reason = (task.result or "").split("\n")[-1]
                 detail_lines.append(
-                    f"[失败] {task.node.hostname} / {task.config.name} v{task.version.version} - {reason}"
+                    f"  [失败] {task.config.name} v{task.version.version} - {reason}"
                 )
 
             if task_center_id:
@@ -791,9 +918,6 @@ def _run_release_tasks(task_ids, task_center_id=None):
                     detail=f"执行中：成功 {success}，失败 {failed}，共 {total}",
                     updated_at=timezone.now(),
                 )
-        except ReleaseTask.DoesNotExist:
-            failed += 1
-            detail_lines.append(f"[失败] 任务#{task_id} 不存在")
 
     if task_center_id:
         status = "success" if failed == 0 else "failed"

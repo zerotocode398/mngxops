@@ -2,6 +2,108 @@
 
 {% block title %}任务详情 - MngxOps{% endblock %}
 
+{% block extra_js %}
+<script>
+(function() {
+    var ips = '{{ task.target_ips }}';
+    var hostnames = '{{ task.target_hostnames }}';
+    if (!ips) return;
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    var ipList = ips.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var hostList = hostnames.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+
+    var seen = {};
+    var uniquePairs = [];
+    for (var i = 0; i < ipList.length; i++) {
+        var ip = ipList[i];
+        if (!seen[ip]) {
+            seen[ip] = true;
+            uniquePairs.push({ ip: ip, host: hostList[i] || '' });
+        }
+    }
+    var total = uniquePairs.length;
+
+    var collapsedEl = document.getElementById('targetNodeListCollapsed');
+    var expandedEl = document.getElementById('targetNodeListExpanded');
+    var toggleBtn = document.getElementById('targetToggleBtn');
+
+    // Build expanded view
+    var html = '';
+    for (var i = 0; i < total; i++) {
+        html += '<div class="small mb-1"><code>' + esc(uniquePairs[i].ip) + '</code> <small class="text-muted">(' + esc(uniquePairs[i].host) + ')</small></div>';
+    }
+    expandedEl.innerHTML = html;
+    expandedEl.classList.remove('d-none');
+
+    if (total > 1) {
+        toggleBtn.textContent = '收起';
+        toggleBtn.classList.remove('d-none');
+
+        toggleBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var isExpanded = expandedEl.classList.toggle('d-none');
+            toggleBtn.textContent = isExpanded ? '展开 (' + total + ')' : '收起';
+        });
+    }
+})();
+</script>
+
+{{ node_config_map|json_script:"nodeConfigMapData" }}
+<script>
+(function() {
+    var dataEl = document.getElementById('nodeConfigMapData');
+    if (!dataEl) return;
+    var nodeConfigMap;
+    try { nodeConfigMap = JSON.parse(dataEl.textContent); } catch(e) { return; }
+
+    var nodeKeys = Object.keys(nodeConfigMap);
+    if (nodeKeys.length === 0) {
+        document.getElementById('targetConfigContainer').classList.add('d-none');
+        return;
+    }
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    var collapsedEl = document.getElementById('targetConfigCollapsed');
+    var expandedEl = document.getElementById('targetConfigExpanded');
+    var toggleBtn = document.getElementById('targetConfigToggleBtn');
+
+    // Build collapsed view: just show expand button
+    collapsedEl.innerHTML = '';
+
+    // Build expanded view: tree structure with node headers and indented configs
+    var html = '';
+    nodeKeys.forEach(function(nodeKey) {
+        var configs = nodeConfigMap[nodeKey];
+        html += '<div class="fw-bold small mb-1"><code>' + esc(nodeKey) + '</code></div>';
+        configs.forEach(function(cfgName) {
+            html += '<div class="small ms-4 mb-1 text-muted">' + esc(cfgName) + '</div>';
+        });
+    });
+    expandedEl.innerHTML = html;
+
+    toggleBtn.textContent = '展开 (' + nodeKeys.length + ')';
+    toggleBtn.classList.remove('d-none');
+
+    toggleBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var isExpanded = expandedEl.classList.toggle('d-none');
+        toggleBtn.textContent = isExpanded ? '展开 (' + nodeKeys.length + ')' : '收起';
+    });
+})();
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -16,19 +118,51 @@
                         <div class="col-md-6"><strong>任务类型：</strong>{{ task.get_operation_type_display }}</div>
                         <div class="col-md-3"><strong>状态：</strong>{{ task.get_status_display }}</div>
                         <div class="col-md-3"><strong>来源批次：</strong>{{ task.source_batch|default:'-' }}</div>
-                        <div class="col-md-6"><strong>目标主机：</strong>{{ task.target_hostnames|default:'-' }}</div>
-                        <div class="col-md-6"><strong>目标IP：</strong>{{ task.target_ips|default:'-' }}</div>
-                        <div class="col-md-12"><strong>目标配置：</strong>{{ task.target_configs|default:'-' }}</div>
+                        <div class="col-md-12" id="targetNodeListContainer">
+                            <strong>目标节点：</strong>
+                            <span id="targetNodeListCollapsed"></span>
+                            <div id="targetNodeListExpanded" class="mt-2 border rounded p-2 d-none" style="max-height: 200px; overflow-y: auto;"></div>
+                            <a href="#" id="targetToggleBtn" class="small d-none"></a>
+                        </div>
+                        <div class="col-md-12" id="targetConfigContainer">
+                            <strong>目标配置：</strong>
+                            <span id="targetConfigCollapsed"></span>
+                            <div id="targetConfigExpanded" class="mt-2 border rounded p-2 d-none" style="max-height: 200px; overflow-y: auto;"></div>
+                            <a href="#" id="targetConfigToggleBtn" class="small d-none"></a>
+                        </div>
                         <div class="col-md-3"><strong>进度：</strong>{{ task.progress }}%</div>
                         <div class="col-md-3"><strong>触发人：</strong>{{ task.trigger_user.username|default:'-' }}</div>
                         <div class="col-md-3"><strong>开始时间：</strong>{{ task.started_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
                         <div class="col-md-3"><strong>结束时间：</strong>{{ task.finished_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
                     </div>
                     <hr>
-                    <p class="mb-1"><strong>任务说明</strong></p>
-                    <pre class="bg-light p-2 border rounded small mb-3">{{ task.detail|default:'-' }}</pre>
                     <p class="mb-1"><strong>执行结果</strong></p>
-                    {% if has_grouped_result %}
+
+                    {% if has_result_tree %}
+                    <div class="mb-2">
+                        <span class="badge bg-success me-1">成功 {{ tree_summary.success }}</span>
+                        <span class="badge bg-danger me-1">失败 {{ tree_summary.failed }}</span>
+                        <span class="badge bg-secondary">其他 {{ tree_summary.other }}</span>
+                    </div>
+                    <div class="bg-light p-3 border rounded small mb-3" style="max-height: 400px; overflow-y: auto;">
+                        {% for node in result_tree %}
+                        <div class="mb-2">
+                            <div class="fw-bold small mb-1"><code>{{ node.node }}</code></div>
+                            {% for cfg in node.configs %}
+                            <div class="small ms-4 mb-1">
+                                <span class="text-muted">{{ cfg.name }}</span>
+                                {% if cfg.status == "success" %}
+                                <span class="badge bg-success ms-2">成功</span>
+                                {% else %}
+                                <span class="badge bg-danger ms-2">失败</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    {% elif has_grouped_result %}
                     <div class="accordion" id="taskResultAccordion">
                         <div class="accordion-item">
                             <h2 class="accordion-header" id="headingSummary">
@@ -108,4 +242,3 @@
     </div>
 </div>
 {% endblock %}
-
