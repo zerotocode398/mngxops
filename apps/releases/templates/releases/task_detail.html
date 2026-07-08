@@ -147,10 +147,27 @@
                     <div class="bg-light p-3 border rounded small mb-3" style="max-height: 400px; overflow-y: auto;">
                         {% for node in result_tree %}
                         <div class="mb-2">
+                            {% if task.source_batch and node.hostname %}
+                            <div class="fw-bold small mb-1">
+                                <code>{{ node.node }}</code>
+                                <a href="{% url 'releases:center' %}?history_search={{ task.source_batch|urlencode }},{{ node.hostname|urlencode }}#historySection"
+                                   class="text-decoration-none ms-1" title="查看此节点在发布中心的记录">
+                                    <i class="bi bi-box-arrow-up-right small"></i>
+                                </a>
+                            </div>
+                            {% else %}
                             <div class="fw-bold small mb-1"><code>{{ node.node }}</code></div>
+                            {% endif %}
                             {% for cfg in node.configs %}
                             <div class="small ms-4 mb-1">
+                                {% if task.source_batch and cfg.raw_name %}
+                                <a href="{% url 'releases:center' %}?history_search={{ task.source_batch|urlencode }},{{ cfg.raw_name|urlencode }}#historySection"
+                                   class="text-decoration-none" title="查看此配置在发布中心的记录">
+                                    <span class="text-muted">{{ cfg.name }}</span>
+                                </a>
+                                {% else %}
                                 <span class="text-muted">{{ cfg.name }}</span>
+                                {% endif %}
                                 {% if cfg.status == "success" %}
                                 <span class="badge bg-success ms-2">成功</span>
                                 {% else %}

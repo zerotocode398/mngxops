@@ -32,28 +32,32 @@
                         </span>
                     </div>
 
-                    <form method="get" class="row g-2 mb-3" id="releaseSearchForm">
-                        <div class="col-md-6">
-                            <div class="tag-input-wrapper form-control" id="releaseSearchTagWrapper">
-                                <input type="text" class="tag-input-field" id="releaseSearchField"
-                                    placeholder="输入条件后回车搜索：批次号/节点/配置/操作人">
+                    <form method="get" class="mb-3" id="releaseSearchForm">
+                        <div class="row g-2">
+                            <div class="col-md-8">
+                                <div class="tag-input-wrapper form-control" id="releaseSearchTagWrapper">
+                                    <input type="text" class="tag-input-field" id="releaseSearchField"
+                                        placeholder="搜索批次号/主机名/配置名称，回车添加标签">
+                                </div>
+                                <input type="hidden" name="search" id="releaseSearchHidden" value="{{ search }}">
                             </div>
-                            <input type="hidden" name="search" id="releaseSearchHidden" value="{{ search }}">
-                        </div>
-                        <div class="col-md-2">
-                            <select class="form-select form-select-sm" name="status" onchange="document.getElementById('releaseSearchForm').submit()">
-                                <option value="">全部状态</option>
-                                {% for val, label in status_choices %}
-                                {% if val == 'pending' or val == 'running' %}
-                                <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+                            <div class="col-md-2">
+                                <select class="form-select form-select-sm" name="status" onchange="document.getElementById('releaseSearchForm').submit()">
+                                    <option value="">全部状态</option>
+                                    {% for val, label in status_choices %}
+                                    {% if val == 'pending' or val == 'running' %}
+                                    <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+                                    {% endif %}
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                {% if search or status_filter %}
+                                <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary w-100">
+                                    <i class="bi bi-x-circle"></i> 清空筛选
+                                </a>
                                 {% endif %}
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary w-100">
-                                <i class="bi bi-x-circle"></i> 清空
-                            </a>
+                            </div>
                         </div>
                     </form>
 
@@ -167,7 +171,7 @@
                                                         {% endif %}
                                                         {% endif %}
                                                         {% endif %}
-                                                        <a href="{% url 'releases:detail' task.id %}" class="btn btn-outline-secondary">
+                                                        <a href="{% url 'releases:detail' task.id %}?search={{ search|urlencode }}&status_filter={{ status_filter|urlencode }}&history_search={{ history_search|urlencode }}&history_status={{ history_status|urlencode }}" class="btn btn-outline-secondary">
                                                             <i class="bi bi-eye"></i>
                                                         </a>
                                                     </div>
@@ -207,7 +211,7 @@
                 </div>
             </div>
 
-            <div class="card mt-3">
+            <div class="card mt-3" id="historySection">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">
                         <i class="bi bi-clock-history text-info"></i> 最近发布记录
@@ -217,33 +221,33 @@
                     </a>
                 </div>
                 <div class="card-body p-0">
-                    <form method="get" class="row g-2 px-3 pt-3">
+                    <form method="get" class="mb-3 px-3 pt-3" id="historySearchForm">
                         <input type="hidden" name="search" value="{{ search }}">
                         <input type="hidden" name="status" value="{{ status_filter }}">
-                        <div class="col-md-4">
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                <input type="text" class="form-control" name="history_search" value="{{ history_search }}" placeholder="搜索历史记录...">
+                        <div class="row g-2">
+                            <div class="col-md-8">
+                                <div class="tag-input-wrapper form-control" id="historySearchTagWrapper">
+                                    <input type="text" class="tag-input-field" id="historySearchField"
+                                        placeholder="搜索批次号/主机名/配置名称，回车添加标签">
+                                </div>
+                                <input type="hidden" name="history_search" id="historySearchHidden" value="{{ history_search }}">
                             </div>
-                        </div>
-                        <div class="col-md-2">
-                            <select class="form-select form-select-sm" name="history_status">
-                                <option value="">全部状态</option>
-                                <option value="success" {% if history_status == 'success' %}selected{% endif %}>发布成功</option>
-                                <option value="failed" {% if history_status == 'failed' %}selected{% endif %}>发布失败</option>
-                                <option value="rollback" {% if history_status == 'rollback' %}selected{% endif %}>已回滚</option>
-                                <option value="cancelled" {% if history_status == 'cancelled' %}selected{% endif %}>已取消</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <button type="submit" class="btn btn-sm btn-outline-primary w-100">
-                                <i class="bi bi-search"></i> 搜索
-                            </button>
-                        </div>
-                        <div class="col-md-2">
-                            <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary w-100">
-                                <i class="bi bi-x-circle"></i> 清空
-                            </a>
+                            <div class="col-md-2">
+                                <select class="form-select form-select-sm" name="history_status" onchange="document.getElementById('historySearchForm').submit()">
+                                    <option value="">全部状态</option>
+                                    <option value="success" {% if history_status == 'success' %}selected{% endif %}>发布成功</option>
+                                    <option value="failed" {% if history_status == 'failed' %}selected{% endif %}>发布失败</option>
+                                    <option value="rollback" {% if history_status == 'rollback' %}selected{% endif %}>已回滚</option>
+                                    <option value="cancelled" {% if history_status == 'cancelled' %}selected{% endif %}>已取消</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                {% if history_search or history_status %}
+                                <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary w-100">
+                                    <i class="bi bi-x-circle"></i> 清空筛选
+                                </a>
+                                {% endif %}
+                            </div>
                         </div>
                     </form>
 
@@ -296,7 +300,7 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <a href="{% url 'releases:detail' task.id %}" class="btn btn-outline-info" title="详情">
+                                            <a href="{% url 'releases:detail' task.id %}?search={{ search|urlencode }}&status_filter={{ status_filter|urlencode }}&history_search={{ history_search|urlencode }}&history_status={{ history_status|urlencode }}" class="btn btn-outline-info" title="详情">
                                                 <i class="bi bi-eye"></i>
                                             </a>
                                             <a href="{% url 'releases:rollback' task.id %}" class="btn btn-outline-warning" title="回滚">
@@ -829,6 +833,10 @@
             }
         });
 
+        field.addEventListener('input', function() {
+            updateHidden();
+        });
+
         wrapper.addEventListener('click', function(e) {
             if (e.target === wrapper) {
                 focusFieldWithCaret();
@@ -840,6 +848,96 @@
     }
 
     initReleaseSearchTagInput();
+
+    function initHistorySearchTagInput() {
+        var wrapper = document.getElementById('historySearchTagWrapper');
+        var field = document.getElementById('historySearchField');
+        var hidden = document.getElementById('historySearchHidden');
+        var form = document.getElementById('historySearchForm');
+
+        if (!wrapper || !field || !hidden || !form) {
+            return;
+        }
+
+        function focusFieldWithCaret() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function(b) {
+                values.push(b.getAttribute('data-value'));
+            });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        function loadInitial() {
+            var searchVal = hidden.value.trim();
+            if (searchVal) {
+                var tags = searchVal.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+                tags.forEach(function(tag) { createBadge(tag); });
+            }
+            field.value = '';
+        }
+
+        field.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                }
+                updateHidden();
+                setTimeout(focusFieldWithCaret, 0);
+                form.submit();
+            }
+
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
+                }
+            }
+        });
+
+        field.addEventListener('input', function() {
+            updateHidden();
+        });
+
+        wrapper.addEventListener('click', function(e) {
+            if (e.target === wrapper) {
+                focusFieldWithCaret();
+            }
+        });
+
+        loadInitial();
+        focusFieldWithCaret();
+    }
+
+    initHistorySearchTagInput();
 })();
 </script>
 {% endblock %}
