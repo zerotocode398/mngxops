@@ -603,8 +603,12 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
             for raw in result_text.splitlines():
                 stripped = raw.strip()
                 if stripped.startswith("[节点] "):
+                    node_text = stripped[len("[节点] ") :]
+                    node_match = re.match(r"(.+?)\s+\((.+?)\)", node_text)
                     current_node = {
-                        "node": stripped[len("[节点] ") :],
+                        "node": node_text,
+                        "ip": node_match.group(1) if node_match else "",
+                        "hostname": node_match.group(2) if node_match else "",
                         "configs": [],
                     }
                     result_tree.append(current_node)
@@ -617,9 +621,11 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                         rest = stripped[len("[失败] ") :]
                     else:
                         continue
+                    cfg_name = rest.split(" v")[0] if " v" in rest else rest
                     current_node["configs"].append(
                         {
                             "name": rest,
+                            "raw_name": cfg_name,
                             "status": status,
                         }
                     )
@@ -716,6 +722,10 @@ class ReleaseDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView)
         context["histories"] = self.object.history.all().select_related(
             "node", "config", "operator"
         )
+        context["search"] = self.request.GET.get("search", "")
+        context["status_filter"] = self.request.GET.get("status_filter", "")
+        context["history_search"] = self.request.GET.get("history_search", "")
+        context["history_status"] = self.request.GET.get("history_status", "")
         return context
 
 
@@ -812,7 +822,6 @@ class ReleaseCenterView(
                         Q(batch_number__icontains=term)
                         | Q(config__name__icontains=term)
                         | Q(node__hostname__icontains=term)
-                        | Q(operator__username__icontains=term)
                     )
         if status_filter:
             queryset = queryset.filter(status=status_filter)
@@ -848,11 +857,18 @@ class ReleaseCenterView(
         history_search = self.request.GET.get("history_search", "")
         history_status = self.request.GET.get("history_status", "")
         if history_search:
-            recent_history = recent_history.filter(
-                Q(config__name__icontains=history_search)
-                | Q(node__hostname__icontains=history_search)
-                | Q(operator__username__icontains=history_search)
-            )
+            terms = [
+                t.strip()
+                for t in history_search.replace("，", ",").split(",")
+                if t.strip()
+            ]
+            if terms:
+                for term in terms:
+                    recent_history = recent_history.filter(
+                        Q(batch_number__icontains=term)
+                        | Q(config__name__icontains=term)
+                        | Q(node__hostname__icontains=term)
+                    )
         if history_status:
             recent_history = recent_history.filter(status=history_status)
 
