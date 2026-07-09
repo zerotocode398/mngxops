@@ -81,5 +81,18 @@ class Node(models.Model):
         verbose_name = "节点"
         verbose_name_plural = verbose_name
 
+    @property
+    def group(self):
+        return self.groups.first()
+
+    @property
+    def group_id(self):
+        first = self.groups.first()
+        return first.id if first else None
+
+    @property
+    def is_online(self):
+        return self.status == "online"
+
     def __str__(self):
         return f"{self.hostname} ({self.ip})"

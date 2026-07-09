@@ -26,7 +26,7 @@ def index(request):
 
     failed_configs = (
         Config.objects.filter(sync_status="failed")
-        .select_related("node")
+        .prefetch_related("nodes")
         .order_by("-updated_at")[:10]
     )
 

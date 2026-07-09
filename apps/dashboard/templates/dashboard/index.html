@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load config_filters %}
 
 {% block title %}首页 - MngxOps{% endblock %}
 
@@ -297,9 +298,9 @@
                                                         <code>{{ config.name }}</code>
                                                     </td>
                                                     <td>
-                                                        <small>{{ config.node.hostname }}</small>
+                                                        <small>{{ config|nodes_hostnames }}</small>
                                                         <br>
-                                                        <small class="text-muted">{{ config.node.ip }}</small>
+                                                        <small class="text-muted">{{ config|nodes_ips }}</small>
                                                     </td>
                                                     <td>
                                                         <small class="text-danger" title="{{ config.last_sync_error }}">

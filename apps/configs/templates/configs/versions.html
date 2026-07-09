@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load permission_tags %}
+{% load config_filters %}
 
 {% block title %}{{ config.name }} 版本历史 - MngxOps{% endblock %}
 
@@ -30,7 +31,7 @@
                     <div class="row mb-4">
                         <div class="col-md-4">
                             <div class="text-muted small">节点</div>
-                            <div><strong>{{ config.node.hostname }}</strong> ({{ config.node.ip }})</div>
+                            <div><strong>{{ config|nodes_hostnames }}</strong> ({{ config|nodes_ips }})</div>
                         </div>
                         <div class="col-md-4">
                             <div class="text-muted small">配置路径</div>
@@ -111,7 +112,7 @@
                                                 class="btn btn-outline-info" title="查看内容">
                                                 <i class="bi bi-eye"></i> 查看
                                             </a>
-                                            {% if user|has_perm_code:"configs.update" and version.version != config.current_version and not config.node.is_locked %}
+                                            {% if user|has_perm_code:"configs.update" and version.version != config.current_version and not config|any_node_locked %}
                                             <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal"
                                                 data-bs-target="#restoreModal{{ version.id }}" title="恢复此版本">
                                                 <i class="bi bi-arrow-counterclockwise"></i> 恢复

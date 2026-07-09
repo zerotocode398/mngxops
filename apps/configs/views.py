@@ -85,16 +85,16 @@ class ConfigListView(
             for term in config_terms:
                 queryset = queryset.filter(
                     Q(name__icontains=term)
-                    | Q(node__hostname__icontains=term)
-                    | Q(node__ip__icontains=term)
+                    | Q(nodes__hostname__icontains=term)
+                    | Q(nodes__ip__icontains=term)
                 )
         if env_filter:
-            queryset = queryset.filter(node__environment=env_filter)
+            queryset = queryset.filter(nodes__environment=env_filter)
         if status_filter:
-            queryset = queryset.filter(node__status=status_filter)
+            queryset = queryset.filter(nodes__status=status_filter)
         if sync_status_filter:
             queryset = queryset.filter(sync_status=sync_status_filter)
-        return queryset.select_related("node", "created_by")
+        return queryset.prefetch_related("nodes", "created_by")
 
     def get_context_data(self, **kwargs):
         search = self.request.GET.get("search", "")
@@ -106,13 +106,15 @@ class ConfigListView(
 
         node_configs = OrderedDict()
         for config in configs:
-            node_configs.setdefault(config.node, []).append(config)
+            for node in config.nodes.all():
+                node_configs.setdefault(node, []).append(config)
 
         nodes = sorted(node_configs.keys(), key=lambda n: n.hostname)
 
+        node_ids = [n.id for n in nodes]
         orphaned_info = Config.objects.filter(
-            node__in=nodes, sync_status="orphaned"
-        ).values_list("node_id", "name")
+            nodes__in=node_ids, sync_status="orphaned"
+        ).values_list("nodes__id", "name")
         orphaned_by_node = {}
         orphaned_counts = {}
         for node_id, name in orphaned_info:
@@ -123,8 +125,8 @@ class ConfigListView(
             node.orphaned_names = orphaned_by_node.get(node.id, [])
 
         pending_info = Config.objects.filter(
-            node__in=nodes, sync_status="pending"
-        ).values_list("node_id", "name")
+            nodes__in=node_ids, sync_status="pending"
+        ).values_list("nodes__id", "name")
         pending_by_node = {}
         pending_counts = {}
         for node_id, name in pending_info:
@@ -135,8 +137,8 @@ class ConfigListView(
             node.pending_names = pending_by_node.get(node.id, [])
 
         failed_info = Config.objects.filter(
-            node__in=nodes, sync_status="failed"
-        ).values_list("node_id", "name")
+            nodes__in=node_ids, sync_status="failed"
+        ).values_list("nodes__id", "name")
         failed_by_node = {}
         failed_counts = {}
         for node_id, name in failed_info:
@@ -181,10 +183,16 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        from apps.nodes.models import Node
+        from apps.nodes.models import Node, NodeGroup
 
-        context["all_nodes"] = Node.objects.filter(is_locked=False).order_by("hostname")
+        context["all_nodes"] = (
+            Node.objects.filter(is_locked=False)
+            .prefetch_related("groups")
+            .order_by("hostname")
+        )
+        context["node_groups"] = NodeGroup.objects.all()
         context["selected_node_id"] = self.request.GET.get("node_id", "")
+        context["selected_node_ids"] = self.request.GET.get("node_id", "")
         return context
 
     def form_valid(self, form):
@@ -193,6 +201,15 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
         config.current_version = 1
         config.sync_status = "pending"
         config.save()
+
+        node_ids_str = self.request.POST.get("selected_node_ids", "")
+        if node_ids_str:
+            from apps.nodes.models import Node
+
+            node_ids = [int(nid) for nid in node_ids_str.split(",") if nid.strip()]
+            if node_ids:
+                nodes = Node.objects.filter(id__in=node_ids)
+                config.nodes.add(*nodes)
 
         ConfigVersion.objects.create(
             config=config,
@@ -219,11 +236,11 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
         from utils.ssh import read_remote_file
         from django.utils import timezone
 
-        node_id = request.POST.get("node")
+        node_ids_str = request.POST.get("selected_node_ids", "")
         selected_files = request.POST.getlist("selected_files")
         batch_remark = request.POST.get("batch_remark", "批量导入")
 
-        if not node_id:
+        if not node_ids_str:
             messages.error(request, "请选择关联节点")
             return redirect("configs:create")
 
@@ -231,70 +248,90 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
             messages.error(request, "请至少选择一个文件")
             return redirect("configs:create")
 
-        node = get_object_or_404(Node, id=node_id)
+        node_ids = [int(nid) for nid in node_ids_str.split(",") if nid.strip()]
+        nodes = Node.objects.filter(id__in=node_ids)
 
-        if node.is_locked:
-            messages.error(request, f"节点 {node.hostname} 已锁定，无法导入配置")
+        if not nodes.exists():
+            messages.error(request, "未找到有效的节点")
+            return redirect("configs:create")
+
+        locked_nodes = [n for n in nodes if n.is_locked]
+        if locked_nodes:
+            names = ",".join([n.hostname for n in locked_nodes])
+            messages.error(request, f"节点 {names} 已锁定，无法导入配置")
             return redirect("configs:create")
 
         try:
-            credential = _get_node_credential(node)
-            if not credential:
-                messages.error(request, f"节点 {node.hostname} 未配置SSH凭证")
-                return redirect("configs:create")
-
-            auth_kwargs = {}
-            if credential.auth_type == "password":
-                auth_kwargs["password"] = credential.get_password()
-            else:
-                auth_kwargs["private_key"] = credential.get_private_key()
-
             created_count = 0
             failed_files = []
 
-            for file_path in selected_files:
-                success, content = read_remote_file(
-                    host=node.ip,
-                    port=node.port,
-                    username=credential.username,
-                    file_path=file_path,
-                    **auth_kwargs,
-                )
-
-                if not success:
-                    failed_files.append(f"{file_path}: {content}")
+            for node in nodes:
+                credential = _get_node_credential(node)
+                if not credential:
+                    failed_files.append(f"节点 {node.hostname}: 未配置SSH凭证")
                     continue
 
-                config_name = file_path.split("/")[-1]
+                auth_kwargs = {}
+                if credential.auth_type == "password":
+                    auth_kwargs["password"] = credential.get_password()
+                else:
+                    auth_kwargs["private_key"] = credential.get_private_key()
 
-                existing_config = Config.objects.filter(
-                    node=node, file_path=file_path
-                ).first()
+                for file_path in selected_files:
+                    success, content = read_remote_file(
+                        host=node.ip,
+                        port=node.port,
+                        username=credential.username,
+                        file_path=file_path,
+                        **auth_kwargs,
+                    )
 
-                if existing_config:
-                    failed_files.append(f"{file_path}: 配置已存在")
-                    continue
+                    if not success:
+                        failed_files.append(f"{node.hostname}:{file_path}: {content}")
+                        continue
 
-                config = Config.objects.create(
-                    node=node,
-                    name=config_name,
-                    file_path=file_path,
-                    content=content,
-                    current_version=1,
-                    sync_status="success",
-                    last_sync_time=timezone.now(),
-                    created_by=request.user,
-                )
+                    config_name = file_path.split("/")[-1]
 
-                ConfigVersion.objects.create(
-                    config=config,
-                    version=1,
-                    content=content,
-                    remark=batch_remark or "批量导入",
-                    created_by=request.user,
-                )
+                    existing_config = Config.objects.filter(
+                        nodes=node, file_path=file_path
+                    ).first()
 
-                created_count += 1
+                    if existing_config:
+                        config = existing_config
+                        config.content = content
+                        config.current_version = config.current_version + 1
+                        config.sync_status = "success"
+                        config.last_sync_time = timezone.now()
+                        config.save()
+
+                        ConfigVersion.objects.create(
+                            config=config,
+                            version=config.current_version,
+                            content=content,
+                            remark=batch_remark or "批量导入",
+                            created_by=request.user,
+                        )
+                        created_count += 1
+                    else:
+                        config = Config.objects.create(
+                            name=config_name,
+                            file_path=file_path,
+                            content=content,
+                            current_version=1,
+                            sync_status="success",
+                            last_sync_time=timezone.now(),
+                            created_by=request.user,
+                        )
+                        config.nodes.add(node)
+
+                        ConfigVersion.objects.create(
+                            config=config,
+                            version=1,
+                            content=content,
+                            remark=batch_remark or "批量导入",
+                            created_by=request.user,
+                        )
+                        created_count += 1
 
             if created_count > 0:
                 messages.success(request, f"成功导入 {created_count} 个配置文件")
@@ -336,8 +373,10 @@ class ConfigEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
 
     def dispatch(self, request, *args, **kwargs):
         config = self.get_object()
-        if config.node.is_locked:
-            messages.error(request, f"节点 {config.node.hostname} 已锁定，无法编辑配置")
+        locked_nodes = [n for n in config.nodes.all() if n.is_locked]
+        if locked_nodes:
+            names = ",".join([n.hostname for n in locked_nodes])
+            messages.error(request, f"节点 {names} 已锁定，无法编辑配置")
             return redirect("configs:list")
         return super().dispatch(request, *args, **kwargs)
 
@@ -460,8 +499,10 @@ class ConfigVersionRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View
 
     def post(self, request, pk, version_id):
         config = get_object_or_404(Config, pk=pk)
-        if config.node.is_locked:
-            messages.error(request, f"节点 {config.node.hostname} 已锁定，无法恢复版本")
+        locked_nodes = [n for n in config.nodes.all() if n.is_locked]
+        if locked_nodes:
+            names = ",".join([n.hostname for n in locked_nodes])
+            messages.error(request, f"节点 {names} 已锁定，无法恢复版本")
             return redirect("configs:versions", pk=config.pk)
         old_version = get_object_or_404(ConfigVersion, pk=version_id, config=config)
 
@@ -629,8 +670,10 @@ class ConfigVersionCompareApplyView(LoginRequiredMixin, PermissionRequiredMixin,
 
     def post(self, request, pk):
         config = get_object_or_404(Config, pk=pk)
-        if config.node.is_locked:
-            messages.error(request, f"节点 {config.node.hostname} 已锁定，无法应用差异")
+        locked_nodes = [n for n in config.nodes.all() if n.is_locked]
+        if locked_nodes:
+            names = ",".join([n.hostname for n in locked_nodes])
+            messages.error(request, f"节点 {names} 已锁定，无法应用差异")
             return redirect("configs:versions", pk=config.pk)
         confirmed_content = request.POST.get("confirmed_content", "")
         is_confirmed = request.POST.get("confirm_change") == "yes"
@@ -780,7 +823,12 @@ class ConfigSyncWizardView(
         node_groups = {}
 
         for node in nodes:
-            configs = Config.objects.filter(node=node).exclude(name__in=["mime.types"])
+            configs = Config.objects.filter(nodes=node).exclude(name__in=["mime.types"])
+            last_synced = (
+                configs.exclude(sync_status__in=["pending", "syncing"])
+                .order_by("-last_sync_time")
+                .first()
+            )
             node_stats[node.id] = {
                 "success": configs.filter(sync_status="success").count(),
                 "failed": configs.filter(sync_status="failed").count(),
@@ -788,6 +836,8 @@ class ConfigSyncWizardView(
                 "pending": configs.filter(sync_status="pending").count(),
                 "orphaned": configs.filter(sync_status="orphaned").count(),
                 "total": configs.count(),
+                "last_sync": last_synced.last_sync_time if last_synced else None,
+                "fallback_time": last_synced.updated_at if last_synced else None,
             }
 
             setting = get_or_create_sync_setting(node)
@@ -1242,7 +1292,7 @@ class ConfigDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def post(self, request, pk):
         config = get_object_or_404(Config, pk=pk)
-        node_hostname = config.node.hostname
+        hosts = ",".join(config.nodes.values_list("hostname", flat=True))
         config_name = config.name
 
         if config.sync_status not in ("orphaned", "pending"):
@@ -1254,7 +1304,7 @@ class ConfigDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return redirect("configs:list")
 
         config.delete()
-        messages.success(request, f"已删除配置 {config_name}（节点 {node_hostname}）")
+        messages.success(request, f"已删除配置 {config_name}（节点 {hosts}）")
         return redirect("configs:list")
 
 
@@ -1266,7 +1316,7 @@ class ConfigNodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         from apps.nodes.models import Node
 
         node = get_object_or_404(Node, pk=pk)
-        configs = Config.objects.filter(node=node)
+        configs = Config.objects.filter(nodes=node)
         count = configs.count()
 
         if count == 0:
@@ -1295,7 +1345,7 @@ class ConfigByNodesAPIView(LoginRequiredMixin, View):
         result = []
 
         for node in nodes:
-            configs = Config.objects.filter(node=node).exclude(name__in=["mime.types"])
+            configs = Config.objects.filter(nodes=node).exclude(name__in=["mime.types"])
             for config in configs:
                 versions = config.versions.order_by("-version").values(
                     "id", "version", "created_at"
@@ -1405,7 +1455,10 @@ class ConfigUpdatePreviewView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "message": "缺少config_id参数"})
 
         config = get_object_or_404(Config, pk=config_id)
-        node = config.node
+        node = config.nodes.first()
+
+        if not node:
+            return JsonResponse({"success": False, "message": "配置未关联节点"})
 
         if node.is_locked:
             return JsonResponse(
@@ -1471,7 +1524,11 @@ class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         from utils.ssh import discover_nginx_configs
 
         config = get_object_or_404(Config, pk=pk)
-        node = config.node
+        node = config.nodes.first()
+
+        if not node:
+            messages.error(request, "配置未关联节点，无法更新")
+            return redirect("configs:list")
 
         if node.is_locked:
             messages.error(request, f"节点 {node.hostname} 已锁定，无法更新配置")
@@ -1510,7 +1567,9 @@ class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
 
             if errors:
-                mark_discovery_failed_configs(config.node, errors, request.user)
+                node = config.nodes.first()
+                if node:
+                    mark_discovery_failed_configs(node, errors, request.user)
 
             if not discovered:
                 error_msg = "; ".join(errors) if errors else "未发现配置文件"
@@ -1585,7 +1644,7 @@ class ConfigBatchDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 deleted_count += 1
             else:
                 failed_configs.append(
-                    f"{config.name}（{config.node.hostname}）- {config.get_sync_status_display()}"
+                    f"{config.name}（{','.join(config.nodes.values_list('hostname', flat=True))}）- {config.get_sync_status_display()}"
                 )
 
         if deleted_count > 0:

@@ -113,33 +113,27 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% with summary=node_sync_summary|dict_get:node.id %}
-                                        {% if summary %}
+                                        {% with stat=node_stats|dict_get:node.id %}
+                                        {% if stat and stat.total > 0 %}
                                         <div class="small">
-                                            {% if summary.failed > 0 %}
-                                            <span class="badge bg-danger" title="失败 {{ summary.failed }} 个">
-                                                <i class="bi bi-exclamation-triangle"></i> {{ summary.failed }}
+                                            {% if stat.failed > 0 %}
+                                            <span class="badge bg-warning text-dark" title="成功 {{ stat.success }} / 失败 {{ stat.failed }} / 共 {{ stat.total }} 个">
+                                                <i class="bi bi-exclamation-triangle"></i> {{ stat.success }}/{{ stat.total }}
                                             </span>
-                                            {% endif %}
-                                            {% if summary.syncing > 0 %}
-                                            <span class="badge bg-info" title="同步中 {{ summary.syncing }} 个">
-                                                <i class="bi bi-arrow-repeat spin"></i> {{ summary.syncing }}
-                                            </span>
-                                            {% endif %}
-                                            {% if summary.success > 0 %}
-                                            <span class="badge bg-success" title="成功 {{ summary.success }} 个">
-                                                <i class="bi bi-check-circle"></i> {{ summary.success }}
+                                            {% elif stat.syncing > 0 %}
+                                            <span class="badge bg-info" title="同步中 {{ stat.syncing }} / 共 {{ stat.total }} 个">
+                                                <i class="bi bi-arrow-repeat spin"></i> {{ stat.success }}/{{ stat.total }}
                                             </span>
                                             {% else %}
-                                            <span class="badge bg-secondary" title="共 {{ summary.total }} 个配置">
-                                                {{ summary.total }} 个
+                                            <span class="badge bg-success" title="已同步 {{ stat.success }} / 共 {{ stat.total }} 个">
+                                                <i class="bi bi-check-circle"></i> {{ stat.success }}/{{ stat.total }}
                                             </span>
                                             {% endif %}
                                             <span class="text-muted d-block mt-1" style="font-size: 0.75rem;">
-                                                {% if summary.last_sync %}
-                                                {{ summary.last_sync|date:"m-d H:i" }}
+                                                {% if stat.last_sync %}
+                                                {{ stat.last_sync|date:"m-d H:i" }}
                                                 {% else %}
-                                                {{ summary.fallback_time|date:"m-d H:i" }}
+                                                {{ stat.fallback_time|date:"m-d H:i" }}
                                                 {% endif %}
                                             </span>
                                         </div>

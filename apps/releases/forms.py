@@ -29,7 +29,7 @@ class ReleaseCreateForm(forms.ModelForm):
             .order_by("hostname")
         )
         self.fields["config"].queryset = (
-            self.fields["config"].queryset.select_related("node").order_by("name")
+            self.fields["config"].queryset.prefetch_related("nodes").order_by("name")
         )
         self.fields["version"].queryset = (
             self.fields["version"]

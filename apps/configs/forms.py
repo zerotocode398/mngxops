@@ -1,5 +1,6 @@
 from django import forms
 from .models import Config
+from apps.nodes.models import Node
 
 
 class ConfigForm(forms.ModelForm):

@@ -44,10 +44,9 @@ def sync_discovered_configs(
                 progress_callback("skipped", item["name"])
             continue
 
-        config = Config.objects.filter(node=node, file_path=item["path"]).first()
+        config = Config.objects.filter(nodes=node, file_path=item["path"]).first()
         if not config:
             config = Config.objects.create(
-                node=node,
                 name=item["name"],
                 file_path=item["path"],
                 content=item["content"],
@@ -56,6 +55,7 @@ def sync_discovered_configs(
                 last_sync_time=now,
                 created_by=request_user,
             )
+            config.nodes.add(node)
             ConfigVersion.objects.create(
                 config=config,
                 version=1,
@@ -103,7 +103,7 @@ def sync_discovered_configs(
 
 def _mark_orphaned_configs(node, discovered_paths):
     orphaned = []
-    stale_configs = Config.objects.filter(node=node, sync_status="success").exclude(
+    stale_configs = Config.objects.filter(nodes=node, sync_status="success").exclude(
         file_path__in=discovered_paths
     )
 
@@ -139,7 +139,7 @@ def mark_sync_failed(node, error_message):
     failed = []
     now = timezone.now()
 
-    configs = Config.objects.filter(node=node).exclude(
+    configs = Config.objects.filter(nodes=node).exclude(
         sync_status__in=["orphaned", "pending"]
     )
 
@@ -163,7 +163,7 @@ def mark_discovery_failed_configs(node, errors, request_user=None):
         if not match:
             continue
         failed_path = match.group(1)
-        config = Config.objects.filter(node=node, file_path=failed_path).first()
+        config = Config.objects.filter(nodes=node, file_path=failed_path).first()
         if config:
             config.sync_status = "failed"
             config.last_sync_error = error
@@ -171,8 +171,7 @@ def mark_discovery_failed_configs(node, errors, request_user=None):
             failed.append(config.name)
         elif request_user:
             failed_name = failed_path.split("/")[-1]
-            Config.objects.create(
-                node=node,
+            config = Config.objects.create(
                 name=failed_name,
                 file_path=failed_path,
                 content="",
@@ -182,5 +181,6 @@ def mark_discovery_failed_configs(node, errors, request_user=None):
                 last_sync_time=timezone.now(),
                 created_by=request_user,
             )
+            config.nodes.add(node)
             failed.append(failed_name)
     return failed

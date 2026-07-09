@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load config_filters %}
 
 {% block title %}编辑配置 - MngxOps{% endblock %}
 
@@ -22,7 +23,7 @@
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <label class="form-label text-muted">节点</label>
-                                    <div><strong>{{ config.node.hostname }}</strong> ({{ config.node.ip }})</div>
+                                    <div><strong>{{ config|nodes_hostnames }}</strong> ({{ config|nodes_ips }})</div>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label text-muted">创建人</label>

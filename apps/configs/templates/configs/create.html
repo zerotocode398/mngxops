@@ -19,19 +19,18 @@
                             <form method="post" id="configForm">
                                 {% csrf_token %}
                                 <input type="hidden" name="use_glob" id="useGlobHidden" value="0">
+                                <input type="hidden" name="selected_node_ids" id="selectedNodeIds" value="{{ selected_node_ids }}">
 
                                 <div class="mb-3">
-                                    <label for="id_node" class="form-label">
+                                    <label class="form-label">
                                         <i class="bi bi-server"></i> 关联节点
                                     </label>
-                                    <select name="node" id="id_node" class="form-select" required>
-                                        <option value="">-- 请选择节点 --</option>
-                                        {% for node in all_nodes %}
-                                        <option value="{{ node.id }}" {% if selected_node_id == node.id|stringformat:"s" %}selected{% endif %}>
-                                            {{ node.hostname }} ({{ node.ip }})
-                                        </option>
-                                        {% endfor %}
-                                    </select>
+                                    <div id="selectedNodesDisplay" class="mb-2">
+                                        <div id="noSelectedNodes" class="text-muted small">暂无选中节点</div>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#nodeSelectModal">
+                                        <i class="bi bi-search"></i> 选择节点
+                                    </button>
                                 </div>
 
                                 <div class="mb-3">
@@ -162,8 +161,92 @@
                 </div>
             </div>
         </div>
+</div>
+</div>
+</div>
+
+<!-- Node Select Modal -->
+<div class="modal fade" id="nodeSelectModal" tabindex="-1" aria-labelledby="nodeSelectModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="nodeSelectModalLabel"><i class="bi bi-server"></i> 选择节点</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" id="nodeSearchInput" class="form-control" placeholder="搜索节点名称或IP">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-diagram-3"></i></span>
+                            <select id="nodeGroupFilter" class="form-select">
+                                <option value="">全部节点组</option>
+                                {% for group in node_groups %}
+                                <option value="{{ group.id }}">{{ group.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">已选 <span id="modalSelectedCount">0</span> 个节点</small>
+                    <div class="d-flex gap-2">
+                        <a href="javascript:void(0)" class="text-decoration-none small" onclick="selectAllModalNodes(true)">全选</a>
+                        <a href="javascript:void(0)" class="text-decoration-none small" onclick="selectAllModalNodes(false)">取消全选</a>
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width:40px;">
+                                    <input class="form-check-input" type="checkbox" id="selectAllNodesCheckbox">
+                                </th>
+                                <th>主机名</th>
+                                <th>IP地址</th>
+                                <th>节点组</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nodeSelectTableBody">
+                            {% for node in all_nodes %}
+                            <tr class="node-row" data-node-id="{{ node.id }}" data-node-hostname="{{ node.hostname }}" data-node-ip="{{ node.ip }}" data-node-group="{{ node.group_id }}" data-node-group-name="{{ node.group.name|default:'' }}" data-node-locked="{{ node.is_locked|yesno:'true,false' }}" data-node-online="{{ node.is_online|yesno:'true,false' }}">
+                                <td>
+                                    <input class="form-check-input node-checkbox" type="checkbox" value="{{ node.id }}">
+                                </td>
+                                <td>{{ node.hostname }}</td>
+                                <td>{{ node.ip }}</td>
+                                <td>{{ node.group.name|default:"-" }}</td>
+                                <td>
+                                    {% if node.is_locked %}
+                                    <span class="badge bg-warning">已锁定</span>
+                                    {% elif node.is_online %}
+                                    <span class="badge bg-success">在线</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">离线</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmNodeSelection" data-bs-dismiss="modal">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
+            </div>
+        </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -194,10 +277,10 @@
     });
 
     function previewGlob() {
-        var nodeId = document.getElementById('id_node').value;
+        var nodeIds = (document.getElementById('selectedNodeIds').value || '').split(',').filter(Boolean);
         var pattern = document.getElementById('globPattern').value.trim();
 
-        if (!nodeId) {
+        if (!nodeIds.length) {
             alert('请先选择关联节点');
             return;
         }
@@ -213,7 +296,7 @@
         globPreviewArea.style.display = 'block';
 
         var formData = new FormData();
-        formData.append('node_id', nodeId);
+        formData.append('node_id', nodeIds[0]);
         formData.append('pattern', pattern);
 
         fetch('{% url "configs:api_preview_glob" %}', {
@@ -261,4 +344,265 @@
         }
     }
 </script>
+
+<!-- Node Select Modal -->
+<div class="modal fade" id="nodeSelectModal" tabindex="-1" aria-labelledby="nodeSelectModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="nodeSelectModalLabel"><i class="bi bi-server"></i> 选择节点</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" id="nodeSearchInput" class="form-control" placeholder="搜索节点名称或IP">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-diagram-3"></i></span>
+                            <select id="nodeGroupFilter" class="form-select">
+                                <option value="">全部节点组</option>
+                                {% for group in node_groups %}
+                                <option value="{{ group.id }}">{{ group.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">已选 <span id="modalSelectedCount">0</span> 个节点</small>
+                    <div class="d-flex gap-2">
+                        <a href="javascript:void(0)" class="text-decoration-none small" onclick="selectAllModalNodes(true)">全选</a>
+                        <a href="javascript:void(0)" class="text-decoration-none small" onclick="selectAllModalNodes(false)">取消全选</a>
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width:40px;">
+                                    <input class="form-check-input" type="checkbox" id="selectAllNodesCheckbox">
+                                </th>
+                                <th>主机名</th>
+                                <th>IP地址</th>
+                                <th>节点组</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nodeSelectTableBody">
+                            {% for node in all_nodes %}
+                            <tr class="node-row" data-node-id="{{ node.id }}" data-node-hostname="{{ node.hostname }}" data-node-ip="{{ node.ip }}" data-node-group="{{ node.group_id }}" data-node-group-name="{{ node.group.name|default:'' }}" data-node-locked="{{ node.is_locked|yesno:'true,false' }}" data-node-online="{{ node.is_online|yesno:'true,false' }}">
+                                <td>
+                                    <input class="form-check-input node-checkbox" type="checkbox" value="{{ node.id }}">
+                                </td>
+                                <td>{{ node.hostname }}</td>
+                                <td>{{ node.ip }}</td>
+                                <td>{{ node.group.name|default:"-" }}</td>
+                                <td>
+                                    {% if node.is_locked %}
+                                    <span class="badge bg-warning">已锁定</span>
+                                    {% elif node.is_online %}
+                                    <span class="badge bg-success">在线</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">离线</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmNodeSelection" data-bs-dismiss="modal">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var selectedNodeIds = {};
+    var nodeSelectModal = document.getElementById('nodeSelectModal');
+    var selectedNodesDisplay = document.getElementById('selectedNodesDisplay');
+    var noSelectedNodes = document.getElementById('noSelectedNodes');
+    var selectedNodeIdsInput = document.getElementById('selectedNodeIds');
+    var modalSelectedCount = document.getElementById('modalSelectedCount');
+    var selectAllNodesCheckbox = document.getElementById('selectAllNodesCheckbox');
+
+    function updateSelectedDisplay() {
+        var ids = Object.keys(selectedNodeIds);
+        selectedNodeIdsInput.value = ids.join(',');
+        if (ids.length === 0) {
+            noSelectedNodes.style.display = 'block';
+            var badges = selectedNodesDisplay.querySelectorAll('.badge-node');
+            badges.forEach(function(b) { b.remove(); });
+        } else {
+            noSelectedNodes.style.display = 'none';
+            var existingBadges = {};
+            selectedNodesDisplay.querySelectorAll('.badge-node').forEach(function(b) {
+                existingBadges[b.getAttribute('data-node-id')] = true;
+            });
+            ids.forEach(function(nid) {
+                if (!existingBadges[nid]) {
+                    var info = selectedNodeIds[nid];
+                    var badge = document.createElement('span');
+                    badge.className = 'badge bg-info me-1 mb-1 badge-node';
+                    badge.setAttribute('data-node-id', nid);
+                    badge.innerHTML = info.hostname + ' (' + info.ip + ') <a href="javascript:void(0)" class="text-white text-decoration-none" onclick="removeNodeSelection(\'' + nid + '\')">&times;</a>';
+                    selectedNodesDisplay.appendChild(badge);
+                }
+            });
+            ids.forEach(function(nid) {
+                var badge = selectedNodesDisplay.querySelector('.badge-node[data-node-id="' + nid + '"]');
+                if (!badge) {
+                    var info = selectedNodeIds[nid];
+                    var b = document.createElement('span');
+                    b.className = 'badge bg-info me-1 mb-1 badge-node';
+                    b.setAttribute('data-node-id', nid);
+                    b.innerHTML = info.hostname + ' (' + info.ip + ') <a href="javascript:void(0)" class="text-white text-decoration-none" onclick="removeNodeSelection(\'' + nid + '\')">&times;</a>';
+                    selectedNodesDisplay.appendChild(b);
+                }
+            });
+        }
+    }
+
+    window.removeNodeSelection = function(nid) {
+        delete selectedNodeIds[nid];
+        updateSelectedDisplay();
+        syncModalCheckboxes();
+    };
+
+    function syncModalCheckboxes() {
+        var checkboxes = document.querySelectorAll('#nodeSelectTableBody .node-checkbox');
+        checkboxes.forEach(function(cb) {
+            cb.checked = !!selectedNodeIds[cb.value];
+        });
+        updateSelectAllCheckbox();
+        updateModalCount();
+    }
+
+    function updateModalCount() {
+        var count = Object.keys(selectedNodeIds).length;
+        modalSelectedCount.textContent = count;
+    }
+
+    function updateSelectAllCheckbox() {
+        var checkboxes = document.querySelectorAll('#nodeSelectTableBody .node-checkbox');
+        if (checkboxes.length === 0) {
+            selectAllNodesCheckbox.checked = false;
+            selectAllNodesCheckbox.indeterminate = false;
+            return;
+        }
+        var allChecked = true;
+        var noneChecked = true;
+        checkboxes.forEach(function(cb) {
+            if (cb.checked) noneChecked = false;
+            else allChecked = false;
+        });
+        if (allChecked) {
+            selectAllNodesCheckbox.checked = true;
+            selectAllNodesCheckbox.indeterminate = false;
+        } else if (noneChecked) {
+            selectAllNodesCheckbox.checked = false;
+            selectAllNodesCheckbox.indeterminate = false;
+        } else {
+            selectAllNodesCheckbox.checked = false;
+            selectAllNodesCheckbox.indeterminate = true;
+        }
+    }
+
+    window.selectAllModalNodes = function(checked) {
+        var checkboxes = document.querySelectorAll('#nodeSelectTableBody .node-checkbox');
+        checkboxes.forEach(function(cb) {
+            cb.checked = checked;
+            cb.dispatchEvent(new Event('change'));
+        });
+    };
+
+    nodeSelectModal.addEventListener('show.bs.modal', function() {
+        syncModalCheckboxes();
+    });
+
+    document.getElementById('nodeSelectTableBody').addEventListener('change', function(e) {
+        if (e.target.classList.contains('node-checkbox')) {
+            var nid = e.target.value;
+            if (e.target.checked) {
+                var row = e.target.closest('.node-row');
+                selectedNodeIds[nid] = {
+                    hostname: row.getAttribute('data-node-hostname'),
+                    ip: row.getAttribute('data-node-ip')
+                };
+            } else {
+                delete selectedNodeIds[nid];
+            }
+            updateSelectedDisplay();
+            updateModalCount();
+            updateSelectAllCheckbox();
+        }
+    });
+
+    document.getElementById('nodeSelectTableBody').addEventListener('click', function(e) {
+        var row = e.target.closest('.node-row');
+        if (!row) return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'A') return;
+        var cb = row.querySelector('.node-checkbox');
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('change'));
+    });
+
+    selectAllNodesCheckbox.addEventListener('change', function() {
+        selectAllModalNodes(this.checked);
+    });
+
+    var nodeSearchInput = document.getElementById('nodeSearchInput');
+    nodeSearchInput.addEventListener('input', function() {
+        filterNodeTable();
+    });
+
+    var nodeGroupFilter = document.getElementById('nodeGroupFilter');
+    nodeGroupFilter.addEventListener('change', function() {
+        filterNodeTable();
+    });
+
+    function filterNodeTable() {
+        var searchTerm = nodeSearchInput.value.toLowerCase();
+        var groupId = nodeGroupFilter.value;
+        var rows = document.querySelectorAll('#nodeSelectTableBody .node-row');
+        rows.forEach(function(row) {
+            var hostname = (row.getAttribute('data-node-hostname') || '').toLowerCase();
+            var ip = (row.getAttribute('data-node-ip') || '').toLowerCase();
+            var group = row.getAttribute('data-node-group') || '';
+            var matchesSearch = !searchTerm || hostname.indexOf(searchTerm) !== -1 || ip.indexOf(searchTerm) !== -1;
+            var matchesGroup = !groupId || group === groupId;
+            row.style.display = (matchesSearch && matchesGroup) ? '' : 'none';
+        });
+    }
+
+    var confirmBtn = document.getElementById('confirmNodeSelection');
+    confirmBtn.addEventListener('click', function() {
+        updateSelectedDisplay();
+    });
+
+    var initialIds = (selectedNodeIdsInput.value || '').split(',').filter(Boolean);
+    initialIds.forEach(function(nid) {
+        var row = document.querySelector('.node-row[data-node-id="' + nid + '"]');
+        if (row) {
+            selectedNodeIds[nid] = {
+                hostname: row.getAttribute('data-node-hostname'),
+                ip: row.getAttribute('data-node-ip')
+            };
+        }
+    });
+    updateSelectedDisplay();
+})();
+</script>
+
 {% endblock %}
