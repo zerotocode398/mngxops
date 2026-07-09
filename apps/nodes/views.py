@@ -43,7 +43,9 @@ class NodeGroupListView(
         queryset = super().get_queryset()
         search = self.request.GET.get("search", "")
         if search:
-            terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+            terms = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
             if terms:
                 for term in terms:
                     queryset = queryset.filter(Q(name__icontains=term))
@@ -56,6 +58,75 @@ class NodeGroupListView(
         return context
 
 
+def _assign_nodes_to_group(node_group, node_ids):
+    desired_ids = set(int(nid) for nid in node_ids)
+    current_ids = set(node_group.nodes.values_list("id", flat=True))
+
+    to_add_ids = desired_ids - current_ids
+    to_remove_ids = current_ids - desired_ids
+
+    for node_id in to_add_ids:
+        try:
+            node = Node.objects.get(pk=node_id)
+            if node.groups.count() < 3:
+                node.groups.add(node_group)
+        except Node.DoesNotExist:
+            pass
+
+    for node_id in to_remove_ids:
+        try:
+            node = Node.objects.get(pk=node_id)
+            node.groups.remove(node_group)
+        except Node.DoesNotExist:
+            pass
+
+
+class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_resource = "nodes"
+    permission_action = "read"
+
+    def get(self, request):
+        search = request.GET.get("search", "").strip()
+        group_search = request.GET.get("group_search", "").strip()
+
+        queryset = Node.objects.filter(is_locked=False).prefetch_related("groups")
+
+        if search:
+            terms = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
+            for term in terms:
+                queryset = queryset.filter(
+                    Q(hostname__icontains=term) | Q(ip__icontains=term)
+                )
+
+        if group_search:
+            terms = [
+                t.strip()
+                for t in group_search.replace("，", ",").split(",")
+                if t.strip()
+            ]
+            for term in terms:
+                queryset = queryset.filter(groups__name__icontains=term)
+            queryset = queryset.distinct()
+
+        nodes = queryset.order_by("hostname")[:50]
+        data = []
+        for node in nodes:
+            data.append(
+                {
+                    "id": node.id,
+                    "hostname": node.hostname,
+                    "ip": node.ip,
+                    "status": node.status,
+                    "groups": [{"id": g.id, "name": g.name} for g in node.groups.all()],
+                    "groups_count": node.groups.count(),
+                }
+            )
+
+        return JsonResponse({"success": True, "nodes": data})
+
+
 class NodeGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = NodeGroup
     form_class = NodeGroupForm
@@ -64,10 +135,23 @@ class NodeGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
     permission_resource = "nodes"
     permission_action = "create"
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["all_nodes"] = (
+            Node.objects.filter(is_locked=False)
+            .prefetch_related("groups")
+            .order_by("hostname")
+        )
+        return context
+
     def form_valid(self, form):
         form.instance.created_by = self.request.user
+        response = super().form_valid(form)
+        node_ids = self.request.POST.getlist("node_ids", [])
+        if node_ids:
+            _assign_nodes_to_group(self.object, node_ids)
         messages.success(self.request, f"节点组 {form.instance.name} 创建成功")
-        return super().form_valid(form)
+        return response
 
     def form_invalid(self, form):
         messages.error(self.request, "节点组创建失败，请检查输入")
@@ -82,9 +166,24 @@ class NodeGroupUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVie
     permission_resource = "nodes"
     permission_action = "update"
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["all_nodes"] = (
+            Node.objects.filter(is_locked=False)
+            .prefetch_related("groups")
+            .order_by("hostname")
+        )
+        context["current_node_ids"] = list(
+            self.object.nodes.values_list("id", flat=True)
+        )
+        return context
+
     def form_valid(self, form):
+        response = super().form_valid(form)
+        node_ids = self.request.POST.getlist("node_ids", [])
+        _assign_nodes_to_group(self.object, node_ids)
         messages.success(self.request, f"节点组 {form.instance.name} 更新成功")
-        return super().form_valid(form)
+        return response
 
     def form_invalid(self, form):
         messages.error(self.request, "节点组更新失败，请检查输入")
@@ -717,7 +816,9 @@ def batch_test_node_connection(request):
                         )
 
                     TaskCenterTask.objects.filter(pk=task_id).update(
-                        progress=int(done * 100 / len(test_nodes)) if test_nodes else 100,
+                        progress=(
+                            int(done * 100 / len(test_nodes)) if test_nodes else 100
+                        ),
                         detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{len(test_nodes)}",
                         updated_at=timezone.now(),
                     )
@@ -772,7 +873,9 @@ class NodeListAPIView(LoginRequiredMixin, View):
         )
 
         if search:
-            terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+            terms = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
             if terms:
                 for term in terms:
                     queryset = queryset.filter(

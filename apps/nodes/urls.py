@@ -6,6 +6,9 @@ app_name = "nodes"
 urlpatterns = [
     path("", views.NodeListView.as_view(), name="list"),
     path("api/list/", views.NodeListAPIView.as_view(), name="api_list"),
+    path(
+        "api/search-nodes/", views.NodeSearchAPIView.as_view(), name="api_search_nodes"
+    ),
     path("api/groups/", views.NodeGroupListAPIView.as_view(), name="api_groups"),
     path("create/", views.NodeCreateView.as_view(), name="create"),
     path("<int:pk>/edit/", views.NodeUpdateView.as_view(), name="edit"),
