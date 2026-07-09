@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load permission_tags %}
+{% load config_filters %}
 
 {% block title %}{{ config.name }} - MngxOps{% endblock %}
 
@@ -18,7 +19,7 @@
                         <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary" onclick="goBackToConfigList(event)">
                             <i class="bi bi-arrow-left"></i> 返回列表
                         </a>
-                        {% if user|has_perm_code:"configs.update" and not config.node.is_locked %}
+                        {% if user|has_perm_code:"configs.update" and not config|any_node_locked %}
                         <a href="{% url 'configs:edit' config.id %}" class="btn btn-outline-primary">
                             <i class="bi bi-pencil"></i> 编辑
                         </a>
@@ -32,7 +33,7 @@
                     <div class="row mb-4">
                         <div class="col-md-3">
                             <div class="text-muted small">节点</div>
-                            <div><strong>{{ config.node.hostname }}</strong> ({{ config.node.ip }})</div>
+                            <div><strong>{{ config|nodes_hostnames }}</strong> ({{ config|nodes_ips }})</div>
                         </div>
                         <div class="col-md-3">
                             <div class="text-muted small">配置路径</div>

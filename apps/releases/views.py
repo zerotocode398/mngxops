@@ -359,7 +359,7 @@ class ReleaseCreateView(
         if node_config_pairs:
             for node_id, config_id in node_config_pairs:
                 node = get_object_or_404(Node, id=node_id)
-                config = get_object_or_404(Config, id=config_id, node_id=node_id)
+                config = get_object_or_404(Config, id=config_id, nodes__id=node_id)
 
                 if config_id in version_ids:
                     version = get_object_or_404(
@@ -384,7 +384,7 @@ class ReleaseCreateView(
             for node_id in node_ids:
                 node = get_object_or_404(Node, id=node_id)
                 for config_id in config_ids:
-                    config = get_object_or_404(Config, id=config_id, node_id=node_id)
+                    config = get_object_or_404(Config, id=config_id, nodes__id=node_id)
 
                     # Use specified version if available, otherwise latest
                     if config_id in version_ids:

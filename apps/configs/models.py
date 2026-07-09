@@ -17,9 +17,9 @@ class Config(models.Model):
     ]
 
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
-    node = models.ForeignKey(
+    nodes = models.ManyToManyField(
         Node,
-        on_delete=models.CASCADE,
+        related_name="configs",
         verbose_name="关联节点",
     )
     name = models.CharField(max_length=255, verbose_name="配置名称")
@@ -50,7 +50,9 @@ class Config(models.Model):
         ordering = ["-updated_at"]
 
     def __str__(self):
-        return f"{self.node.hostname} - {self.name}"
+        nodes_list = list(self.nodes.values_list("hostname", flat=True))
+        hosts = ",".join(nodes_list) if nodes_list else "未关联节点"
+        return f"{hosts} - {self.name}"
 
     def prune_old_versions(self, retention_days=180):
         cutoff_time = timezone.now() - timedelta(days=retention_days)
