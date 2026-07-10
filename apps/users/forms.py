@@ -121,7 +121,8 @@ class UserUpdateForm(forms.ModelForm):
     is_active = forms.BooleanField(
         required=False,
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
-        label="是否激活",
+        label="锁定用户",
+        help_text="勾选后用户将无法登录",
     )
     is_superuser = forms.BooleanField(
         required=False,
@@ -162,7 +163,7 @@ class UserUpdateForm(forms.ModelForm):
             self.fields["remark"].initial = self.instance.profile.remark
             self.fields["email"].initial = self.instance.email
             self.fields["first_name"].initial = self.instance.first_name
-            self.fields["is_active"].initial = self.instance.is_active
+            self.fields["is_active"].initial = not self.instance.is_active
             self.fields["is_superuser"].initial = self.instance.is_superuser
             self.fields["groups"].initial = self.instance.profile.groups.all()
             self.fields["direct_permissions"].initial = (
@@ -179,7 +180,7 @@ class UserUpdateForm(forms.ModelForm):
         user = super().save(commit=False)
         user.email = self.cleaned_data["email"]
         user.first_name = self.cleaned_data["first_name"]
-        user.is_active = self.cleaned_data["is_active"]
+        user.is_active = not self.cleaned_data["is_active"]
         user.is_superuser = self.cleaned_data["is_superuser"]
         if commit:
             user.save()

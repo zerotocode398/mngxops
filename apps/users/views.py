@@ -101,6 +101,27 @@ class UserDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
         return super().post(request, *args, **kwargs)
 
 
+class UserLockToggleView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_resource = "users"
+    permission_action = "update"
+
+    def post(self, request, username):
+        user = get_object_or_404(User, username=username)
+        if user == request.user:
+            messages.error(request, "不能锁定当前登录用户")
+            return redirect("users:list")
+        if user.is_superuser and not request.user.is_superuser:
+            messages.error(request, "无权操作超级管理员")
+            return redirect("users:list")
+        user.is_active = not user.is_active
+        user.save()
+        if user.is_active:
+            messages.success(request, f"用户 {user.username} 已解锁")
+        else:
+            messages.success(request, f"用户 {user.username} 已锁定")
+        return redirect("users:list")
+
+
 # ========== 角色视图（仅 Admin）==========
 
 

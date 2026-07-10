@@ -51,51 +51,70 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for user in users %}
+                                {% for u in users %}
                                 <tr>
-                                    <td>{{ user.username }}</td>
-                                    <td>{{ user.first_name|default:"-" }}</td>
-                                    <td>{{ user.email|default:"-" }}</td>
+                                    <td>{{ u.username }}</td>
+                                    <td>{{ u.first_name|default:"-" }}</td>
+                                    <td>{{ u.email|default:"-" }}</td>
                                     <td>
-                                        {% for group in user.profile.groups.all %}
+                                        {% for group in u.profile.groups.all %}
                                         <span class="badge bg-info">{{ group.name }}</span>
                                         {% empty %}
                                         <span class="text-muted">无</span>
                                         {% endfor %}
                                     </td>
                                     <td>
-                                        {% if user.is_superuser %}
+                                        {% if u.is_superuser %}
                                         <span class="badge bg-success">是</span>
                                         {% else %}
                                         <span class="badge bg-secondary">否</span>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if user.is_active %}
-                                        <span class="badge bg-success">激活</span>
+                                        {% if u.is_active %}
+                                        <span class="badge bg-success">正常</span>
                                         {% else %}
-                                        <span class="badge bg-danger">禁用</span>
+                                        <span class="badge bg-danger">锁定</span>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if user|has_perm_code:"users.update" %}
-                                        <a href="{% url 'users:edit' user.username %}" class="btn btn-sm btn-primary">
+                                        {% if request.user|has_perm_code:"users.update" %}
+                                        {% if not u.is_superuser or request.user.is_superuser %}
+                                        <a href="{% url 'users:edit' u.username %}" class="btn btn-sm btn-primary">
                                             <i class="bi bi-pencil"></i> 编辑
                                         </a>
-                                        <a href="{% url 'users:edit' user.username %}?tab=roles" class="btn btn-sm btn-outline-info">
+                                        <a href="{% url 'users:edit' u.username %}?tab=roles" class="btn btn-sm btn-outline-info">
                                             <i class="bi bi-person-badge"></i> 关联角色
                                         </a>
                                         {% endif %}
-                                        {% if user|has_perm_code:"users.delete" and user != request.user %}
+                                        {% endif %}
+                                        {% if request.user|has_perm_code:"users.update" and u.username != request.user.username %}
+                                        {% if u.is_active %}
+                                        <form method="post" action="{% url 'users:lock_toggle' u.username %}" style="display:inline;">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-warning" {% if u.is_superuser and not request.user.is_superuser %}disabled{% endif %}>
+                                                <i class="bi bi-lock"></i> 锁定
+                                            </button>
+                                        </form>
+                                        {% else %}
+                                        <form method="post" action="{% url 'users:lock_toggle' u.username %}" style="display:inline;">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-success" {% if u.is_superuser and not request.user.is_superuser %}disabled{% endif %}>
+                                                <i class="bi bi-unlock"></i> 解锁
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                        {% endif %}
+                                        {% if request.user|has_perm_code:"users.delete" and u.username != request.user.username %}
                                         <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal"
-                                            data-bs-target="#deleteModal{{ user.id }}">
+                                            data-bs-target="#deleteModal{{ u.id }}">
                                             <i class="bi bi-trash"></i> 删除
                                         </button>
                                         {% endif %}
                                     </td>
                                 </tr>
 
-                                <div class="modal fade" id="deleteModal{{ user.id }}" tabindex="-1">
+                                <div class="modal fade" id="deleteModal{{ u.id }}" tabindex="-1">
                                     <div class="modal-dialog">
                                         <div class="modal-content">
                                             <div class="modal-header">
@@ -104,14 +123,14 @@
                                                     data-bs-dismiss="modal"></button>
                                             </div>
                                             <div class="modal-body">
-                                                确定要删除用户 <strong>{{ user.username }}</strong> 吗？
+                                                确定要删除用户 <strong>{{ u.username }}</strong> 吗？
                                                 <br><br>
                                                 <small class="text-muted">此操作不可恢复！</small>
                                             </div>
                                             <div class="modal-footer">
                                                 <button type="button" class="btn btn-secondary"
                                                     data-bs-dismiss="modal">取消</button>
-                                                <form method="post" action="{% url 'users:delete' user.username %}">
+                                                <form method="post" action="{% url 'users:delete' u.username %}">
                                                     {% csrf_token %}
                                                     <button type="submit" class="btn btn-danger">确认删除</button>
                                                 </form>

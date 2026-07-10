@@ -1,6 +1,7 @@
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.models import User
 from django.contrib import messages
 from django.shortcuts import render, redirect
 from django.urls import reverse_lazy
@@ -37,6 +38,24 @@ class LoginView(View):
         username = request.POST.get("username", "")
         ip = _get_client_ip(request)
         user_agent = _get_user_agent(request)
+
+        # 在表单验证之前先检查用户是否被锁定
+        # Django AuthenticationForm.is_valid() 内部会因 is_active=False 而失败
+        # 我们需要在 is_valid 之前拦截，给出明确的锁定提示
+        if request.method == "POST" and username:
+            try:
+                target_user = User.objects.get(username=username)
+                if not target_user.is_active:
+                    LoginLog.objects.create(
+                        username=username,
+                        ip=ip,
+                        user_agent=user_agent,
+                        status="failed",
+                    )
+                    messages.error(request, "用户已锁定，请联系管理员")
+                    return render(request, self.template_name, {"form": form})
+            except User.DoesNotExist:
+                pass
 
         if form.is_valid():
             username = form.cleaned_data.get("username")
