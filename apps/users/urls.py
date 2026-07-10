@@ -8,6 +8,11 @@ urlpatterns = [
     path("create/", views.UserCreateView.as_view(), name="create"),
     path("<slug:username>/edit/", views.UserUpdateView.as_view(), name="edit"),
     path("<slug:username>/delete/", views.UserDeleteView.as_view(), name="delete"),
+    path(
+        "<slug:username>/lock/",
+        views.UserLockToggleView.as_view(),
+        name="lock_toggle",
+    ),
     path("groups/", views.UserGroupListView.as_view(), name="group_list"),
     path("groups/create/", views.UserGroupCreateView.as_view(), name="group_create"),
     path(
