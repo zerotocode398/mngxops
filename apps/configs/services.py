@@ -1,4 +1,6 @@
-from apps.configs.models import Config, ConfigVersion, ConfigSyncSetting
+"""配置管理服务层 - 适配 ConfigNodeBinding 模型"""
+
+from .models import Config, ConfigNodeBinding, BindingVersion, ConfigSyncSetting
 from django.utils import timezone
 
 SKIP_FILES = {"mime.types"}
@@ -24,6 +26,61 @@ def save_sync_path(node, main_conf_path, user=None):
     return setting
 
 
+def _ensure_binding(config, node, remote_path, content, request_user, source="discovered"):
+    """确保绑定存在并更新内容"""
+    now = timezone.now()
+    binding, created = ConfigNodeBinding.objects.get_or_create(
+        config=config,
+        node=node,
+        defaults={
+            "remote_path": remote_path,
+            "content": content,
+            "current_version": 1,
+            "sync_status": "synced",
+            "synced_version": 1,
+            "last_sync_time": now,
+            "source": source,
+            "created_by": request_user,
+        },
+    )
+
+    if created:
+        BindingVersion.objects.create(
+            binding=binding,
+            version=1,
+            content=content,
+            remark="发现导入" if source == "discovered" else "手动导入",
+            created_by=request_user,
+        )
+        return "created", binding
+
+    # 已存在，检查内容是否变化
+    if binding.content != content:
+        new_version = binding.current_version + 1
+        binding.content = content
+        binding.current_version = new_version
+        binding.sync_status = "synced"
+        binding.synced_version = new_version
+        binding.last_sync_time = now
+        binding.remote_path = remote_path
+        binding.save()
+        BindingVersion.objects.create(
+            binding=binding,
+            version=new_version,
+            content=content,
+            remark="远程同步更新",
+            created_by=request_user,
+        )
+        return "updated", binding
+    else:
+        # 内容未变，更新同步状态
+        binding.sync_status = "synced"
+        binding.last_sync_time = now
+        binding.remote_path = remote_path
+        binding.save(update_fields=["sync_status", "last_sync_time", "remote_path", "updated_at"])
+        return "skipped", binding
+
+
 def sync_discovered_configs(
     node,
     discovered,
@@ -32,11 +89,10 @@ def sync_discovered_configs(
     mark_orphaned=True,
     progress_callback=None,
 ):
+    """同步发现的配置到绑定"""
     created = []
     updated = []
     skipped = []
-
-    now = timezone.now()
 
     for item in discovered:
         if item["name"] in SKIP_FILES:
@@ -44,51 +100,34 @@ def sync_discovered_configs(
                 progress_callback("skipped", item["name"])
             continue
 
-        config = Config.objects.filter(nodes=node, file_path=item["path"]).first()
+        # 查找或创建 Config 标签
+        config = Config.objects.filter(name=item["name"]).first()
         if not config:
             config = Config.objects.create(
                 name=item["name"],
-                file_path=item["path"],
-                content=item["content"],
-                current_version=1,
-                sync_status="success",
-                last_sync_time=now,
+                default_remote_path=item["path"],
+                source="discovered",
                 created_by=request_user,
             )
-            config.nodes.add(node)
-            ConfigVersion.objects.create(
-                config=config,
-                version=1,
-                content=item["content"],
-                remark=remark,
-                created_by=request_user,
-            )
+
+        status, _ = _ensure_binding(
+            config=config,
+            node=node,
+            remote_path=item["path"],
+            content=item["content"],
+            request_user=request_user,
+            source="discovered",
+        )
+
+        if status == "created":
             created.append(item["name"])
             if progress_callback:
                 progress_callback("created", item["name"])
-        elif config.content != item["content"]:
-            new_version = config.current_version + 1
-            config.name = item["name"]
-            config.content = item["content"]
-            config.current_version = new_version
-            config.sync_status = "success"
-            config.last_sync_time = now
-            config.save()
-            ConfigVersion.objects.create(
-                config=config,
-                version=new_version,
-                content=item["content"],
-                remark=remark,
-                created_by=request_user,
-            )
-            config.prune_old_versions()
+        elif status == "updated":
             updated.append(item["name"])
             if progress_callback:
                 progress_callback("updated", item["name"])
         else:
-            config.sync_status = "success"
-            config.last_sync_time = now
-            config.save(update_fields=["sync_status", "last_sync_time"])
             skipped.append(item["name"])
             if progress_callback:
                 progress_callback("skipped", item["name"])
@@ -96,21 +135,22 @@ def sync_discovered_configs(
     orphaned = []
     if mark_orphaned:
         discovered_paths = {item["path"] for item in discovered}
-        orphaned = _mark_orphaned_configs(node, discovered_paths)
+        orphaned = _mark_orphaned_bindings(node, discovered_paths)
 
     return created, updated, skipped, orphaned
 
 
-def _mark_orphaned_configs(node, discovered_paths):
+def _mark_orphaned_bindings(node, discovered_paths):
+    """标记远程已删除的绑定"""
     orphaned = []
-    stale_configs = Config.objects.filter(nodes=node, sync_status="success").exclude(
-        file_path__in=discovered_paths
-    )
+    bindings = ConfigNodeBinding.objects.filter(
+        node=node, sync_status="synced"
+    ).exclude(remote_path__in=discovered_paths)
 
-    for config in stale_configs:
-        config.sync_status = "orphaned"
-        config.save(update_fields=["sync_status", "updated_at"])
-        orphaned.append(config.name)
+    for binding in bindings:
+        binding.sync_status = "orphaned"
+        binding.save(update_fields=["sync_status", "updated_at"])
+        orphaned.append(binding.config.name)
 
     return orphaned
 
@@ -137,17 +177,15 @@ def sync_selected_configs(
 
 def mark_sync_failed(node, error_message):
     failed = []
-    now = timezone.now()
-
-    configs = Config.objects.filter(nodes=node).exclude(
-        sync_status__in=["orphaned", "pending"]
+    bindings = ConfigNodeBinding.objects.filter(node=node).exclude(
+        sync_status__in=["orphaned", "not_synced"]
     )
 
-    for config in configs:
-        config.sync_status = "failed"
-        config.last_sync_error = error_message
-        config.save(update_fields=["sync_status", "last_sync_error", "updated_at"])
-        failed.append(config.name)
+    for binding in bindings:
+        binding.sync_status = "failed"
+        binding.last_sync_error = error_message
+        binding.save(update_fields=["sync_status", "last_sync_error", "updated_at"])
+        failed.append(binding.config.name)
 
     return failed
 
@@ -163,24 +201,36 @@ def mark_discovery_failed_configs(node, errors, request_user=None):
         if not match:
             continue
         failed_path = match.group(1)
-        config = Config.objects.filter(nodes=node, file_path=failed_path).first()
-        if config:
-            config.sync_status = "failed"
-            config.last_sync_error = error
-            config.save(update_fields=["sync_status", "last_sync_error", "updated_at"])
-            failed.append(config.name)
-        elif request_user:
-            failed_name = failed_path.split("/")[-1]
+        failed_name = failed_path.split("/")[-1]
+
+        config = Config.objects.filter(name=failed_name).first()
+        if not config and request_user:
             config = Config.objects.create(
                 name=failed_name,
-                file_path=failed_path,
-                content="",
-                current_version=0,
-                sync_status="failed",
-                last_sync_error=error,
-                last_sync_time=timezone.now(),
+                default_remote_path=failed_path,
+                source="discovered",
                 created_by=request_user,
             )
-            config.nodes.add(node)
+
+        if config:
+            binding, created = ConfigNodeBinding.objects.get_or_create(
+                config=config,
+                node=node,
+                defaults={
+                    "remote_path": failed_path,
+                    "content": "",
+                    "current_version": 0,
+                    "sync_status": "failed",
+                    "last_sync_error": error,
+                    "last_sync_time": timezone.now(),
+                    "source": "discovered",
+                    "created_by": request_user or node.created_by,
+                },
+            )
+            if not created:
+                binding.sync_status = "failed"
+                binding.last_sync_error = error
+                binding.save(update_fields=["sync_status", "last_sync_error", "updated_at"])
             failed.append(failed_name)
+
     return failed

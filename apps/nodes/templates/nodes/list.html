@@ -14,56 +14,72 @@
                     <div class="node-list-actions">
                         {% if user|has_perm_code:"nodes.create" %}
                         <a href="{% url 'nodes:create' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-primary btn-sm node-list-create-btn">
-                            <i class="bi bi-plus-circle"></i> 新增节点
+                            <i class="bi bi-plus-circle"></i> 添加节点
                         </a>
                         {% endif %}
                     </div>
                 </div>
                 <div class="card-body">
-                    <form method="get" class="mb-3" id="searchForm">
+                    <!-- 搜索筛选区 -->
+                    <form method="get" class="mb-3" id="searchForm" autocomplete="off">
                         <div class="row g-2">
-                            <div class="col-md-8">
-                                <div class="tag-input-wrapper form-control" id="combinedTagWrapper">
-                                    <input type="text" class="tag-input-field" id="combinedSearchField"
-                                        placeholder="搜索主机名/IP 或 输入组名后回车搜索">
+                            <div class="col-md-4">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                    <input type="text" name="search" id="searchInput" class="form-control"
+                                        placeholder="搜索主机名或IP..." value="{{ search }}"
+                                        autocomplete="off">
                                 </div>
-                                <input type="hidden" name="search" id="searchHidden" value="{{ search }}">
-                                <input type="hidden" name="group_search" id="groupSearchHidden" value="{{ group_search }}">
                             </div>
-                            <div class="col-md-2">
-                                <select name="per_page" class="form-select" onchange="document.getElementById('searchForm').submit()">
-                                    {% for size in per_page_options %}
-                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                            <div class="col-md-3">
+                                <select name="group_search" id="groupSearch" class="form-select">
+                                    <option value="">所有节点组</option>
+                                    {% for g in node_groups_list %}
+                                    <option value="{{ g.name }}" {% if group_search == g.name %}selected{% endif %}>{{ g.name }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                {% if search or group_search %}
-                                <a href="{% url 'nodes:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary w-100">
-                                    <i class="bi bi-x-circle"></i> 清空筛选
+                                <select name="environment" id="envFilter" class="form-select">
+                                    <option value="">全部环境</option>
+                                    {% for key, label in env_choices.items %}
+                                    <option value="{{ key }}" {% if env_filter == key %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <select name="status" id="statusFilter" class="form-select">
+                                    <option value="">全部状态</option>
+                                    {% for key, label in status_choices.items %}
+                                    <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-1 d-grid">
+                                <a href="{% url 'nodes:list' %}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
+                                    <i class="bi bi-x-circle"></i>
                                 </a>
-                                {% endif %}
                             </div>
                         </div>
                     </form>
 
+                    <!-- 批量操作栏 -->
                     <div class="node-list-batch-toolbar" role="group" aria-label="批量操作">
                         <span class="node-list-selection-hint" id="batchSelectionHint">已选择 0/3</span>
                         {% if user|has_perm_code:"nodes.update" %}
+                        <button type="button" class="btn btn-sm node-list-batch-btn" id="batchTestBtn" onclick="batchTestConnection()" disabled>
+                            <i class="bi bi-lightning-charge"></i> 批量测试连接（0/3）
+                        </button>
                         <button type="button" class="btn btn-sm node-list-batch-btn" id="batchLockBtn" onclick="batchLockNodes()" disabled>
                             <i class="bi bi-lock"></i> 批量锁定（0/3）
                         </button>
                         <button type="button" class="btn btn-sm node-list-batch-btn" id="batchUnlockBtn" onclick="batchUnlockNodes()" disabled>
                             <i class="bi bi-unlock"></i> 批量解锁（0/3）
                         </button>
-                        <button type="button" class="btn btn-sm node-list-batch-btn" id="batchTestBtn" onclick="batchTestConnection()" disabled>
-                            <i class="bi bi-lightning-charge"></i> 批量测试连接（0/3）
-                        </button>
-                        {% else %}
-                        <span class="text-muted small">当前账号无测试/锁定操作权限</span>
                         {% endif %}
                     </div>
 
+                    <!-- 数据表格 -->
                     <div class="table-responsive">
                         <table class="table table-hover table-sm align-middle">
                             <thead>
@@ -71,13 +87,13 @@
                                     <th style="width: 30px;">
                                         <input type="checkbox" id="selectAllNodes" title="全选/取消（最多 3 台）" aria-label="全选或取消勾选节点，最多 3 台">
                                     </th>
-                                    <th style="width: 14%">主机名</th>
-                                    <th style="width: 14%">IP地址|端口</th>
-                                    <th style="width: 10%">所属组</th>
-                                    <th style="width: 10%">状态</th>
-                                    <th style="width: 14%">Nginx版本</th>
-                                    <th style="width: 11%">创建人</th>
-                                    <th style="width: 16%">更新时间</th>
+                                    <th style="width: 12%">主机名</th>
+                                    <th style="width: 13%">IP地址</th>
+                                    <th style="width: 8%">环境</th>
+                                    <th style="width: 10%">节点组</th>
+                                    <th style="width: 8%">凭证</th>
+                                    <th style="width: 8%">状态</th>
+                                    <th style="width: 12%">Nginx版本</th>
                                     <th style="width: 15%">操作</th>
                                 </tr>
                             </thead>
@@ -85,45 +101,47 @@
                                 {% for node in nodes %}
                                 <tr class="{% if node.is_locked %}table-secondary{% endif %}">
                                     <td>
-                                        <input type="checkbox" class="node-checkbox" data-node-id="{{ node.id }}" data-node-locked="{{ node.is_locked|yesno:'true,false' }}" aria-label="勾选节点 {{ node.hostname }}">
+                                        <input type="checkbox" class="node-checkbox" data-node-id="{{ node.id }}"
+                                            data-node-locked="{{ node.is_locked|yesno:'true,false' }}"
+                                            aria-label="勾选节点 {{ node.hostname }}">
                                     </td>
                                     <td>
-                                        <strong>{{ node.hostname }}</strong>
-                                        {% if node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
+                                        <a href="#" class="node-detail-link text-decoration-none fw-bold"
+                                            data-node-id="{{ node.id }}" title="点击查看详情">
+                                            {% if node.is_locked %}<i class="bi bi-lock-fill text-warning me-1" title="已锁定"></i>{% endif %}
+                                            {{ node.hostname }}
+                                        </a>
                                     </td>
-                                    <td>
-                                        <code>{{ node.ip }}:{{ node.port }}</code>
-                                    </td>
+                                    <td><code>{{ node.ip }}</code></td>
+                                    <td>{% include "nodes/_env_badge.html" with env=node.environment %}</td>
                                     <td>
                                         <div class="node-group-tags">
                                             {% for group in node_groups|dict_get:node.id %}
-                                            <span class="badge bg-info text-dark">{{ group.name }}</span>
+                                            <span class="badge bg-info text-dark group-filter-badge"
+                                                data-group-name="{{ group.name }}"
+                                                style="cursor:pointer;" title="点击筛选该组">
+                                                {{ group.name }}
+                                            </span>
                                             {% empty %}
                                             <span class="text-muted small">-</span>
                                             {% endfor %}
                                         </div>
                                     </td>
                                     <td>
-                                        {% if node.status == 'online' %}
-                                        <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> 在线</span>
-                                        {% elif node.status == 'offline' %}
-                                        <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> 离线</span>
+                                        {% if node.credential %}
+                                        <span class="badge bg-success" title="{{ node.credential.name }} ({{ node.credential.username }})">
+                                            <i class="bi bi-key-fill"></i>
+                                        </span>
                                         {% else %}
-                                        <span class="badge bg-secondary"><i class="bi bi-question-circle-fill"></i>
-                                            未知</span>
+                                        <span class="text-muted">➖</span>
                                         {% endif %}
                                     </td>
+                                    <td>{% include "nodes/_status_badge.html" with status=node.status %}</td>
                                     <td>
-                                        <code data-nginx-version="{{ node.nginx_version|default:'' }}"
-                                            class="nginx-version-cell">
-                                            {{ node.nginx_version|default:"未获取" }}
+                                        <code class="nginx-version-cell"
+                                            data-nginx-version="{{ node.nginx_version|default:'' }}">
+                                            {{ node.nginx_version|default:"-" }}
                                         </code>
-                                    </td>
-                                    <td>
-                                        {{ node.created_by.username }}
-                                    </td>
-                                    <td>
-                                        <small>{{ node.updated_at|date:"Y-m-d H:i" }}</small>
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
@@ -185,47 +203,42 @@
                         </table>
                     </div>
 
+                    <!-- 分页 -->
                     {% if is_paginated %}
-                    {% with qp=search|default:'' gp=group_search|default:'' %}
-                    {% with params='&per_page='|add:per_page|stringformat:'s'|add:'&search='|add:qp|add:'&group_search='|add:gp %}
+                    {% with qp=search|default:'' ep=env_filter|default:'' sp=status_filter|default:'' gp=group_search|default:'' %}
                     <nav aria-label="Page navigation">
                         <ul class="pagination justify-content-center">
                             {% if page_obj.has_previous %}
                             <li class="page-item">
-                                <a class="page-link" href="?page=1{{ params }}">
+                                <a class="page-link" href="?page=1&search={{ qp }}&environment={{ ep }}&status={{ sp }}&group_search={{ gp }}">
                                     <i class="bi bi-chevron-double-left"></i> 首页
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.previous_page_number }}{{ params }}">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&search={{ qp }}&environment={{ ep }}&status={{ sp }}&group_search={{ gp }}">
                                     <i class="bi bi-chevron-left"></i> 上一页
                                 </a>
                             </li>
                             {% endif %}
 
                             <li class="page-item active">
-                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages
-                                    }}</span>
+                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
                             </li>
 
                             {% if page_obj.has_next %}
                             <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.next_page_number }}{{ params }}">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&search={{ qp }}&environment={{ ep }}&status={{ sp }}&group_search={{ gp }}">
                                     下一页 <i class="bi bi-chevron-right"></i>
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.paginator.num_pages }}{{ params }}">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&search={{ qp }}&environment={{ ep }}&status={{ sp }}&group_search={{ gp }}">
                                     末页 <i class="bi bi-chevron-double-right"></i>
                                 </a>
                             </li>
                             {% endif %}
                         </ul>
                     </nav>
-                    {% endwith %}
                     {% endwith %}
                     {% endif %}
                 </div>
@@ -234,6 +247,79 @@
     </div>
 </div>
 
+<!-- 节点详情弹窗 -->
+<div class="modal fade" id="nodeDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg node-detail-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-server"></i> <span id="detailHostname">-</span> 详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- 左栏：基本信息 + 操作记录 -->
+                    <div class="col-md-6 node-detail-left">
+                        <h6 class="text-muted mb-3"><i class="bi bi-info-circle"></i> 基本信息</h6>
+                        <table class="table table-sm table-borderless">
+                            <tr><td class="text-muted">主机名</td><td id="detailHostname2">-</td></tr>
+                            <tr><td class="text-muted">IP地址</td><td id="detailIp">-</td></tr>
+                            <tr><td class="text-muted">SSH端口</td><td id="detailPort">-</td></tr>
+                            <tr><td class="text-muted">环境</td><td id="detailEnvironment">-</td></tr>
+                            <tr><td class="text-muted">状态</td><td id="detailStatus">-</td></tr>
+                            <tr><td class="text-muted">锁定</td><td id="detailLocked">-</td></tr>
+                            <tr><td class="text-muted">凭证</td><td id="detailCredential">-</td></tr>
+                            <tr><td class="text-muted">节点组</td><td id="detailGroups">-</td></tr>
+                            <tr><td class="text-muted">描述</td><td id="detailDescription">-</td></tr>
+                        </table>
+                        <hr>
+                        <h6 class="text-muted mb-2"><i class="bi bi-journal"></i> 操作记录</h6>
+                        <p class="small text-muted">创建人: <span id="detailCreatedBy">-</span></p>
+                        <p class="small text-muted">创建时间: <span id="detailCreatedAt">-</span></p>
+                        <p class="small text-muted">更新时间: <span id="detailUpdatedAt">-</span></p>
+                    </div>
+                    <!-- 右栏：Nginx信息 + 系统信息 -->
+                    <div class="col-md-6 node-detail-right border-start">
+                        <div class="mb-3">
+                            <h6 class="text-muted"><i class="bi bi-gear"></i> Nginx 信息</h6>
+                            <p>版本: <code id="detailNginxVersion">-</code></p>
+                            <p>路径: <code id="detailNginxPath">-</code></p>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="detectVersionBtn" onclick="detectNginxVersion()">
+                                <i class="bi bi-arrow-repeat"></i> 重新检测版本
+                            </button>
+                        </div>
+                        <hr>
+                        <div>
+                            <h6 class="text-muted"><i class="bi bi-cpu"></i> 系统信息</h6>
+                            <div id="detailSystemInfo" class="system-info-area">
+                                <div class="text-center text-muted py-2 skeleton-placeholder">
+                                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                                    <p class="mt-1 small">加载中...</p>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="refreshSysBtn" onclick="refreshSystemInfo()">
+                                <i class="bi bi-arrow-repeat"></i> 刷新系统信息
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#" class="btn btn-primary btn-sm" id="detailEditBtn">
+                    <i class="bi bi-pencil"></i> 编辑
+                </a>
+                <button type="button" class="btn btn-outline-success btn-sm" id="detailTestBtn" onclick="testConnectionFromDetail()">
+                    <i class="bi bi-plug"></i> 测试连接
+                </button>
+                <button type="button" class="btn btn-outline-warning btn-sm" id="detailLockBtn" onclick="toggleLockFromDetail()">
+                    <i class="bi bi-lock"></i> 锁定
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认弹窗 -->
 <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -257,7 +343,7 @@
     </div>
 </div>
 
-<!-- 自定义弹窗 -->
+<!-- 通用弹窗 -->
 <div class="modal fade" id="customModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -336,97 +422,207 @@
             justify-content: flex-start;
         }
     }
-    .tag-input-wrapper {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 8px;
-        min-height: 38px;
-        cursor: text;
+    /* 节点详情弹窗 */
+    .node-detail-dialog {
+        max-width: 800px;
+    }
+    .node-detail-left, .node-detail-right {
+        min-height: 200px;
+    }
+    .node-detail-right {
+        border-left: 1px solid #dee2e6;
+    }
+    .system-info-area {
+        max-height: 200px;
         overflow-y: auto;
     }
-    .tag-input-wrapper .tag-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: #e9ecef;
-        border: 1px solid #ced4da;
+    @media (max-width: 767px) {
+        .node-detail-right {
+            border-left: none;
+            border-top: 1px solid #dee2e6;
+            margin-top: 1rem;
+            padding-top: 1rem;
+        }
+    }
+    /* 环境徽标 */
+    .badge-env-prod, .badge-env-test, .badge-env-dev {
+        border: 1px solid transparent;
+        padding: 3px 8px;
         border-radius: 4px;
-        padding: 2px 8px;
-        font-size: 0.82rem;
-        white-space: nowrap;
+        font-size: 0.75rem;
     }
-    .tag-input-wrapper .tag-badge .tag-remove {
-        cursor: pointer;
-        opacity: 0.5;
-        font-size: 1rem;
-        line-height: 1;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove:hover {
-        opacity: 1;
-        color: #dc3545;
-    }
-    .tag-input-wrapper .tag-input-field {
-        border: none;
-        outline: none;
-        flex: 1;
-        min-width: 100px;
-        padding: 0;
-        background: transparent;
+    .badge-env-prod { background: #f8d7da; color: #dc3545; }
+    .badge-env-test { background: #d1ecf1; color: #0c5460; }
+    .badge-env-dev  { background: #e2e3e5; color: #6c757d; }
+    /* 状态徽标 */
+    .badge-status-online  { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .badge-status-offline { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .badge-status-unknown { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    /* 骨架屏 */
+    .skeleton-placeholder {
+        transition: opacity 0.3s;
     }
 </style>
 
 <script>
-    let customModal;
-    let deleteConfirmModal;
+    /* ========== 全局变量 ========== */
+    var customModal;
+    var deleteConfirmModal;
+    var nodeDetailModal;
+    var currentDetailNodeId = null;
+    var testTimer = null;
+    var testSeconds = 0;
+    var MAX_SELECT = 3;
 
-    function openDeleteModal(el) {
-        var deleteUrl = el.getAttribute('data-delete-url') || '#';
-        var hostname = el.getAttribute('data-node-hostname') || '';
-        var ip = el.getAttribute('data-node-ip') || '';
+    /* ========== 搜索防抖 ========== */
+    var searchDebounceTimer = null;
 
-        document.getElementById('deleteNodeDisplay').textContent = hostname + ' (' + ip + ')';
-        document.getElementById('deleteNodeForm').setAttribute('action', deleteUrl);
-
-        if (!deleteConfirmModal) {
-            deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-        }
-        deleteConfirmModal.show();
+    function debouncedSubmit() {
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(function () {
+            saveSearchState();
+            document.getElementById('searchForm').submit();
+        }, 300);
     }
 
-    function showCustomModal(title, content, showConfirm = false, confirmCallback = null) {
+    document.addEventListener('DOMContentLoaded', function () {
+        /* 初始化 Bootstrap 模态框 */
+        customModal = new bootstrap.Modal(document.getElementById('customModal'));
+        deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+        nodeDetailModal = new bootstrap.Modal(document.getElementById('nodeDetailModal'));
+
+        /* 恢复搜索状态 */
+        restoreSearchState();
+
+        /* 搜索输入框 300ms 防抖 */
+        var searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', debouncedSubmit);
+        }
+
+        /* 下拉筛选立即提交 */
+        ['groupSearch', 'envFilter', 'statusFilter'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', function () {
+                    saveSearchState();
+                    document.getElementById('searchForm').submit();
+                });
+            }
+        });
+
+        /* Nginx 版本格式化 */
+        document.querySelectorAll('.nginx-version-cell').forEach(function (cell) {
+            var v = cell.getAttribute('data-nginx-version');
+            if (v) cell.textContent = formatNginxVersion(v);
+        });
+
+        /* 节点组徽标点击筛选 */
+        document.querySelectorAll('.group-filter-badge').forEach(function (badge) {
+            badge.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var gs = document.getElementById('groupSearch');
+                if (gs) {
+                    gs.value = this.getAttribute('data-group-name');
+                    saveSearchState();
+                    document.getElementById('searchForm').submit();
+                }
+            });
+        });
+
+        /* 主机名链接 -> 打开详情弹窗 */
+        document.querySelectorAll('.node-detail-link').forEach(function (link) {
+            link.addEventListener('click', function (e) {
+                e.preventDefault();
+                var nodeId = this.getAttribute('data-node-id');
+                openNodeDetail(nodeId);
+            });
+        });
+
+        /* 初始化复选框逻辑 */
+        initCheckboxLogic();
+
+        /* 恢复显示 Nginx 版本 */
+        document.querySelectorAll('.nginx-version-cell').forEach(function (cell) {
+            var originalVersion = cell.getAttribute('data-nginx-version');
+            if (originalVersion) {
+                cell.textContent = formatNginxVersion(originalVersion);
+            }
+        });
+    });
+
+    /* ========== sessionStorage 搜索状态持久化 ========== */
+    function saveSearchState() {
+        var state = {
+            search: document.getElementById('searchInput') ? document.getElementById('searchInput').value : '',
+            group_search: document.getElementById('groupSearch') ? document.getElementById('groupSearch').value : '',
+            environment: document.getElementById('envFilter') ? document.getElementById('envFilter').value : '',
+            status: document.getElementById('statusFilter') ? document.getElementById('statusFilter').value : ''
+        };
+        try {
+            sessionStorage.setItem('nodes_search_state', JSON.stringify(state));
+        } catch (e) {}
+    }
+
+    function restoreSearchState() {
+        try {
+            var raw = sessionStorage.getItem('nodes_search_state');
+            if (!raw) return;
+            var state = JSON.parse(raw);
+            if (state.search && document.getElementById('searchInput')) {
+                document.getElementById('searchInput').value = state.search || '';
+            }
+            if (state.group_search && document.getElementById('groupSearch')) {
+                document.getElementById('groupSearch').value = state.group_search || '';
+            }
+            if (state.environment && document.getElementById('envFilter')) {
+                document.getElementById('envFilter').value = state.environment || '';
+            }
+            if (state.status && document.getElementById('statusFilter')) {
+                document.getElementById('statusFilter').value = state.status || '';
+            }
+        } catch (e) {}
+    }
+
+    /* ========== Nginx版本格式化 ========== */
+    function formatNginxVersion(version) {
+        if (!version) return "-";
+        var v = version.toString();
+        if (v.includes("nginx version:")) {
+            var parts = v.split("nginx version:");
+            v = parts[parts.length - 1].trim();
+        }
+        if (v.startsWith("nginx/")) {
+            v = v.replace("nginx/", "");
+        }
+        return v;
+    }
+
+    /* ========== 通用弹窗工具 ========== */
+    function showCustomModal(title, content, showConfirm, confirmCallback) {
         document.getElementById('customModalTitle').textContent = title;
         document.getElementById('modalContent').innerHTML = content;
         document.getElementById('loadingSpinner').style.display = 'none';
-
-        const confirmBtn = document.getElementById('modalConfirmBtn');
+        var confirmBtn = document.getElementById('modalConfirmBtn');
         if (showConfirm) {
             confirmBtn.style.display = 'block';
             confirmBtn.onclick = function () {
-                if (confirmCallback) {
-                    confirmCallback();
-                }
+                if (confirmCallback) confirmCallback();
             };
         } else {
             confirmBtn.style.display = 'none';
         }
-
-        if (!customModal) {
-            customModal = new bootstrap.Modal(document.getElementById('customModal'));
-        }
+        if (!customModal) customModal = new bootstrap.Modal(document.getElementById('customModal'));
         customModal.show();
     }
 
-    function showLoading(title = '处理中') {
+    function showLoading(title) {
+        title = title || '处理中';
         document.getElementById('customModalTitle').textContent = title;
         document.getElementById('modalContent').innerHTML = '';
         document.getElementById('loadingSpinner').style.display = 'block';
         document.getElementById('modalConfirmBtn').style.display = 'none';
-
-        if (!customModal) {
-            customModal = new bootstrap.Modal(document.getElementById('customModal'));
-        }
+        if (!customModal) customModal = new bootstrap.Modal(document.getElementById('customModal'));
         customModal.show();
     }
 
@@ -435,49 +631,154 @@
         document.getElementById('modalContent').innerHTML = html;
     }
 
-    var batchTestTimer = null;
-    var batchTestSeconds = 0;
-
-    function stopBatchTestTimer() {
-        if (batchTestTimer) {
-            clearInterval(batchTestTimer);
-            batchTestTimer = null;
-        }
-    }
-
     function hideLoading() {
         document.getElementById('loadingSpinner').style.display = 'none';
     }
 
+    function stopTestTimer() {
+        if (testTimer) { clearInterval(testTimer); testTimer = null; }
+    }
+
+    /* ========== 删除确认弹窗 ========== */
+    function openDeleteModal(el) {
+        var deleteUrl = el.getAttribute('data-delete-url') || '#';
+        var hostname = el.getAttribute('data-node-hostname') || '';
+        var ip = el.getAttribute('data-node-ip') || '';
+        document.getElementById('deleteNodeDisplay').textContent = hostname + ' (' + ip + ')';
+        document.getElementById('deleteNodeForm').setAttribute('action', deleteUrl);
+        if (!deleteConfirmModal) deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+        deleteConfirmModal.show();
+    }
+
+    /* ========== 复选框批量选择 ========== */
+    function initCheckboxLogic() {
+        var selectAll = document.getElementById('selectAllNodes');
+        var batchTestBtn = document.getElementById('batchTestBtn');
+        var batchLockBtn = document.getElementById('batchLockBtn');
+        var batchUnlockBtn = document.getElementById('batchUnlockBtn');
+        var batchSelectionHint = document.getElementById('batchSelectionHint');
+
+        function getNodeCheckboxes() {
+            return document.querySelectorAll('.node-checkbox');
+        }
+
+        function getSelectedNodeIds() {
+            var ids = [];
+            document.querySelectorAll('.node-checkbox:checked').forEach(function (cb) {
+                ids.push(parseInt(cb.getAttribute('data-node-id')));
+            });
+            return ids;
+        }
+
+        function syncSelectAllState() {
+            if (!selectAll) return;
+            var checkboxes = getNodeCheckboxes();
+            var checked = document.querySelectorAll('.node-checkbox:checked').length;
+            var maxSelectable = Math.min(MAX_SELECT, checkboxes.length);
+            if (checked === 0) {
+                selectAll.checked = false;
+                selectAll.indeterminate = false;
+            } else if (checked >= maxSelectable || checked === checkboxes.length) {
+                selectAll.checked = true;
+                selectAll.indeterminate = false;
+            } else {
+                selectAll.checked = false;
+                selectAll.indeterminate = true;
+            }
+        }
+
+        function updateBatchUI() {
+            var checked = document.querySelectorAll('.node-checkbox:checked');
+            var count = checked.length;
+            if (batchTestBtn) {
+                batchTestBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> 批量测试连接（' + count + '/' + MAX_SELECT + '）';
+                batchTestBtn.disabled = count === 0;
+            }
+            if (batchLockBtn) {
+                batchLockBtn.innerHTML = '<i class="bi bi-lock"></i> 批量锁定（' + count + '/' + MAX_SELECT + '）';
+                batchLockBtn.disabled = count === 0;
+            }
+            if (batchUnlockBtn) {
+                batchUnlockBtn.innerHTML = '<i class="bi bi-unlock"></i> 批量解锁（' + count + '/' + MAX_SELECT + '）';
+                batchUnlockBtn.disabled = count === 0;
+            }
+            if (batchSelectionHint) {
+                batchSelectionHint.textContent = '已选择 ' + count + '/' + MAX_SELECT;
+            }
+            syncSelectAllState();
+        }
+
+        if (selectAll) {
+            selectAll.addEventListener('click', function () {
+                var checkboxes = getNodeCheckboxes();
+                var hasSelected = document.querySelectorAll('.node-checkbox:checked').length > 0;
+                if (hasSelected) {
+                    checkboxes.forEach(function (cb) { cb.checked = false; });
+                } else {
+                    var selected = 0;
+                    checkboxes.forEach(function (cb) {
+                        if (selected < MAX_SELECT) { cb.checked = true; selected++; }
+                        else { cb.checked = false; }
+                    });
+                }
+                updateBatchUI();
+            });
+        }
+
+        document.querySelectorAll('.node-checkbox').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                var checked = document.querySelectorAll('.node-checkbox:checked');
+                if (checked.length > MAX_SELECT) {
+                    cb.checked = false;
+                    showCustomModal('提示', '<p class="text-warning">最多只能勾选 ' + MAX_SELECT + ' 个节点</p>');
+                }
+                updateBatchUI();
+            });
+        });
+
+        document.querySelectorAll('tbody tr').forEach(function (row) {
+            row.addEventListener('click', function (e) {
+                if (e.target.closest('a,button,input,label,.btn-group,.node-detail-link')) return;
+                var cb = row.querySelector('.node-checkbox');
+                if (!cb) return;
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change'));
+            });
+        });
+
+        updateBatchUI();
+
+        /* 暴露给全局 */
+        window.getSelectedNodeIds = getSelectedNodeIds;
+    }
+
+    /* ========== 单节点连接测试 ========== */
     function testConnection(el) {
-        const nodeId = parseInt(el.getAttribute('data-node-id'));
-        var selectedNodeIds = getSelectedNodeIds();
+        var nodeId = parseInt(el.getAttribute('data-node-id'));
+        var selectedNodeIds = window.getSelectedNodeIds ? window.getSelectedNodeIds() : [];
         if (selectedNodeIds.length > 1) {
             batchTestConnection(selectedNodeIds);
             return;
         }
-        const data = { node_id: nodeId };
+        doSingleTest({ node_id: nodeId });
+    }
 
+    function testConnectionFromDetail() {
+        if (!currentDetailNodeId) return;
+        doSingleTest({ node_id: parseInt(currentDetailNodeId) });
+    }
+
+    function doSingleTest(data) {
         showLoading('测试连接');
-        stopBatchTestTimer();
-        batchTestSeconds = 10;
-        batchTestTimer = setInterval(function () {
-            batchTestSeconds--;
-            if (batchTestSeconds <= 0) {
-                stopBatchTestTimer();
-                updateLoadingContent(
-                    '<div class="text-center py-3">' +
-                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                    '<p class="text-muted mb-0">即将完成...</p>' +
-                    '</div>'
-                );
+        stopTestTimer();
+        testSeconds = 10;
+        testTimer = setInterval(function () {
+            testSeconds--;
+            if (testSeconds <= 0) {
+                stopTestTimer();
+                updateLoadingContent('<div class="text-center py-3"><div class="spinner-border text-primary mb-2" role="status"></div><p class="text-muted mb-0">即将完成...</p></div>');
             } else {
-                updateLoadingContent(
-                    '<div class="text-center py-3">' +
-                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                    '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchTestSeconds + '</strong> 秒</p>' +
-                    '</div>'
-                );
+                updateLoadingContent('<div class="text-center py-3"><div class="spinner-border text-primary mb-2" role="status"></div><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>');
             }
         }, 1000);
 
@@ -489,548 +790,42 @@
             },
             body: JSON.stringify(data)
         })
-            .then(response => response.json())
-            .then(result => {
-                stopBatchTestTimer();
-                hideLoading();
-                if (result.success) {
-                    const content = `
-                        <div class="alert alert-success">
-                            <i class="bi bi-check-circle-fill"></i> <strong>连接成功</strong>
-                        </div>
-                        <p>${result.message}</p>
-                        <p class="text-muted">节点状态已更新为"在线"</p>
-                    `;
-                    showCustomModal('连接测试结果', content, true, () => {
-                        location.reload();
-                    });
-                } else {
-                    let statusMsg = '';
-                    if (result.status_updated) {
-                        statusMsg = '<p class="text-muted">节点状态已更新为"离线"</p>';
-                    }
-                    const content = `
-                        <div class="alert alert-danger">
-                            <i class="bi bi-x-circle-fill"></i> <strong>连接失败</strong>
-                        </div>
-                        <p>${result.message}</p>
-                        ${statusMsg}
-                    `;
-                    showCustomModal('连接测试结果', content, true, () => {
-                        location.reload();
-                    });
-                }
-            })
-            .catch(error => {
-                stopBatchTestTimer();
-                hideLoading();
-                const content = `
-                    <div class="alert alert-danger">
-                        <i class="bi bi-exclamation-triangle-fill"></i> <strong>测试失败</strong>
-                    </div>
-                    <p>网络错误或服务器异常</p>
-                `;
-                showCustomModal('错误', content);
-            });
-    }
-
-    function formatNginxVersion(version) {
-        if (!version) return "未获取";
-
-        let versionStr = version.toString();
-
-        if (versionStr.includes("nginx version:")) {
-            var parts = versionStr.split("nginx version:");
-            versionStr = parts[parts.length - 1].trim();
-        }
-
-        if (versionStr.startsWith("nginx/")) {
-            versionStr = versionStr.replace("nginx/", "");
-        }
-
-        return versionStr;
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-        const versionCells = document.querySelectorAll('.nginx-version-cell');
-        versionCells.forEach(cell => {
-            const originalVersion = cell.getAttribute('data-nginx-version');
-            if (originalVersion) {
-                cell.textContent = formatNginxVersion(originalVersion);
-            }
-        });
-
-        initCombinedTagInput('combinedTagWrapper', 'combinedSearchField', 'searchHidden', 'groupSearchHidden');
-    });
-
-    function initCombinedTagInput(wrapperId, fieldId, searchHiddenId, groupHiddenId) {
-        var wrapper = document.getElementById(wrapperId);
-        var field = document.getElementById(fieldId);
-        var searchHidden = document.getElementById(searchHiddenId);
-        var groupHidden = document.getElementById(groupHiddenId);
-
-        if (!wrapper || !field || !searchHidden || !groupHidden) {
-            return;
-        }
-
-        function focusFieldWithCaret() {
-            field.focus();
-            var len = field.value.length;
-            if (typeof field.setSelectionRange === 'function') {
-                field.setSelectionRange(len, len);
-            }
-        }
-
-        function updateHidden() {
-            var badges = wrapper.querySelectorAll('.tag-badge');
-            var values = [];
-            badges.forEach(function (b) {
-                values.push(b.getAttribute('data-value'));
-            });
-            groupHidden.value = values.join(',');
-            searchHidden.value = field.value.trim();
-        }
-
-        function createBadge(text) {
-            var badge = document.createElement('span');
-            badge.className = 'tag-badge';
-            badge.setAttribute('data-value', text);
-            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
-            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
-                e.stopPropagation();
-                badge.remove();
-                updateHidden();
-                setTimeout(focusFieldWithCaret, 0);
-            });
-            wrapper.insertBefore(badge, field);
-            updateHidden();
-        }
-
-        function loadInitial() {
-            var groupVal = groupHidden.value.trim();
-            if (groupVal) {
-                var tags = groupVal.split(',').map(function (t) { return t.trim(); }).filter(Boolean);
-                tags.forEach(function (tag) { createBadge(tag); });
-            }
-            field.value = searchHidden.value;
-        }
-
-        field.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                var text = field.value.trim();
-                if (text) {
-                    createBadge(text);
-                    field.value = '';
-                }
-                updateHidden();
-                setTimeout(focusFieldWithCaret, 0);
-                document.getElementById('searchForm').submit();
-            }
-            if (e.key === 'Backspace' && field.value === '') {
-                var badges = wrapper.querySelectorAll('.tag-badge');
-                if (badges.length > 0) {
-                    badges[badges.length - 1].remove();
-                    updateHidden();
-                    setTimeout(focusFieldWithCaret, 0);
-                }
-            }
-        });
-
-        field.addEventListener('input', function () {
-            updateHidden();
-        });
-
-        wrapper.addEventListener('click', function (e) {
-            if (e.target === wrapper) {
-                focusFieldWithCaret();
-            }
-        });
-
-        loadInitial();
-        focusFieldWithCaret();
-    }
-
-    var selectAllCheckbox = document.getElementById('selectAllNodes');
-    var batchTestBtn = document.getElementById('batchTestBtn');
-    var batchLockBtn = document.getElementById('batchLockBtn');
-    var batchUnlockBtn = document.getElementById('batchUnlockBtn');
-    var batchSelectionHint = document.getElementById('batchSelectionHint');
-    var MAX_SELECT = 3;
-
-    function getNodeCheckboxes() {
-        return document.querySelectorAll('.node-checkbox');
-    }
-
-    function getSelectedNodeIds() {
-        var checked = document.querySelectorAll('.node-checkbox:checked');
-        var nodeIds = [];
-        checked.forEach(function (cb) {
-            nodeIds.push(parseInt(cb.getAttribute('data-node-id')));
-        });
-        return nodeIds;
-    }
-
-    function syncSelectAllState() {
-        if (!selectAllCheckbox) return;
-
-        var checkboxes = getNodeCheckboxes();
-        var checkedCount = document.querySelectorAll('.node-checkbox:checked').length;
-        var maxSelectable = Math.min(MAX_SELECT, checkboxes.length);
-
-        if (checkedCount === 0) {
-            selectAllCheckbox.checked = false;
-            selectAllCheckbox.indeterminate = false;
-        } else if (checkedCount >= maxSelectable) {
-            selectAllCheckbox.checked = true;
-            selectAllCheckbox.indeterminate = false;
-        } else {
-            selectAllCheckbox.checked = false;
-            selectAllCheckbox.indeterminate = true;
-        }
-    }
-
-    function updateBatchUI() {
-        var checked = document.querySelectorAll('.node-checkbox:checked');
-        var count = checked.length;
-        if (batchTestBtn) {
-            batchTestBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> 批量测试连接（' + count + '/' + MAX_SELECT + '）';
-            batchTestBtn.disabled = count === 0;
-        }
-        if (batchLockBtn) {
-            batchLockBtn.innerHTML = '<i class="bi bi-lock"></i> 批量锁定（' + count + '/' + MAX_SELECT + '）';
-            batchLockBtn.disabled = count === 0;
-        }
-        if (batchUnlockBtn) {
-            batchUnlockBtn.innerHTML = '<i class="bi bi-unlock"></i> 批量解锁（' + count + '/' + MAX_SELECT + '）';
-            batchUnlockBtn.disabled = count === 0;
-        }
-        if (batchSelectionHint) {
-            batchSelectionHint.textContent = '已选择 ' + count + '/' + MAX_SELECT;
-        }
-        syncSelectAllState();
-    }
-
-    if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('click', function () {
-            var checkboxes = getNodeCheckboxes();
-            var hasSelected = document.querySelectorAll('.node-checkbox:checked').length > 0;
-
-            if (hasSelected) {
-                checkboxes.forEach(function (cb) { cb.checked = false; });
+        .then(function (resp) { return resp.json(); })
+        .then(function (result) {
+            stopTestTimer();
+            hideLoading();
+            if (result.success) {
+                showCustomModal('连接测试结果',
+                    '<div class="alert alert-success"><i class="bi bi-check-circle-fill"></i> <strong>连接成功</strong></div><p>' + result.message + '</p><p class="text-muted">节点状态已更新为"在线"</p>',
+                    true, function () { location.reload(); });
             } else {
-                var selected = 0;
-                checkboxes.forEach(function (cb) {
-                    if (selected < MAX_SELECT) {
-                        cb.checked = true;
-                        selected++;
-                    } else {
-                        cb.checked = false;
-                    }
-                });
+                var extra = result.status_updated ? '<p class="text-muted">节点状态已更新为"离线"</p>' : '';
+                showCustomModal('连接测试结果',
+                    '<div class="alert alert-danger"><i class="bi bi-x-circle-fill"></i> <strong>连接失败</strong></div><p>' + result.message + '</p>' + extra,
+                    true, function () { location.reload(); });
             }
-
-            updateBatchUI();
+        })
+        .catch(function () {
+            stopTestTimer();
+            hideLoading();
+            showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
         });
     }
 
-    document.querySelectorAll('.node-checkbox').forEach(function (cb) {
-        cb.addEventListener('change', function () {
-            var checked = document.querySelectorAll('.node-checkbox:checked');
-            if (checked.length > MAX_SELECT) {
-                cb.checked = false;
-                showCustomModal('提示', '<p class="text-warning">最多只能勾选 ' + MAX_SELECT + ' 个节点</p>');
-            }
-            updateBatchUI();
-        });
-    });
-
-    document.querySelectorAll('tbody tr').forEach(function (row) {
-        row.addEventListener('click', function (e) {
-            if (e.target.closest('a,button,input,label,.btn-group')) {
-                return;
-            }
-            var cb = row.querySelector('.node-checkbox');
-            if (!cb) {
-                return;
-            }
-            cb.checked = !cb.checked;
-            cb.dispatchEvent(new Event('change'));
-        });
-    });
-
-    updateBatchUI();
-
-    function toggleLock(el) {
-        var nodeId = parseInt(el.getAttribute('data-node-id'));
-        var action = el.getAttribute('data-action');
-        var isLock = action === 'lock';
-        var title = isLock ? '锁定节点' : '解锁节点';
-        var confirmMsg = isLock
-            ? '确定要锁定该节点吗？锁定后节点状态将变为"离线"，且不可再进行操作。'
-            : '确定要解锁该节点吗？解锁后将自动测试连接并更新状态。';
-
-        showCustomModal(title, '<p>' + confirmMsg + '</p>', true, function () {
-            stopBatchTestTimer();
-            batchTestSeconds = isLock ? 0 : 12;
-
-            if (isLock) {
-                showLoading(title + '中...');
-            } else {
-                showLoading('解锁中');
-                batchTestTimer = setInterval(function () {
-                    batchTestSeconds--;
-                    if (batchTestSeconds <= 0) {
-                        stopBatchTestTimer();
-                        updateLoadingContent(
-                            '<div class="text-center py-3">' +
-                            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                            '<p class="text-muted mb-0">即将完成...</p>' +
-                            '</div>'
-                        );
-                    } else {
-                        updateLoadingContent(
-                            '<div class="text-center py-3">' +
-                            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                            '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchTestSeconds + '</strong> 秒</p>' +
-                            '</div>'
-                        );
-                    }
-                }, 1000);
-            }
-
-            var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-            fetch('{% url "nodes:lock" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify({ node_id: nodeId, action: action })
-            })
-                .then(function (response) { return response.json(); })
-                .then(function (result) {
-                    stopBatchTestTimer();
-                    hideLoading();
-                    if (result.success) {
-                        if (result.action === 'unlock' && result.results) {
-                            var r = result.results[0];
-                            var statusHtml = r.success
-                                ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> 连接成功</span>'
-                                : '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> 连接失败</span>';
-                            var content =
-                                '<div class="mb-2">' + statusHtml + '</div>' +
-                                '<p><strong>主机名：</strong>' + r.hostname + '</p>' +
-                                '<p><strong>IP：</strong><code>' + r.ip + '</code></p>' +
-                                '<p><strong>详情：</strong>' + r.message + '</p>';
-                            showCustomModal('解锁完成', content, true, function () {
-                                location.reload();
-                            });
-                        } else {
-                            showCustomModal('操作完成', '<p class="text-success">' + result.message + '</p>', true, function () {
-                                location.reload();
-                            });
-                        }
-                    } else {
-                        showCustomModal('操作失败', '<p class="text-danger">' + result.message + '</p>');
-                    }
-                })
-                .catch(function (error) {
-                    stopBatchTestTimer();
-                    hideLoading();
-                    showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
-                });
-        });
-    }
-
-    function batchLockNodes() {
-        var checked = document.querySelectorAll('.node-checkbox:checked');
-        var nodeIds = [];
-        var allLocked = true;
-        checked.forEach(function (cb) {
-            nodeIds.push(parseInt(cb.getAttribute('data-node-id')));
-            if (cb.getAttribute('data-node-locked') !== 'true') {
-                allLocked = false;
-            }
-        });
-
-        if (nodeIds.length === 0) {
-            showCustomModal('提示', '<p class="text-warning">请先选择要锁定的节点</p>');
-            return;
-        }
-
-        if (allLocked) {
-            showCustomModal('提示', '<p class="text-warning">所选节点已全部锁定，无需重复锁定</p>');
-            return;
-        }
-
-        showCustomModal(
-            '批量锁定节点',
-            '<p>确定要锁定选中的 <strong>' + nodeIds.length + '</strong> 个节点吗？</p>' +
-            '<p class="text-muted">锁定后节点状态将变为"离线"，且不可再进行操作。</p>',
-            true,
-            function () {
-                showLoading('批量锁定中...');
-
-                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-                fetch('{% url "nodes:lock" %}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify({ node_ids: nodeIds, action: 'lock' })
-                })
-                    .then(function (response) { return response.json(); })
-                    .then(function (result) {
-                        hideLoading();
-                        if (result.success) {
-                            var hostnamesHtml = result.hostnames.map(function (h) {
-                                return '<span class="badge bg-secondary me-1">' + h + '</span>';
-                            }).join('');
-                            var content =
-                                '<div class="mb-2">' + hostnamesHtml + '</div>' +
-                                '<p class="text-success">' + result.message + '</p>';
-                            showCustomModal('批量锁定完成', content, true, function () {
-                                location.reload();
-                            });
-                        } else {
-                            showCustomModal('批量锁定失败', '<p class="text-danger">' + result.message + '</p>');
-                        }
-                    })
-                    .catch(function (error) {
-                        hideLoading();
-                        showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
-                    });
-            }
-        );
-    }
-
-    function batchUnlockNodes() {
-        var checked = document.querySelectorAll('.node-checkbox:checked');
-        var nodeIds = [];
-        var allUnlocked = true;
-        checked.forEach(function (cb) {
-            nodeIds.push(parseInt(cb.getAttribute('data-node-id')));
-            if (cb.getAttribute('data-node-locked') === 'true') {
-                allUnlocked = false;
-            }
-        });
-
-        if (nodeIds.length === 0) {
-            showCustomModal('提示', '<p class="text-warning">请先选择要解锁的节点</p>');
-            return;
-        }
-
-        if (allUnlocked) {
-            showCustomModal('提示', '<p class="text-warning">所选节点均未锁定，无需解锁</p>');
-            return;
-        }
-
-        showCustomModal(
-            '批量解锁节点',
-            '<p>确定要解锁选中的 <strong>' + nodeIds.length + '</strong> 个节点吗？</p>' +
-            '<p class="text-muted">解锁后将自动测试连接并更新状态。</p>',
-            true,
-            function () {
-                stopBatchTestTimer();
-                batchTestSeconds = 12;
-                showLoading('批量解锁中');
-                batchTestTimer = setInterval(function () {
-                    batchTestSeconds--;
-                    if (batchTestSeconds <= 0) {
-                        stopBatchTestTimer();
-                        updateLoadingContent(
-                            '<div class="text-center py-3">' +
-                            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                            '<p class="text-muted mb-0">即将完成...</p>' +
-                            '</div>'
-                        );
-                    } else {
-                        updateLoadingContent(
-                            '<div class="text-center py-3">' +
-                            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                            '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchTestSeconds + '</strong> 秒</p>' +
-                            '</div>'
-                        );
-                    }
-                }, 1000);
-
-                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-                fetch('{% url "nodes:lock" %}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify({ node_ids: nodeIds, action: 'unlock' })
-                })
-                    .then(function (response) { return response.json(); })
-                    .then(function (result) {
-                        stopBatchTestTimer();
-                        hideLoading();
-                        if (result.success) {
-                            var resultsHtml = result.results.map(function (r) {
-                                var statusBadge = r.success
-                                    ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> 连接成功</span>'
-                                    : '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> 连接失败</span>';
-                                return '<tr>' +
-                                    '<td><strong>' + r.hostname + '</strong></td>' +
-                                    '<td><code>' + r.ip + '</code></td>' +
-                                    '<td>' + statusBadge + '</td>' +
-                                    '<td><small>' + (r.message || '') + '</small></td>' +
-                                    '</tr>';
-                            }).join('');
-
-                            var content =
-                                '<div class="table-responsive"><table class="table table-sm table-hover mb-0">' +
-                                '<thead><tr><th>主机名</th><th>IP</th><th>状态</th><th>详情</th></tr></thead>' +
-                                '<tbody>' + resultsHtml + '</tbody></table></div>';
-                            showCustomModal('批量解锁完成', content, true, function () {
-                                location.reload();
-                            });
-                        } else {
-                            showCustomModal('批量解锁失败', '<p class="text-danger">' + result.message + '</p>');
-                        }
-                    })
-                    .catch(function (error) {
-                        stopBatchTestTimer();
-                        hideLoading();
-                        showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
-                    });
-            }
-        );
-    }
-
+    /* ========== 批量测试 ========== */
     function batchTestConnection(nodeIdsOverride) {
-        var nodeIds = Array.isArray(nodeIdsOverride) ? nodeIdsOverride : getSelectedNodeIds();
-
+        var nodeIds = Array.isArray(nodeIdsOverride) ? nodeIdsOverride : (window.getSelectedNodeIds ? window.getSelectedNodeIds() : []);
         if (nodeIds.length === 0) {
             showCustomModal('提示', '<p class="text-warning">请先选择要测试的节点</p>');
             return;
         }
-
         showLoading('批量测试连接中...');
-        stopBatchTestTimer();
-        batchTestSeconds = 10;
-        batchTestTimer = setInterval(function () {
-            batchTestSeconds--;
-            if (batchTestSeconds <= 0) {
-                stopBatchTestTimer();
-                updateLoadingContent(
-                    '<div class="text-center py-3">' +
-                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                    '<p class="text-muted mb-0">即将完成...</p>' +
-                    '</div>'
-                );
-            } else {
-                updateLoadingContent(
-                    '<div class="text-center py-3">' +
-                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                    '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchTestSeconds + '</strong> 秒</p>' +
-                    '</div>'
-                );
-            }
+        stopTestTimer();
+        testSeconds = 10;
+        testTimer = setInterval(function () {
+            testSeconds--;
+            if (testSeconds <= 0) { stopTestTimer(); updateLoadingContent('<div class="text-center py-3"><p class="text-muted mb-0">即将完成...</p></div>'); }
+            else { updateLoadingContent('<div class="text-center py-3"><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>'); }
         }, 1000);
 
         fetch('{% url "nodes:batch_test" %}', {
@@ -1041,81 +836,294 @@
             },
             body: JSON.stringify({ node_ids: nodeIds })
         })
-            .then(function (response) { return response.json(); })
-            .then(function (result) {
-                stopBatchTestTimer();
-                hideLoading();
+        .then(function (resp) { return resp.json(); })
+        .then(function (result) {
+            stopTestTimer();
+            hideLoading();
+            if (!result.success) {
+                showCustomModal('测试失败', '<p class="text-danger">' + result.message + '</p>');
+                return;
+            }
+            if (result.async) {
+                var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
+                showCustomModal('批量测试已提交',
+                    '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 已创建后台任务</div><p>' + result.message + '</p><p class="text-muted mb-0">即将跳转到任务详情...</p>');
+                setTimeout(function () { window.location.href = jumpUrl; }, 3000);
+            }
+        })
+        .catch(function () {
+            stopTestTimer();
+            hideLoading();
+            showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
+        });
+    }
 
-                if (!result.success) {
-                    showCustomModal('测试失败', '<p class="text-danger">' + result.message + '</p>');
-                    return;
-                }
+    /* ========== 锁定/解锁 ========== */
+    function toggleLock(el) {
+        var nodeId = parseInt(el.getAttribute('data-node-id'));
+        var action = el.getAttribute('data-action');
+        var isLock = action === 'lock';
+        doLockAction(nodeId, action, isLock);
+    }
 
-                if (result.async) {
-                    var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
-                    var content =
-                        '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 已创建后台任务</div>' +
-                        '<p>' + result.message + '</p>' +
-                        '<p class="text-muted mb-0">即将跳转到任务详情...</p>';
-                    showCustomModal('批量测试已提交', content);
-                    setTimeout(function () {
-                        window.location.href = jumpUrl;
-                    }, 3000);
-                    return;
-                }
+    function toggleLockFromDetail() {
+        if (!currentDetailNodeId) return;
+        var isLocked = document.getElementById('detailLocked').textContent.indexOf('是') >= 0;
+        var action = isLocked ? 'unlock' : 'lock';
+        doLockAction(parseInt(currentDetailNodeId), action, !isLocked);
+    }
 
-                var successCount = 0;
-                var failCount = 0;
-                var rowsHtml = '';
+    function doLockAction(nodeId, action, isLock) {
+        var title = isLock ? '锁定节点' : '解锁节点';
+        var confirmMsg = isLock
+            ? '确定要锁定该节点吗？锁定后节点状态将变为"离线"，且不可再进行操作。'
+            : '确定要解锁该节点吗？解锁后将自动测试连接并更新状态。';
 
-                result.results.forEach(function (r) {
-                    if (r.success) {
-                        successCount++;
-                        rowsHtml +=
-                            '<tr>' +
-                            '<td><strong>' + r.hostname + '</strong></td>' +
-                            '<td><code>' + r.ip + '</code></td>' +
-                            '<td><span class="badge bg-success"><i class="bi bi-check-circle"></i> 成功</span></td>' +
-                            '<td><small class="text-muted">' + r.message + '</small></td>' +
-                            '</tr>';
-                    } else {
-                        failCount++;
-                        rowsHtml +=
-                            '<tr>' +
-                            '<td><strong>' + r.hostname + '</strong></td>' +
-                            '<td><code>' + r.ip + '</code></td>' +
-                            '<td><span class="badge bg-danger"><i class="bi bi-x-circle"></i> 失败</span></td>' +
-                            '<td><small class="text-danger">' + r.message + '</small></td>' +
-                            '</tr>';
-                    }
-                });
-
-                var summaryHtml = '';
-                if (successCount > 0) {
-                    summaryHtml += '<span class="badge bg-success me-1">成功 ' + successCount + '</span>';
-                }
-                if (failCount > 0) {
-                    summaryHtml += '<span class="badge bg-danger me-1">失败 ' + failCount + '</span>';
-                }
-                summaryHtml += '<span class="badge bg-secondary">共 ' + result.total + ' 个</span>';
-
-                var content =
-                    '<div class="mb-2">' + summaryHtml + '</div>' +
-                    '<div class="table-responsive" style="max-height: 400px; overflow-y: auto;">' +
-                    '<table class="table table-sm table-bordered mb-0">' +
-                    '<thead><tr><th>主机名</th><th>IP</th><th>结果</th><th>详情</th></tr></thead>' +
-                    '<tbody>' + rowsHtml + '</tbody>' +
-                    '</table></div>';
-
-                showCustomModal('批量测试连接结果', content, true, function () {
-                    location.reload();
-                });
+        showCustomModal(title, '<p>' + confirmMsg + '</p>', true, function () {
+            stopTestTimer();
+            testSeconds = isLock ? 0 : 12;
+            if (isLock) {
+                showLoading(title + '中...');
+            } else {
+                showLoading('解锁中');
+                testTimer = setInterval(function () {
+                    testSeconds--;
+                    if (testSeconds <= 0) { stopTestTimer(); updateLoadingContent('<div class="text-center py-3"><p class="text-muted mb-0">即将完成...</p></div>'); }
+                    else { updateLoadingContent('<div class="text-center py-3"><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>'); }
+                }, 1000);
+            }
+            var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            fetch('{% url "nodes:lock" %}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                body: JSON.stringify({ node_id: nodeId, action: action })
             })
-            .catch(function (error) {
-                stopBatchTestTimer();
+            .then(function (resp) { return resp.json(); })
+            .then(function (result) {
+                stopTestTimer();
                 hideLoading();
+                if (result.success) {
+                    if (result.action === 'unlock' && result.results) {
+                        var r = result.results[0];
+                        var statusHtml = r.success
+                            ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> 连接成功</span>'
+                            : '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> 连接失败</span>';
+                        var content = '<div class="mb-2">' + statusHtml + '</div>' +
+                            '<p><strong>主机名：</strong>' + r.hostname + '</p>' +
+                            '<p><strong>IP：</strong><code>' + r.ip + '</code></p>' +
+                            '<p><strong>详情：</strong>' + r.message + '</p>';
+                        showCustomModal('解锁完成', content, true, function () { location.reload(); });
+                    } else {
+                        showCustomModal('操作完成', '<p class="text-success">' + result.message + '</p>', true, function () { location.reload(); });
+                    }
+                } else {
+                    showCustomModal('操作失败', '<p class="text-danger">' + result.message + '</p>');
+                }
+            })
+            .catch(function () {
+                stopTestTimer(); hideLoading();
                 showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
             });
+        });
+    }
+
+    function batchLockNodes() {
+        var nodeIds = window.getSelectedNodeIds ? window.getSelectedNodeIds() : [];
+        if (nodeIds.length === 0) { showCustomModal('提示', '<p class="text-warning">请先选择要锁定的节点</p>'); return; }
+        showCustomModal('批量锁定节点',
+            '<p>确定要锁定选中的 <strong>' + nodeIds.length + '</strong> 个节点吗？</p><p class="text-muted">锁定后节点状态将变为"离线"，且不可再进行操作。</p>',
+            true, function () {
+                showLoading('批量锁定中...');
+                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                fetch('{% url "nodes:lock" %}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({ node_ids: nodeIds, action: 'lock' })
+                })
+                .then(function (resp) { return resp.json(); })
+                .then(function (result) {
+                    hideLoading();
+                    if (result.success) {
+                        var hostnamesHtml = result.hostnames.map(function (h) { return '<span class="badge bg-secondary me-1">' + h + '</span>'; }).join('');
+                        showCustomModal('批量锁定完成', '<div class="mb-2">' + hostnamesHtml + '</div><p class="text-success">' + result.message + '</p>', true, function () { location.reload(); });
+                    } else {
+                        showCustomModal('批量锁定失败', '<p class="text-danger">' + result.message + '</p>');
+                    }
+                })
+                .catch(function () { hideLoading(); showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>'); });
+            });
+    }
+
+    function batchUnlockNodes() {
+        var nodeIds = window.getSelectedNodeIds ? window.getSelectedNodeIds() : [];
+        if (nodeIds.length === 0) { showCustomModal('提示', '<p class="text-warning">请先选择要解锁的节点</p>'); return; }
+        showCustomModal('批量解锁节点',
+            '<p>确定要解锁选中的 <strong>' + nodeIds.length + '</strong> 个节点吗？</p><p class="text-muted">解锁后将自动测试连接并更新状态。</p>',
+            true, function () {
+                stopTestTimer(); testSeconds = 12;
+                showLoading('批量解锁中');
+                testTimer = setInterval(function () {
+                    testSeconds--;
+                    if (testSeconds <= 0) { stopTestTimer(); updateLoadingContent('<div class="text-center py-3"><p class="text-muted mb-0">即将完成...</p></div>'); }
+                    else { updateLoadingContent('<div class="text-center py-3"><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>'); }
+                }, 1000);
+                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                fetch('{% url "nodes:lock" %}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({ node_ids: nodeIds, action: 'unlock' })
+                })
+                .then(function (resp) { return resp.json(); })
+                .then(function (result) {
+                    stopTestTimer(); hideLoading();
+                    if (result.success) {
+                        var resultsHtml = result.results.map(function (r) {
+                            var statusBadge = r.success
+                                ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> 连接成功</span>'
+                                : '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> 连接失败</span>';
+                            return '<tr><td><strong>' + r.hostname + '</strong></td><td><code>' + r.ip + '</code></td><td>' + statusBadge + '</td><td><small>' + (r.message || '') + '</small></td></tr>';
+                        }).join('');
+                        var content = '<div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead><tr><th>主机名</th><th>IP</th><th>状态</th><th>详情</th></tr></thead><tbody>' + resultsHtml + '</tbody></table></div>';
+                        showCustomModal('批量解锁完成', content, true, function () { location.reload(); });
+                    } else {
+                        showCustomModal('批量解锁失败', '<p class="text-danger">' + result.message + '</p>');
+                    }
+                })
+                .catch(function () { stopTestTimer(); hideLoading(); showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>'); });
+            });
+    }
+
+    /* ========== 节点详情弹窗 ========== */
+    function openNodeDetail(nodeId) {
+        currentDetailNodeId = nodeId;
+        if (!nodeDetailModal) nodeDetailModal = new bootstrap.Modal(document.getElementById('nodeDetailModal'));
+        nodeDetailModal.show();
+
+        /* 恢复骨架屏 */
+        document.getElementById('detailSystemInfo').innerHTML =
+            '<div class="text-center text-muted py-2 skeleton-placeholder"><div class="spinner-border spinner-border-sm" role="status"></div><p class="mt-1 small">加载中...</p></div>';
+        document.getElementById('detailNginxVersion').textContent = '-';
+
+        /* 发起 Ajax 加载详情 */
+        var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        fetch('{% url "nodes:detail" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ node_id: parseInt(nodeId) })
+        })
+        .then(function (resp) { return resp.json(); })
+        .then(function (result) {
+            if (!result.success) {
+                document.getElementById('detailHostname').textContent = '加载失败';
+                return;
+            }
+            var info = result.node_info;
+            document.getElementById('detailHostname').textContent = info.hostname;
+            document.getElementById('detailHostname2').textContent = info.hostname;
+            document.getElementById('detailIp').textContent = info.ip;
+            document.getElementById('detailPort').textContent = info.port;
+            document.getElementById('detailEnvironment').textContent = info.environment;
+            document.getElementById('detailStatus').textContent = info.status;
+            document.getElementById('detailLocked').textContent = (info.is_locked !== undefined ? (info.is_locked ? '🔒 是' : '🔓 否') : '-');
+            document.getElementById('detailCredential').textContent = info.credential_name + ' (' + info.credential_username + ')';
+            document.getElementById('detailGroups').textContent = info.groups || '-';
+            document.getElementById('detailDescription').textContent = info.description;
+            document.getElementById('detailCreatedBy').textContent = info.created_by;
+            document.getElementById('detailCreatedAt').textContent = info.created_at;
+            document.getElementById('detailUpdatedAt').textContent = info.updated_at;
+            document.getElementById('detailNginxVersion').textContent = formatNginxVersion(info.nginx_version);
+            document.getElementById('detailNginxPath').textContent = info.nginx_path;
+
+            /* 编辑按钮 */
+            var editUrl = '{% url "nodes:edit" 999999 %}'.replace('999999', info.id);
+            document.getElementById('detailEditBtn').setAttribute('href', editUrl);
+
+            /* 锁定按钮 */
+            var lockBtn = document.getElementById('detailLockBtn');
+            if (info.is_locked) {
+                lockBtn.innerHTML = '<i class="bi bi-unlock-fill"></i> 解锁';
+                lockBtn.className = 'btn btn-outline-warning btn-sm';
+            } else {
+                lockBtn.innerHTML = '<i class="bi bi-lock"></i> 锁定';
+                lockBtn.className = 'btn btn-outline-secondary btn-sm';
+            }
+
+            /* 系统信息 */
+            if (info.system_info !== undefined && info.system_info) {
+                renderSystemInfo(info.system_info);
+            } else {
+                document.getElementById('detailSystemInfo').innerHTML = '<p class="text-muted small">暂无系统信息（节点可能离线或无凭证）</p>';
+            }
+        })
+        .catch(function () {
+            document.getElementById('detailHostname').textContent = '加载失败';
+        });
+    }
+
+    function refreshSystemInfo() {
+        if (!currentDetailNodeId) return;
+        document.getElementById('detailSystemInfo').innerHTML =
+            '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div><p class="mt-1 small">加载中...</p></div>';
+        var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        fetch('{% url "nodes:system-info" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ node_id: parseInt(currentDetailNodeId) })
+        })
+        .then(function (resp) { return resp.json(); })
+        .then(function (result) {
+            if (result.success && result.system_info) {
+                renderSystemInfo(result.system_info);
+            } else {
+                document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">' + (result.message || '获取失败') + '</p>';
+            }
+        })
+        .catch(function () {
+            document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">网络错误</p>';
+        });
+    }
+
+    function detectNginxVersion() {
+        if (!currentDetailNodeId) return;
+        document.getElementById('detailNginxVersion').textContent = '检测中...';
+        var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        fetch('{% url "nodes:nginx-version" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ node_id: parseInt(currentDetailNodeId) })
+        })
+        .then(function (resp) { return resp.json(); })
+        .then(function (result) {
+            if (result.success) {
+                document.getElementById('detailNginxVersion').textContent = formatNginxVersion(result.version);
+            } else {
+                document.getElementById('detailNginxVersion').textContent = '获取失败';
+            }
+        })
+        .catch(function () {
+            document.getElementById('detailNginxVersion').textContent = '网络错误';
+        });
+    }
+
+    function renderSystemInfo(sysInfo) {
+        var container = document.getElementById('detailSystemInfo');
+        if (!sysInfo) {
+            container.innerHTML = '<p class="text-muted small">无信息</p>';
+            return;
+        }
+        var lines = sysInfo.split('\n').filter(function (l) { return l.trim(); });
+        var html = '<ul class="list-unstyled small mb-0">';
+        lines.forEach(function (line) {
+            html += '<li class="mb-1">' + escapeHtml(line) + '</li>';
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+    }
+
+    function escapeHtml(text) {
+        var d = document.createElement('div');
+        d.textContent = text;
+        return d.innerHTML;
     }
 </script>
 {% endblock %}

@@ -1,0 +1,8 @@
+{# 状态徽标子模板 #}
+{% if status == 'online' %}
+<span class="badge-status-online"><i class="bi bi-check-circle-fill"></i> 在线</span>
+{% elif status == 'offline' %}
+<span class="badge-status-offline"><i class="bi bi-x-circle-fill"></i> 离线</span>
+{% else %}
+<span class="badge-status-unknown"><i class="bi bi-question-circle-fill"></i> 未知</span>
+{% endif %}

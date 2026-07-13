@@ -260,9 +260,16 @@ class NodeListView(
     permission_action = "read"
 
     def get_queryset(self):
-        queryset = super().get_queryset().prefetch_related("groups")
+        """根据搜索、节点组、环境、状态参数筛选节点"""
+        queryset = (
+            super().get_queryset()
+            .select_related("credential")
+            .prefetch_related("groups")
+        )
         search = self.request.GET.get("search", "").strip()
         group_search = self.request.GET.get("group_search", "").strip()
+        env_filter = self.request.GET.get("environment", "").strip()
+        status_filter = self.request.GET.get("status", "").strip()
 
         if search:
             queryset = queryset.filter(
@@ -276,7 +283,6 @@ class NodeListView(
                 if name.strip()
             ]
             if tags:
-                # Strict AND between tags; each tag can still match hostname/IP/group name.
                 for tag in tags:
                     queryset = queryset.filter(
                         Q(groups__name__icontains=tag)
@@ -285,12 +291,23 @@ class NodeListView(
                     )
                 queryset = queryset.distinct()
 
+        if env_filter:
+            queryset = queryset.filter(environment=env_filter)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
         return queryset
 
     def get_context_data(self, **kwargs):
+        """添加搜索条件、节点组、环境选项到模板上下文"""
         context = super().get_context_data(**kwargs)
         context["search"] = self.request.GET.get("search", "")
         context["group_search"] = self.request.GET.get("group_search", "")
+        context["env_filter"] = self.request.GET.get("environment", "")
+        context["status_filter"] = self.request.GET.get("status", "")
+        context["env_choices"] = dict(Node.ENV_CHOICES)
+        context["status_choices"] = dict(Node.STATUS_CHOICES)
+        context["node_groups_list"] = NodeGroup.objects.all().order_by("name")
         context["node_groups"] = {
             node.id: list(node.groups.all()) for node in context["nodes"]
         }
@@ -987,12 +1004,16 @@ def get_node_detail(request):
                 "nginx_version": node.nginx_version or "未获取",
                 "nginx_path": node.nginx_path or "默认",
                 "status": node.get_status_display(),
+                "is_locked": node.is_locked,
                 "description": node.description or "无描述",
                 "credential_name": credential.name if credential else "未配置",
                 "credential_username": credential.username if credential else "-",
                 "credential_auth_type": (
                     credential.get_auth_type_display() if credential else "-"
                 ),
+                "groups": ", ".join(
+                    g.name for g in node.groups.all()
+                ) or "-",
                 "created_by": node.created_by.username,
                 "created_at": node.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                 "updated_at": node.updated_at.strftime("%Y-%m-%d %H:%M:%S"),

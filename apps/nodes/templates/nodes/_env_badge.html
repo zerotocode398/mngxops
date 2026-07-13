@@ -1,0 +1,10 @@
+{# 环境徽标子模板 #}
+{% if env == 'prod' %}
+<span class="badge-env-prod">生产</span>
+{% elif env == 'test' %}
+<span class="badge-env-test">测试</span>
+{% elif env == 'dev' %}
+<span class="badge-env-dev">开发</span>
+{% else %}
+<span class="badge bg-secondary">-</span>
+{% endif %}

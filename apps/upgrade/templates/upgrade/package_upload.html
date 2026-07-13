@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}上传源码包 - Nginx 编译升级{% endblock %}
+{% block page_title %}<i class="bi bi-upload"></i> 上传 Nginx 源码包{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <a href="{% url 'upgrade:package_list' %}" class="btn btn-sm btn-outline-secondary mb-3">
+            <i class="bi bi-arrow-left"></i> 返回列表
+        </a>
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">📤 上传 Nginx 源码包</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data" id="uploadForm">
+                    {% csrf_token %}
+
+                    <!-- 拖拽上传区域 -->
+                    <div class="upload-dropzone mb-4" id="dropZone"
+                         style="border: 2px dashed #667eea; border-radius: 12px; padding: 40px; text-align: center; background: #f0f3ff; transition: all 0.3s; cursor: pointer;">
+                        <i class="bi bi-cloud-upload" style="font-size: 3rem; color: #667eea;"></i>
+                        <p class="mt-2 mb-1 fw-bold">点击或拖拽文件到此处上传</p>
+                        <p class="text-muted small mb-0">支持 .tar.gz / .tgz 格式，最大 500MB</p>
+                        <input type="file" name="package_file" id="id_package_file"
+                               accept=".tar.gz,.tgz" style="display: none;">
+                    </div>
+                    {% if form.package_file.errors %}
+                    <div class="alert alert-danger">{{ form.package_file.errors|join:", " }}</div>
+                    {% endif %}
+
+                    <div id="fileInfo" class="alert alert-info d-none mb-3">
+                        <i class="bi bi-file-earmark-zip"></i>
+                        已选择: <span id="fileName"></span>
+                    </div>
+
+                    <!-- 表单字段 -->
+                    <div class="mb-3">
+                        <label class="form-label">包名称 *</label>
+                        <input type="text" name="name" class="form-control"
+                               id="id_name" placeholder="如：官方标准包 1.26.1" required>
+                        {% if form.name.errors %}
+                        <div class="text-danger">{{ form.name.errors|join:", " }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">版本号 *</label>
+                        <input type="text" name="version" class="form-control"
+                               id="id_version" placeholder="如：1.26.1（自动从文件名提取）" required>
+                        <small class="text-muted">留空将从文件名自动提取，如 nginx-1.26.1.tar.gz → 1.26.1</small>
+                        {% if form.version.errors %}
+                        <div class="text-danger">{{ form.version.errors|join:", " }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">描述</label>
+                        <textarea name="description" class="form-control" rows="3"
+                                  id="id_description" placeholder="如：从 nginx.org 下载的官方稳定版"></textarea>
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" name="is_official" class="form-check-input" id="id_is_official">
+                        <label class="form-check-label" for="id_is_official">标记为官方包（非定制版本）</label>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" id="btnSubmit"
+                                onclick="return checkBeforeSubmit();">
+                            <i class="bi bi-upload"></i> 📤 上传并校验
+                        </button>
+                        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary">❌ 取消</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('id_package_file');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const versionInput = document.getElementById('id_version');
+    const nameInput = document.getElementById('id_name');
+
+    // 点击上传区域选择文件
+    dropZone.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    // 拖拽事件
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dropZone.style.background = '#e8ecff';
+        dropZone.style.borderColor = '#4a5fd7';
+    });
+
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dropZone.style.background = '#f0f3ff';
+        dropZone.style.borderColor = '#667eea';
+    });
+
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropZone.style.background = '#f0f3ff';
+        dropZone.style.borderColor = '#667eea';
+
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            updateFileInfo(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', function() {
+        if (fileInput.files.length) {
+            updateFileInfo(fileInput.files[0]);
+        }
+    });
+
+    function updateFileInfo(file) {
+        if (!file.name.endsWith('.tar.gz') && !file.name.endsWith('.tgz')) {
+            alert('仅支持 .tar.gz / .tgz 格式的文件');
+            fileInput.value = '';
+            fileInfo.classList.add('d-none');
+            return;
+        }
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        if (file.size > 500 * 1024 * 1024) {
+            alert('文件超过 500MB 限制');
+            fileInput.value = '';
+            fileInfo.classList.add('d-none');
+            return;
+        }
+        fileName.textContent = file.name + ' (' + sizeMB + ' MB)';
+        fileInfo.classList.remove('d-none');
+
+        // 自动提取版本号
+        const match = file.name.match(/nginx-(\d+\.\d+\.\d+)/);
+        if (match && !versionInput.value) {
+            versionInput.value = match[1];
+        }
+        // 自动设置包名称
+        if (!nameInput.value) {
+            nameInput.value = 'Nginx ' + (versionInput.value || '源码包');
+        }
+    }
+})();
+
+function checkBeforeSubmit() {
+    const fileInput = document.getElementById('id_package_file');
+    if (!fileInput.files.length) {
+        alert('请选择源码包文件');
+        return false;
+    }
+    return true;
+}
+</script>
+{% endblock %}

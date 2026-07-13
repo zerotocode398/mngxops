@@ -16,7 +16,7 @@ class CredentialForm(forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "username": forms.TextInput(attrs={"class": "form-control"}),
-            "auth_type": forms.Select(attrs={"class": "form-select"}),
+            "auth_type": forms.RadioSelect(attrs={"class": "form-check-input"}),
             "password": forms.PasswordInput(
                 attrs={"class": "form-control", "placeholder": "请输入密码"}
             ),
@@ -48,6 +48,7 @@ class CredentialForm(forms.ModelForm):
             self.fields["private_key"].widget.attrs["placeholder"] = "留空则不修改私钥"
 
     def clean(self):
+        """校验认证方式与对应字段的必填逻辑，并验证私钥格式"""
         cleaned_data = super().clean()
         auth_type = cleaned_data.get("auth_type")
         password = cleaned_data.get("password")
@@ -61,7 +62,30 @@ class CredentialForm(forms.ModelForm):
 
         if auth_type == "password" and not cleaned_data.get("password"):
             raise forms.ValidationError("密码认证方式必须填写密码")
-        if auth_type == "key" and not cleaned_data.get("private_key"):
-            raise forms.ValidationError("密钥认证方式必须填写私钥")
+        if auth_type == "key":
+            key_value = cleaned_data.get("private_key", "")
+            if not key_value:
+                raise forms.ValidationError("密钥认证方式必须填写私钥")
+            if not self._is_valid_private_key(key_value):
+                raise forms.ValidationError("私钥格式无效，请提供合法的 RSA/DSA/ECDSA/Ed25519 格式私钥")
 
         return cleaned_data
+
+    def _is_valid_private_key(self, key_str):
+        """校验私钥是否为合法格式（RSA/DSA/ECDSA/Ed25519）"""
+        from io import StringIO
+        import paramiko
+
+        key_types = [
+            paramiko.RSAKey,
+            paramiko.DSSKey,
+            paramiko.ECDSAKey,
+            paramiko.Ed25519Key,
+        ]
+        for key_type in key_types:
+            try:
+                key_type.from_private_key(StringIO(key_str))
+                return True
+            except Exception:
+                continue
+        return False

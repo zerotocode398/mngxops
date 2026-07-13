@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}升级日志 - {{ task.node.hostname }}{% endblock %}
+{% block page_title %}<i class="bi bi-file-text"></i> 升级任务详情 - {{ task.node.hostname }}{% endblock %}
+
+{% block content %}
+<style>
+    .nginx-v-output {
+        background: #1a1a2e;
+        color: #00ff88;
+        font-family: 'Cascadia Code', 'Courier New', monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 14px 18px;
+        border-radius: 8px;
+        max-height: 600px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+</style>
+
+<div class="mb-3">
+    <a href="{% url 'upgrade:history' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回历史
+    </a>
+    <a href="{% url 'upgrade:center' %}" class="btn btn-sm btn-outline-primary ms-2">
+        <i class="bi bi-rocket-takeoff"></i> 升级中心
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">📋 任务信息</h6>
+                <span class="badge
+                    {% if task.status == 'success' %}bg-success
+                    {% elif task.status == 'failed' %}bg-danger
+                    {% elif task.status == 'rollback' %}bg-warning text-dark
+                    {% elif task.status == 'cancelled' %}bg-secondary
+                    {% else %}bg-info{% endif %}">
+                    {{ task.get_status_display }}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row mb-2">
+                    <div class="col-6"><strong>目标节点:</strong> {{ task.node.hostname }} ({{ task.node.ip }})</div>
+                    <div class="col-6"><strong>操作人:</strong> {{ task.operator.username }}</div>
+                    <div class="col-6"><strong>当前版本:</strong> {{ task.current_version|default:"未知" }}</div>
+                    <div class="col-6"><strong>目标版本:</strong> nginx/{{ task.target_version }}</div>
+                    <div class="col-6"><strong>升级模式:</strong> {{ task.get_upgrade_mode_display }}</div>
+                    <div class="col-6"><strong>--prefix:</strong> {{ task.target_prefix|default:task.current_configure_path }}</div>
+                    <div class="col-6"><strong>远程工作目录:</strong> {{ task.remote_work_dir }}</div>
+                    <div class="col-6"><strong>并行编译 (-j):</strong> {{ task.make_jobs }}</div>
+                    <div class="col-6"><strong>源码包:</strong> {{ task.source_package.name|default:"-" }}</div>
+                    <div class="col-6"><strong>备份路径:</strong> <code>{{ task.old_binary_backup|default:"-" }}</code></div>
+                    <div class="col-6"><strong>创建时间:</strong> {{ task.created_at|date:"Y-m-d H:i:s" }}</div>
+                    <div class="col-6"><strong>完成时间:</strong> {{ task.finished_at|date:"Y-m-d H:i:s"|default:"-" }}</div>
+                </div>
+
+                {% if task.error_message %}
+                <div class="alert alert-danger mb-0">
+                    <strong>错误信息:</strong><br>
+                    {{ task.error_message|linebreaks }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">⚙️ 编译参数</h6>
+            </div>
+            <div class="card-body">
+                {% if task.current_configure_opts %}
+                <p class="fw-bold text-primary small mb-1">当前编译参数 (nginx -V):</p>
+                <div class="nginx-v-output mb-3" style="max-height: 200px;">
+                    {{ task.current_configure_opts }}
+                </div>
+                {% endif %}
+
+                {% if task.target_configure_opts %}
+                <p class="fw-bold text-success small mb-1">调整后的编译参数:</p>
+                <div class="nginx-v-output" style="background: #16213e; color: #e9ecef; max-height: 200px;">
+                    ./configure {{ task.target_configure_opts }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">📝 完整执行日志</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="nginx-v-output" style="background: #0d1117; color: #c9d1d9; border-radius: 0; max-height: 500px; font-size: 11px;">
+                    {{ task.log_output|default:"暂无日志" }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0">📊 进度信息</h6>
+            </div>
+            <div class="card-body">
+                <div class="text-center">
+                    <h2 class="mb-0 {% if task.status == 'success' %}text-success{% elif task.status == 'failed' %}text-danger{% elif task.status == 'rollback' %}text-warning{% else %}text-primary{% endif %}">
+                        {{ task.progress }}%
+                    </h2>
+                    <div class="progress mt-2 mb-3" style="height: 10px;">
+                        <div class="progress-bar {% if task.status == 'success' %}bg-success{% elif task.status == 'failed' %}bg-danger{% elif task.status == 'rollback' %}bg-warning{% endif %}"
+                             style="width: {{ task.progress }}%"></div>
+                    </div>
+                    <p class="text-muted small">{{ task.current_step|default:"-" }}</p>
+                </div>
+            </div>
+        </div>
+
+        {% if task.status == 'success' or task.status == 'failed' %}
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">🔧 操作</h6>
+            </div>
+            <div class="card-body">
+                {% if task.status == 'success' and user|has_perm_code:"upgrade.update" %}
+                <form method="post" action="{% url 'upgrade:task_rollback' task.id %}"
+                      onsubmit="return confirm('确定回滚 Nginx 到旧版本？回滚将恢复备份的二进制文件。');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning w-100">
+                        <i class="bi bi-arrow-counterclockwise"></i> ↩ 回滚到旧版本
+                    </button>
+                </form>
+                <p class="text-muted small mt-2">
+                    <strong>备份路径:</strong> <code>{{ task.old_binary_backup|default:"无备份" }}</code>
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

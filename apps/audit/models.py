@@ -12,35 +12,14 @@ class AuditLog(models.Model):
 
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
     user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        verbose_name="操作用户",
+        User, on_delete=models.CASCADE, verbose_name="操作用户",
     )
-    module = models.CharField(
-        max_length=100,
-        verbose_name="模块",
-    )
-    action = models.CharField(
-        max_length=255,
-        verbose_name="动作",
-    )
-    ip = models.CharField(
-        max_length=50,
-        verbose_name="IP地址",
-    )
-    result = models.CharField(
-        max_length=20,
-        choices=RESULT_CHOICES,
-        verbose_name="结果",
-    )
-    detail = models.TextField(
-        blank=True,
-        verbose_name="详情",
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="创建时间",
-    )
+    module = models.CharField(max_length=100, verbose_name="模块")
+    action = models.CharField(max_length=255, verbose_name="动作")
+    ip = models.CharField(max_length=50, verbose_name="IP地址")
+    result = models.CharField(max_length=20, choices=RESULT_CHOICES, verbose_name="结果")
+    detail = models.TextField(blank=True, verbose_name="详情")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
 
     class Meta:
         verbose_name = "操作日志"
@@ -57,28 +36,25 @@ class LoginLog(models.Model):
         ("failed", "失败"),
     )
 
+    FAIL_REASON_CHOICES = (
+        ("", "未知"),
+        ("user_not_found", "用户不存在"),
+        ("wrong_password", "密码错误"),
+        ("user_locked", "用户已锁定"),
+        ("user_inactive", "用户未激活"),
+    )
+
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
-    username = models.CharField(
-        max_length=150,
-        verbose_name="用户名",
+    username = models.CharField(max_length=150, verbose_name="用户名")
+    ip = models.CharField(max_length=50, verbose_name="IP地址")
+    user_agent = models.TextField(blank=True, verbose_name="浏览器信息")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, verbose_name="结果")
+    fail_reason = models.CharField(
+        max_length=50, blank=True, choices=FAIL_REASON_CHOICES,
+        verbose_name="失败原因",
+        help_text="区分：用户不存在/密码错误/用户已锁定/用户未激活",
     )
-    ip = models.CharField(
-        max_length=50,
-        verbose_name="IP地址",
-    )
-    user_agent = models.TextField(
-        blank=True,
-        verbose_name="浏览器信息",
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        verbose_name="结果",
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="创建时间",
-    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
 
     class Meta:
         verbose_name = "登录日志"

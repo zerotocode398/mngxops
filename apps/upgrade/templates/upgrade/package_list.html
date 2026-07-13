@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}源码包管理 - Nginx 编译升级{% endblock %}
+{% block page_title %}<i class="bi bi-archive"></i> Nginx 源码包管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">📦 源码包列表</h5>
+    {% if user|has_perm_code:"upgrade.create" %}
+    <a href="{% url 'upgrade:package_upload' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg"></i> 上传源码包
+    </a>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if packages %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>包名称</th>
+                        <th>版本</th>
+                        <th>文件大小</th>
+                        <th>MD5（前8位）</th>
+                        <th>上传时间</th>
+                        <th>上传人</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for pkg in packages %}
+                    <tr>
+                        <td>
+                            {{ pkg.name }}
+                            {% if pkg.is_official %}<span class="badge bg-success ms-1">官方</span>{% endif %}
+                        </td>
+                        <td><code>{{ pkg.version }}</code></td>
+                        <td>{{ pkg.file_size|filesizeformat }}</td>
+                        <td><code>{{ pkg.file_md5|slice:":8" }}...</code></td>
+                        <td>{{ pkg.created_at|date:"m-d H:i" }}</td>
+                        <td>{{ pkg.uploaded_by.username }}</td>
+                        <td>
+                            <a href="{% url 'upgrade:package_download' pkg.id %}" class="btn btn-sm btn-outline-secondary" title="下载">
+                                <i class="bi bi-download"></i>
+                            </a>
+                            {% if user|has_perm_code:"upgrade.delete" %}
+                            <form method="post" action="{% url 'upgrade:package_delete' pkg.id %}" style="display:inline"
+                                  onsubmit="return confirm('确定删除此源码包？');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+            <p class="mt-3">暂无源码包，请先上传 Nginx 源码包后再进行升级操作。</p>
+            {% if user|has_perm_code:"upgrade.create" %}
+            <a href="{% url 'upgrade:package_upload' %}" class="btn btn-primary mt-2">
+                <i class="bi bi-upload"></i> 上传源码包
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if is_paginated %}
+<div class="d-flex justify-content-between align-items-center mt-3">
+    <form method="get" class="d-flex align-items-center gap-2">
+        <label class="form-label mb-0 small">每页</label>
+        <select name="per_page" class="form-select form-select-sm w-auto">
+            {% for opt in per_page_options %}
+            <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+        <span class="small text-muted">条</span>
+    </form>
+    <nav>
+        <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}">&laquo;</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}">‹</a></li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页，共 {{ page_obj.paginator.count }} 条</span></li>
+            {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}">›</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}">&raquo;</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+{% endif %}
+{% endblock %}

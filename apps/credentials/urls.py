@@ -24,4 +24,5 @@ urlpatterns = [
         views.CredentialEnableProgressView.as_view(),
         name="enable_progress",
     ),
+    path("api/list/", views.CredentialApiListView.as_view(), name="api_list"),
 ]

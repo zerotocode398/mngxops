@@ -78,9 +78,12 @@
                             <form method="post">
                                 {% csrf_token %}
 
+                                <!-- 基本配置 -->
+                                <h6 class="text-muted mb-3"><i class="bi bi-sliders"></i> 基本配置</h6>
+
                                 <div class="mb-3">
                                     <label for="{{ form.hostname.id_for_label }}" class="form-label">
-                                        <i class="bi bi-hdd-network"></i> {{ form.hostname.label }}
+                                        <i class="bi bi-hdd-network"></i> {{ form.hostname.label }} *
                                     </label>
                                     {{ form.hostname }}
                                     {% if form.hostname.errors %}
@@ -94,7 +97,7 @@
 
                                 <div class="mb-3">
                                     <label for="{{ form.ip.id_for_label }}" class="form-label">
-                                        <i class="bi bi-globe"></i> {{ form.ip.label }}
+                                        <i class="bi bi-globe"></i> {{ form.ip.label }} *
                                     </label>
                                     {{ form.ip }}
                                     {% if form.ip.errors %}
@@ -120,8 +123,30 @@
                                     {% endif %}
                                 </div>
 
+                                <!-- 环境 Radio -->
                                 <div class="mb-3">
-                                    <label for="{{ form.groups.id_for_label }}" class="form-label">
+                                    <label class="form-label"><i class="bi bi-layers"></i> 环境 *</label>
+                                    <div class="d-flex gap-3">
+                                        {% for choice in form.environment %}
+                                        <div class="form-check">
+                                            {{ choice.tag }}
+                                            <label class="form-check-label" for="{{ choice.id_for_label }}">
+                                                {{ choice.choice_label }}
+                                            </label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% if form.environment.errors %}
+                                    <div class="text-danger mt-1">
+                                        {% for error in form.environment.errors %}
+                                        <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">
                                         <i class="bi bi-collection"></i> {{ form.groups.label }}
                                     </label>
                                     <div class="multi-select-container" id="multiSelectGroups">
@@ -155,6 +180,9 @@
                                     <small class="text-muted">可勾选多个节点组，最多 3 个</small>
                                 </div>
 
+                                <!-- SSH配置 -->
+                                <h6 class="text-muted mb-3 mt-4"><i class="bi bi-shield-lock"></i> SSH配置</h6>
+
                                 <div class="mb-3">
                                     <label for="{{ form.credential.id_for_label }}" class="form-label">
                                         <i class="bi bi-key"></i> {{ form.credential.label }}
@@ -167,21 +195,7 @@
                                         {% endfor %}
                                     </div>
                                     {% endif %}
-                                    <small class="text-muted">可选，不设置则无法执行连接测试等远程操作</small>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="{{ form.environment.id_for_label }}" class="form-label">
-                                        <i class="bi bi-layers"></i> {{ form.environment.label }}
-                                    </label>
-                                    {{ form.environment }}
-                                    {% if form.environment.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.environment.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
-                                    {% endif %}
+                                    <small class="text-muted">可选，仅显示已启用的凭证。不设置则无法执行连接测试等远程操作</small>
                                 </div>
 
                                 <div class="mb-3">
@@ -196,9 +210,11 @@
                                         {% endfor %}
                                     </div>
                                     {% endif %}
-                                    <small class="text-muted">如果nginx是自定义编译的，请填写完整路径，例如:
-                                        /usr/local/nginx/sbin/nginx</small>
+                                    <small class="text-muted">如果nginx是自定义编译的，请填写完整路径，例如: /usr/local/nginx/sbin/nginx</small>
                                 </div>
+
+                                <!-- 其他 -->
+                                <h6 class="text-muted mb-3 mt-4"><i class="bi bi-three-dots"></i> 其他</h6>
 
                                 <div class="mb-3">
                                     <label for="{{ form.description.id_for_label }}" class="form-label">
@@ -230,4 +246,36 @@
         </div>
     </div>
 </div>
+
+<!-- 测试连接弹窗 -->
+<div class="modal fade" id="customModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="customModalTitle">提示</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="loadingSpinner" class="text-center" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2">处理中，请稍候...</p>
+                </div>
+                <div id="modalContent"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="modalConfirmBtn" style="display: none;">确认</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* 环境 Radio 布局 */
+    .d-flex.gap-3 .form-check {
+        margin-right: 1.5rem;
+    }
+</style>
 {% endblock %}
