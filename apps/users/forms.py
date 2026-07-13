@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
-from .models import UserProfile, UserGroup, PermissionItem
+from .models import UserProfile, UserGroup, UserTeam, PermissionItem
 
 
 class UserGroupForm(forms.ModelForm):
@@ -93,6 +93,29 @@ class UserCreateForm(UserCreationForm):
                 self.cleaned_data.get("direct_permissions", [])
             )
         return user
+
+
+class UserTeamForm(forms.ModelForm):
+    roles = forms.ModelMultipleChoiceField(
+        queryset=UserGroup.objects.all(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple(),
+        label="关联角色",
+        help_text="用户组成员若无个人角色配置，将使用组关联的角色权限",
+    )
+
+    class Meta:
+        model = UserTeam
+        fields = ["name", "description", "roles"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+        }
+        labels = {
+            "name": "组名",
+            "description": "描述",
+            "roles": "关联角色",
+        }
 
 
 class UserUpdateForm(forms.ModelForm):
