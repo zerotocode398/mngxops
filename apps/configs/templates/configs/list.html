@@ -401,95 +401,7 @@
     var pendingForm = null;
     var updateModal = new bootstrap.Modal(document.getElementById('updateConfirmModal'));
 
-    function initConfigTagInput(wrapperId, fieldId, hiddenId, formId) {
-        var wrapper = document.getElementById(wrapperId);
-        var field = document.getElementById(fieldId);
-        var hidden = document.getElementById(hiddenId);
-        var form = document.getElementById(formId);
-
-        if (!wrapper || !field || !hidden || !form) {
-            return;
-        }
-
-        function focusFieldWithCaret() {
-            field.focus();
-            var len = field.value.length;
-            if (typeof field.setSelectionRange === 'function') {
-                field.setSelectionRange(len, len);
-            }
-        }
-
-        function updateHidden() {
-            var badges = wrapper.querySelectorAll('.tag-badge');
-            var values = [];
-            badges.forEach(function (b) {
-                values.push(b.getAttribute('data-value'));
-            });
-            hidden.value = values.join(',');
-        }
-
-        function createBadge(text) {
-            var badge = document.createElement('span');
-            badge.className = 'tag-badge';
-            badge.setAttribute('data-value', text);
-            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
-            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
-                e.stopPropagation();
-                badge.remove();
-                updateHidden();
-                setTimeout(focusFieldWithCaret, 0);
-                form.submit();
-            });
-            wrapper.insertBefore(badge, field);
-            updateHidden();
-        }
-
-        var initialVal = hidden.value.trim();
-        if (initialVal) {
-            initialVal.split(',').map(function (t) { return t.trim(); }).filter(Boolean)
-                .forEach(function (tag) { createBadge(tag); });
-        }
-
-        field.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                var text = field.value.trim();
-                if (text) {
-                    createBadge(text);
-                    field.value = '';
-                    updateHidden();
-                    setTimeout(focusFieldWithCaret, 0);
-                    form.submit();
-                }
-            }
-            if (e.key === 'Backspace' && field.value === '') {
-                var badges = wrapper.querySelectorAll('.tag-badge');
-                if (badges.length > 0) {
-                    badges[badges.length - 1].remove();
-                    updateHidden();
-                    setTimeout(focusFieldWithCaret, 0);
-                    form.submit();
-                }
-            }
-        });
-
-        field.addEventListener('blur', function () {
-            var text = field.value.trim();
-            if (text) {
-                createBadge(text);
-                field.value = '';
-                updateHidden();
-            }
-        });
-
-        wrapper.addEventListener('click', function (e) {
-            if (e.target === wrapper) {
-                focusFieldWithCaret();
-            }
-        });
-
-        focusFieldWithCaret();
-    }
+    initTagSearch('#configCombinedTagWrapper', '#configSearchHidden', '#configSearchForm');
 
     document.querySelectorAll('.update-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -572,8 +484,6 @@
             checkbox.checked = selectAll.checked;
         });
     }
-
-    initConfigTagInput('configCombinedTagWrapper', 'configCombinedSearchField', 'configSearchHidden', 'configSearchForm');
 
     (function() {
         const currentUrl = window.location.href;

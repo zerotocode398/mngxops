@@ -185,6 +185,130 @@
             color: #6c757d;
             margin-top: 4px;
         }
+
+        /* ========== 统一标签搜索组件 ========== */
+        .tag-input-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            min-height: 38px;
+            cursor: text;
+            overflow-y: auto;
+            background: #fff;
+        }
+        .tag-input-wrapper .tag-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #667eea;
+            color: #fff;
+            border: 1px solid #5a6fd6;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 0.82rem;
+            white-space: nowrap;
+            animation: tagFadeIn 0.2s ease;
+        }
+        @keyframes tagFadeIn {
+            from { opacity: 0; transform: scale(0.85); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .tag-input-wrapper .tag-badge .tag-remove {
+            cursor: pointer;
+            opacity: 0.7;
+            font-size: 1.1rem;
+            line-height: 1;
+            margin-left: 2px;
+            transition: opacity 0.15s;
+        }
+        .tag-input-wrapper .tag-badge .tag-remove:hover {
+            opacity: 1;
+            color: #ffc107;
+        }
+        .tag-input-wrapper .tag-input-field {
+            border: none;
+            outline: none;
+            flex: 1;
+            min-width: 120px;
+            padding: 2px 4px;
+            background: transparent;
+            font-size: 0.9rem;
+        }
+        .tag-input-wrapper .tag-input-field::placeholder {
+            color: #adb5bd;
+        }
+
+        /* ========== Toast 消息提示 ========== */
+        .toast-container-global {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10560;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .toast-container-global .toast-item {
+            pointer-events: auto;
+            min-width: 300px;
+            max-width: 450px;
+            border-radius: 10px;
+            padding: 14px 20px;
+            color: #fff;
+            font-size: 0.9rem;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            animation: toastSlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        .toast-container-global .toast-item.toast-success { background: linear-gradient(135deg, #28a745, #20c997); }
+        .toast-container-global .toast-item.toast-danger { background: linear-gradient(135deg, #dc3545, #e4606d); }
+        .toast-container-global .toast-item.toast-warning { background: linear-gradient(135deg, #ffc107, #fd7e14); color: #212529; }
+        .toast-container-global .toast-item.toast-info { background: linear-gradient(135deg, #17a2b8, #0dcaf0); }
+        .toast-container-global .toast-item.toast-removing {
+            animation: toastSlideOut 0.3s ease forwards;
+        }
+        @keyframes toastSlideIn {
+            from { opacity: 0; transform: translateX(100%); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes toastSlideOut {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(100%); }
+        }
+        .toast-container-global .toast-item .toast-close {
+            position: absolute;
+            top: 6px;
+            right: 10px;
+            cursor: pointer;
+            opacity: 0.6;
+            font-size: 1rem;
+            transition: opacity 0.15s;
+            background: none;
+            border: none;
+            color: inherit;
+            padding: 0;
+            line-height: 1;
+        }
+        .toast-container-global .toast-item .toast-close:hover { opacity: 1; }
+        .toast-container-global .toast-item .toast-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: rgba(255,255,255,0.3);
+            animation: toastProgress 3s linear forwards;
+        }
+        @keyframes toastProgress {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
     </style>
 </head>
 
@@ -369,26 +493,208 @@
         </div>
     </div>
 
+    <!-- Toast 消息容器 -->
+    <div class="toast-container-global" id="toastContainer"></div>
+
+    <!-- 全局确认弹窗（替代浏览器 confirm） -->
+    <div class="modal fade" id="mngxopsConfirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="mngxopsConfirmTitle">确认操作</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="mngxopsConfirmBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="mngxopsConfirmBtn">确认</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 全局提示弹窗（仅展示信息） -->
+    <div class="modal fade" id="mngxopsAlertModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="mngxopsAlertTitle">提示</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="mngxopsAlertBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {% csrf_token %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        /**
-         * 侧边栏子菜单折叠/展开交互
-         */
+        /* ========== 全局 Toast 消息 ========== */
+        (function() {
+            var container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            window.showToast = function(message, type) {
+                type = type || 'info';
+                var el = document.createElement('div');
+                el.className = 'toast-item toast-' + type;
+                var iconMap = { success: 'check-circle-fill', danger: 'x-circle-fill', warning: 'exclamation-triangle-fill', info: 'info-circle-fill' };
+                var icon = iconMap[type] || 'info-circle-fill';
+                el.innerHTML = '<i class="bi bi-' + icon + ' flex-shrink-0" style="font-size:1.2rem;"></i>' +
+                    '<span style="flex:1;">' + message + '</span>' +
+                    '<button class="toast-close" onclick="this.parentElement.remove()">&times;</button>' +
+                    '<div class="toast-progress"></div>';
+                container.appendChild(el);
+
+                setTimeout(function() {
+                    if (el.parentElement) {
+                        el.classList.add('toast-removing');
+                        setTimeout(function() {
+                            if (el.parentElement) el.remove();
+                        }, 300);
+                    }
+                }, 3000);
+            };
+        })();
+
+        /* ========== 全局确认弹窗（替代浏览器 confirm） ========== */
+        (function() {
+            var confirmModal = new bootstrap.Modal(document.getElementById('mngxopsConfirmModal'));
+            var alertModal = new bootstrap.Modal(document.getElementById('mngxopsAlertModal'));
+            var confirmCallback = null;
+
+            document.getElementById('mngxopsConfirmBtn').addEventListener('click', function() {
+                if (confirmCallback) { confirmCallback(); confirmCallback = null; }
+                confirmModal.hide();
+            });
+
+            document.getElementById('mngxopsConfirmModal').addEventListener('hidden.bs.modal', function() {
+                confirmCallback = null;
+                document.getElementById('mngxopsConfirmBtn').disabled = false;
+                document.getElementById('mngxopsConfirmBtn').innerHTML = '确认';
+            });
+
+            window.showConfirm = function(title, message, onConfirm) {
+                document.getElementById('mngxopsConfirmTitle').textContent = title || '确认操作';
+                document.getElementById('mngxopsConfirmBody').textContent = message || '';
+                confirmCallback = onConfirm;
+                confirmModal.show();
+            };
+
+            window.showAlert = function(title, message) {
+                document.getElementById('mngxopsAlertTitle').textContent = title || '提示';
+                document.getElementById('mngxopsAlertBody').innerHTML = message || '';
+                alertModal.show();
+            };
+        })();
+
+        /* ========== 统一标签搜索组件 ========== */
+        window.initTagSearch = function(wrapperSelector, hiddenSelector, formSelector) {
+            var wrapper = typeof wrapperSelector === 'string' ? document.querySelector(wrapperSelector) : wrapperSelector;
+            var hidden = typeof hiddenSelector === 'string' ? document.querySelector(hiddenSelector) : hiddenSelector;
+            var form = typeof formSelector === 'string' ? document.querySelector(formSelector) : formSelector;
+
+            if (!wrapper || !hidden || !form) return;
+
+            var field = wrapper.querySelector('.tag-input-field');
+            if (!field) {
+                field = document.createElement('input');
+                field.type = 'text';
+                field.className = 'tag-input-field';
+                wrapper.appendChild(field);
+            }
+
+            function focusFieldWithCaret() {
+                field.focus();
+                var len = field.value.length;
+                if (typeof field.setSelectionRange === 'function') {
+                    field.setSelectionRange(len, len);
+                }
+            }
+
+            function updateHidden() {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                var values = [];
+                badges.forEach(function(b) { values.push(b.getAttribute('data-value')); });
+                hidden.value = values.join(',');
+            }
+
+            function createBadge(text) {
+                if (!text) return;
+                var escaped = text.replace(/"/g, '"');
+                var existing = wrapper.querySelector('.tag-badge[data-value="' + escaped + '"]');
+                if (existing) return;
+                var badge = document.createElement('span');
+                badge.className = 'tag-badge';
+                badge.setAttribute('data-value', text);
+                badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+                badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    badge.remove();
+                    updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
+                    form.submit();
+                });
+                wrapper.insertBefore(badge, field);
+                updateHidden();
+            }
+
+            var initialVal = hidden.value.trim();
+            if (initialVal) {
+                initialVal.split(',').map(function(t) { return t.trim(); }).filter(Boolean).forEach(function(tag) { createBadge(tag); });
+            }
+            field.value = '';
+
+            field.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    var text = field.value.trim();
+                    if (text) {
+                        createBadge(text);
+                        field.value = '';
+                    }
+                    updateHidden();
+                    setTimeout(focusFieldWithCaret, 0);
+                    form.submit();
+                }
+                if (e.key === 'Backspace' && field.value === '') {
+                    var badges = wrapper.querySelectorAll('.tag-badge');
+                    if (badges.length > 0) {
+                        badges[badges.length - 1].remove();
+                        updateHidden();
+                        setTimeout(focusFieldWithCaret, 0);
+                        form.submit();
+                    }
+                }
+            });
+
+            field.addEventListener('blur', function() {
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                    updateHidden();
+                }
+            });
+
+            wrapper.addEventListener('click', function(e) {
+                if (e.target === wrapper) { focusFieldWithCaret(); }
+            });
+
+            focusFieldWithCaret();
+        };
+
+        /* ========== 侧边栏 & 分页 ========== */
         document.addEventListener('DOMContentLoaded', function () {
-            // 获取当前页面路径，用于判断活跃菜单
-            const currentPath = window.location.pathname;
             const currentUrlName = '{{ request.resolver_match.url_name }}';
             const currentAppName = '{{ request.resolver_match.app_name }}';
 
-            // 收集所有可展开的菜单触发器
             const submenuTriggers = document.querySelectorAll('[data-bs-toggle="submenu"]');
 
-            /**
-             * 根据当前 URL 自动展开对应的父级菜单
-             */
             function autoExpandParentMenus() {
-                // 构建 URL 名前缀匹配规则：当前 URL 名以某前缀开头则展开对应菜单
                 const mapping = {
                     'nodes': 'submenu-nodes',
                     'nodes:list': 'submenu-nodes',
@@ -405,11 +711,8 @@
                     'audit:login_list': 'submenu-audit',
                     'upgrade': 'submenu-ops',
                 };
-
-                // 匹配逻辑：优先匹配完整 app_name:url_name，其次匹配 app_name 前缀
                 const fullKey = currentAppName + ':' + currentUrlName;
                 let targetSubmenu = mapping[fullKey] || mapping[currentAppName];
-
                 if (targetSubmenu) {
                     const submenu = document.getElementById(targetSubmenu);
                     const trigger = document.querySelector('[data-target="' + targetSubmenu + '"]');
@@ -421,52 +724,31 @@
                 }
             }
 
-            /**
-             * 高亮当前活跃的导航链接
-             */
             function highlightActiveLink() {
                 const allLinks = document.querySelectorAll('.sidebar .nav-link[data-nav]');
-                allLinks.forEach(function (link) {
-                    link.classList.remove('active');
-                });
-
-                // 先尝试精确匹配 data-nav="app_name:url_name"
+                allLinks.forEach(function (link) { link.classList.remove('active'); });
                 const exactKey = currentAppName + ':' + currentUrlName;
                 let matchedLink = document.querySelector('.sidebar .nav-link[data-nav="' + exactKey + '"]');
-
-                // 降级：匹配顶层 data-nav="app_name"
                 if (!matchedLink) {
                     matchedLink = document.querySelector('.sidebar .nav-link[data-nav="' + currentAppName + '"]');
                 }
-
                 if (matchedLink) {
                     matchedLink.classList.add('active');
-
-                    // 如果活跃项是子菜单项，也高亮其父级触发器
                     const parentSubmenu = matchedLink.closest('.submenu');
                     if (parentSubmenu) {
                         const trigger = document.querySelector('[data-target="' + parentSubmenu.id + '"]');
-                        if (trigger) {
-                            trigger.classList.add('active');
-                        }
+                        if (trigger) { trigger.classList.add('active'); }
                     }
                 }
             }
 
-            /**
-             * 为子菜单触发器绑定点击事件
-             */
             submenuTriggers.forEach(function (trigger) {
                 trigger.addEventListener('click', function (e) {
                     e.preventDefault();
                     const targetId = this.getAttribute('data-target');
                     const submenu = document.getElementById(targetId);
-
                     if (!submenu) return;
-
                     const isExpanded = submenu.classList.contains('show');
-
-                    // 切换展开/收起状态
                     if (isExpanded) {
                         submenu.classList.remove('show');
                         this.classList.remove('expanded');
@@ -479,15 +761,10 @@
                 });
             });
 
-            // 初始化：自动展开和高亮
             autoExpandParentMenus();
             highlightActiveLink();
-        });
 
-        /**
-         * 处理分页每页条数切换：重置页码并提交表单
-         */
-        document.addEventListener('DOMContentLoaded', function () {
+            // 分页每页条数切换
             document.querySelectorAll('select[name="per_page"]').forEach(function (el) {
                 el.addEventListener('change', function () {
                     const form = el.closest('form');
@@ -508,30 +785,18 @@
             });
         });
 
-        /**
-         * 从 sessionStorage 恢复配置列表的查询URL并跳转
-         */
         function goBackToConfigList(event) {
             event.preventDefault();
             const storedUrl = sessionStorage.getItem('configs_list_query');
-            if (storedUrl) {
-                window.location.href = storedUrl;
-            } else {
-                window.location.href = '{% url "configs:list" %}';
-            }
+            if (storedUrl) { window.location.href = storedUrl; }
+            else { window.location.href = '{% url "configs:list" %}'; }
         }
 
-        /**
-         * 从 sessionStorage 恢复发布历史列表的查询URL并跳转
-         */
         function goBackToReleaseHistory(event) {
             event.preventDefault();
             const storedUrl = sessionStorage.getItem('releases_list_query');
-            if (storedUrl) {
-                window.location.href = storedUrl;
-            } else {
-                window.location.href = '{% url "releases:history" %}';
-            }
+            if (storedUrl) { window.location.href = storedUrl; }
+            else { window.location.href = '{% url "releases:history" %}'; }
         }
     </script>
     {% block extra_js %}{% endblock %}

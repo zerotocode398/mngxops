@@ -95,6 +95,20 @@ class ReleaseExecutorMixin:
         else:
             kwargs["private_key"] = credential.get_private_key()
 
+        # SSH 连接预检
+        add_log("正在测试 SSH 连接...")
+        from utils.ssh import test_ssh_connection
+        conn_ok, conn_msg = test_ssh_connection(**kwargs)
+        if not conn_ok:
+            add_log(f"SSH 连接失败: {conn_msg}")
+            task.status = "failed"
+            task.result = "\n".join(log_lines)
+            task.finished_at = datetime.now()
+            task.save()
+            self._record_history(task, action, task.result)
+            return False, f"SSH 连接失败: {conn_msg}"
+        add_log("SSH 连接测试通过 ✓")
+
         version_label = f"v{task.publish_version}" if task.publish_version else "latest"
         add_log(f"开始发布: {config.name} {version_label} → {node.hostname}")
         add_log(f"目标路径: {remote_path}")

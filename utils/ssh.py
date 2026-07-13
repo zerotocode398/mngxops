@@ -1,6 +1,9 @@
 import paramiko
 from io import StringIO
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SSHClient:
@@ -64,14 +67,18 @@ class SSHClient:
             return False, "SSH连接未建立"
 
         try:
+            logger.info(f"[SSH] {self.host}:{self.port} $ {command}")
             stdin, stdout, stderr = self.client.exec_command(command)
             output = stdout.read().decode("utf-8")
             error = stderr.read().decode("utf-8")
 
             if error:
+                logger.warning(f"[SSH] {self.host}:{self.port} 命令错误: {error.strip()}")
                 return False, error
+            logger.debug(f"[SSH] {self.host}:{self.port} 输出: {output.strip()[:200]}")
             return True, output
         except Exception as e:
+            logger.error(f"[SSH] {self.host}:{self.port} 执行异常: {str(e)}")
             return False, str(e)
 
     def close(self):
