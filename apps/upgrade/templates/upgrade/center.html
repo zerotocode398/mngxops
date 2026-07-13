@@ -1,0 +1,591 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}升级中心 - Nginx 编译升级{% endblock %}
+{% block page_title %}<i class="bi bi-rocket-takeoff"></i> Nginx 升级中心{% endblock %}
+
+{% block content %}
+<!-- CSRF Token -->
+{% csrf_token %}
+
+<style>
+    .nginx-v-output {
+        background: #1a1a2e;
+        color: #00ff88;
+        font-family: 'Cascadia Code', 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        padding: 14px 18px;
+        border-radius: 8px;
+        max-height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    .nginx-v-output .param-highlight {
+        color: #ffd166;
+        background: rgba(255, 209, 102, 0.1);
+        padding: 1px 4px;
+        border-radius: 3px;
+    }
+    .config-diff-preview .param-kept { background: #f8f9fa; color: #495057; padding: 3px 8px; border-radius: 3px; font-size: 0.85rem; margin: 1px 0; display: inline-block; }
+    .config-diff-preview .param-added { background: #e6ffed; color: #155724; padding: 3px 8px; border-radius: 3px; font-size: 0.85rem; margin: 1px 0; display: inline-block; }
+    .config-diff-preview .param-removed { background: #ffeef0; color: #721c24; text-decoration: line-through; padding: 3px 8px; border-radius: 3px; font-size: 0.85rem; margin: 1px 0; display: inline-block; }
+    .upgrade-step { display: flex; align-items: center; padding: 8px 12px; border-radius: 6px; margin-bottom: 4px; font-family: 'Courier New', monospace; font-size: 13px; }
+    .upgrade-step.success { background: #f0fff4; color: #155724; }
+    .upgrade-step.running { background: #fff8e1; color: #856404; animation: pulse 1.5s infinite; }
+    .upgrade-step.failed { background: #fff5f5; color: #721c24; }
+    .upgrade-step.pending { background: #f8f9fa; color: #6c757d; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    .module-checkbox-group { max-height: 250px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 6px; padding: 10px; }
+    .module-checkbox-group label { display: block; padding: 3px 0; cursor: pointer; }
+    .progress-bar { transition: width 0.3s ease; }
+</style>
+
+<div class="row">
+    <!-- 左列：配置区 -->
+    <div class="col-md-7">
+        <!-- 第1步：选择节点和源码包 -->
+        <div class="card mb-3" id="step1">
+            <div class="card-header">
+                <h6 class="mb-0"><span class="badge bg-primary me-2">1</span> 选择目标节点 & 源码包</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">目标节点</label>
+                        <select class="form-select" id="selectNode">
+                            <option value="">-- 选择在线节点 --</option>
+                            {% for node in nodes %}
+                            <option value="{{ node.id }}"
+                                    data-hostname="{{ node.hostname }}"
+                                    data-ip="{{ node.ip }}"
+                                    data-env="{{ node.get_environment_display }}"
+                                    data-nginx-version="{{ node.nginx_version }}">
+                                {{ node.hostname }} ({{ node.ip }}) 🟢{{ node.get_environment_display }}
+                                {% if node.nginx_version %} | {{ node.nginx_version }}{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">源码包</label>
+                        <select class="form-select" id="selectPackage">
+                            <option value="">-- 选择源码包 --</option>
+                            {% for pkg in packages %}
+                            <option value="{{ pkg.id }}"
+                                    data-version="{{ pkg.version }}"
+                                    data-name="{{ pkg.name }}">
+                                {{ pkg.name }} - nginx/{{ pkg.version }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">远程编译工作目录</label>
+                        <input type="text" class="form-control" id="remoteWorkDir" value="/tmp/nginx-upgrade" placeholder="/tmp/nginx-upgrade">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">并行编译 (-j)</label>
+                        <input type="number" class="form-control" id="makeJobs" value="4" min="1" max="32">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">升级模式</label>
+                        <select class="form-select" id="upgradeMode">
+                            <option value="upgrade">平滑升级（同路径）</option>
+                            <option value="install">全新安装（无旧版本）</option>
+                            <option value="switch_path">切换路径升级</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-primary" id="btnFetchConfig" onclick="fetchNginxV()">
+                    <i class="bi bi-download"></i> 获取 nginx -V 编译参数
+                </button>
+                <span id="fetchStatus" class="ms-2"></span>
+            </div>
+        </div>
+
+        <!-- 第2步：当前编译参数展示 -->
+        <div class="card mb-3 d-none" id="step2">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><span class="badge bg-primary me-2">2</span> 当前编译参数（nginx -V）</h6>
+                <button class="btn btn-sm btn-outline-secondary" onclick="fetchNginxV()">
+                    <i class="bi bi-arrow-repeat"></i> 重新获取
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="currentConfigInfo" class="mb-3"></div>
+                <div class="nginx-v-output" id="currentConfigOutput">等待获取...</div>
+            </div>
+        </div>
+
+        <!-- 第3步：模块增减 -->
+        <div class="card mb-3 d-none" id="step3">
+            <div class="card-header">
+                <h6 class="mb-0"><span class="badge bg-primary me-2">3</span> 增量调整编译参数</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">➕ 新增内置模块</label>
+                        <div class="module-checkbox-group" id="addModulesGroup">
+                            <label><input type="checkbox" value="--with-http_v3_module" class="add-module"> --with-http_v3_module</label>
+                            <label><input type="checkbox" value="--with-http_realip_module" class="add-module"> --with-http_realip_module</label>
+                            <label><input type="checkbox" value="--with-http_gunzip_module" class="add-module"> --with-http_gunzip_module</label>
+                            <label><input type="checkbox" value="--with-http_gzip_static_module" class="add-module"> --with-http_gzip_static_module</label>
+                            <label><input type="checkbox" value="--with-http_auth_request_module" class="add-module"> --with-http_auth_request_module</label>
+                            <label><input type="checkbox" value="--with-http_random_index_module" class="add-module"> --with-http_random_index_module</label>
+                            <label><input type="checkbox" value="--with-http_secure_link_module" class="add-module"> --with-http_secure_link_module</label>
+                            <label><input type="checkbox" value="--with-http_degradation_module" class="add-module"> --with-http_degradation_module</label>
+                            <label><input type="checkbox" value="--with-http_slice_module" class="add-module"> --with-http_slice_module</label>
+                            <label><input type="checkbox" value="--with-http_addition_module" class="add-module"> --with-http_addition_module</label>
+                            <label><input type="checkbox" value="--with-http_sub_module" class="add-module"> --with-http_sub_module</label>
+                            <label><input type="checkbox" value="--with-http_dav_module" class="add-module"> --with-http_dav_module</label>
+                            <label><input type="checkbox" value="--with-http_flv_module" class="add-module"> --with-http_flv_module</label>
+                            <label><input type="checkbox" value="--with-http_mp4_module" class="add-module"> --with-http_mp4_module</label>
+                            <label><input type="checkbox" value="--with-pcre" class="add-module"> --with-pcre</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">➖ 移除现有参数</label>
+                        <div class="module-checkbox-group" id="removeModulesGroup">
+                            <p class="text-muted small">勾选将从编译参数中移除</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">➕ 新增第三方模块</label>
+                    <div id="thirdPartyModules">
+                        <div class="row mb-2 tp-module-row">
+                            <div class="col-3"><input type="text" class="form-control form-control-sm tp-name" placeholder="模块名"></div>
+                            <div class="col-6"><input type="text" class="form-control form-control-sm tp-git" placeholder="Git 仓库 URL"></div>
+                            <div class="col-2"><input type="text" class="form-control form-control-sm tp-branch" placeholder="分支"></div>
+                            <div class="col-1"><button class="btn btn-sm btn-outline-danger" onclick="removeTpModule(this)">×</button></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="addTpModule()"><i class="bi bi-plus"></i> 添加模块</button>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">目标 --prefix</label>
+                    <input type="text" class="form-control" id="targetPrefix" placeholder="从 nginx -V 自动获取">
+                </div>
+                <button class="btn btn-primary" onclick="previewConfig()">
+                    <i class="bi bi-eye"></i> 预览最终编译参数
+                </button>
+            </div>
+        </div>
+
+        <!-- 第4步：编译参数预览 -->
+        <div class="card mb-3 d-none" id="step4">
+            <div class="card-header">
+                <h6 class="mb-0"><span class="badge bg-primary me-2">4</span> 最终编译命令预览</h6>
+            </div>
+            <div class="card-body">
+                <div class="nginx-v-output" id="finalConfigPreview" style="background: #16213e; color: #e9ecef; max-height: 400px;">
+                    ./configure 等待生成...
+                </div>
+                <div class="mt-3 config-diff-preview" id="configDiff"></div>
+            </div>
+        </div>
+
+        <!-- 第5步：确认升级 -->
+        <div class="card mb-3 d-none" id="step5">
+            <div class="card-header">
+                <h6 class="mb-0"><span class="badge bg-success me-2">5</span> 确认并开始升级</h6>
+            </div>
+            <div class="card-body">
+                <div id="upgradeSummary" class="mb-3 p-3 bg-light rounded"></div>
+                <div class="mb-3">
+                    <label class="form-check-label">
+                        <input type="checkbox" id="confirmCheck" class="form-check-input"> 我确认以上配置无误，可以开始升级
+                    </label>
+                </div>
+                <button class="btn btn-success btn-lg" id="btnStartUpgrade" disabled onclick="startUpgrade()">
+                    <i class="bi bi-rocket-takeoff"></i> 🚀 开始升级
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右列：进度区 -->
+    <div class="col-md-5">
+        <div class="card sticky-top" style="top: 20px;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-speedometer2"></i> 升级执行进度</h6>
+                <span id="progressPercent" class="badge bg-primary">0%</span>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-3" style="height: 8px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%"></div>
+                </div>
+                <div id="upgradeSteps">
+                    <div class="upgrade-step pending">⏳ 等待开始...</div>
+                </div>
+                <div id="upgradeError" class="alert alert-danger d-none mt-3"></div>
+                <div class="mt-3 d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-danger d-none" id="btnCancel" onclick="cancelUpgrade()">
+                        ⏹ 取消升级
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning d-none" id="btnRollback" onclick="rollbackUpgrade()">
+                        ↩ 回滚升级
+                    </button>
+                </div>
+                <div class="nginx-v-output mt-3" id="logOutput" style="background: #0d1117; color: #c9d1d9; max-height: 350px; font-size: 11px; display: none;">
+                    暂无日志...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let nginxVData = null;
+let currentTaskId = null;
+let pollTimer = null;
+
+function getCSRFToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]').value;
+}
+
+// ========== 第1步：获取 nginx -V ==========
+function fetchNginxV() {
+    const nodeId = document.getElementById('selectNode').value;
+    const pkgId = document.getElementById('selectPackage').value;
+    if (!nodeId) { alert('请先选择目标节点'); return; }
+    if (!pkgId) { alert('请先选择源码包'); return; }
+
+    document.getElementById('btnFetchConfig').disabled = true;
+    document.getElementById('fetchStatus').innerHTML = '<span class="text-warning"><i class="spinner-border spinner-border-sm"></i> 获取中...</span>';
+
+    fetch(`{% url 'upgrade:api_nginx_v' 0 %}`.replace('0', nodeId), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCSRFToken(), 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('btnFetchConfig').disabled = false;
+        if (!data.success) {
+            document.getElementById('fetchStatus').innerHTML = `<span class="text-danger">❌ ${data.message}</span>`;
+            return;
+        }
+        document.getElementById('fetchStatus').innerHTML = '<span class="text-success">✅ 获取成功</span>';
+        nginxVData = data.data;
+
+        // 显示当前配置
+        const info = data.data;
+        document.getElementById('currentConfigInfo').innerHTML = `
+            <div class="row small">
+                <div class="col-4"><strong>当前版本:</strong> ${escapeHtml(info.version)}</div>
+                <div class="col-4"><strong>--prefix:</strong> ${escapeHtml(info.prefix)}</div>
+                <div class="col-4"><strong>二进制:</strong> ${escapeHtml(info.binary_path)}</div>
+            </div>`;
+        document.getElementById('currentConfigOutput').textContent = info.configure_opts || '无编译参数';
+        document.getElementById('targetPrefix').value = info.prefix;
+
+        // 填充移除模块列表
+        const removeGroup = document.getElementById('removeModulesGroup');
+        removeGroup.innerHTML = '<p class="text-muted small mb-1">勾选将从编译参数中移除</p>';
+        info.params.forEach(param => {
+            const label = document.createElement('label');
+            label.innerHTML = `<input type="checkbox" value="${escapeHtml(param)}" class="remove-module"> ${escapeHtml(param)}`;
+            removeGroup.appendChild(label);
+        });
+
+        // 显示后续步骤
+        document.getElementById('step2').classList.remove('d-none');
+        document.getElementById('step3').classList.remove('d-none');
+        document.getElementById('step4').classList.add('d-none');
+        document.getElementById('step5').classList.add('d-none');
+    })
+    .catch(err => {
+        document.getElementById('btnFetchConfig').disabled = false;
+        document.getElementById('fetchStatus').innerHTML = `<span class="text-danger">❌ 网络错误: ${err.message}</span>`;
+    });
+}
+
+// ========== 第3步：预览编译参数 ==========
+function previewConfig() {
+    if (!nginxVData) { alert('请先获取 nginx -V 参数'); return; }
+
+    const addedModules = [];
+    document.querySelectorAll('.add-module:checked').forEach(cb => addedModules.push(cb.value));
+
+    const removedModules = [];
+    document.querySelectorAll('.remove-module:checked').forEach(cb => removedModules.push(cb.value));
+
+    const thirdParty = [];
+    document.querySelectorAll('.tp-module-row').forEach(row => {
+        const name = row.querySelector('.tp-name').value.trim();
+        const git = row.querySelector('.tp-git').value.trim();
+        const branch = row.querySelector('.tp-branch').value.trim();
+        if (name || git) {
+            thirdParty.push({ name, git_url: git, branch: branch || 'master' });
+        }
+    });
+
+    const formData = new FormData();
+    formData.append('current_params', JSON.stringify(nginxVData.params));
+    formData.append('added_modules', JSON.stringify(addedModules));
+    formData.append('removed_modules', JSON.stringify(removedModules));
+    formData.append('added_third_party', JSON.stringify(thirdParty));
+
+    fetch('{% url "upgrade:api_compute_config" %}', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCSRFToken(), 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) { alert('计算失败: ' + data.message); return; }
+
+        document.getElementById('finalConfigPreview').textContent = './configure \\\n    ' + data.target_opts;
+
+        // 显示差异
+        let diffHtml = '';
+        nginxVData.params.forEach(p => {
+            if (removedModules.includes(p)) {
+                diffHtml += `<span class="param-removed">- ${escapeHtml(p)}</span> `;
+            } else {
+                diffHtml += `<span class="param-kept">${escapeHtml(p)}</span> `;
+            }
+        });
+        addedModules.forEach(p => {
+            diffHtml += `<span class="param-added">+ ${escapeHtml(p)}</span> `;
+        });
+        thirdParty.forEach(tp => {
+            diffHtml += `<span class="param-added">+ --add-module=<${escapeHtml(tp.name)}></span> `;
+        });
+        document.getElementById('configDiff').innerHTML = diffHtml || '<span class="text-muted">无变化</span>';
+
+        document.getElementById('step4').classList.remove('d-none');
+        document.getElementById('step5').classList.remove('d-none');
+
+        // 升级摘要
+        const nodeOpt = document.getElementById('selectNode').selectedOptions[0];
+        const pkgOpt = document.getElementById('selectPackage').selectedOptions[0];
+        const prefix = document.getElementById('targetPrefix').value;
+        document.getElementById('upgradeSummary').innerHTML = `
+            <div class="row">
+                <div class="col-6"><strong>目标节点:</strong> ${escapeHtml(nodeOpt.dataset.hostname)} (${escapeHtml(nodeOpt.dataset.ip)})</div>
+                <div class="col-6"><strong>当前版本:</strong> ${escapeHtml(nginxVData.version)}</div>
+                <div class="col-6"><strong>目标版本:</strong> nginx/${escapeHtml(pkgOpt.dataset.version)}</div>
+                <div class="col-6"><strong>安装路径:</strong> ${escapeHtml(prefix)}</div>
+                <div class="col-6"><strong>新增模块:</strong> ${addedModules.length ? addedModules.join(', ') : '无'}</div>
+                <div class="col-6"><strong>移除参数:</strong> ${removedModules.length ? removedModules.join(', ') : '无'}</div>
+                <div class="col-6"><strong>第三方模块:</strong> ${thirdParty.length ? thirdParty.map(t=>t.name).join(', ') : '无'}</div>
+                <div class="col-6"><strong>远程工作目录:</strong> ${escapeHtml(document.getElementById('remoteWorkDir').value)}</div>
+            </div>`;
+    });
+}
+
+// 确认按钮联动
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('confirmCheck').addEventListener('change', function() {
+        document.getElementById('btnStartUpgrade').disabled = !this.checked;
+    });
+});
+
+// ========== 第5步：开始升级 ==========
+function startUpgrade() {
+    if (!confirm('确认开始 Nginx 编译升级？升级将在后台执行。')) return;
+
+    const nodeId = document.getElementById('selectNode').value;
+    const pkgId = document.getElementById('selectPackage').value;
+    const prefix = document.getElementById('targetPrefix').value;
+    const finalConfig = document.getElementById('finalConfigPreview').textContent.replace(/^\.\/configure\s*/, '').trim();
+    const workDir = document.getElementById('remoteWorkDir').value;
+    const makeJobs = document.getElementById('makeJobs').value;
+    const upgradeMode = document.getElementById('upgradeMode').value;
+
+    const addedModules = [];
+    document.querySelectorAll('.add-module:checked').forEach(cb => addedModules.push(cb.value));
+    const removedModules = [];
+    document.querySelectorAll('.remove-module:checked').forEach(cb => removedModules.push(cb.value));
+    const thirdParty = [];
+    document.querySelectorAll('.tp-module-row').forEach(row => {
+        const name = row.querySelector('.tp-name').value.trim();
+        const git = row.querySelector('.tp-git').value.trim();
+        const branch = row.querySelector('.tp-branch').value.trim();
+        if (name || git) thirdParty.push({ name, git_url: git, branch: branch || 'master' });
+    });
+
+    const formData = new FormData();
+    formData.append('node', nodeId);
+    formData.append('source_package', pkgId);
+    formData.append('upgrade_mode', upgradeMode);
+    formData.append('target_version', document.getElementById('selectPackage').selectedOptions[0].dataset.version);
+    formData.append('target_prefix', prefix);
+    formData.append('target_configure_opts', finalConfig);
+    formData.append('remote_work_dir', workDir);
+    formData.append('make_jobs', makeJobs);
+    formData.append('added_modules_json', JSON.stringify(addedModules));
+    formData.append('removed_modules_json', JSON.stringify(removedModules));
+    formData.append('added_third_party_json', JSON.stringify(thirdParty));
+
+    fetch('{% url "upgrade:task_create" %}', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCSRFToken(), 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) { alert('创建失败: ' + data.message); return; }
+        currentTaskId = data.task_id;
+        document.getElementById('logOutput').style.display = 'block';
+        startPolling(data.progress_url);
+        document.getElementById('btnCancel').classList.remove('d-none');
+        document.getElementById('btnStartUpgrade').disabled = true;
+    });
+}
+
+// ========== 进度轮询 ==========
+function startPolling(url) {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(() => {
+        fetch(url, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('progressPercent').textContent = data.progress + '%';
+            document.getElementById('progressBar').style.width = data.progress + '%';
+
+            const isDone = ['success', 'failed', 'rollback', 'cancelled'].includes(data.status);
+            if (isDone) {
+                clearInterval(pollTimer);
+                document.getElementById('btnCancel').classList.add('d-none');
+                document.getElementById('progressBar').classList.remove('progress-bar-animated', 'progress-bar-striped');
+                if (data.status === 'success') {
+                    document.getElementById('progressBar').classList.add('bg-success');
+                    document.getElementById('btnRollback').classList.remove('d-none');
+                } else {
+                    document.getElementById('progressBar').classList.add('bg-danger');
+                }
+            }
+
+            // 更新步骤
+            updateStepDisplay(data);
+
+            // 更新日志
+            if (data.log_output) {
+                document.getElementById('logOutput').textContent = data.log_output;
+                document.getElementById('logOutput').scrollTop = document.getElementById('logOutput').scrollHeight;
+            }
+
+            // 错误信息
+            if (data.error_message) {
+                document.getElementById('upgradeError').classList.remove('d-none');
+                document.getElementById('upgradeError').textContent = data.error_message;
+            }
+        });
+    }, 2000);
+}
+
+function updateStepDisplay(data) {
+    const steps = [
+        { key: 'fetching_config', label: '获取当前编译参数', step: 1 },
+        { key: 'uploading_package', label: '上传源码包到节点', step: 2 },
+        { key: 'downloading_modules', label: '下载第三方模块', step: 3 },
+        { key: 'configuring', label: '执行 ./configure', step: 4 },
+        { key: 'compiling', label: '执行 make -j', step: 5 },
+        { key: 'backing_up', label: '备份旧版本', step: 6 },
+        { key: 'replacing_binary', label: '替换二进制文件', step: 7 },
+        { key: 'upgrading', label: '平滑升级 (USR2+WINCH+QUIT)', step: 8 },
+        { key: 'verifying', label: '验证版本 & 运行状态', step: 9 },
+    ];
+
+    let html = '';
+    const isFailed = data.status === 'failed';
+    const isSuccess = data.status === 'success';
+    const isCancelled = data.status === 'cancelled';
+
+    steps.forEach(s => {
+        let cls = 'pending', icon = '⏳';
+        // 根据进度百分比判断步骤状态
+        const stepProgress = s.step * 11;
+        if (isSuccess || stepProgress <= data.progress) {
+            cls = 'success'; icon = '✅';
+        } else if (s.key === data.status) {
+            cls = 'running'; icon = '🔄';
+        }
+
+        if (isFailed && data.progress < stepProgress) {
+            cls = 'pending'; icon = '⏳';
+        }
+        if (isFailed && s.key === data.status) {
+            cls = 'failed'; icon = '❌';
+        }
+        if (isCancelled && data.progress < stepProgress) {
+            cls = 'pending'; icon = '⏳';
+        }
+
+        html += `<div class="upgrade-step ${cls}">${icon} ${s.step}. ${s.label}</div>`;
+    });
+
+    if (isSuccess) {
+        html += '<div class="upgrade-step success">✅ 🎉 Nginx 编译升级成功完成!</div>';
+    }
+    if (isFailed) {
+        html += `<div class="upgrade-step failed">❌ 升级失败: ${data.error_message || '未知错误'}</div>`;
+    }
+
+    document.getElementById('upgradeSteps').innerHTML = html;
+}
+
+// ========== 取消回滚 ==========
+function cancelUpgrade() {
+    if (!currentTaskId) return;
+    if (!confirm('确定取消升级任务？')) return;
+    fetch(`{% url 'upgrade:task_cancel' 0 %}`.replace('0', currentTaskId), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCSRFToken(), 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { document.getElementById('btnCancel').classList.add('d-none'); }
+        else { alert(data.message); }
+    });
+}
+
+function rollbackUpgrade() {
+    if (!currentTaskId) return;
+    if (!confirm('确定回滚 Nginx 到旧版本？')) return;
+    fetch(`{% url 'upgrade:task_rollback' 0 %}`.replace('0', currentTaskId), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCSRFToken(), 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { alert('回滚成功'); location.reload(); }
+        else { alert(data.message); }
+    });
+}
+
+// ========== 第三方模块 ==========
+function addTpModule() {
+    const container = document.getElementById('thirdPartyModules');
+    const row = document.createElement('div');
+    row.className = 'row mb-2 tp-module-row';
+    row.innerHTML = `
+        <div class="col-3"><input type="text" class="form-control form-control-sm tp-name" placeholder="模块名"></div>
+        <div class="col-6"><input type="text" class="form-control form-control-sm tp-git" placeholder="Git 仓库 URL"></div>
+        <div class="col-2"><input type="text" class="form-control form-control-sm tp-branch" placeholder="分支"></div>
+        <div class="col-1"><button class="btn btn-sm btn-outline-danger" onclick="removeTpModule(this)">×</button></div>`;
+    container.appendChild(row);
+}
+
+function removeTpModule(btn) {
+    btn.closest('.tp-module-row').remove();
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

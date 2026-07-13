@@ -25,6 +25,18 @@ class Credential(models.Model):
     private_key = models.TextField(blank=True, verbose_name="私钥")
     is_enabled = models.BooleanField(default=True, verbose_name="启用")
     description = models.TextField(blank=True, verbose_name="描述")
+    last_test_time = models.DateTimeField(null=True, blank=True, verbose_name="最后测试时间")
+    last_test_result = models.CharField(
+        max_length=20,
+        choices=(
+            ("success", "全部成功"),
+            ("partial", "部分失败"),
+            ("failed", "全部失败"),
+            ("unknown", "未测试"),
+        ),
+        default="unknown",
+        verbose_name="最后测试结果",
+    )
     created_by = models.ForeignKey(
         User, on_delete=models.CASCADE, verbose_name="创建人"
     )

@@ -4,6 +4,8 @@ import time
 
 
 class SSHClient:
+    """SSH连接客户端，支持密码认证和多种密钥格式认证"""
+
     def __init__(self, host, port, username, password=None, private_key=None):
         self.host = host
         self.port = port
@@ -12,13 +14,31 @@ class SSHClient:
         self.private_key = private_key
         self.client = None
 
+    def _parse_private_key(self, key_str):
+        """尝试解析多种格式的SSH私钥，依次尝试RSA、Ed25519、ECDSA、DSS"""
+        key_types = [
+            paramiko.RSAKey,
+            paramiko.Ed25519Key,
+            paramiko.ECDSAKey,
+            paramiko.DSSKey,
+        ]
+        for key_type in key_types:
+            try:
+                return key_type.from_private_key(StringIO(key_str))
+            except Exception:
+                continue
+        return None
+
     def connect(self):
+        """建立SSH连接"""
         try:
             self.client = paramiko.SSHClient()
             self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             if self.private_key:
-                pkey = paramiko.RSAKey.from_private_key(StringIO(self.private_key))
+                pkey = self._parse_private_key(self.private_key)
+                if pkey is None:
+                    return False, "无法识别的私钥格式"
                 self.client.connect(
                     hostname=self.host,
                     port=self.port,
@@ -39,6 +59,7 @@ class SSHClient:
             return False, str(e)
 
     def execute_command(self, command):
+        """执行远程Shell命令"""
         if not self.client:
             return False, "SSH连接未建立"
 
@@ -54,6 +75,7 @@ class SSHClient:
             return False, str(e)
 
     def close(self):
+        """关闭SSH连接"""
         if self.client:
             self.client.close()
             self.client = None
@@ -66,7 +88,36 @@ class SSHClient:
         self.close()
 
 
+def _build_ssh_client(host, port, username, password=None, private_key=None):
+    """创建并连接SSH客户端，支持多种密钥格式（辅助函数）"""
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    if private_key:
+        ssh_inst = SSHClient(host, port, username, private_key=private_key)
+        pkey = ssh_inst._parse_private_key(private_key)
+        if pkey is None:
+            raise ValueError("无法识别的私钥格式")
+        client.connect(
+            hostname=host,
+            port=port,
+            username=username,
+            pkey=pkey,
+            timeout=10,
+        )
+    else:
+        client.connect(
+            hostname=host,
+            port=port,
+            username=username,
+            password=password,
+            timeout=10,
+        )
+    return client
+
+
 def test_ssh_connection(host, port, username, password=None, private_key=None):
+    """测试SSH连接是否可用"""
     try:
         with SSHClient(host, port, username, password, private_key) as ssh:
             return ssh._connect_result
@@ -77,6 +128,7 @@ def test_ssh_connection(host, port, username, password=None, private_key=None):
 def get_nginx_version(
     host, port, username, password=None, private_key=None, nginx_path=None
 ):
+    """获取远程节点的Nginx版本号"""
     try:
         with SSHClient(host, port, username, password, private_key) as ssh:
             if nginx_path:
@@ -105,6 +157,7 @@ def get_nginx_version(
 def read_remote_file(
     host, port, username, password=None, private_key=None, file_path=None
 ):
+    """读取远程节点的文件内容"""
     try:
         with SSHClient(host, port, username, password, private_key) as ssh:
             success, output = ssh.execute_command(f"cat {file_path}")
@@ -118,6 +171,7 @@ def read_remote_file(
 def expand_remote_glob(
     host, port, username, password=None, private_key=None, pattern=None
 ):
+    """展开远程节点的文件通配符模式，返回匹配文件列表"""
     try:
         with SSHClient(host, port, username, password, private_key) as ssh:
             success, output = ssh.execute_command(f"ls {pattern} 2>/dev/null")
@@ -137,6 +191,7 @@ def discover_nginx_configs(
     nginx_conf_path="",
     max_include_depth=3,
 ):
+    """递归发现远程节点的Nginx配置文件（包括include引入的配置）"""
     import posixpath
     import re
 
@@ -156,6 +211,7 @@ def discover_nginx_configs(
     }
 
     def is_builtin_file(path: str):
+        """判断是否为Nginx内置文件，不需要纳入发现结果"""
         name = path.split("/")[-1]
         if name in skip_files:
             return True
@@ -164,7 +220,7 @@ def discover_nginx_configs(
         return False
 
     def normalize_include_path(raw_path: str, current_dir: str) -> str:
-        # Support include with quotes and relative segments like ../conf.d/*.conf
+        """规范化include路径，处理引号和相对路径"""
         include_path = (raw_path or "").strip().strip("\"'")
         if not include_path:
             return ""
@@ -233,6 +289,7 @@ def discover_nginx_configs(
 
 
 def get_system_info(host, port, username, password=None, private_key=None):
+    """获取远程节点的系统信息（OS、CPU、内存、磁盘等）"""
     try:
         info = {}
         with SSHClient(host, port, username, password, private_key) as ssh:
@@ -329,27 +386,9 @@ def upload_file_via_sftp(
     remote_path=None,
     content=None,
 ):
+    """通过SFTP上传文件到远程节点"""
     try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if private_key:
-            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                pkey=pkey,
-                timeout=10,
-            )
-        else:
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                password=password,
-                timeout=10,
-            )
+        client = _build_ssh_client(host, port, username, password, private_key)
 
         sftp = client.open_sftp()
 
@@ -389,27 +428,9 @@ def backup_remote_file(
     file_path=None,
     backup_dir="/opt/app/mascloud/ansible/mngxops",
 ):
+    """备份远程节点上的文件"""
     try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if private_key:
-            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                pkey=pkey,
-                timeout=10,
-            )
-        else:
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                password=password,
-                timeout=10,
-            )
+        client = _build_ssh_client(host, port, username, password, private_key)
 
         timestamp = time.strftime("%Y%m%d%H%M%S")
         filename = file_path.split("/")[-1]
@@ -446,27 +467,9 @@ def restore_backup_file(
     backup_path=None,
     original_path=None,
 ):
+    """从备份恢复远程文件"""
     try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if private_key:
-            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                pkey=pkey,
-                timeout=10,
-            )
-        else:
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                password=password,
-                timeout=10,
-            )
+        client = _build_ssh_client(host, port, username, password, private_key)
 
         _, stdout, stderr = client.exec_command(f"cp {backup_path} {original_path}")
         exit_code = stdout.channel.recv_exit_status()
@@ -490,27 +493,9 @@ def check_remote_file_size(
     private_key=None,
     file_path=None,
 ):
+    """检查远程文件大小"""
     try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if private_key:
-            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                pkey=pkey,
-                timeout=10,
-            )
-        else:
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                password=password,
-                timeout=10,
-            )
+        client = _build_ssh_client(host, port, username, password, private_key)
 
         _, stdout, stderr = client.exec_command(f"wc -c < {file_path}")
         out = stdout.read().decode("utf-8").strip()
@@ -537,27 +522,9 @@ def copy_remote_file(
     src_path=None,
     dst_path=None,
 ):
+    """在远程节点上复制文件"""
     try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if private_key:
-            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                pkey=pkey,
-                timeout=10,
-            )
-        else:
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                password=password,
-                timeout=10,
-            )
+        client = _build_ssh_client(host, port, username, password, private_key)
 
         _, stdout, stderr = client.exec_command(f"cp {src_path} {dst_path}")
         exit_code = stdout.channel.recv_exit_status()
@@ -581,27 +548,9 @@ def check_remote_file_md5(
     private_key=None,
     file_path=None,
 ):
+    """计算远程文件的MD5值"""
     try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if private_key:
-            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                pkey=pkey,
-                timeout=10,
-            )
-        else:
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                password=password,
-                timeout=10,
-            )
+        client = _build_ssh_client(host, port, username, password, private_key)
 
         _, stdout, stderr = client.exec_command(f"md5sum {file_path}")
         out = stdout.read().decode("utf-8").strip()
@@ -628,27 +577,9 @@ def execute_nginx_test(
     nginx_path=None,
     config_path=None,
 ):
+    """在远程节点执行nginx -t配置测试"""
     try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if private_key:
-            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                pkey=pkey,
-                timeout=10,
-            )
-        else:
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                password=password,
-                timeout=10,
-            )
+        client = _build_ssh_client(host, port, username, password, private_key)
 
         nginx_bin = nginx_path or "nginx"
         command = f"{nginx_bin} -t"
@@ -674,27 +605,9 @@ def execute_nginx_reload(
     private_key=None,
     nginx_path=None,
 ):
+    """在远程节点执行nginx -s reload"""
     try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        if private_key:
-            pkey = paramiko.RSAKey.from_private_key(StringIO(private_key))
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                pkey=pkey,
-                timeout=10,
-            )
-        else:
-            client.connect(
-                hostname=host,
-                port=port,
-                username=username,
-                password=password,
-                timeout=10,
-            )
+        client = _build_ssh_client(host, port, username, password, private_key)
 
         nginx_bin = nginx_path or "nginx"
         command = f"{nginx_bin} -s reload"

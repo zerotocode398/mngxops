@@ -6,13 +6,20 @@ from .models import AuditLog
 
 TRACKED_MODELS = {
     "apps.configs.models.Config": "配置管理",
+    "apps.configs.models.ConfigNodeBinding": "配置绑定",
+    "apps.configs.models.BindingVersion": "绑定版本",
     "apps.configs.models.ConfigVersion": "配置版本",
     "apps.nodes.models.Node": "节点管理",
     "apps.nodes.models.NodeGroup": "节点分组",
     "apps.releases.models.ReleaseTask": "发布任务",
     "apps.releases.models.ReleaseHistory": "发布历史",
     "apps.users.models.User": "用户管理",
+    "apps.users.models.UserGroup": "角色管理",
+    "apps.users.models.UserTeam": "用户组管理",
     "apps.credentials.models.Credential": "凭证管理",
+    "apps.settings.models.SystemSetting": "系统设置",
+    "apps.upgrade.models.NginxSourcePackage": "Nginx 源码包",
+    "apps.upgrade.models.NginxUpgradeTask": "Nginx 升级任务",
 }
 
 
@@ -65,12 +72,8 @@ def audit_post_save(sender, instance, created, **kwargs):
         detail = f"修改 {module_name}「{label}」"
 
     AuditLog.objects.create(
-        user=user,
-        module=module_name,
-        action=action,
-        ip=ip,
-        result="success",
-        detail=detail,
+        user=user, module=module_name, action=action, ip=ip,
+        result="success", detail=detail,
     )
 
 
@@ -89,10 +92,6 @@ def audit_post_delete(sender, instance, **kwargs):
     label = _get_instance_label(instance)
 
     AuditLog.objects.create(
-        user=user,
-        module=module_name,
-        action=f"删除{module_name}",
-        ip=ip,
-        result="success",
-        detail=f"删除 {module_name}「{label}」",
+        user=user, module=module_name, action=f"删除{module_name}",
+        ip=ip, result="success", detail=f"删除 {module_name}「{label}」",
     )

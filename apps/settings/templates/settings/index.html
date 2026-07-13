@@ -1,19 +1,207 @@
-{% extends "base.html" %}
-{% load permission_tags %}
 
 {% block title %}系统设置 - MngxOps{% endblock %}
 {% block page_title %}系统设置{% endblock %}
 
+{% block extra_head %}
+<style>
+    .setting-group-card {
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        margin-bottom: 24px;
+    }
+    .setting-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .setting-item:last-child {
+        border-bottom: none;
+    }
+    .setting-item-label {
+        flex: 0 0 260px;
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+    .setting-item-label small {
+        font-weight: 400;
+    }
+    .setting-item-control {
+        flex: 1;
+        max-width: 280px;
+    }
+    .setting-item-control input {
+        width: 100%;
+    }
+    .nav-tabs .nav-link {
+        color: #6c757d;
+        border: none;
+        padding: 10px 18px;
+        font-weight: 500;
+    }
+    .nav-tabs .nav-link.active {
+        color: #0d6efd;
+        border-bottom: 3px solid #0d6efd;
+        background: transparent;
+    }
+    .nav-tabs {
+        border-bottom: 2px solid #e9ecef;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h5 class="mb-0"><i class="bi bi-gear"></i> 系统设置</h5>
+        <h5 class="mb-0"><i class="bi bi-sliders"></i> 系统设置</h5>
     </div>
     <div class="card-body">
-        <div class="text-center py-5 text-muted">
-            <i class="bi bi-sliders" style="font-size: 3rem;"></i>
-            <p class="mt-3">系统设置功能正在开发中，敬请期待。</p>
+        {% if groups %}
+        <!-- Tab 导航 -->
+        <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
+            {% for group_name, items in groups.items %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if group_name == active_group %}active{% endif %}"
+                        id="tab-{{ forloop.counter }}"
+                        data-bs-toggle="tab"
+                        data-bs-target="#group-{{ forloop.counter }}"
+                        type="button" role="tab"
+                        data-group="{{ group_name }}">
+                    {{ group_name }}
+                </button>
+            </li>
+            {% endfor %}
+        </ul>
+
+        <!-- Tab 内容 -->
+        <div class="tab-content" id="settingsTabContent">
+            {% for group_name, items in groups.items %}
+            <div class="tab-pane fade {% if group_name == active_group %}show active{% endif %}"
+                 id="group-{{ forloop.counter }}"
+                 role="tabpanel">
+                <div class="setting-group-card">
+                    <form method="post" action="{% url 'settings:save' %}" class="settings-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="group" value="{{ group_name }}">
+                        {% for setting in items %}
+                        <div class="setting-item">
+                            <div class="setting-item-label">
+                                {{ setting.label }}
+                                <br><small class="text-muted">{{ setting.description }}</small>
+                            </div>
+                            <div class="setting-item-control">
+                                {% if setting.type == "integer" %}
+                                <input type="number"
+                                       class="form-control form-control-sm"
+                                       name="{{ setting.key }}"
+                                       value="{{ setting.value }}"
+                                       placeholder="{{ setting.placeholder }}">
+                                {% elif setting.type == "boolean" %}
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="{{ setting.key }}" value="true"
+                                           {% if setting.value == "true" %}checked{% endif %}>
+                                </div>
+                                {% else %}
+                                <input type="text"
+                                       class="form-control form-control-sm"
+                                       name="{{ setting.key }}"
+                                       value="{{ setting.value }}"
+                                       placeholder="{{ setting.placeholder }}">
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                        <div class="p-3 text-end">
+                            {% if can_update %}
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-check-lg"></i> 保存{{ group_name }}设置
+                            </button>
+                            {% else %}
+                            <small class="text-muted">🔒 仅可查看，无修改权限</small>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
         </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-exclamation-circle" style="font-size: 2rem;"></i>
+            <p class="mt-3">暂无可配置项。请运行 <code>seed_default_settings()</code> 初始化预设配置。</p>
+        </div>
+        {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 记忆最后活跃的 Tab
+    const tabs = document.querySelectorAll('#settingsTabs button[data-bs-toggle="tab"]');
+    tabs.forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function(e) {
+            localStorage.setItem('settingsActiveGroup', e.target.dataset.group);
+        });
+    });
+
+    // 恢复上次活跃的 Tab
+    const savedGroup = localStorage.getItem('settingsActiveGroup');
+    if (savedGroup) {
+        const targetTab = document.querySelector(`#settingsTabs button[data-group="${savedGroup}"]`);
+        if (targetTab) {
+            const bsTab = new bootstrap.Tab(targetTab);
+            bsTab.show();
+        }
+    }
+
+    // 表单提交 via Ajax
+    document.querySelectorAll('.settings-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = form.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 保存中...';
+
+            fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value,
+                }
+            })
+            .then(resp => resp.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('保存成功', 'success');
+                } else {
+                    showToast(data.message || '保存失败', 'danger');
+                }
+            })
+            .catch(err => {
+                showToast('保存失败: ' + err.message, 'danger');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        });
+    });
+
+    function showToast(message, type) {
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+        toast.style.zIndex = '9999';
+        toast.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+});
+</script>
 {% endblock %}
