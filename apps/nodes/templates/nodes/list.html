@@ -24,15 +24,14 @@
                     <form method="get" class="mb-3" id="searchForm" autocomplete="off">
                         <div class="row g-2">
                             <div class="col-md-4">
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                    <input type="text" name="search" id="searchInput" class="form-control"
-                                        placeholder="搜索主机名或IP..." value="{{ search }}"
-                                        autocomplete="off">
+                                <div class="tag-input-wrapper form-control" id="nodeSearchTagWrapper">
+                                    <input type="text" class="tag-input-field" id="nodeSearchField"
+                                        placeholder="搜索主机名或IP，回车添加标签" autocomplete="off">
                                 </div>
+                                <input type="hidden" name="search" id="nodeSearchHidden" value="{{ search }}">
                             </div>
                             <div class="col-md-3">
-                                <select name="group_search" id="groupSearch" class="form-select">
+                                <select name="group_search" id="groupSearch" class="form-select" onchange="document.getElementById('searchForm').submit()">
                                     <option value="">所有节点组</option>
                                     {% for g in node_groups_list %}
                                     <option value="{{ g.name }}" {% if group_search == g.name %}selected{% endif %}>{{ g.name }}</option>
@@ -40,7 +39,7 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <select name="environment" id="envFilter" class="form-select">
+                                <select name="environment" id="envFilter" class="form-select" onchange="document.getElementById('searchForm').submit()">
                                     <option value="">全部环境</option>
                                     {% for key, label in env_choices.items %}
                                     <option value="{{ key }}" {% if env_filter == key %}selected{% endif %}>{{ label }}</option>
@@ -48,7 +47,7 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <select name="status" id="statusFilter" class="form-select">
+                                <select name="status" id="statusFilter" class="form-select" onchange="document.getElementById('searchForm').submit()">
                                     <option value="">全部状态</option>
                                     {% for key, label in status_choices.items %}
                                     <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
@@ -56,9 +55,11 @@
                                 </select>
                             </div>
                             <div class="col-md-1 d-grid">
+                                {% if search or group_search or env_filter or status_filter %}
                                 <a href="{% url 'nodes:list' %}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
                                     <i class="bi bi-x-circle"></i>
                                 </a>
+                                {% endif %}
                             </div>
                         </div>
                     </form>
@@ -474,42 +475,14 @@
     var testSeconds = 0;
     var MAX_SELECT = 3;
 
-    /* ========== 搜索防抖 ========== */
-    var searchDebounceTimer = null;
-
-    function debouncedSubmit() {
-        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-        searchDebounceTimer = setTimeout(function () {
-            saveSearchState();
-            document.getElementById('searchForm').submit();
-        }, 300);
-    }
-
     document.addEventListener('DOMContentLoaded', function () {
         /* 初始化 Bootstrap 模态框 */
         customModal = new bootstrap.Modal(document.getElementById('customModal'));
         deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
         nodeDetailModal = new bootstrap.Modal(document.getElementById('nodeDetailModal'));
 
-        /* 恢复搜索状态 */
-        restoreSearchState();
-
-        /* 搜索输入框 300ms 防抖 */
-        var searchInput = document.getElementById('searchInput');
-        if (searchInput) {
-            searchInput.addEventListener('input', debouncedSubmit);
-        }
-
-        /* 下拉筛选立即提交 */
-        ['groupSearch', 'envFilter', 'statusFilter'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('change', function () {
-                    saveSearchState();
-                    document.getElementById('searchForm').submit();
-                });
-            }
-        });
+        /* 初始化标签搜索 */
+        initTagSearch('#nodeSearchTagWrapper', '#nodeSearchHidden', '#searchForm');
 
         /* Nginx 版本格式化 */
         document.querySelectorAll('.nginx-version-cell').forEach(function (cell) {
@@ -524,7 +497,6 @@
                 var gs = document.getElementById('groupSearch');
                 if (gs) {
                     gs.value = this.getAttribute('data-group-name');
-                    saveSearchState();
                     document.getElementById('searchForm').submit();
                 }
             });
@@ -550,39 +522,6 @@
             }
         });
     });
-
-    /* ========== sessionStorage 搜索状态持久化 ========== */
-    function saveSearchState() {
-        var state = {
-            search: document.getElementById('searchInput') ? document.getElementById('searchInput').value : '',
-            group_search: document.getElementById('groupSearch') ? document.getElementById('groupSearch').value : '',
-            environment: document.getElementById('envFilter') ? document.getElementById('envFilter').value : '',
-            status: document.getElementById('statusFilter') ? document.getElementById('statusFilter').value : ''
-        };
-        try {
-            sessionStorage.setItem('nodes_search_state', JSON.stringify(state));
-        } catch (e) {}
-    }
-
-    function restoreSearchState() {
-        try {
-            var raw = sessionStorage.getItem('nodes_search_state');
-            if (!raw) return;
-            var state = JSON.parse(raw);
-            if (state.search && document.getElementById('searchInput')) {
-                document.getElementById('searchInput').value = state.search || '';
-            }
-            if (state.group_search && document.getElementById('groupSearch')) {
-                document.getElementById('groupSearch').value = state.group_search || '';
-            }
-            if (state.environment && document.getElementById('envFilter')) {
-                document.getElementById('envFilter').value = state.environment || '';
-            }
-            if (state.status && document.getElementById('statusFilter')) {
-                document.getElementById('statusFilter').value = state.status || '';
-            }
-        } catch (e) {}
-    }
 
     /* ========== Nginx版本格式化 ========== */
     function formatNginxVersion(version) {

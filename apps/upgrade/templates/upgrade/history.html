@@ -14,13 +14,16 @@
 
 <div class="card mb-3">
     <div class="card-body py-2">
-        <form method="get" class="row g-2 align-items-end">
+        <form method="get" class="row g-2 align-items-end" id="upgradeHistoryForm">
             <div class="col-md-4">
-                <input type="text" name="search" class="form-control form-control-sm"
-                       placeholder="搜索节点 / IP / 版本..." value="{{ search }}">
+                <div class="tag-input-wrapper form-control form-control-sm p-1" id="upgradeHistoryTagWrapper" style="min-height:32px;">
+                    <input type="text" class="tag-input-field" style="font-size:0.82rem;"
+                        placeholder="搜索节点/IP/版本，回车添加标签">
+                </div>
+                <input type="hidden" name="search" id="upgradeHistorySearchHidden" value="{{ search }}">
             </div>
             <div class="col-md-3">
-                <select name="status" class="form-select form-select-sm">
+                <select name="status" class="form-select form-select-sm" onchange="document.getElementById('upgradeHistoryForm').submit()">
                     <option value="">全部状态</option>
                     {% for value, label in status_choices %}
                     <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
@@ -28,12 +31,18 @@
                 </select>
             </div>
             <div class="col-md-2">
-                <button type="submit" class="btn btn-sm btn-outline-primary w-100">
-                    <i class="bi bi-search"></i> 筛选
-                </button>
+                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('upgradeHistoryForm').submit()">
+                    {% for opt in per_page_options %}
+                    <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }} 条/页</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="col-md-2">
-                <a href="{% url 'upgrade:history' %}" class="btn btn-sm btn-outline-secondary w-100">清除</a>
+                {% if search or status_filter %}
+                <a href="{% url 'upgrade:history' %}" class="btn btn-sm btn-outline-secondary w-100">
+                    <i class="bi bi-x-circle"></i> 清空筛选
+                </a>
+                {% endif %}
             </div>
         </form>
     </div>
@@ -141,4 +150,10 @@
     </nav>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+initTagSearch('#upgradeHistoryTagWrapper', '#upgradeHistorySearchHidden', '#upgradeHistoryForm');
+</script>
 {% endblock %}
