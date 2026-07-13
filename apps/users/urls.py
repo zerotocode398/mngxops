@@ -41,4 +41,11 @@ urlpatterns = [
         views.UserGroupManageUsersView.as_view(),
         name="role_manage_users",
     ),
+    # 用户组 (UserTeam)
+    path("teams/", views.UserTeamListView.as_view(), name="team_list"),
+    path("teams/create/", views.UserTeamCreateView.as_view(), name="team_create"),
+    path("teams/<int:pk>/edit/", views.UserTeamUpdateView.as_view(), name="team_edit"),
+    path("teams/<int:pk>/delete/", views.UserTeamDeleteView.as_view(), name="team_delete"),
+    path("teams/<int:pk>/members/", views.UserTeamMemberListView.as_view(), name="team_members"),
+    path("teams/<int:pk>/manage-members/", views.UserTeamManageMembersView.as_view(), name="team_manage_members"),
 ]

@@ -1,0 +1,632 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}用户组管理 - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header team-list-header">
+                    <h5 class="mb-0"><i class="bi bi-collection"></i> 用户组列表</h5>
+                    <div class="team-list-actions">
+                        {% if request.user|has_perm_code:"teams.create" %}
+                        <a href="{% url 'users:team_create' %}" class="btn btn-primary btn-sm team-list-create-btn">
+                            <i class="bi bi-plus-circle"></i> 新增用户组
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form method="get" class="mb-3" id="searchForm">
+                        <div class="row g-2">
+                            <div class="col-md-8">
+                                <div class="tag-input-wrapper form-control" id="tagSearchWrapper">
+                                    <input type="text" class="tag-input-field" id="tagSearchField"
+                                        placeholder="输入组名后回车搜索">
+                                </div>
+                                <input type="hidden" name="search" id="searchHidden" value="{{ search }}">
+                            </div>
+                            <div class="col-md-2">
+                                <select name="per_page" class="form-select" onchange="document.getElementById('searchForm').submit()">
+                                    {% for size in per_page_options %}
+                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                {% if search %}
+                                <a href="{% url 'users:team_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary w-100">
+                                    <i class="bi bi-x-circle"></i> 清空筛选
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>组名</th>
+                                    <th>成员数</th>
+                                    <th>描述</th>
+                                    <th>创建人</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for team in teams %}
+                                <tr>
+                                    <td><strong>{{ team.name }}</strong></td>
+                                    <td>
+                                        <span class="badge bg-info">{{ team.member_count }}</span>
+                                    </td>
+                                    <td>{{ team.description|default:"-"|truncatewords:10 }}</td>
+                                    <td>{{ team.created_by.username }}</td>
+                                    <td>{{ team.created_at|date:"Y-m-d H:i" }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            {% if request.user|has_perm_code:"teams.update" %}
+                                            <button type="button" class="btn btn-outline-success"
+                                                onclick="openManageMembersModal({{ team.id }}, '{{ team.name|escapejs }}')"
+                                                title="管理成员">
+                                                <i class="bi bi-people"></i>
+                                            </button>
+                                            <a href="{% url 'users:team_edit' team.id %}" class="btn btn-outline-info" title="关联角色">
+                                                <i class="bi bi-person-badge"></i>
+                                            </a>
+                                            <a href="{% url 'users:team_edit' team.id %}" class="btn btn-outline-primary" title="编辑">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            {% endif %}
+                                            {% if request.user|has_perm_code:"teams.delete" %}
+                                            <button type="button" class="btn btn-outline-danger"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#deleteModal{{ team.id }}"
+                                                title="删除">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                                        <p class="mt-2">暂无用户组数据</p>
+                                        {% if request.user|has_perm_code:"teams.create" %}
+                                        <a href="{% url 'users:team_create' %}" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-plus-circle"></i> 新增用户组
+                                        </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if is_paginated %}
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">首页</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">上一页</a>
+                            </li>
+                            {% endif %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                            </li>
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">下一页</a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">末页</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认 Modal -->
+{% for team in teams %}
+{% if request.user|has_perm_code:"teams.delete" %}
+<div class="modal fade" id="deleteModal{{ team.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                确定要删除用户组 <strong>{{ team.name }}</strong> 吗？
+                <br><br>
+                <small class="text-muted">组内的用户不会被删除，只是移出该组。此操作不可恢复！</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <form method="post" action="{% url 'users:team_delete' team.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">确认删除</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<!-- 管理成员 Modal -->
+<div class="modal fade" id="manageMembersModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="manageMembersTitle">
+                    <i class="bi bi-people"></i> 管理成员
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 成员搜索 -->
+                <div class="tag-input-wrapper form-control mb-3" id="memberSearchWrapper">
+                    <input type="text" class="tag-input-field" id="memberSearchField"
+                        placeholder="输入用户名或邮箱后回车搜索">
+                </div>
+                <input type="hidden" id="memberSearchHidden">
+
+                <!-- 操作栏 -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">
+                        已选 <strong id="selectedCount">0</strong> 个成员 | 共 <strong id="totalCount">0</strong> 个用户
+                    </small>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-success" id="btnAddMembers" disabled
+                            onclick="addMembersToTeam()">
+                            <i class="bi bi-plus-circle"></i> 加入用户组
+                        </button>
+                        <button type="button" class="btn btn-sm btn-danger" id="btnRemoveMembers" disabled
+                            onclick="removeMembersFromTeam()">
+                            <i class="bi bi-dash-circle"></i> 移出用户组
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 用户列表 -->
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width: 40px;">
+                                    <input type="checkbox" id="selectAllMembers" title="全选/取消">
+                                </th>
+                                <th>用户名</th>
+                                <th>姓名</th>
+                                <th>邮箱</th>
+                                <th>状态</th>
+                                <th>归属</th>
+                            </tr>
+                        </thead>
+                        <tbody id="memberListBody">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                                    加载中...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 分页 -->
+                <div class="d-flex justify-content-between align-items-center mt-2" id="memberPagination">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 隐藏表单用于成员管理 POST -->
+<form id="manageMembersForm" method="post" action="" style="display:none;">
+    {% csrf_token %}
+    <input type="hidden" name="action" id="manageAction">
+    <select name="user_ids" id="manageUserIds" multiple style="display:none;"></select>
+</form>
+
+<style>
+    .team-list-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .team-list-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+    }
+    .team-list-create-btn {
+        box-shadow: 0 0.125rem 0.25rem rgba(13, 110, 253, 0.2);
+    }
+    .tag-input-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        min-height: 38px;
+        cursor: text;
+        overflow-y: auto;
+    }
+    .tag-input-wrapper .tag-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #e9ecef;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove:hover {
+        opacity: 1;
+        color: #dc3545;
+    }
+    .tag-input-wrapper .tag-input-field {
+        border: none;
+        outline: none;
+        flex: 1;
+        min-width: 100px;
+        padding: 0;
+        background: transparent;
+    }
+</style>
+
+<script>
+    // ========== 标签搜索（组名）==========
+    function initTeamTagSearch() {
+        var wrapper = document.getElementById('tagSearchWrapper');
+        var field = document.getElementById('tagSearchField');
+        var hidden = document.getElementById('searchHidden');
+
+        if (!wrapper || !field || !hidden) return;
+
+        function focusField() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function (b) { values.push(b.getAttribute('data-value')); });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(focusField, 0);
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        function loadInitial() {
+            var val = hidden.value.trim();
+            if (val) {
+                var tags = val.split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+                tags.forEach(function (tag) { createBadge(tag); });
+            }
+        }
+
+        field.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                }
+                updateHidden();
+                setTimeout(focusField, 0);
+                document.getElementById('searchForm').submit();
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    setTimeout(focusField, 0);
+                }
+            }
+        });
+
+        wrapper.addEventListener('click', function (e) {
+            if (e.target === wrapper) { focusField(); }
+        });
+
+        loadInitial();
+    }
+
+    // ========== 管理成员弹窗 ==========
+    var currentTeamId = null;
+    var currentTeamName = null;
+    var manageModal = null;
+    var memberSearchTags = [];
+
+    function openManageMembersModal(teamId, teamName) {
+        currentTeamId = teamId;
+        currentTeamName = teamName;
+
+        document.getElementById('manageMembersTitle').innerHTML =
+            '<i class="bi bi-people"></i> 管理成员 — ' + teamName;
+
+        // 清空搜索
+        var wrapper = document.getElementById('memberSearchWrapper');
+        wrapper.querySelectorAll('.tag-badge').forEach(function (b) { b.remove(); });
+        document.getElementById('memberSearchHidden').value = '';
+        memberSearchTags = [];
+        document.getElementById('memberSearchField').value = '';
+
+        loadMemberList(1);
+        if (!manageModal) {
+            manageModal = new bootstrap.Modal(document.getElementById('manageMembersModal'));
+        }
+        manageModal.show();
+    }
+
+    function loadMemberList(page) {
+        var body = document.getElementById('memberListBody');
+        body.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">' +
+            '<div class="spinner-border spinner-border-sm" role="status"></div> 加载中...</td></tr>';
+
+        var searchParam = memberSearchTags.join(',');
+        var url = '{% url "users:team_members" 0 %}'.replace('/0/', '/' + currentTeamId + '/') +
+            '?page=' + page + '&search=' + encodeURIComponent(searchParam);
+
+        fetch(url)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                renderMemberList(data);
+            })
+            .catch(function () {
+                body.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">加载失败</td></tr>';
+            });
+    }
+
+    function renderMemberList(data) {
+        var body = document.getElementById('memberListBody');
+        document.getElementById('totalCount').textContent = data.total_count;
+
+        if (data.users.length === 0) {
+            body.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">暂无匹配用户</td></tr>';
+        } else {
+            var html = '';
+            data.users.forEach(function (u) {
+                var statusBadge = u.is_active
+                    ? '<span class="badge bg-success">正常</span>'
+                    : '<span class="badge bg-danger">锁定</span>';
+                var memberBadge = u.is_member
+                    ? '<span class="badge bg-info">已加入</span>'
+                    : '<span class="badge bg-light text-dark">未加入</span>';
+                html += '<tr class="member-row' + (u.is_member ? ' table-info' : '') + '" data-user-id="' + u.id + '" data-is-member="' + (u.is_member ? '1' : '0') + '">' +
+                    '<td><input type="checkbox" class="member-checkbox form-check-input" data-user-id="' + u.id + '" data-is-member="' + (u.is_member ? '1' : '0') + '"></td>' +
+                    '<td><strong>' + escapeHtml(u.username) + '</strong>' + (u.is_superuser ? ' <span class="badge bg-warning">超管</span>' : '') + '</td>' +
+                    '<td>' + escapeHtml(u.first_name) + '</td>' +
+                    '<td>' + escapeHtml(u.email) + '</td>' +
+                    '<td>' + statusBadge + '</td>' +
+                    '<td>' + memberBadge + '</td>' +
+                    '</tr>';
+            });
+            body.innerHTML = html;
+
+            // 绑定复选框事件
+            body.querySelectorAll('.member-checkbox').forEach(function (cb) {
+                cb.addEventListener('change', updateMemberButtons);
+            });
+            // 绑定行点击
+            body.querySelectorAll('.member-row').forEach(function (row) {
+                row.addEventListener('click', function (e) {
+                    if (e.target.closest('input[type="checkbox"]')) return;
+                    var cb = row.querySelector('.member-checkbox');
+                    if (cb) {
+                        cb.checked = !cb.checked;
+                        cb.dispatchEvent(new Event('change'));
+                    }
+                });
+            });
+        }
+
+        // 渲染分页
+        var pagDiv = document.getElementById('memberPagination');
+        if (data.total_pages <= 1) {
+            pagDiv.innerHTML = '';
+        } else {
+            var pagHtml = '<span class="text-muted small">第 ' + data.page + '/' + data.total_pages + ' 页</span>';
+            pagHtml += '<div class="btn-group btn-group-sm">';
+            if (data.has_previous) {
+                pagHtml += '<button type="button" class="btn btn-outline-secondary" onclick="loadMemberList(' + (data.page - 1) + ')">上一页</button>';
+            }
+            if (data.has_next) {
+                pagHtml += '<button type="button" class="btn btn-outline-secondary" onclick="loadMemberList(' + (data.page + 1) + ')">下一页</button>';
+            }
+            pagHtml += '</div>';
+            pagDiv.innerHTML = pagHtml;
+        }
+
+        document.getElementById('selectAllMembers').checked = false;
+        updateMemberButtons();
+    }
+
+    function updateMemberButtons() {
+        var checked = document.querySelectorAll('#memberListBody .member-checkbox:checked');
+        var selectedCount = checked.length;
+
+        var addIds = [];
+        var removeIds = [];
+        checked.forEach(function (cb) {
+            if (cb.dataset.isMember === '1') {
+                removeIds.push(cb.dataset.userId);
+            } else {
+                addIds.push(cb.dataset.userId);
+            }
+        });
+
+        document.getElementById('selectedCount').textContent = selectedCount;
+        document.getElementById('btnAddMembers').disabled = addIds.length === 0;
+        document.getElementById('btnAddMembers').innerHTML = '<i class="bi bi-plus-circle"></i> 加入用户组 (' + addIds.length + ')';
+        document.getElementById('btnRemoveMembers').disabled = removeIds.length === 0;
+        document.getElementById('btnRemoveMembers').innerHTML = '<i class="bi bi-dash-circle"></i> 移出用户组 (' + removeIds.length + ')';
+    }
+
+    function addMembersToTeam() {
+        var addIds = [];
+        document.querySelectorAll('#memberListBody .member-checkbox:checked').forEach(function (cb) {
+            if (cb.dataset.isMember === '0') addIds.push(cb.dataset.userId);
+        });
+        if (addIds.length === 0) return;
+        submitMemberAction('add', addIds);
+    }
+
+    function removeMembersFromTeam() {
+        var removeIds = [];
+        document.querySelectorAll('#memberListBody .member-checkbox:checked').forEach(function (cb) {
+            if (cb.dataset.isMember === '1') removeIds.push(cb.dataset.userId);
+        });
+        if (removeIds.length === 0) return;
+        if (!confirm('确定要将选中的 ' + removeIds.length + ' 个成员移出用户组 "' + currentTeamName + '" 吗？')) return;
+        submitMemberAction('remove', removeIds);
+    }
+
+    function submitMemberAction(action, userIds) {
+        var form = document.getElementById('manageMembersForm');
+        form.action = '{% url "users:team_manage_members" 0 %}'.replace('/0/', '/' + currentTeamId + '/');
+        document.getElementById('manageAction').value = action;
+        var select = document.getElementById('manageUserIds');
+        select.innerHTML = '';
+        userIds.forEach(function (id) {
+            var opt = document.createElement('option');
+            opt.value = id;
+            opt.selected = true;
+            select.appendChild(opt);
+        });
+        form.submit();
+    }
+
+    document.getElementById('selectAllMembers').addEventListener('change', function () {
+        var checkboxes = document.querySelectorAll('#memberListBody .member-checkbox');
+        checkboxes.forEach(function (cb) { cb.checked = this.checked; }, this);
+        updateMemberButtons();
+    });
+
+    // 成员搜索标签
+    function initMemberTagSearch() {
+        var wrapper = document.getElementById('memberSearchWrapper');
+        var field = document.getElementById('memberSearchField');
+
+        if (!wrapper || !field) return;
+
+        function focusField() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+                e.stopPropagation();
+                badge.remove();
+                syncMemberTags();
+                loadMemberList(1);
+                setTimeout(focusField, 0);
+            });
+            wrapper.insertBefore(badge, field);
+        }
+
+        function syncMemberTags() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            memberSearchTags = [];
+            badges.forEach(function (b) { memberSearchTags.push(b.getAttribute('data-value')); });
+            document.getElementById('memberSearchHidden').value = memberSearchTags.join(',');
+        }
+
+        field.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                    syncMemberTags();
+                    loadMemberList(1);
+                    setTimeout(focusField, 0);
+                }
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    syncMemberTags();
+                    loadMemberList(1);
+                    setTimeout(focusField, 0);
+                }
+            }
+        });
+
+        wrapper.addEventListener('click', function (e) {
+            if (e.target === wrapper) { focusField(); }
+        });
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function () {
+        initTeamTagSearch();
+        initMemberTagSearch();
+    });
+</script>
+{% endblock %}

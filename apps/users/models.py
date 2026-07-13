@@ -43,6 +43,42 @@ class UserGroup(models.Model):
         return self.name
 
 
+class UserTeam(models.Model):
+    """用户组 — 独立于角色的分组方式，可绑定一个或多个用户，也可关联角色"""
+    id = models.BigAutoField(primary_key=True, verbose_name="ID")
+    name = models.CharField(max_length=100, unique=True, verbose_name="组名")
+    description = models.TextField(blank=True, verbose_name="描述")
+    members = models.ManyToManyField(
+        User,
+        blank=True,
+        verbose_name="组成员",
+        related_name="user_teams",
+    )
+    roles = models.ManyToManyField(
+        UserGroup,
+        blank=True,
+        verbose_name="关联角色",
+        related_name="teams",
+    )
+    created_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, verbose_name="创建人", related_name="created_teams"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "用户组"
+        verbose_name_plural = verbose_name
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def member_count(self):
+        return self.members.count()
+
+
 class UserProfile(models.Model):
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, verbose_name="用户", related_name="profile"

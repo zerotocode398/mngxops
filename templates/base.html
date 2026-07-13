@@ -141,6 +141,11 @@
                         <i class="bi bi-people-fill"></i> 角色管理
                     </a>
                     {% endif %}
+                    {% if user|has_perm_code:"teams.read" %}
+                    <a class="nav-link" href="{% url 'users:team_list' %}">
+                        <i class="bi bi-collection"></i> 用户组管理
+                    </a>
+                    {% endif %}
                     {% if user|has_perm_code:"audit.read" %}
                     <a class="nav-link" href="{% url 'audit:list' %}">
                         <i class="bi bi-journal-text"></i> 操作日志
