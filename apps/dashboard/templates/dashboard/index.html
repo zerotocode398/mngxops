@@ -2,329 +2,372 @@
 {% load config_filters %}
 
 {% block title %}首页 - MngxOps{% endblock %}
+{% block page_title %}系统概览{% endblock %}
+
+{% block extra_js %}
+<script>
+    /** 统计卡片 30 秒自动轮询间隔（毫秒） */
+    const POLL_INTERVAL_MS = 30000;
+
+    /**
+     * 通过 AJAX 获取最新统计数字并更新卡片
+     */
+    function fetchStatsAndUpdate() {
+        fetch("{% url 'dashboard:stats_api' %}", {
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+        })
+        .then(function (response) {
+            if (!response.ok) throw new Error("HTTP " + response.status);
+            return response.json();
+        })
+        .then(function (data) {
+            // 更新各卡片数字
+            document.getElementById("stat-node-count").textContent = data.node_count;
+            document.getElementById("stat-online-count").textContent = data.online_count;
+            document.getElementById("stat-offline-count").textContent = data.offline_count;
+            document.getElementById("stat-pending-push").textContent = data.pending_push_count;
+            document.getElementById("stat-conflict").textContent = data.conflict_count;
+
+            // 更新离线节点的动态样式
+            var offlineEl = document.getElementById("stat-offline-count");
+            if (data.offline_count > 0) {
+                offlineEl.parentElement.parentElement.classList.add("stat-card-offline");
+                offlineEl.parentElement.parentElement.classList.remove("stat-card-default");
+            } else {
+                offlineEl.parentElement.parentElement.classList.remove("stat-card-offline");
+                offlineEl.parentElement.parentElement.classList.add("stat-card-default");
+            }
+        })
+        .catch(function (err) {
+            console.warn("统计轮询失败:", err);
+        });
+    }
+
+    /**
+     * 页面加载完成后启动轮询
+     */
+    document.addEventListener("DOMContentLoaded", function () {
+        // 首次等待 30 秒后开始轮询，避免页面刚加载就请求
+        setTimeout(function () {
+            fetchStatsAndUpdate();
+            setInterval(fetchStatsAndUpdate, POLL_INTERVAL_MS);
+        }, POLL_INTERVAL_MS);
+    });
+</script>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <div class="card">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 系统概览</h5>
+                <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()" title="手动刷新页面">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                </button>
+            </div>
+
+            <!-- 统计卡片区域：响应式网格 -->
+            <div class="row g-2 mb-4">
+                <!-- 节点总数 -->
+                <div class="col-xxl-3 col-lg-4 col-md-6">
+                    <div class="dashboard-stat-card stat-card-primary" onclick="window.location.href='{% url 'nodes:list' %}'">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon me-3">
+                                <i class="bi bi-server" style="font-size: 2rem; color: #667eea;"></i>
+                            </div>
+                            <div>
+                                <div class="stat-number" id="stat-node-count">{{ node_count }}</div>
+                                <div class="stat-label">节点总数</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 在线节点（绿） -->
+                <div class="col-xxl-3 col-lg-4 col-md-6">
+                    <div class="dashboard-stat-card stat-card-online" onclick="window.location.href='{% url 'nodes:list' %}?status=online'">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon me-3">
+                                <i class="bi bi-wifi" style="font-size: 2rem; color: #28a745;"></i>
+                            </div>
+                            <div>
+                                <div class="stat-number text-success" id="stat-online-count">{{ online_count }}</div>
+                                <div class="stat-label">在线节点</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 离线节点（红） -->
+                <div class="col-xxl-3 col-lg-4 col-md-6">
+                    <div class="dashboard-stat-card {% if offline_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}" onclick="window.location.href='{% url 'nodes:list' %}?status=offline'">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon me-3">
+                                <i class="bi bi-exclamation-triangle" style="font-size: 2rem; color: #dc3545;"></i>
+                            </div>
+                            <div>
+                                <div class="stat-number text-danger" id="stat-offline-count">{{ offline_count }}</div>
+                                <div class="stat-label">离线节点</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 节点组 -->
+                <div class="col-xxl-3 col-lg-4 col-md-6">
+                    <div class="dashboard-stat-card stat-card-primary" onclick="window.location.href='{% url 'nodes:group_list' %}'">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon me-3">
+                                <i class="bi bi-collection" style="font-size: 2rem; color: #667eea;"></i>
+                            </div>
+                            <div>
+                                <div class="stat-number">{{ node_group_count }}</div>
+                                <div class="stat-label">节点组</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 发布任务 -->
+                <div class="col-xxl-3 col-lg-4 col-md-6">
+                    <div class="dashboard-stat-card stat-card-info" onclick="window.location.href='{% url 'releases:history' %}'">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon me-3">
+                                <i class="bi bi-rocket-takeoff" style="font-size: 2rem; color: #17a2b8;"></i>
+                            </div>
+                            <div>
+                                <div class="stat-number">{{ release_task_count }}</div>
+                                <div class="stat-label">发布任务</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 待推送（蓝） -->
+                <div class="col-xxl-3 col-lg-4 col-md-6">
+                    <div class="dashboard-stat-card stat-card-info" onclick="window.location.href='{% url 'configs:list' %}?sync_status=pending'">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon me-3">
+                                <i class="bi bi-send" style="font-size: 2rem; color: #17a2b8;"></i>
+                            </div>
+                            <div>
+                                <div class="stat-number text-info" id="stat-pending-push">{{ pending_push_count }}</div>
+                                <div class="stat-label">待推送</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 冲突（橙/黄） -->
+                <div class="col-xxl-3 col-lg-4 col-md-6">
+                    <div class="dashboard-stat-card {% if conflict_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}" onclick="window.location.href='{% url 'configs:list' %}'">
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon me-3">
+                                <i class="bi bi-exclamation-diamond" style="font-size: 2rem; color: #ffc107;"></i>
+                            </div>
+                            <div>
+                                <div class="stat-number text-warning" id="stat-conflict">{{ conflict_count }}</div>
+                                <div class="stat-label">冲突</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 快捷操作区域 -->
+            <div class="card mb-4">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 系统概览</h5>
+                    <h6 class="mb-0"><i class="bi bi-lightning-charge"></i> 快捷操作</h6>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-3">
-                            <div class="card text-white bg-primary mb-3">
-                                <div class="card-body">
-                                    <h5 class="card-title"><i class="bi bi-server"></i> 节点总数</h5>
-                                    <p class="card-text display-4">{{ node_count }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-white bg-success mb-3">
-                                <div class="card-body">
-                                    <h5 class="card-title"><i class="bi bi-wifi"></i> 在线节点</h5>
-                                    <p class="card-text display-4">{{ online_count }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-white bg-danger mb-3">
-                                <div class="card-body">
-                                    <h5 class="card-title"><i class="bi bi-exclamation-triangle"></i> 异常节点</h5>
-                                    <p class="card-text display-4">{{ offline_count }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-white bg-info mb-3">
-                                <div class="card-body">
-                                    <h5 class="card-title"><i class="bi bi-collection"></i> 节点组</h5>
-                                    <p class="card-text display-4">{{ node_group_count }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-white bg-warning mb-3">
-                                <div class="card-body">
-                                    <h5 class="card-title"><i class="bi bi-file-earmark-code"></i> 配置版本</h5>
-                                    <p class="card-text display-4">{{ config_version_count }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-white bg-dark mb-3">
-                                <div class="card-body">
-                                    <h5 class="card-title"><i class="bi bi-rocket-takeoff"></i> 发布任务</h5>
-                                    <p class="card-text display-4">{{ release_task_count }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card text-white {% if config_failed_count > 0 %}bg-danger{% else %}bg-secondary{% endif %} mb-3">
-                                <div class="card-body">
-                                    <h5 class="card-title"><i class="bi bi-x-circle"></i> 同步失败</h5>
-                                    <p class="card-text display-4">{{ config_failed_count }}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row mt-2">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h6 class="mb-0"><i class="bi bi-lightning-charge"></i> 快捷入口</h6>
-                                </div>
-                                <div class="card-body">
-                                    <div class="row g-3">
-                                        <div class="col-md-2 col-4">
-                                            <a href="{% url 'nodes:create' %}" class="text-decoration-none">
-                                                <div class="card border-primary h-100 action-card">
-                                                    <div class="card-body text-center py-3">
-                                                        <i class="bi bi-plus-circle text-primary" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">新建节点</h6>
-                                                        <small class="text-muted">添加新节点</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                        <div class="col-md-2 col-4">
-                                            <a href="{% url 'credentials:create' %}" class="text-decoration-none">
-                                                <div class="card border-success h-100 action-card">
-                                                    <div class="card-body text-center py-3">
-                                                        <i class="bi bi-key text-success" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">新建凭证</h6>
-                                                        <small class="text-muted">添加SSH凭证</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                        <div class="col-md-2 col-4">
-                                            <a href="{% url 'nodes:group_create' %}" class="text-decoration-none">
-                                                <div class="card border-info h-100 action-card">
-                                                    <div class="card-body text-center py-3">
-                                                        <i class="bi bi-collection text-info" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">新建节点组</h6>
-                                                        <small class="text-muted">创建节点组</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                        <div class="col-md-2 col-4">
-                                            <a href="{% url 'configs:create' %}" class="text-decoration-none">
-                                                <div class="card border-warning h-100 action-card">
-                                                    <div class="card-body text-center py-3">
-                                                        <i class="bi bi-file-earmark-plus text-warning" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">创建配置版本</h6>
-                                                        <small class="text-muted">新建配置</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                        <div class="col-md-2 col-4">
-                                            <a href="{% url 'releases:create' %}" class="text-decoration-none">
-                                                <div class="card border-danger h-100 action-card">
-                                                    <div class="card-body text-center py-3">
-                                                        <i class="bi bi-rocket-takeoff text-danger" style="font-size: 2rem;"></i>
-                                                        <h6 class="mt-2 mb-1">创建发布任务</h6>
-                                                        <small class="text-muted">发布配置</small>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
+                    <div class="row g-3">
+                        <div class="col-md-2 col-4">
+                            <a href="{% url 'nodes:create' %}" class="text-decoration-none">
+                                <div class="card border-primary h-100 action-card">
+                                    <div class="card-body text-center py-3">
+                                        <i class="bi bi-plus-circle text-primary" style="font-size: 2rem;"></i>
+                                        <h6 class="mt-2 mb-1">新建节点</h6>
+                                        <small class="text-muted">添加新节点</small>
                                     </div>
                                 </div>
-                            </div>
+                            </a>
                         </div>
-                    </div>
-
-                    <div class="row mt-4">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h6 class="mb-0"><i class="bi bi-server"></i> 节点状态</h6>
-                                    <a href="{% url 'nodes:list' %}" class="btn btn-sm btn-outline-primary">查看全部</a>
-                                </div>
-                                <div class="card-body p-0">
-                                    <div class="table-responsive">
-                                        <table class="table table-hover table-sm mb-0">
-                                            <thead>
-                                                <tr>
-                                                    <th>主机名</th>
-                                                    <th>IP地址</th>
-                                                    <th>状态</th>
-                                                    <th>节点组</th>
-                                                    <th>最近检查</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for node in recent_nodes %}
-                                                <tr>
-                                                    <td>
-                                                        <strong>{{ node.hostname }}</strong>
-                                                    </td>
-                                                    <td>
-                                                        <code>{{ node.ip }}</code>
-                                                    </td>
-                                                    <td>
-                                                        {% if node.status == "online" %}
-                                                        <span class="badge bg-success">在线</span>
-                                                        {% elif node.status == "offline" %}
-                                                        <span class="badge bg-danger">离线</span>
-                                                        {% else %}
-                                                        <span class="badge bg-secondary">未知</span>
-                                                        {% endif %}
-                                                    </td>
-                                                    <td>
-                                                        {% for group in node.groups.all %}
-                                                        <span class="badge bg-light text-dark">{{ group.name }}</span>
-                                                        {% empty %}
-                                                        <small class="text-muted">-</small>
-                                                        {% endfor %}
-                                                    </td>
-                                                    <td>
-                                                        <small>{{ node.updated_at|date:"Y-m-d H:i" }}</small>
-                                                    </td>
-                                                </tr>
-                                                {% empty %}
-                                                <tr>
-                                                    <td colspan="5" class="text-center text-muted py-3">
-                                                        <i class="bi bi-inbox"></i> 暂无节点数据
-                                                    </td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
+                        <div class="col-md-2 col-4">
+                            <a href="{% url 'credentials:create' %}" class="text-decoration-none">
+                                <div class="card border-success h-100 action-card">
+                                    <div class="card-body text-center py-3">
+                                        <i class="bi bi-key text-success" style="font-size: 2rem;"></i>
+                                        <h6 class="mt-2 mb-1">新建凭证</h6>
+                                        <small class="text-muted">添加SSH凭证</small>
                                     </div>
                                 </div>
-                            </div>
+                            </a>
                         </div>
-                    </div>
-
-                    <div class="row mt-4">
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h6 class="mb-0"><i class="bi bi-clock-history"></i> 最近发布记录</h6>
-                                    <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-primary">查看全部</a>
-                                </div>
-                                <div class="card-body p-0">
-                                    <div class="table-responsive">
-                                        <table class="table table-hover table-sm mb-0">
-                                            <thead>
-                                                <tr>
-                                                    <th>任务编号</th>
-                                                    <th>配置版本</th>
-                                                    <th>发布人</th>
-                                                    <th>发布时间</th>
-                                                    <th>状态</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for task in recent_tasks %}
-                                                <tr>
-                                                    <td>
-                                                        <a href="{% url 'releases:detail' task.id %}">
-                                                            <small>#{{ task.id }}</small>
-                                                        </a>
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge bg-secondary">v{{ task.version.version }}</span>
-                                                        <br>
-                                                        <small class="text-muted">{{ task.config.name }}</small>
-                                                    </td>
-                                                    <td>
-                                                        <small>{{ task.operator.username }}</small>
-                                                    </td>
-                                                    <td>
-                                                        <small>{{ task.created_at|date:"Y-m-d H:i" }}</small>
-                                                    </td>
-                                                    <td>
-                                                        {% if task.status == "success" %}
-                                                        <span class="badge bg-success">成功</span>
-                                                        {% elif task.status == "failed" %}
-                                                        <span class="badge bg-danger">失败</span>
-                                                        {% elif task.status == "running" %}
-                                                        <span class="badge bg-info">发布中</span>
-                                                        {% elif task.status == "rollback" %}
-                                                        <span class="badge bg-warning">已回滚</span>
-                                                        {% else %}
-                                                        <span class="badge bg-secondary">等待中</span>
-                                                        {% endif %}
-                                                    </td>
-                                                </tr>
-                                                {% empty %}
-                                                <tr>
-                                                    <td colspan="5" class="text-center text-muted py-3">
-                                                        <i class="bi bi-inbox"></i> 暂无发布记录
-                                                    </td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
+                        <div class="col-md-2 col-4">
+                            <a href="{% url 'nodes:group_create' %}" class="text-decoration-none">
+                                <div class="card border-info h-100 action-card">
+                                    <div class="card-body text-center py-3">
+                                        <i class="bi bi-collection text-info" style="font-size: 2rem;"></i>
+                                        <h6 class="mt-2 mb-1">新建节点组</h6>
+                                        <small class="text-muted">创建节点组</small>
                                     </div>
                                 </div>
-                            </div>
+                            </a>
                         </div>
-                    </div>
-
-                    {% if failed_configs %}
-                    <div class="row mt-4">
-                        <div class="col-12">
-                            <div class="card border-danger">
-                                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
-                                    <h6 class="mb-0"><i class="bi bi-exclamation-triangle"></i> 同步失败配置</h6>
-                                    <a href="{% url 'configs:list' %}?sync_status=failed" class="btn btn-sm btn-outline-light">查看全部</a>
-                                </div>
-                                <div class="card-body p-0">
-                                    <div class="table-responsive">
-                                        <table class="table table-hover table-sm mb-0">
-                                            <thead>
-                                                <tr>
-                                                    <th>配置文件</th>
-                                                    <th>节点</th>
-                                                    <th>错误信息</th>
-                                                    <th>最近更新</th>
-                                                    <th>操作</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for config in failed_configs %}
-                                                <tr>
-                                                    <td>
-                                                        <i class="bi bi-file-earmark-code text-danger"></i>
-                                                        <code>{{ config.name }}</code>
-                                                    </td>
-                                                    <td>
-                                                        <small>{{ config|nodes_hostnames }}</small>
-                                                        <br>
-                                                        <small class="text-muted">{{ config|nodes_ips }}</small>
-                                                    </td>
-                                                    <td>
-                                                        <small class="text-danger" title="{{ config.last_sync_error }}">
-                                                            {{ config.last_sync_error|truncatechars:60 }}
-                                                        </small>
-                                                    </td>
-                                                    <td>
-                                                        <small>{{ config.updated_at|date:"Y-m-d H:i" }}</small>
-                                                    </td>
-                                                    <td>
-                                                        <a href="{% url 'configs:detail' config.id %}" class="btn btn-sm btn-outline-info">
-                                                            <i class="bi bi-eye"></i> 查看
-                                                        </a>
-                                                    </td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
+                        <div class="col-md-2 col-4">
+                            <a href="{% url 'configs:create' %}" class="text-decoration-none">
+                                <div class="card border-warning h-100 action-card">
+                                    <div class="card-body text-center py-3">
+                                        <i class="bi bi-file-earmark-plus text-warning" style="font-size: 2rem;"></i>
+                                        <h6 class="mt-2 mb-1">新建配置</h6>
+                                        <small class="text-muted">新建配置版本</small>
                                     </div>
                                 </div>
-                            </div>
+                            </a>
+                        </div>
+                        <div class="col-md-2 col-4">
+                            <a href="{% url 'releases:create' %}" class="text-decoration-none">
+                                <div class="card border-danger h-100 action-card">
+                                    <div class="card-body text-center py-3">
+                                        <i class="bi bi-rocket-takeoff text-danger" style="font-size: 2rem;"></i>
+                                        <h6 class="mt-2 mb-1">创建发布</h6>
+                                        <small class="text-muted">发布配置</small>
+                                    </div>
+                                </div>
+                            </a>
                         </div>
                     </div>
-                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 最近发布任务列表 -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-rocket-takeoff"></i> 最近发布任务</h6>
+                    <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-primary">查看全部</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>批次号</th>
+                                    <th>配置名称</th>
+                                    <th>版本</th>
+                                    <th>目标节点</th>
+                                    <th>状态</th>
+                                    <th>操作人</th>
+                                    <th>创建时间</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for task in recent_tasks %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'releases:detail' task.id %}">
+                                            <small>{{ task.batch_number|default:task.id }}</small>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'configs:detail' task.config.id %}">{{ task.config.name }}</a>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">v{{ task.version.version }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-light text-dark">{{ task.node.hostname }}</span>
+                                    </td>
+                                    <td>
+                                        {% if task.status == "success" %}
+                                        <span class="badge bg-success">成功</span>
+                                        {% elif task.status == "failed" %}
+                                        <span class="badge bg-danger">失败</span>
+                                        {% elif task.status == "running" %}
+                                        <span class="badge bg-info">进行中</span>
+                                        {% elif task.status == "rollback" %}
+                                        <span class="badge bg-warning">已回滚</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ task.get_status_display }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ task.operator.username }}</small>
+                                    </td>
+                                    <td>
+                                        <small title="{{ task.created_at|date:'Y-m-d H:i:s' }}">{{ task.created_at|date:"Y-m-d H:i" }}</small>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-3">
+                                        <i class="bi bi-inbox"></i> 暂无发布任务
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 配置下发失败告警列表 -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-exclamation-triangle text-danger"></i> 配置下发失败</h6>
+                    <a href="{% url 'configs:list' %}?sync_status=failed" class="btn btn-sm btn-outline-danger">查看全部</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>绑定</th>
+                                    <th>关联节点</th>
+                                    <th>下发状态</th>
+                                    <th>最后下发</th>
+                                    <th>错误信息</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for config in failed_configs %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'configs:detail' config.id %}">
+                                            <code>{{ config.name }}</code>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <small>{{ config|nodes_hostnames }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-danger">下发失败</span>
+                                    </td>
+                                    <td>
+                                        <small title="{{ config.last_sync_time|date:'Y-m-d H:i:s' }}">
+                                            {% if config.last_sync_time %}
+                                            {{ config.last_sync_time|date:"Y-m-d H:i" }}
+                                            {% else %}
+                                            {{ config.updated_at|date:"Y-m-d H:i" }}
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <small class="text-danger" title="{{ config.last_sync_error }}">
+                                            {{ config.last_sync_error|default:"未知错误"|truncatechars:50 }}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'configs:detail' config.id %}" class="btn btn-sm btn-outline-info">
+                                            <i class="bi bi-eye"></i> 查看详情
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-3">
+                                        <i class="bi bi-check-circle"></i> 暂无下发失败记录
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
