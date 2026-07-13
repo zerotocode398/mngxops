@@ -30,6 +30,8 @@ urlpatterns = [
     path("configs/", include("apps.configs.urls")),
     path("releases/", include("apps.releases.urls")),
     path("audit/", include("apps.audit.urls")),
+    path("upgrade/", include("apps.upgrade.urls")),
+    path("settings/", include("apps.settings.urls")),
 ]
 
 if settings.DEBUG:
