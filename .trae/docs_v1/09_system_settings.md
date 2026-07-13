@@ -99,9 +99,8 @@ class SystemSetting(models.Model):
 
 | key | group | type | 默认值 | 说明 |
 |-----|-------|------|--------|------|
-| `dashboard.recent_nodes_count` | 仪表盘 | integer | 10 | 仪表盘"最近操作节点"显示条数 |
 | `dashboard.recent_tasks_count` | 仪表盘 | integer | 10 | 仪表盘"最近发布任务"显示条数 |
-| `dashboard.recent_failed_configs_count` | 仪表盘 | integer | 10 | 仪表盘"同步失败配置"显示条数 |
+| `dashboard.recent_failed_bindings_count` | 仪表盘 | integer | 10 | 仪表盘"配置下发失败"告警显示条数 |
 | `node.batch_max_count` | 节点管理 | integer | 3 | 批量操作最大节点数 |
 | `node.ssh_connect_timeout` | 节点管理 | integer | 10 | SSH 连接超时（秒） |
 | `node.ssh_default_port` | 节点管理 | integer | 22 | SSH 默认端口 |
@@ -120,6 +119,9 @@ class SystemSetting(models.Model):
 | `audit.login_max_fail_count` | 审计日志 | integer | 5 | 登录失败锁定阈值 |
 | `audit.login_lock_minutes` | 审计日志 | integer | 30 | 登录锁定时间（分钟） |
 | `system.task_progress_poll_interval` | 系统 | integer | 2 | 任务进度轮询间隔（秒） |
+| `system.dashboard_refresh_interval` | 系统 | integer | 30 | 仪表盘统计卡片自动刷新间隔（秒） |
+| `release.history_retention_days` | 发布管理 | integer | 90 | 发布历史保留天数（超过自动清理） |
+| `task_center.retention_days` | 任务中心 | integer | 30 | 任务中心记录保留天数（超过自动清理，避免无限存储） |
 
 ---
 
