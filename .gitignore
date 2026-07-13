@@ -2,6 +2,8 @@
 __pycache__/
 *.py[codz]
 *$py.class
+.trae/个人需求.md
+.trae/desc.md
 
 # C extensions
 *.so
