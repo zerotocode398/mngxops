@@ -19,10 +19,13 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <form method="get" class="row g-2 mb-3">
-                        <div class="col-md-2">
-                            <input type="text" name="search" class="form-control form-control-sm"
-                                placeholder="搜索用户 / 动作" value="{{ search }}">
+                    <form method="get" class="row g-2 mb-3" id="searchForm" autocomplete="off">
+                        <div class="col-md-4">
+                            <div class="tag-input-wrapper form-control" id="auditSearchTagWrapper">
+                                <input type="text" class="tag-input-field" id="auditSearchField"
+                                    placeholder="搜索用户或动作">
+                            </div>
+                            <input type="hidden" name="search" id="auditSearchHidden" value="{{ search }}">
                         </div>
                         <div class="col-md-2">
                             <select name="module" class="form-select form-select-sm">
@@ -49,35 +52,30 @@
                                 value="{{ date_to }}" placeholder="结束日期">
                         </div>
                         <div class="col-md-1">
-                            <button type="submit" class="btn btn-sm btn-outline-secondary w-100">
-                                <i class="bi bi-search"></i> 搜索
-                            </button>
-                        </div>
-                        <div class="col-md-1">
                             <select name="per_page" class="form-select form-select-sm">
                                 {% for size in per_page_options %}
                                 <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }}</option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-1">
-                            <a href="{% url 'audit:list' %}?per_page={{ per_page }}" class="btn btn-sm btn-outline-danger w-100">
-                                <i class="bi bi-x-circle"></i> 重置
+                        <div class="col-md-1 d-grid">
+                            <a href="{% url 'audit:list' %}" class="btn btn-sm btn-outline-secondary" title="清空筛选">
+                                <i class="bi bi-x-circle"></i>
                             </a>
                         </div>
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm">
-                            <thead>
+                        <table class="table table-hover table-sm mb-0 audit-table">
+                            <thead class="table-light">
                                 <tr>
-                                    <th style="width: 8%">用户</th>
-                                    <th style="width: 10%">模块</th>
-                                    <th style="width: 15%">动作</th>
-                                    <th style="width: 10%">IP</th>
-                                    <th style="width: 8%">结果</th>
-                                    <th style="width: 15%">时间</th>
-                                    <th style="width: 34%">详情</th>
+                                    <th style="width: 8%;">用户</th>
+                                    <th style="width: 10%;">模块</th>
+                                    <th style="width: 15%;">动作</th>
+                                    <th style="width: 10%;">IP</th>
+                                    <th style="width: 8%;">结果</th>
+                                    <th style="width: 15%;">时间</th>
+                                    <th style="width: 34%;">详情</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -165,4 +163,34 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .audit-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .audit-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .audit-table td code,
+    .audit-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .audit-table td .badge {
+        font-size: 0.78rem;
+    }
+    .audit-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTagSearch('#auditSearchTagWrapper', '#auditSearchHidden', '#searchForm');
+    });
+</script>
 {% endblock %}

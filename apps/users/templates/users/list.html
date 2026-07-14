@@ -17,37 +17,43 @@
                     {% endif %}
                 </div>
                 <div class="card-body">
-                    <form method="get" class="mb-3">
-                        <div class="input-group">
-                            <input type="text" name="search" class="form-control" placeholder="搜索用户名、邮箱或姓名"
-                                value="{{ search }}">
-                            <select name="per_page" class="form-select" style="max-width: 130px;">
-                                {% for size in per_page_options %}
-                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
-                                {% endfor %}
-                            </select>
-                            <button type="submit" class="btn btn-outline-primary">
-                                <i class="bi bi-search"></i> 搜索
-                            </button>
-                            {% if search %}
-                            <a href="{% url 'users:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary">
-                                <i class="bi bi-x-circle"></i> 清空
-                            </a>
-                            {% endif %}
+                    <form method="get" class="mb-3" id="searchForm" autocomplete="off">
+                        <div class="row g-2">
+                            <div class="col-md-8">
+                                <div class="tag-input-wrapper form-control" id="userSearchTagWrapper">
+                                    <input type="text" class="tag-input-field" id="userSearchField"
+                                        placeholder="搜索用户名或邮箱或姓名">
+                                </div>
+                                <input type="hidden" name="search" id="userSearchHidden" value="{{ search }}">
+                            </div>
+                            <div class="col-md-2">
+                                <select name="per_page" class="form-select" onchange="document.getElementById('searchForm').submit()">
+                                    {% for size in per_page_options %}
+                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2 d-grid">
+                                {% if search %}
+                                <a href="{% url 'users:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
+                                    <i class="bi bi-x-circle"></i>
+                                </a>
+                                {% endif %}
+                            </div>
                         </div>
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-bordered table-hover">
-                            <thead>
+                        <table class="table table-hover table-sm mb-0 user-table">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>用户名</th>
-                                    <th>姓名</th>
-                                    <th>邮箱</th>
-                                    <th>归属角色</th>
-                                    <th>超级管理员</th>
-                                    <th>状态</th>
-                                    <th>操作</th>
+                                    <th style="width: 15%;">用户名</th>
+                                    <th style="width: 12%;">姓名</th>
+                                    <th style="width: 18%;">邮箱</th>
+                                    <th style="width: 18%;">归属角色</th>
+                                    <th style="width: 10%;">超级管理员</th>
+                                    <th style="width: 8%;">状态</th>
+                                    <th style="width: 19%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -185,4 +191,34 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .user-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .user-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .user-table td code,
+    .user-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .user-table td .badge {
+        font-size: 0.78rem;
+    }
+    .user-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTagSearch('#userSearchTagWrapper', '#userSearchHidden', '#searchForm');
+    });
+</script>
 {% endblock %}

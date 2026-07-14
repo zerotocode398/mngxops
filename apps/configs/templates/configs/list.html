@@ -31,7 +31,7 @@
                             <div class="col-md-6">
                                 <div class="tag-input-wrapper form-control" id="configCombinedTagWrapper">
                                     <input type="text" class="tag-input-field" id="configCombinedSearchField"
-                                        placeholder="输入查询条件后回车（配置名/主机名/IP）">
+                                        placeholder="搜索配置名或主机名或 IP">
                                 </div>
                                 <input type="hidden" name="search" id="configSearchHidden" value="{{ search }}">
                             </div>
@@ -53,10 +53,10 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-3 d-grid">
                                 {% if has_any_filter %}
-                                <a href="{% url 'configs:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary w-100" onclick="sessionStorage.removeItem('configs_list_query')">
-                                    <i class="bi bi-x-circle"></i> 清空筛选
+                                <a href="{% url 'configs:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选" onclick="sessionStorage.removeItem('configs_list_query')">
+                                    <i class="bi bi-x-circle"></i>
                                 </a>
                                 {% endif %}
                             </div>
@@ -121,7 +121,7 @@
                                         {% endif %}
                                     </div>
                                     <div class="table-responsive px-3">
-                                        <table class="table table-hover table-sm mb-0">
+                                        <table class="table table-hover table-sm mb-0 config-list-table">
                                             <thead class="table-light">
                                                 <tr>
                                                     <th style="width: 3%"></th>
@@ -395,6 +395,26 @@
         min-width: 100px;
         padding: 0;
         background: transparent;
+    }
+    .config-list-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .config-list-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .config-list-table td code,
+    .config-list-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .config-list-table td .badge {
+        font-size: 0.78rem;
+    }
+    .config-list-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
     }
 </style>
 <script>

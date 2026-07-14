@@ -19,7 +19,7 @@
                             <div class="col-md-8">
                                 <div class="tag-input-wrapper form-control" id="groupCombinedTagWrapper">
                                     <input type="text" class="tag-input-field" id="groupCombinedSearchField"
-                                        placeholder="输入节点组关键词后回车，可添加多个查询条件">
+                                        placeholder="搜索节点组名称">
                                 </div>
                                 <input type="hidden" name="search" id="groupSearchHidden" value="{{ search }}">
                             </div>
@@ -30,10 +30,10 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-2 d-grid">
                                 {% if search %}
-                                <a href="{% url 'nodes:group_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary w-100">
-                                    <i class="bi bi-x-circle"></i> 清空
+                                <a href="{% url 'nodes:group_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
+                                    <i class="bi bi-x-circle"></i>
                                 </a>
                                 {% endif %}
                             </div>
@@ -41,15 +41,15 @@
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm">
-                            <thead>
+                        <table class="table table-hover table-sm mb-0 node-group-table">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>节点组名称</th>
-                                    <th>节点数</th>
-                                    <th>描述</th>
-                                    <th>创建人</th>
-                                    <th>创建时间</th>
-                                    <th>操作</th>
+                                    <th style="width: 18%;">节点组名称</th>
+                                    <th style="width: 10%;">节点数</th>
+                                    <th style="width: 18%;">描述</th>
+                                    <th style="width: 12%;">创建人</th>
+                                    <th style="width: 16%;">创建时间</th>
+                                    <th style="width: 26%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -114,8 +114,8 @@
                                             </div>
                                             <small class="text-muted">已选 <strong id="selectedCount{{ group.id }}">0</strong> 台</small>
                                         </div>
-                                        <table class="table table-sm table-bordered">
-                                            <thead>
+                                        <table class="table table-sm table-bordered table-hover">
+                                            <thead class="table-light">
                                                 <tr>
                                                     <th style="width:40px">
                                                         <input type="checkbox" class="form-check-input manage-select-all" data-group-id="{{ group.id }}">
@@ -458,4 +458,29 @@
         });
     });
 </script>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .node-group-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .node-group-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .node-group-table td code,
+    .node-group-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .node-group-table td .badge {
+        font-size: 0.78rem;
+    }
+    .node-group-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
 {% endblock %}

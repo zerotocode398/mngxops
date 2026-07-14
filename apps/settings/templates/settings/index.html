@@ -1,66 +1,163 @@
-
 {% block title %}系统设置 - MngxOps{% endblock %}
 {% block page_title %}系统设置{% endblock %}
 
 {% block extra_head %}
 <style>
-    .setting-group-card {
-        border: 1px solid #e9ecef;
-        border-radius: 10px;
-        margin-bottom: 24px;
+    .settings-card {
+        border: none;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        border-radius: 12px;
+        overflow: hidden;
     }
-    .setting-item {
+    .settings-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        border-bottom: none;
+        font-weight: 600;
+        font-size: 0.95rem;
+    }
+    .settings-card-header .badge {
+        font-weight: 500;
+        font-size: 0.75rem;
+    }
+    .group-dashboard .settings-card-header { background: #f0f3ff; color: #4a5fc1; }
+    .group-dashboard .settings-card-header .badge { background: #667eea; }
+    .group-node .settings-card-header { background: #f0fff4; color: #1a7a32; }
+    .group-node .settings-card-header .badge { background: #28a745; }
+    .group-credential .settings-card-header { background: #fffbe6; color: #8a6d14; }
+    .group-credential .settings-card-header .badge { background: #e6a817; }
+    .group-config .settings-card-header { background: #e8f8fa; color: #0e6b77; }
+    .group-config .settings-card-header .badge { background: #17a2b8; }
+    .group-release .settings-card-header { background: #fff5f5; color: #a82828; }
+    .group-release .settings-card-header .badge { background: #dc3545; }
+    .group-audit .settings-card-header { background: #f8f4ff; color: #5a339b; }
+    .group-audit .settings-card-header .badge { background: #6f42c1; }
+    .group-system .settings-card-header { background: #f4f5f6; color: #383d41; }
+    .group-system .settings-card-header .badge { background: #495057; }
+
+    .settings-item {
         display: flex;
         align-items: center;
         justify-content: space-between;
         padding: 14px 20px;
         border-bottom: 1px solid #f0f0f0;
+        transition: background-color 0.15s;
     }
-    .setting-item:last-child {
-        border-bottom: none;
-    }
-    .setting-item-label {
+    .settings-item:last-child { border-bottom: none; }
+    .settings-item:hover { background-color: #fafbfc; }
+    .settings-item-label {
         flex: 0 0 260px;
         font-weight: 500;
         font-size: 0.9rem;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
     }
-    .setting-item-label small {
+    .settings-item-icon {
+        font-size: 1rem;
+        margin-top: 1px;
+        opacity: 0.7;
+    }
+    .settings-item-text small {
         font-weight: 400;
-    }
-    .setting-item-control {
-        flex: 1;
-        max-width: 280px;
-    }
-    .setting-item-control input {
-        width: 100%;
-    }
-    .nav-tabs .nav-link {
         color: #6c757d;
-        border: none;
-        padding: 10px 18px;
+        display: block;
+        margin-top: 2px;
+    }
+    .settings-item-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        max-width: 320px;
+    }
+    .settings-item-control input[type="number"],
+    .settings-item-control input[type="text"] {
+        flex: 1;
+    }
+    .settings-unit {
+        font-size: 0.8rem;
+        color: #6c757d;
+        white-space: nowrap;
+        min-width: 36px;
+        text-align: left;
+    }
+    .settings-item-control .form-switch {
+        padding-left: 2.5em;
+        margin-bottom: 0;
+    }
+
+    .nav-pills .nav-link {
+        color: #6c757d;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+    .nav-pills .nav-link:hover {
+        background: #f0f3ff;
+        color: #4a5fc1;
+    }
+    .nav-pills .nav-link.active {
+        background: #667eea;
+        color: #fff;
+    }
+    .nav-pills {
+        gap: 6px;
+        margin-bottom: 20px;
+    }
+
+    .settings-save-bar {
+        padding: 12px 20px;
+        border-top: 1px solid #e9ecef;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 12px;
+    }
+    .settings-save-bar .btn {
+        padding: 6px 20px;
         font-weight: 500;
     }
-    .nav-tabs .nav-link.active {
-        color: #0d6efd;
-        border-bottom: 3px solid #0d6efd;
-        background: transparent;
+
+    .settings-empty {
+        text-align: center;
+        padding: 60px 20px;
+        color: #adb5bd;
     }
-    .nav-tabs {
-        border-bottom: 2px solid #e9ecef;
-        margin-bottom: 20px;
+    .settings-empty .empty-icon {
+        font-size: 3rem;
+        margin-bottom: 16px;
+        display: block;
+    }
+    .settings-empty p {
+        font-size: 0.9rem;
+        margin-bottom: 8px;
+    }
+    .settings-empty code {
+        background: #f0f3ff;
+        color: #667eea;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.82rem;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <h5 class="mb-0"><i class="bi bi-sliders"></i> 系统设置</h5>
+<div class="card settings-card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-sliders2"></i> 系统设置</h5>
+        {% if groups %}
+        <small class="text-muted">共 {{ total_count }} 项配置</small>
+        {% endif %}
     </div>
     <div class="card-body">
         {% if groups %}
-        <!-- Tab 导航 -->
-        <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
+        <ul class="nav nav-pills" id="settingsTabs" role="tablist">
             {% for group_name, items in groups.items %}
             <li class="nav-item" role="presentation">
                 <button class="nav-link {% if group_name == active_group %}active{% endif %}"
@@ -69,35 +166,68 @@
                         data-bs-target="#group-{{ forloop.counter }}"
                         type="button" role="tab"
                         data-group="{{ group_name }}">
+                    {% if group_name == "仪表盘" %}📊
+                    {% elif group_name == "节点管理" %}🔌
+                    {% elif group_name == "凭证管理" %}🔑
+                    {% elif group_name == "配置管理" %}📝
+                    {% elif group_name == "发布管理" %}🚀
+                    {% elif group_name == "审计日志" %}📜
+                    {% elif group_name == "系统" %}🖥
+                    {% else %}⚙{% endif %}
                     {{ group_name }}
                 </button>
             </li>
             {% endfor %}
         </ul>
 
-        <!-- Tab 内容 -->
         <div class="tab-content" id="settingsTabContent">
             {% for group_name, items in groups.items %}
             <div class="tab-pane fade {% if group_name == active_group %}show active{% endif %}"
-                 id="group-{{ forloop.counter }}"
-                 role="tabpanel">
-                <div class="setting-group-card">
+                 id="group-{{ forloop.counter }}" role="tabpanel">
+
+                {% with g=group_name %}
+                <div class="card settings-card mb-4 {% if g == '仪表盘' %}group-dashboard{% elif g == '节点管理' %}group-node{% elif g == '凭证管理' %}group-credential{% elif g == '配置管理' %}group-config{% elif g == '发布管理' %}group-release{% elif g == '审计日志' %}group-audit{% elif g == '系统' %}group-system{% endif %}">
+                    <div class="settings-card-header">
+                        <span>
+                            {% if g == "仪表盘" %}📊
+                            {% elif g == "节点管理" %}🔌
+                            {% elif g == "凭证管理" %}🔑
+                            {% elif g == "配置管理" %}📝
+                            {% elif g == "发布管理" %}🚀
+                            {% elif g == "审计日志" %}📜
+                            {% elif g == "系统" %}🖥
+                            {% else %}⚙{% endif %}
+                            {{ g }}
+                        </span>
+                        <span class="badge rounded-pill">{{ items|length }} 项配置</span>
+                    </div>
+
                     <form method="post" action="{% url 'settings:save' %}" class="settings-form">
                         {% csrf_token %}
                         <input type="hidden" name="group" value="{{ group_name }}">
                         {% for setting in items %}
-                        <div class="setting-item">
-                            <div class="setting-item-label">
-                                {{ setting.label }}
-                                <br><small class="text-muted">{{ setting.description }}</small>
+                        <div class="settings-item">
+                            <div class="settings-item-label">
+                                <span class="settings-item-icon">
+                                    {% if setting.type == "boolean" %}🔘
+                                    {% elif setting.type == "integer" %}#️⃣
+                                    {% else %}📄{% endif %}
+                                </span>
+                                <div class="settings-item-text">
+                                    {{ setting.label }}
+                                    <small>{{ setting.description }}</small>
+                                </div>
                             </div>
-                            <div class="setting-item-control">
+                            <div class="settings-item-control">
                                 {% if setting.type == "integer" %}
                                 <input type="number"
                                        class="form-control form-control-sm"
                                        name="{{ setting.key }}"
                                        value="{{ setting.value }}"
                                        placeholder="{{ setting.placeholder }}">
+                                {% if setting.help_unit %}
+                                <span class="settings-unit">{{ setting.help_unit }}</span>
+                                {% endif %}
                                 {% elif setting.type == "boolean" %}
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox"
@@ -110,28 +240,33 @@
                                        name="{{ setting.key }}"
                                        value="{{ setting.value }}"
                                        placeholder="{{ setting.placeholder }}">
+                                {% if setting.help_unit %}
+                                <span class="settings-unit">{{ setting.help_unit }}</span>
+                                {% endif %}
                                 {% endif %}
                             </div>
                         </div>
                         {% endfor %}
-                        <div class="p-3 text-end">
+                        <div class="settings-save-bar">
                             {% if can_update %}
-                            <button type="submit" class="btn btn-primary btn-sm">
+                            <button type="submit" class="btn btn-primary">
                                 <i class="bi bi-check-lg"></i> 保存{{ group_name }}设置
                             </button>
                             {% else %}
-                            <small class="text-muted">🔒 仅可查看，无修改权限</small>
+                            <span class="text-muted"><i class="bi bi-lock"></i> 仅可查看，无修改权限</span>
                             {% endif %}
                         </div>
                     </form>
                 </div>
+                {% endwith %}
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-center py-5 text-muted">
-            <i class="bi bi-exclamation-circle" style="font-size: 2rem;"></i>
-            <p class="mt-3">暂无可配置项。请运行 <code>seed_default_settings()</code> 初始化预设配置。</p>
+        <div class="settings-empty">
+            <span class="empty-icon">⚙️</span>
+            <p class="text-muted">暂无可配置项</p>
+            <p>请运行 <code>seed_default_settings()</code> 初始化预设配置。</p>
         </div>
         {% endif %}
     </div>
@@ -141,32 +276,29 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 记忆最后活跃的 Tab
-    const tabs = document.querySelectorAll('#settingsTabs button[data-bs-toggle="tab"]');
-    tabs.forEach(tab => {
+    var tabs = document.querySelectorAll('#settingsTabs button[data-bs-toggle="tab"]');
+    tabs.forEach(function(tab) {
         tab.addEventListener('shown.bs.tab', function(e) {
             localStorage.setItem('settingsActiveGroup', e.target.dataset.group);
         });
     });
 
-    // 恢复上次活跃的 Tab
-    const savedGroup = localStorage.getItem('settingsActiveGroup');
+    var savedGroup = localStorage.getItem('settingsActiveGroup');
     if (savedGroup) {
-        const targetTab = document.querySelector(`#settingsTabs button[data-group="${savedGroup}"]`);
+        var targetTab = document.querySelector('#settingsTabs button[data-group="' + savedGroup + '"]');
         if (targetTab) {
-            const bsTab = new bootstrap.Tab(targetTab);
+            var bsTab = new bootstrap.Tab(targetTab);
             bsTab.show();
         }
     }
 
-    // 表单提交 via Ajax
-    document.querySelectorAll('.settings-form').forEach(form => {
+    document.querySelectorAll('.settings-form').forEach(function(form) {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
-            const btn = form.querySelector('button[type="submit"]');
-            const originalText = btn.innerHTML;
+            var btn = form.querySelector('button[type="submit"]');
+            var originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 保存中...';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中...';
 
             fetch(form.action, {
                 method: 'POST',
@@ -176,18 +308,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value,
                 }
             })
-            .then(resp => resp.json())
-            .then(data => {
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
                 if (data.success) {
-                    showToast('保存成功', 'success');
+                    showToast('✅ ' + data.message || '保存成功', 'success');
                 } else {
-                    showToast(data.message || '保存失败', 'danger');
+                    showToast('❌ ' + (data.message || '保存失败'), 'danger');
                 }
             })
-            .catch(err => {
-                showToast('保存失败: ' + err.message, 'danger');
+            .catch(function(err) {
+                showToast('❌ 保存失败: ' + err.message, 'danger');
             })
-            .finally(() => {
+            .finally(function() {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
             });
@@ -195,12 +327,18 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function showToast(message, type) {
-        const toast = document.createElement('div');
-        toast.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+        var existing = document.querySelector('.settings-toast');
+        if (existing) existing.remove();
+
+        var toast = document.createElement('div');
+        toast.className = 'alert alert-' + type + ' alert-dismissible fade show position-fixed top-0 end-0 m-3 settings-toast shadow-sm';
         toast.style.zIndex = '9999';
-        toast.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+        toast.style.minWidth = '280px';
+        toast.style.borderRadius = '10px';
+        toast.style.fontSize = '0.9rem';
+        toast.innerHTML = message + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
         document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+        setTimeout(function() { toast.remove(); }, 3000);
     }
 });
 </script>

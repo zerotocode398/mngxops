@@ -20,7 +20,7 @@
                     <form method="get" class="row g-2 mb-3" id="taskCenterSearchForm">
                         <div class="col-md-4">
                             <div class="tag-input-wrapper form-control form-control-sm" id="taskCenterSearchTagWrapper">
-                                <input type="text" class="tag-input-field" id="taskCenterSearchField" placeholder="主机名 ｜ ip ｜ 批次号">
+                                <input type="text" class="tag-input-field" id="taskCenterSearchField" placeholder="搜索主机名或 IP 或批次号">
                             </div>
                             <input type="hidden" name="search" id="taskCenterSearchHidden" value="{{ search }}">
                         </div>
@@ -57,17 +57,17 @@
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-sm table-hover align-middle">
-                            <thead>
+                        <table class="table table-sm table-hover align-middle mb-0 task-table">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>时间</th>
-                                    <th>类型</th>
-                                    <th>批次号</th>
-                                    <th>操作对象</th>
-                                    <th>进度</th>
-                                    <th>状态</th>
-                                    <th>操作人</th>
-                                    <th>操作</th>
+                                    <th style="width: 12%;">时间</th>
+                                    <th style="width: 10%;">类型</th>
+                                    <th style="width: 15%;">批次号</th>
+                                    <th style="width: 18%;">操作对象</th>
+                                    <th style="width: 15%;">进度</th>
+                                    <th style="width: 10%;">状态</th>
+                                    <th style="width: 10%;">操作人</th>
+                                    <th style="width: 10%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -191,6 +191,26 @@
         margin-left: 6px;
         text-decoration: none;
         cursor: pointer;
+    }
+    .task-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .task-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .task-table td code,
+    .task-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .task-table td .badge {
+        font-size: 0.78rem;
+    }
+    .task-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
     }
 </style>
 <script>
