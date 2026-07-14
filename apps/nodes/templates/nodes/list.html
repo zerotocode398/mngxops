@@ -970,7 +970,10 @@
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
             body: JSON.stringify({ node_id: parseInt(nodeId) })
         })
-        .then(function (resp) { return resp.json(); })
+        .then(function (resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+        })
         .then(function (result) {
             if (!result.success) {
                 document.getElementById('detailHostname').textContent = '加载失败';
@@ -1008,10 +1011,10 @@
             }
 
             /* 系统信息 */
-            if (info.system_info !== undefined && info.system_info) {
-                renderSystemInfo(info.system_info);
+            if (info.has_credential) {
+                refreshSystemInfo();
             } else {
-                document.getElementById('detailSystemInfo').innerHTML = '<p class="text-muted small">暂无系统信息（节点可能离线或无凭证）</p>';
+                document.getElementById('detailSystemInfo').innerHTML = '<p class="text-muted small">未配置SSH凭证或凭证已禁用</p>';
             }
         })
         .catch(function () {
@@ -1029,7 +1032,12 @@
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
             body: JSON.stringify({ node_id: parseInt(currentDetailNodeId) })
         })
-        .then(function (resp) { return resp.json(); })
+        .then(function (resp) {
+            if (!resp.ok) {
+                throw new Error('HTTP ' + resp.status);
+            }
+            return resp.json();
+        })
         .then(function (result) {
             if (result.success && result.system_info) {
                 renderSystemInfo(result.system_info);
@@ -1037,8 +1045,8 @@
                 document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">' + (result.message || '获取失败') + '</p>';
             }
         })
-        .catch(function () {
-            document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">网络错误</p>';
+        .catch(function (err) {
+            document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">' + (err.message || '网络错误') + '</p>';
         });
     }
 
@@ -1051,7 +1059,10 @@
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
             body: JSON.stringify({ node_id: parseInt(currentDetailNodeId) })
         })
-        .then(function (resp) { return resp.json(); })
+        .then(function (resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+        })
         .then(function (result) {
             if (result.success) {
                 document.getElementById('detailNginxVersion').textContent = formatNginxVersion(result.version);
@@ -1066,16 +1077,29 @@
 
     function renderSystemInfo(sysInfo) {
         var container = document.getElementById('detailSystemInfo');
-        if (!sysInfo) {
+        if (!sysInfo || typeof sysInfo !== 'object') {
             container.innerHTML = '<p class="text-muted small">无信息</p>';
             return;
         }
-        var lines = sysInfo.split('\n').filter(function (l) { return l.trim(); });
-        var html = '<ul class="list-unstyled small mb-0">';
-        lines.forEach(function (line) {
-            html += '<li class="mb-1">' + escapeHtml(line) + '</li>';
+        var items = [
+            { label: '操作系统', value: (sysInfo.os || '').replace(/\s*\([^)]*\)\s*$/, '') },
+            { label: '内核版本', value: sysInfo.kernel },
+            { label: 'CPU', value: (sysInfo.cpu || '') + (sysInfo.cpu_cores ? ' (' + sysInfo.cpu_cores + ' 核)' : '') },
+            { label: '内存', value: (sysInfo.memory_used || '?') + ' / ' + (sysInfo.memory_total || '?') },
+            { label: '磁盘', value: (sysInfo.disk_used || '?') + ' / ' + (sysInfo.disk_total || '?') },
+            { label: '运行时间', value: sysInfo.uptime },
+        ];
+        var html = '<table class="table table-sm table-borderless mb-0 small">';
+        items.forEach(function (item) {
+            if (item.value && item.value !== '未知' && item.value !== '? / ?') {
+                html += '<tr><td class="text-muted pe-3" style="width:80px;">' + escapeHtml(item.label) + '</td><td>' + escapeHtml(String(item.value)) + '</td></tr>';
+            }
         });
-        html += '</ul>';
+        html += '</table>';
+        if (html.indexOf('<tr>') === -1) {
+            container.innerHTML = '<p class="text-muted small">无有效信息</p>';
+            return;
+        }
         container.innerHTML = html;
     }
 
