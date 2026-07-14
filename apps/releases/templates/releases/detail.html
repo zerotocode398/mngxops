@@ -80,13 +80,13 @@
                     <div class="mt-4">
                         <strong><i class="bi bi-list-ul"></i> 操作记录</strong>
                         <div class="table-responsive mt-2 px-3">
-                            <table class="table table-sm table-hover">
-                                <thead>
+                            <table class="table table-sm table-hover mb-0 release-detail-table">
+                                <thead class="table-light">
                                     <tr>
-                                        <th>时间</th>
-                                        <th>操作</th>
-                                        <th>版本</th>
-                                        <th>操作人</th>
+                                        <th style="width: 22%;">时间</th>
+                                        <th style="width: 35%;">操作</th>
+                                        <th style="width: 18%;">版本</th>
+                                        <th style="width: 25%;">操作人</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -114,4 +114,29 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .release-detail-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .release-detail-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .release-detail-table td code,
+    .release-detail-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .release-detail-table td .badge {
+        font-size: 0.78rem;
+    }
+    .release-detail-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
 {% endblock %}

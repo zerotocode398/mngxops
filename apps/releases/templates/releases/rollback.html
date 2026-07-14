@@ -56,15 +56,15 @@
                         {% csrf_token %}
                         <input type="hidden" name="version_id" id="selectedVersionId" value="">
                         <div class="table-responsive px-3">
-                            <table class="table table-hover table-sm">
-                                <thead>
+                            <table class="table table-hover table-sm mb-0 rollback-table">
+                                <thead class="table-light">
                                     <tr>
-                                        <th style="width: 5%">选择</th>
-                                        <th style="width: 10%">版本号</th>
-                                        <th style="width: 15%">修改人</th>
-                                        <th style="width: 20%">备注</th>
-                                        <th style="width: 15%">时间</th>
-                                        <th style="width: 10%">大小</th>
+                                        <th style="width: 5%;">选择</th>
+                                        <th style="width: 12%;">版本号</th>
+                                        <th style="width: 15%;">修改人</th>
+                                        <th style="width: 30%;">备注</th>
+                                        <th style="width: 20%;">时间</th>
+                                        <th style="width: 18%;">大小</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -223,6 +223,28 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+    .rollback-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .rollback-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .rollback-table td code,
+    .rollback-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .rollback-table td .badge {
+        font-size: 0.78rem;
+    }
+    .rollback-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         var rollbackConfirmModal = new bootstrap.Modal(document.getElementById('rollbackConfirmModal'));

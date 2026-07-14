@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 
 from apps.nodes.models import Node, NodeGroup
-from apps.configs.models import Config
+from apps.configs.models import ConfigNodeBinding
 from apps.releases.models import ReleaseTask
 
 
@@ -15,20 +15,20 @@ def index(request):
     offline_count = node_count - online_count
     node_group_count = NodeGroup.objects.count()
     release_task_count = ReleaseTask.objects.count()
-    # 待推送：sync_status 为 pending 的配置数
-    pending_push_count = Config.objects.filter(sync_status="pending").count()
-    # 冲突：当前数据模型中暂无 conflict 状态，预留为 0
-    conflict_count = 0
+    # 待推送：本地有修改但未推送的绑定数
+    pending_push_count = ConfigNodeBinding.objects.filter(sync_status="modified").count()
+    # 冲突：本地与远程均被修改产生冲突的绑定数
+    conflict_count = ConfigNodeBinding.objects.filter(sync_status="conflict").count()
 
     # 最近发布任务（最多10条），预加载关联数据减少查询
     recent_tasks = ReleaseTask.objects.select_related(
         "config", "version", "operator", "node"
     ).order_by("-created_at")[:10]
 
-    # 下发失败的配置列表（最多10条）
+    # 下发失败的绑定列表（最多10条）
     failed_configs = (
-        Config.objects.filter(sync_status="failed")
-        .prefetch_related("nodes")
+        ConfigNodeBinding.objects.filter(sync_status="failed")
+        .select_related("config", "node")
         .order_by("-updated_at")[:10]
     )
 
@@ -52,8 +52,8 @@ def stats_api(request):
     node_count = Node.objects.count()
     online_count = Node.objects.filter(status="online").count()
     offline_count = node_count - online_count
-    pending_push_count = Config.objects.filter(sync_status="pending").count()
-    conflict_count = 0
+    pending_push_count = ConfigNodeBinding.objects.filter(sync_status="modified").count()
+    conflict_count = ConfigNodeBinding.objects.filter(sync_status="conflict").count()
 
     return JsonResponse({
         "node_count": node_count,

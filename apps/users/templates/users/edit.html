@@ -3,6 +3,28 @@
 {% block title %}编辑用户 - MngxOps{% endblock %}
 
 {% block extra_js %}
+<style>
+    .user-info-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .user-info-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .user-info-table td code,
+    .user-info-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .user-info-table td .badge {
+        font-size: 0.78rem;
+    }
+    .user-info-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
 <script>
     document.querySelectorAll('.btn-perm-select-all').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
@@ -138,7 +160,7 @@
 
                                 <div class="mb-3">
                                     <label class="form-label">用户信息</label>
-                                    <table class="table table-sm table-bordered">
+                                    <table class="table table-sm table-bordered table-hover mb-0 user-info-table">
                                         <tr>
                                             <th>加入时间</th>
                                             <td>{{ object.date_joined|date:"Y-m-d H:i:s" }}</td>

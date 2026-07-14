@@ -3,26 +3,171 @@
 {% block title %}编辑角色 - MngxOps{% endblock %}
 
 {% block extra_js %}
+<style>
+    .perm-matrix {
+        display: grid;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .perm-matrix-corner {
+        grid-column: 1;
+        grid-row: 1;
+        background-color: #f8f9fa;
+        font-weight: 600;
+        padding: 5px 8px;
+        border-bottom: 2px solid #dee2e6;
+        border-right: 1px solid #dee2e6;
+        font-size: 0.8rem;
+        line-height: 1.25;
+        display: flex;
+        align-items: center;
+    }
+    .perm-matrix-header {
+        background-color: #f8f9fa;
+        font-weight: 600;
+        padding: 5px 6px;
+        border-bottom: 2px solid #dee2e6;
+        font-size: 0.8rem;
+        line-height: 1.25;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+    }
+    .perm-matrix-header .perm-btn-col {
+        font-size: 0.7rem;
+        padding: 0 5px;
+        line-height: 1.4;
+    }
+    .perm-matrix-row-header {
+        background-color: #fafbfc;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: 0.8rem;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        line-height: 1.25;
+    }
+    .perm-matrix-cell {
+        padding: 4px 4px;
+        border-bottom: 1px solid #f0f0f0;
+        text-align: center;
+        transition: background-color 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1.25;
+    }
+    .perm-matrix-cell:hover {
+        background-color: #f0f3ff;
+    }
+    .perm-btn-col {
+        white-space: nowrap;
+    }
+    .perm-btn-row {
+        font-size: 0.7rem;
+        padding: 0 5px;
+        line-height: 1.4;
+        white-space: nowrap;
+    }
+    .perm-btn-global {
+        font-size: 0.7rem;
+        padding: 0 5px;
+        line-height: 1.4;
+        white-space: nowrap;
+    }
+</style>
 <script>
-    document.querySelectorAll('.btn-perm-select-all').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var resource = this.dataset.resource;
-            var panel = document.getElementById('perm-' + resource);
-            panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
-                cb.checked = true;
-            });
+    document.addEventListener('DOMContentLoaded', function () {
+        var matrix = document.getElementById('permMatrix');
+        if (!matrix) return;
+
+        function rowCheckboxes(resourceKey) {
+            return matrix.querySelectorAll('input.perm-cb[data-resource="' + resourceKey + '"]');
+        }
+
+        function colCheckboxes(actionKey) {
+            return matrix.querySelectorAll('input.perm-cb[data-action="' + actionKey + '"]');
+        }
+
+        function allCheckboxes() {
+            return matrix.querySelectorAll('input.perm-cb');
+        }
+
+        function setAll(cbs, checked) {
+            cbs.forEach(function (cb) { cb.checked = checked; });
+        }
+
+        function allChecked(cbs) {
+            return Array.from(cbs).every(function (cb) { return cb.checked; });
+        }
+
+        function updateRowBtn(resourceKey) {
+            var cbs = rowCheckboxes(resourceKey);
+            var btn = matrix.querySelector('.perm-btn-row[data-resource="' + resourceKey + '"]');
+            if (btn) {
+                btn.textContent = allChecked(cbs) ? '取消' : '全选';
+            }
+        }
+
+        function updateColBtn(actionKey) {
+            var cbs = colCheckboxes(actionKey);
+            var btn = matrix.querySelector('.perm-btn-col[data-action="' + actionKey + '"]');
+            if (btn) {
+                btn.textContent = allChecked(cbs) ? '取消' : '全选';
+            }
+        }
+
+        function updateGlobalBtn() {
+            var cbs = allCheckboxes();
+            var btn = matrix.querySelector('.perm-btn-global');
+            if (btn) {
+                btn.textContent = allChecked(cbs) ? '取消' : '全选';
+            }
+        }
+
+        function refreshAll() {
+            var rows = matrix.querySelectorAll('.perm-matrix-row-header[data-resource]');
+            rows.forEach(function (r) { updateRowBtn(r.getAttribute('data-resource')); });
+            var headerCols = matrix.querySelectorAll('.perm-matrix-header[data-action]');
+            headerCols.forEach(function (c) { updateColBtn(c.getAttribute('data-action')); });
+            updateGlobalBtn();
+        }
+
+        matrix.addEventListener('click', function (e) {
+            var target = e.target;
+            if (target.classList.contains('perm-btn-row')) {
+                var rk = target.getAttribute('data-resource');
+                var cbs = rowCheckboxes(rk);
+                var check = !allChecked(cbs);
+                setAll(cbs, check);
+                refreshAll();
+            }
+            if (target.classList.contains('perm-btn-col')) {
+                var ak = target.getAttribute('data-action');
+                var cbs = colCheckboxes(ak);
+                var check = !allChecked(cbs);
+                setAll(cbs, check);
+                refreshAll();
+            }
+            if (target.classList.contains('perm-btn-global')) {
+                var cbs = allCheckboxes();
+                var check = !allChecked(cbs);
+                setAll(cbs, check);
+                refreshAll();
+            }
         });
-    });
-    document.querySelectorAll('.btn-perm-deselect-all').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var resource = this.dataset.resource;
-            var panel = document.getElementById('perm-' + resource);
-            panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
-                cb.checked = false;
-            });
+
+        matrix.addEventListener('change', function (e) {
+            if (e.target.classList.contains('perm-cb')) {
+                refreshAll();
+            }
         });
+
+        refreshAll();
     });
 </script>
 {% endblock %}
@@ -37,7 +182,7 @@
                 </div>
                 <div class="card-body">
                     <div class="row justify-content-center">
-                        <div class="col-md-8">
+                        <div class="col-md-10">
                             <form method="post">
                                 {% csrf_token %}
 
@@ -73,41 +218,50 @@
                                     <label class="form-label">
                                         <i class="bi bi-shield-lock"></i> {{ form.permissions.label }}
                                     </label>
-                                    <div class="permission-accordion" id="permAccordion">
-                                        {% for resource_key, resource_label, permission_codes in permission_groups %}
-                                        <div class="card mb-2">
-                                            <div class="card-header py-1 px-2 d-flex justify-content-between align-items-center"
-                                                data-bs-toggle="collapse" data-bs-target="#perm-{{ resource_key }}"
-                                                style="cursor:pointer; background:#f8f9fa;">
-                                                <strong class="small">{{ resource_label }}</strong>
-                                                <div>
-                                                    <button type="button" class="btn btn-sm btn-outline-primary btn-perm-select-all"
-                                                        data-resource="{{ resource_key }}" style="font-size:11px;">
-                                                        全选
-                                                    </button>
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary btn-perm-deselect-all"
-                                                        data-resource="{{ resource_key }}" style="font-size:11px;">
-                                                        取消
-                                                    </button>
-                                                    <i class="bi bi-chevron-down ms-2"></i>
-                                                </div>
-                                            </div>
-                                            <div id="perm-{{ resource_key }}" class="collapse show">
-                                                <div class="card-body py-2 px-3">
-                                                    <div class="d-flex flex-wrap gap-2">
-                                                        {% for choice in form.permissions %}
-                                                        {% if choice.data.value in permission_codes %}
-                                                        <div class="form-check form-check-inline">
-                                                            {{ choice.tag }}
-                                                            <label class="form-check-label small" for="{{ choice.id_for_label }}">
-                                                                {{ choice.choice_label }}
-                                                            </label>
-                                                        </div>
-                                                        {% endif %}
-                                                        {% endfor %}
-                                                    </div>
-                                                </div>
-                                            </div>
+                                    <div class="perm-matrix" id="permMatrix" style="grid-template-columns: 140px repeat(4, 1fr) 72px;">
+                                        <div class="perm-matrix-corner">资源</div>
+                                        {% for ah in permission_matrix.action_headers %}
+                                        <div class="perm-matrix-header" data-action="{{ ah.0 }}">
+                                            <span>{{ ah.1 }}</span>
+                                            <button type="button" class="btn btn-sm btn-outline-primary perm-btn-col"
+                                                data-action="{{ ah.0 }}">全选</button>
+                                        </div>
+                                        {% endfor %}
+                                        <div class="perm-matrix-header">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary perm-btn-global">全选</button>
+                                        </div>
+                                        {% for resource in permission_matrix.resources %}
+                                        <div class="perm-matrix-row-header" data-resource="{{ resource.key }}">
+                                            {% if resource.key == "nodes" %}🖥
+                                            {% elif resource.key == "credentials" %}🔑
+                                            {% elif resource.key == "configs" %}📝
+                                            {% elif resource.key == "releases" %}🚀
+                                            {% elif resource.key == "users" %}👥
+                                            {% elif resource.key == "roles" %}👤
+                                            {% elif resource.key == "teams" %}📦
+                                            {% elif resource.key == "audit" %}📜
+                                            {% elif resource.key == "upgrade" %}⬆
+                                            {% elif resource.key == "settings" %}⚙{% endif %}
+                                            {{ resource.label }}
+                                        </div>
+                                        {% for action in resource.actions %}
+                                        <div class="perm-matrix-cell">
+                                            {% if action.applicable %}
+                                            <input type="checkbox" class="perm-cb form-check-input"
+                                                name="{{ form.permissions.name }}"
+                                                value="{{ action.perm_id }}"
+                                                data-resource="{{ resource.key }}"
+                                                data-action="{{ action.action }}"
+                                                title="{{ action.display_name }}"
+                                                {% if action.perm_id in permission_matrix.selected_ids %}checked{% endif %}>
+                                            {% else %}
+                                            <span class="text-muted" title="不可用">-</span>
+                                            {% endif %}
+                                        </div>
+                                        {% endfor %}
+                                        <div class="perm-matrix-cell">
+                                            <button type="button" class="btn btn-sm btn-outline-primary perm-btn-row"
+                                                data-resource="{{ resource.key }}">全选</button>
                                         </div>
                                         {% endfor %}
                                     </div>

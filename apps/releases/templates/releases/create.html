@@ -73,7 +73,7 @@
                                             </button>
                                         </div>
                                         <div class="table-responsive border rounded" style="max-height: 360px; overflow-y: auto;">
-                                            <table class="table table-sm table-hover mb-0">
+                                            <table class="table table-sm table-hover mb-0 release-create-table">
                                                 <thead class="table-light sticky-top">
                                                     <tr>
                                                         <th style="width: 40px;"></th>
@@ -151,7 +151,7 @@
                             <div class="row g-3">
                                 <div class="col-md-8">
                                     <div class="table-responsive border rounded" style="max-height: 400px; overflow-y: auto;">
-                                        <table class="table table-sm table-hover mb-0">
+                                        <table class="table table-sm table-hover mb-0 release-create-table">
                                             <thead class="table-light sticky-top">
                                                 <tr>
                                                     <th style="width: 30px;"></th>
@@ -479,6 +479,26 @@
         min-width: 120px;
         padding: 0;
         background: transparent;
+    }
+    .release-create-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .release-create-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .release-create-table td code,
+    .release-create-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .release-create-table td .badge {
+        font-size: 0.78rem;
+    }
+    .release-create-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
     }
 </style>
 <script>

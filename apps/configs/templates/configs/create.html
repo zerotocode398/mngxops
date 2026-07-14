@@ -201,16 +201,16 @@
                     </div>
                 </div>
                 <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
-                    <table class="table table-hover table-sm align-middle">
+                    <table class="table table-hover table-sm align-middle config-create-table">
                         <thead class="table-light sticky-top">
                             <tr>
-                                <th style="width:40px;">
+                                <th style="width: 5%;">
                                     <input class="form-check-input" type="checkbox" id="selectAllNodesCheckbox">
                                 </th>
-                                <th>主机名</th>
-                                <th>IP地址</th>
-                                <th>节点组</th>
-                                <th>状态</th>
+                                <th style="width: 30%;">主机名</th>
+                                <th style="width: 30%;">IP地址</th>
+                                <th style="width: 18%;">节点组</th>
+                                <th style="width: 17%;">状态</th>
                             </tr>
                         </thead>
                         <tbody id="nodeSelectTableBody">
@@ -250,6 +250,28 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+    .config-create-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .config-create-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .config-create-table td code,
+    .config-create-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .config-create-table td .badge {
+        font-size: 0.78rem;
+    }
+    .config-create-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
 <script>
     var globSwitch = document.getElementById('globModeSwitch');
     var singleFields = document.getElementById('singleFields');
@@ -381,7 +403,7 @@
                     </div>
                 </div>
                 <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
-                    <table class="table table-hover table-sm align-middle">
+                    <table class="table table-hover table-sm align-middle config-create-table">
                         <thead class="table-light sticky-top">
                             <tr>
                                 <th style="width:40px;">

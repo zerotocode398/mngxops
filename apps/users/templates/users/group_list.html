@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load permission_tags %}
+{% load config_filters %}
 
 {% block title %}角色列表 - MngxOps{% endblock %}
 
@@ -17,36 +18,41 @@
                     {% endif %}
                 </div>
                 <div class="card-body">
-                    <form method="get" class="mb-3">
-                        <div class="input-group">
-                            <input type="text" name="search" class="form-control" placeholder="搜索角色名称"
-                                value="{{ search }}">
-                            <select name="per_page" class="form-select" style="max-width: 130px;">
-                                {% for size in per_page_options %}
-                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
-                                {% endfor %}
-                            </select>
-                            <button type="submit" class="btn btn-outline-primary">
-                                <i class="bi bi-search"></i> 搜索
-                            </button>
-                            {% if search %}
-                            <a href="{% url 'users:role_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary">
-                                <i class="bi bi-x-circle"></i> 清空
-                            </a>
-                            {% endif %}
+                    <form method="get" class="mb-3" id="searchForm" autocomplete="off">
+                        <div class="row g-2">
+                            <div class="col-md-8">
+                                <div class="tag-input-wrapper form-control" id="roleSearchTagWrapper">
+                                    <input type="text" class="tag-input-field" id="roleSearchField"
+                                        placeholder="搜索角色名称">
+                                </div>
+                                <input type="hidden" name="search" id="roleSearchHidden" value="{{ search }}">
+                            </div>
+                            <div class="col-md-2">
+                                <select name="per_page" class="form-select" onchange="document.getElementById('searchForm').submit()">
+                                    {% for size in per_page_options %}
+                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2 d-grid">
+                                {% if search %}
+                                <a href="{% url 'users:role_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
+                                    <i class="bi bi-x-circle"></i>
+                                </a>
+                                {% endif %}
+                            </div>
                         </div>
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm">
-                            <thead>
+                        <table class="table table-hover table-sm mb-0 role-table">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>角色名称</th>
-                                    <th>成员数</th>
-                                    <th>描述</th>
-                                    <th>创建人</th>
-                                    <th>创建时间</th>
-                                    <th>操作</th>
+                                    <th style="width: 18%;">角色名称</th>
+                                    <th style="width: 10%;">关联用户</th>
+                                    <th style="width: 20%;">描述</th>
+                                    <th style="width: 10%;">权限数</th>
+                                    <th style="width: 42%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -60,8 +66,9 @@
                                         </a>
                                     </td>
                                     <td>{{ group.description|default:"-"|truncatewords:10 }}</td>
-                                    <td>{{ group.created_by.username }}</td>
-                                    <td>{{ group.created_at|date:"Y-m-d H:i" }}</td>
+                                    <td>
+                                        <span class="badge bg-primary">{{ perm_counts|dict_get:group.id }}</span>
+                                    </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
                                             {% if user|has_perm_code:"roles.update" %}
@@ -85,7 +92,7 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted">
+                                    <td colspan="5" class="text-center text-muted">
                                         <i class="bi bi-inbox"></i> 暂无角色数据
                                     </td>
                                 </tr>
@@ -133,21 +140,21 @@
                                 <form method="post" action="{% url 'users:role_manage_users' group.id %}">
                                     {% csrf_token %}
                                     <div class="modal-body">
-                                        <table class="table table-sm table-bordered">
-                                            <thead>
+                                        <table class="table table-sm table-bordered table-hover modal-mgmt-table">
+                                            <thead class="table-light">
                                                 <tr>
-                                                    <th style="width:40px">
+                                                    <th style="width: 5%;">
                                                         <input type="checkbox" class="form-check-input" onclick="
                                                             document.querySelectorAll('#manageUsersModal{{ group.id }} .user-check').forEach(cb => {
                                                                 if (!cb.disabled) cb.checked = this.checked;
                                                             });
                                                         ">
                                                     </th>
-                                                    <th>用户名</th>
-                                                    <th>姓名</th>
-                                                    <th>邮箱</th>
-                                                    <th>已关联角色</th>
-                                                    <th>状态</th>
+                                                    <th style="width: 25%;">用户名</th>
+                                                    <th style="width: 15%;">姓名</th>
+                                                    <th style="width: 25%;">邮箱</th>
+                                                    <th style="width: 20%;">已关联角色</th>
+                                                    <th style="width: 10%;">状态</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -281,4 +288,54 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .role-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .role-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .role-table td code,
+    .role-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .role-table td .badge {
+        font-size: 0.78rem;
+    }
+    .role-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+    .modal-mgmt-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .modal-mgmt-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .modal-mgmt-table td code,
+    .modal-mgmt-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .modal-mgmt-table td .badge {
+        font-size: 0.78rem;
+    }
+    .modal-mgmt-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        initTagSearch('#roleSearchTagWrapper', '#roleSearchHidden', '#searchForm');
+    });
+</script>
 {% endblock %}

@@ -99,12 +99,12 @@
             <div class="card-body p-0">
                 {% if packages %}
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead>
+                    <table class="table table-hover table-sm mb-0 upgrade-table">
+                        <thead class="table-light">
                             <tr>
-                                <th>包名称</th>
-                                <th>版本</th>
-                                <th>大小</th>
+                                <th style="width: 45%;">包名称</th>
+                                <th style="width: 20%;">版本</th>
+                                <th style="width: 35%;">大小</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -137,6 +137,28 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+    .upgrade-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .upgrade-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .upgrade-table td code,
+    .upgrade-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .upgrade-table td .badge {
+        font-size: 0.78rem;
+    }
+    .upgrade-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
 <script>
 // 初始化导航活跃状态
 document.addEventListener('DOMContentLoaded', function () {

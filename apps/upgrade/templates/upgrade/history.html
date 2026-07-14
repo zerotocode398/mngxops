@@ -18,7 +18,7 @@
             <div class="col-md-4">
                 <div class="tag-input-wrapper form-control form-control-sm p-1" id="upgradeHistoryTagWrapper" style="min-height:32px;">
                     <input type="text" class="tag-input-field" style="font-size:0.82rem;"
-                        placeholder="搜索节点/IP/版本，回车添加标签">
+                        placeholder="搜索节点名或 IP 或版本">
                 </div>
                 <input type="hidden" name="search" id="upgradeHistorySearchHidden" value="{{ search }}">
             </div>
@@ -52,16 +52,16 @@
     <div class="card-body p-0">
         {% if tasks %}
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead>
+            <table class="table table-hover table-sm mb-0 upgrade-table">
+                <thead class="table-light">
                     <tr>
-                        <th>目标节点</th>
-                        <th>当前版本 → 目标版本</th>
-                        <th>状态</th>
-                        <th>进度</th>
-                        <th>操作人</th>
-                        <th>创建时间</th>
-                        <th>操作</th>
+                        <th style="width: 16%;">目标节点</th>
+                        <th style="width: 22%;">当前版本 → 目标版本</th>
+                        <th style="width: 10%;">状态</th>
+                        <th style="width: 15%;">进度</th>
+                        <th style="width: 10%;">操作人</th>
+                        <th style="width: 15%;">创建时间</th>
+                        <th style="width: 12%;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -153,6 +153,28 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+    .upgrade-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .upgrade-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .upgrade-table td code,
+    .upgrade-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .upgrade-table td .badge {
+        font-size: 0.78rem;
+    }
+    .upgrade-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
 <script>
 initTagSearch('#upgradeHistoryTagWrapper', '#upgradeHistorySearchHidden', '#upgradeHistoryForm');
 </script>

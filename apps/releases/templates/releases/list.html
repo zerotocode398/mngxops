@@ -22,10 +22,13 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <form method="get" class="row g-2 mb-3">
-                        <div class="col-md-4">
-                            <input type="text" name="search" class="form-control form-control-sm"
-                                placeholder="搜索节点 / 配置 / 操作人" value="{{ search }}">
+                    <form method="get" class="row g-2 mb-3" id="searchForm" autocomplete="off">
+                        <div class="col-md-5">
+                            <div class="tag-input-wrapper form-control" id="releaseHistorySearchTagWrapper">
+                                <input type="text" class="tag-input-field" id="releaseHistorySearchField"
+                                    placeholder="搜索节点或配置或操作人">
+                            </div>
+                            <input type="hidden" name="search" id="releaseHistorySearchHidden" value="{{ search }}">
                         </div>
                         <div class="col-md-3">
                             <select name="status" class="form-select form-select-sm">
@@ -36,21 +39,16 @@
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <button type="submit" class="btn btn-sm btn-outline-primary w-100">
-                                <i class="bi bi-search"></i> 搜索
-                            </button>
-                        </div>
-                        <div class="col-md-2">
                             <select name="per_page" class="form-select form-select-sm">
                                 {% for size in per_page_options %}
                                 <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-1">
+                        <div class="col-md-1 d-grid">
                             {% if has_any_filter %}
-                            <a href="{% url 'releases:history' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm w-100" onclick="sessionStorage.removeItem('releases_list_query')">
-                                <i class="bi bi-x-circle"></i> 清空
+                            <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary btn-sm" title="清空筛选" onclick="sessionStorage.removeItem('releases_list_query')">
+                                <i class="bi bi-x-circle"></i>
                             </a>
                             {% endif %}
                         </div>
@@ -106,7 +104,7 @@
                                 aria-labelledby="heading{{ node.id }}" data-bs-parent="#releaseAccordion">
                                 <div class="accordion-body p-0">
                                     <div class="table-responsive px-3">
-                                        <table class="table table-hover table-sm mb-0">
+                                        <table class="table table-hover table-sm mb-0 release-history-table">
                                             <thead class="table-light">
                                                 <tr>
                                                     <th style="width: 15%">发布时间</th>
@@ -294,6 +292,28 @@
 {% endblock %}
 
 {% block extra_js %}
+<style>
+    .release-history-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .release-history-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .release-history-table td code,
+    .release-history-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .release-history-table td .badge {
+        font-size: 0.78rem;
+    }
+    .release-history-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
 <script>
     (function() {
         const currentUrl = window.location.href;
@@ -303,6 +323,7 @@
     })();
 
     document.addEventListener('DOMContentLoaded', function() {
+        initTagSearch('#releaseHistorySearchTagWrapper', '#releaseHistorySearchHidden', '#searchForm');
         const modal = new bootstrap.Modal(document.getElementById('versionPreviewModal'));
         const vpLoading = document.getElementById('vpLoading');
         const vpError = document.getElementById('vpError');

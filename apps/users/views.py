@@ -71,7 +71,9 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["permission_groups"] = _build_permission_groups()
+        matrix = _get_permission_matrix()
+        matrix["selected_ids"] = set()
+        context["permission_matrix"] = matrix
         return context
 
     def form_valid(self, form):
@@ -125,26 +127,43 @@ class UserLockToggleView(LoginRequiredMixin, PermissionRequiredMixin, View):
 # ========== 角色视图（仅 Admin）==========
 
 
-from .perm_defs import RESOURCE_CHOICES, all_permission_items
+from .perm_defs import RESOURCE_CHOICES, ACTION_CHOICES, PERM_DISPLAY_NAMES, all_permission_items
 
 
-def _build_permission_groups():
-    """Build resource → (resource_label, permission_item_ids) mapping for the template.
-    Returns list of (resource_key, resource_label, [permission_id_str, ...]).
-    The ID strings are used to match against choice.data.value in templates.
-    """
-    perm_map = {}
-    for perm in PermissionItem.objects.all():
-        rk = perm.resource
-        if rk not in perm_map:
-            perm_map[rk] = []
-        perm_map[rk].append(str(perm.id))
+def _build_permission_matrix():
+    """构建资源×动作权限矩阵数据，供模板渲染矩阵网格"""
+    existing_perms = {
+        (p.resource, p.action): p for p in PermissionItem.objects.all()
+    }
 
-    result = []
+    resources = []
     for rk, rl in RESOURCE_CHOICES:
-        if rk in perm_map:
-            result.append((rk, rl, perm_map[rk]))
-    return result
+        actions = []
+        for ak, al in ACTION_CHOICES:
+            perm = existing_perms.get((rk, ak))
+            actions.append({
+                "action": ak,
+                "label": al,
+                "perm_id": perm.id if perm else None,
+                "applicable": perm is not None,
+                "display_name": PERM_DISPLAY_NAMES.get(rk, {}).get(ak, f"{rl}{al}"),
+                "code": f"{rk}.{ak}",
+            })
+        resources.append({
+            "key": rk,
+            "label": rl,
+            "actions": actions,
+        })
+
+    return {
+        "resources": resources,
+        "action_headers": ACTION_CHOICES,
+    }
+
+
+def _get_permission_matrix():
+    """构建权限矩阵并返回dict，可在 views 中扩展 selected_ids"""
+    return _build_permission_matrix()
 
 
 class UserGroupListView(
@@ -162,7 +181,7 @@ class UserGroupListView(
     permission_action = "read"
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().prefetch_related("permissions")
         search = self.request.GET.get("search", "")
         if search:
             queryset = queryset.filter(name__icontains=search)
@@ -175,6 +194,11 @@ class UserGroupListView(
         for u in all_users:
             UserProfile.objects.get_or_create(user=u)
         context["all_users"] = all_users
+        # 每组的权限数量
+        context["perm_counts"] = {
+            group.id: group.permissions.count()
+            for group in context["user_groups"]
+        }
         return context
 
 
@@ -188,7 +212,9 @@ class UserGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["permission_groups"] = _build_permission_groups()
+        matrix = _get_permission_matrix()
+        matrix["selected_ids"] = set()
+        context["permission_matrix"] = matrix
         return context
 
     def form_valid(self, form):
@@ -211,7 +237,11 @@ class UserGroupUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVie
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["permission_groups"] = _build_permission_groups()
+        matrix = _get_permission_matrix()
+        matrix["selected_ids"] = set(
+            self.object.permissions.values_list("id", flat=True)
+        )
+        context["permission_matrix"] = matrix
         return context
 
     def form_valid(self, form):

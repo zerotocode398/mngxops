@@ -5,6 +5,28 @@
 {% block page_title %}系统概览{% endblock %}
 
 {% block extra_js %}
+<style>
+    .dashboard-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .dashboard-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .dashboard-table td code,
+    .dashboard-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .dashboard-table td .badge {
+        font-size: 0.78rem;
+    }
+    .dashboard-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+</style>
 <script>
     /** 统计卡片 30 秒自动轮询间隔（毫秒） */
     const POLL_INTERVAL_MS = 30000;
@@ -141,7 +163,7 @@
                 </div>
                 <!-- 待推送（蓝） -->
                 <div class="col-xxl-3 col-lg-4 col-md-6">
-                    <div class="dashboard-stat-card stat-card-info" onclick="window.location.href='{% url 'configs:list' %}?sync_status=pending'">
+                    <div class="dashboard-stat-card stat-card-info" onclick="window.location.href='{% url 'configs:list' %}?sync_status=modified'">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3">
                                 <i class="bi bi-send" style="font-size: 2rem; color: #17a2b8;"></i>
@@ -243,16 +265,16 @@
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm mb-0">
-                            <thead>
+                        <table class="table table-hover table-sm mb-0 dashboard-table">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>批次号</th>
-                                    <th>配置名称</th>
-                                    <th>版本</th>
-                                    <th>目标节点</th>
-                                    <th>状态</th>
-                                    <th>操作人</th>
-                                    <th>创建时间</th>
+                                    <th style="width: 12%;">批次号</th>
+                                    <th style="width: 20%;">配置名称</th>
+                                    <th style="width: 8%;">版本</th>
+                                    <th style="width: 14%;">目标节点</th>
+                                    <th style="width: 10%;">状态</th>
+                                    <th style="width: 12%;">操作人</th>
+                                    <th style="width: 24%;">创建时间</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -313,47 +335,47 @@
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm mb-0">
-                            <thead>
+                        <table class="table table-hover table-sm mb-0 dashboard-table">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>绑定</th>
-                                    <th>关联节点</th>
-                                    <th>下发状态</th>
-                                    <th>最后下发</th>
-                                    <th>错误信息</th>
-                                    <th>操作</th>
+                                    <th style="width: 22%;">绑定</th>
+                                    <th style="width: 14%;">关联节点</th>
+                                    <th style="width: 10%;">下发状态</th>
+                                    <th style="width: 15%;">最后下发</th>
+                                    <th style="width: 24%;">错误信息</th>
+                                    <th style="width: 15%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for config in failed_configs %}
+                                {% for binding in failed_configs %}
                                 <tr>
                                     <td>
-                                        <a href="{% url 'configs:detail' config.id %}">
-                                            <code>{{ config.name }}</code>
+                                        <a href="{% url 'configs:detail' binding.config.id %}">
+                                            <code>{{ binding.config.name }} @ {{ binding.node.hostname }}</code>
                                         </a>
                                     </td>
                                     <td>
-                                        <small>{{ config|nodes_hostnames }}</small>
+                                        <small>{{ binding.node.hostname }}</small>
                                     </td>
                                     <td>
                                         <span class="badge bg-danger">下发失败</span>
                                     </td>
                                     <td>
-                                        <small title="{{ config.last_sync_time|date:'Y-m-d H:i:s' }}">
-                                            {% if config.last_sync_time %}
-                                            {{ config.last_sync_time|date:"Y-m-d H:i" }}
+                                        <small title="{{ binding.last_sync_time|date:'Y-m-d H:i:s' }}">
+                                            {% if binding.last_sync_time %}
+                                            {{ binding.last_sync_time|date:"Y-m-d H:i" }}
                                             {% else %}
-                                            {{ config.updated_at|date:"Y-m-d H:i" }}
+                                            {{ binding.updated_at|date:"Y-m-d H:i" }}
                                             {% endif %}
                                         </small>
                                     </td>
                                     <td>
-                                        <small class="text-danger" title="{{ config.last_sync_error }}">
-                                            {{ config.last_sync_error|default:"未知错误"|truncatechars:50 }}
+                                        <small class="text-danger" title="{{ binding.last_sync_error }}">
+                                            {{ binding.last_sync_error|default:"未知错误"|truncatechars:50 }}
                                         </small>
                                     </td>
                                     <td>
-                                        <a href="{% url 'configs:detail' config.id %}" class="btn btn-sm btn-outline-info">
+                                        <a href="{% url 'configs:detail' binding.config.id %}" class="btn btn-sm btn-outline-info">
                                             <i class="bi bi-eye"></i> 查看详情
                                         </a>
                                     </td>

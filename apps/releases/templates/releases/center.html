@@ -37,7 +37,7 @@
                             <div class="col-md-8">
                                 <div class="tag-input-wrapper form-control" id="releaseSearchTagWrapper">
                                     <input type="text" class="tag-input-field" id="releaseSearchField"
-                                        placeholder="搜索批次号/主机名/配置名称，回车添加标签">
+                                        placeholder="搜索批次号或主机名或配置名称">
                                 </div>
                                 <input type="hidden" name="search" id="releaseSearchHidden" value="{{ search }}">
                             </div>
@@ -51,10 +51,10 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-2 d-grid">
                                 {% if search or status_filter %}
-                                <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary w-100">
-                                    <i class="bi bi-x-circle"></i> 清空筛选
+                                <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary" title="清空筛选">
+                                    <i class="bi bi-x-circle"></i>
                                 </a>
                                 {% endif %}
                             </div>
@@ -115,7 +115,7 @@
                         <div class="card-body p-0">
                             <div id="collapse-{{ batch_number }}" class="collapse show">
                                 <div class="table-responsive px-3">
-                                    <table class="table table-hover table-sm mb-0">
+                                    <table class="table table-hover table-sm mb-0 release-center-table">
                                         <thead class="table-light">
                                             <tr>
                                                 <th style="width: 16%">节点</th>
@@ -228,7 +228,7 @@
                             <div class="col-md-8">
                                 <div class="tag-input-wrapper form-control" id="historySearchTagWrapper">
                                     <input type="text" class="tag-input-field" id="historySearchField"
-                                        placeholder="搜索批次号/主机名/配置名称，回车添加标签">
+                                        placeholder="搜索批次号或主机名或配置名称">
                                 </div>
                                 <input type="hidden" name="history_search" id="historySearchHidden" value="{{ history_search }}">
                             </div>
@@ -241,10 +241,10 @@
                                     <option value="cancelled" {% if history_status == 'cancelled' %}selected{% endif %}>已取消</option>
                                 </select>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-2 d-grid">
                                 {% if history_search or history_status %}
-                                <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary w-100">
-                                    <i class="bi bi-x-circle"></i> 清空筛选
+                                <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary" title="清空筛选">
+                                    <i class="bi bi-x-circle"></i>
                                 </a>
                                 {% endif %}
                             </div>
@@ -253,7 +253,7 @@
 
                     {% if history_page %}
                     <div class="table-responsive mt-2 px-3">
-                        <table class="table table-hover table-sm mb-0">
+                        <table class="table table-hover table-sm mb-0 release-center-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 15%">时间</th>
@@ -498,6 +498,26 @@
         color: #adb5bd;
         font-size: 0.8rem;
         margin-bottom: 0;
+    }
+    .release-center-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .release-center-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    .release-center-table td code,
+    .release-center-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .release-center-table td .badge {
+        font-size: 0.78rem;
+    }
+    .release-center-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
     }
 </style>
 <script>
