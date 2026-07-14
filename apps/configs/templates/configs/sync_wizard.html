@@ -386,6 +386,9 @@
     var POLL_TIMEOUT = 120000;
     var MAX_POLL_FAILURES = 10;
     var pollFailureCount = 0;
+    var taskJumpModal = null;
+    var taskJumpTimer = null;
+    var taskJumpCancelled = false;
 
     function initTagInput(wrapperId, fieldId, searchHiddenId, groupHiddenId) {
         var wrapper = document.getElementById(wrapperId);
@@ -461,6 +464,16 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        taskJumpModal = new bootstrap.Modal(document.getElementById('taskJumpModal'));
+
+        document.getElementById('taskJumpModal').addEventListener('hidden.bs.modal', function () {
+            taskJumpCancelled = true;
+            if (taskJumpTimer) {
+                clearTimeout(taskJumpTimer);
+                taskJumpTimer = null;
+            }
+        });
+
         initTagInput('combinedTagSync', 'combinedSearchSync', 'searchHiddenSync', 'groupSearchHiddenSync');
 
         document.querySelectorAll('.sync-node-row').forEach(function (row) {
@@ -492,8 +505,9 @@
         });
     });
 
-    function showCustomModal(title, message, showClose) {
-        document.getElementById('syncAlertTitle').textContent = title;
+    function showCustomModal(title, message, showClose, iconClass) {
+        var iconHtml = iconClass ? '<i class="' + iconClass + '"></i> ' : '<i class="bi bi-info-circle"></i> ';
+        document.getElementById('syncAlertTitle').innerHTML = iconHtml + title;
         document.getElementById('syncAlertBody').innerHTML = message;
         document.getElementById('syncAlertClose').style.display = showClose ? 'inline-block' : 'none';
         document.getElementById('syncAlertClose').onclick = null;
@@ -536,8 +550,9 @@
     }
 
     var syncConfirmModalInstance = null;
-    function showConfirmModal(title, message, onConfirm) {
-        document.getElementById('syncConfirmTitle').textContent = title;
+    function showConfirmModal(title, message, iconClass, onConfirm) {
+        var iconHtml = iconClass ? '<i class="' + iconClass + '"></i> ' : '<i class="bi bi-question-circle"></i> ';
+        document.getElementById('syncConfirmTitle').innerHTML = iconHtml + title;
         document.getElementById('syncConfirmBody').innerHTML = message;
         var okBtn = document.getElementById('syncConfirmOk');
         okBtn.onclick = function() {
@@ -752,7 +767,7 @@
                 '<small class="text-muted mt-2 d-block">这些配置仅存在于本地，远程节点上无对应文件。</small>' +
                 '</div>' +
                 '<p class="mb-0 mt-2 text-muted small">确认后将继续同步其他远程配置。</p>';
-            showConfirmModal('本地新增配置提醒', confirmHtml, function() {
+            showConfirmModal('本地新增配置提醒', confirmHtml, null, function() {
                 doFullSync(nodeId, modal, mainConfPath);
             });
             return;
@@ -842,68 +857,77 @@
         }
 
         var nodeIds = [];
+        var hostnames = [];
         checked.forEach(function(cb) {
             nodeIds.push(parseInt(cb.value));
+            var row = cb.closest('tr');
+            var nameEl = row ? row.querySelector('.sync-wizard-hostname') : null;
+            hostnames.push(nameEl ? nameEl.textContent.trim() : ('节点 #' + cb.value));
         });
 
-        showLoading('批量同步提交中');
-        stopBatchSyncTimer();
-        batchSyncSeconds = 10;
-        batchSyncTimer = setInterval(function () {
-            batchSyncSeconds--;
-            if (batchSyncSeconds <= 0) {
+        var confirmContent = '<p>确定要对选中的 <strong>' + checked.length + '</strong> 个节点进行配置同步吗？</p>' +
+            '<p class="text-muted">同步将从远程节点拉取 nginx 配置文件并更新本地记录。</p>';
+        showConfirmModal('批量配置同步', confirmContent, 'bi-cloud-download', function () {
+            showLoading('批量同步提交中');
+            stopBatchSyncTimer();
+            batchSyncSeconds = 10;
+            batchSyncTimer = setInterval(function () {
+                batchSyncSeconds--;
+                if (batchSyncSeconds <= 0) {
+                    stopBatchSyncTimer();
+                    updateLoadingContent(
+                        '<div class="text-center py-3">' +
+                        '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                        '<p class="text-muted mb-0">即将完成...</p>' +
+                        '</div>'
+                    );
+                } else {
+                    updateLoadingContent(
+                        '<div class="text-center py-3">' +
+                        '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+                        '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchSyncSeconds + '</strong> 秒</p>' +
+                        '</div>'
+                    );
+                }
+            }, 1000);
+
+            fetch('{% url "configs:sync_batch_api" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({ node_ids: nodeIds })
+            }).then(function (response) { return response.json(); })
+            .then(function (result) {
                 stopBatchSyncTimer();
-                updateLoadingContent(
-                    '<div class="text-center py-3">' +
-                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                    '<p class="text-muted mb-0">即将完成...</p>' +
-                    '</div>'
-                );
-            } else {
-                updateLoadingContent(
-                    '<div class="text-center py-3">' +
-                    '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                    '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchSyncSeconds + '</strong> 秒</p>' +
-                    '</div>'
-                );
-            }
-        }, 1000);
+                hideLoading();
 
-        fetch('{% url "configs:sync_batch_api" %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({ node_ids: nodeIds })
-        }).then(function (response) { return response.json(); })
-        .then(function (result) {
-            stopBatchSyncTimer();
-            hideLoading();
+                if (!result.success) {
+                    showCustomModal('同步失败', '<p class="text-danger">' + result.message + '</p>', true, 'bi-exclamation-triangle text-danger');
+                    return;
+                }
 
-            if (!result.success) {
-                showCustomModal('同步失败', '<p class="text-danger">' + result.message + '</p>', true);
-                return;
-            }
+                if (result.async) {
+                    var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
+                    document.getElementById('taskJumpModalBody').textContent = result.message || '已创建后台同步任务';
+                    document.getElementById('taskJumpBtn').setAttribute('href', jumpUrl);
+                    taskJumpCancelled = false;
+                    taskJumpModal.show();
+                    taskJumpTimer = setTimeout(function () {
+                        if (!taskJumpCancelled) {
+                            window.location.href = jumpUrl;
+                        }
+                    }, 3000);
+                    return;
+                }
 
-            if (result.async) {
-                var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
-                var content =
-                    '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 已创建后台任务</div>' +
-                    '<p>' + result.message + '</p>' +
-                    '<p class="text-muted mb-0">即将跳转到任务详情...</p>';
-                showCustomModal('批量同步已提交', content, false);
-                setTimeout(function () {
-                    window.location.href = jumpUrl;
-                }, 3000);
-                return;
-            }
-
-            showCustomModal('同步完成', '<p class="text-success">' + result.message + '</p>', true);
-        })['catch'](function (err) {
-            stopBatchSyncTimer();
-            hideLoading();
-            showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>', true);
+                showCustomModal('同步完成', '<p class="text-success">' + result.message + '</p>', true, 'bi-check-circle text-success');
+            })['catch'](function (err) {
+                stopBatchSyncTimer();
+                hideLoading();
+                showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>', true, 'bi-exclamation-triangle text-danger');
+            });
         });
     }
 
@@ -1145,7 +1169,7 @@
     });
 </script>
 
-<div class="modal fade" id="syncProgressModal" tabindex="-1">
+<div class="modal fade" id="syncProgressModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
@@ -1167,11 +1191,11 @@
     </div>
 </div>
 
-<div class="modal fade" id="syncAlertModal" tabindex="-1">
+<div class="modal fade" id="syncAlertModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="syncAlertTitle">提示</h5>
+                <h5 class="modal-title" id="syncAlertTitle"><i class="bi bi-info-circle"></i> 提示</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="syncAlertBody"></div>
@@ -1182,17 +1206,33 @@
     </div>
 </div>
 
-<div class="modal fade" id="syncConfirmModal" tabindex="-1">
+<div class="modal fade" id="syncConfirmModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="syncConfirmTitle">确认</h5>
+                <h5 class="modal-title" id="syncConfirmTitle"><i class="bi bi-question-circle"></i> 确认</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="syncConfirmBody"></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="syncConfirmOk">确认同步</button>
+                <button type="button" class="btn btn-success" id="syncConfirmOk"><i class="bi bi-play-circle"></i> 开始同步</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="taskJumpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-info-circle"></i> 任务已创建</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="taskJumpModalBody">后台任务已创建</div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">留在当前页</button>
+                <a href="#" class="btn btn-primary" id="taskJumpBtn">查看任务详情</a>
             </div>
         </div>
     </div>
