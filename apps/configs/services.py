@@ -9,7 +9,7 @@ SKIP_FILES = {"mime.types"}
 def get_or_create_sync_setting(node, user=None):
     setting, created = ConfigSyncSetting.objects.get_or_create(
         node=node,
-        defaults={"main_conf_path": "", "updated_by": user},
+        defaults={"main_conf_path": "/etc/nginx/nginx.conf", "updated_by": user},
     )
     return setting
 
