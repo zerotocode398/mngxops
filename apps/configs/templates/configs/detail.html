@@ -1,6 +1,5 @@
 {% extends "base.html" %}
-{% load permission_tags %}
-{% load config_filters %}
+{% load static %}
 
 {% block title %}{{ config.name }} - MngxOps{% endblock %}
 
@@ -13,17 +12,17 @@
                     <h5 class="mb-0">
                         <i class="bi bi-file-earmark-code"></i>
                         {{ config.name }}
-                        <span class="badge bg-info ms-2">v{{ config.current_version }}</span>
+                        {% if bindings %}
+                        <span class="badge bg-info ms-2">{{ bindings|length }} 个绑定</span>
+                        {% endif %}
                     </h5>
                     <div class="btn-group btn-group-sm">
-                        <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary" onclick="goBackToConfigList(event)">
+                        <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary">
                             <i class="bi bi-arrow-left"></i> 返回列表
                         </a>
-                        {% if user|has_perm_code:"configs.update" and not config|any_node_locked %}
                         <a href="{% url 'configs:edit' config.id %}" class="btn btn-outline-primary">
                             <i class="bi bi-pencil"></i> 编辑
                         </a>
-                        {% endif %}
                         <a href="{% url 'configs:versions' config.id %}" class="btn btn-outline-info">
                             <i class="bi bi-clock-history"></i> 版本历史
                         </a>
@@ -32,12 +31,18 @@
                 <div class="card-body">
                     <div class="row mb-4">
                         <div class="col-md-3">
-                            <div class="text-muted small">节点</div>
-                            <div><strong>{{ config|nodes_hostnames }}</strong> ({{ config|nodes_ips }})</div>
+                            <div class="text-muted small">默认远程路径</div>
+                            <div><code>{{ config.default_remote_path|default:"—" }}</code></div>
                         </div>
                         <div class="col-md-3">
-                            <div class="text-muted small">配置路径</div>
-                            <div><code>{{ config.file_path }}</code></div>
+                            <div class="text-muted small">来源</div>
+                            <div>
+                                {% if config.source == "discovered" %}
+                                <span class="badge bg-info">远程发现</span>
+                                {% else %}
+                                <span class="badge bg-light text-dark">手动创建</span>
+                                {% endif %}
+                            </div>
                         </div>
                         <div class="col-md-3">
                             <div class="text-muted small">创建人</div>
@@ -49,14 +54,79 @@
                         </div>
                     </div>
 
-                    <div class="mb-2">
-                        <strong><i class="bi bi-code-slash"></i> 配置内容</strong>
-                        {% if latest_version %}
-                        <small class="text-muted ms-2">（{{ latest_version.content_bytes }} 字节）</small>
-                        {% endif %}
+                    {% if config.description %}
+                    <div class="mb-3">
+                        <strong>描述</strong>
+                        <p class="text-muted mb-0">{{ config.description }}</p>
                     </div>
-                    <pre class="bg-light p-3 rounded border"
-                        style="max-height: 600px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; white-space: pre-wrap; word-wrap: break-word;">{% if latest_version %}{{ latest_version.content }}{% else %}{{ config.content }}{% endif %}</pre>
+                    {% endif %}
+
+                    {% if config.template_content %}
+                    <div class="mb-3">
+                        <strong><i class="bi bi-file-text"></i> 内容模板</strong>
+                        <pre class="bg-light p-3 rounded border"
+                            style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word;">{{ config.template_content }}</pre>
+                    </div>
+                    {% endif %}
+
+                    {% if bindings %}
+                    <div class="mb-3">
+                        <strong><i class="bi bi-diagram-3"></i> 节点绑定</strong>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 18%;">节点</th>
+                                    <th style="width: 28%;">远程路径</th>
+                                    <th style="width: 7%;">版本</th>
+                                    <th style="width: 12%;">同步状态</th>
+                                    <th style="width: 15%;">最后同步</th>
+                                    <th style="width: 20%;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for binding in bindings %}
+                                <tr>
+                                    <td>
+                                        <small>{{ binding.node.hostname }}</small>
+                                        <br><small class="text-muted">{{ binding.node.ip }}</small>
+                                    </td>
+                                    <td><code class="small">{{ binding.remote_path }}</code></td>
+                                    <td><span class="badge bg-secondary">v{{ binding.current_version }}</span></td>
+                                    <td>
+                                        {% if binding.sync_status == "synced" %}
+                                        <span class="badge bg-success">已同步</span>
+                                        {% elif binding.sync_status == "modified" %}
+                                        <span class="badge bg-primary">待推送</span>
+                                        {% elif binding.sync_status == "conflict" %}
+                                        <span class="badge bg-warning text-dark">冲突</span>
+                                        {% elif binding.sync_status == "not_synced" %}
+                                        <span class="badge bg-secondary">未同步</span>
+                                        {% elif binding.sync_status == "failed" %}
+                                        <span class="badge bg-danger">同步失败</span>
+                                        {% elif binding.sync_status == "syncing" %}
+                                        <span class="badge bg-info">同步中</span>
+                                        {% elif binding.sync_status == "orphaned" %}
+                                        <span class="badge bg-danger">远程已删除</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><small>{{ binding.last_sync_time|date:"Y-m-d H:i"|default:"—" }}</small></td>
+                                    <td>
+                                        <a href="{% url 'configs:binding_detail' binding.id %}" class="btn btn-sm btn-outline-info">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-light text-muted">
+                        <i class="bi bi-info-circle"></i> 此配置标签尚无节点绑定，请在列表页添加绑定。
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

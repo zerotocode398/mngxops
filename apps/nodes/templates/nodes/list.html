@@ -345,11 +345,11 @@
 </div>
 
 <!-- 通用弹窗 -->
-<div class="modal fade" id="customModal" tabindex="-1">
+<div class="modal fade" id="customModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="customModalTitle">提示</h5>
+                <h5 class="modal-title" id="customModalTitle"><i class="bi bi-info-circle"></i> 提示</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="customModalBody">
@@ -363,7 +363,24 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                <button type="button" class="btn btn-primary" id="modalConfirmBtn" style="display: none;">确认</button>
+                <button type="button" class="btn btn-success" id="modalConfirmBtn" style="display: none;"><i class="bi bi-play-circle"></i> 确认</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 任务跳转弹窗 -->
+<div class="modal fade" id="taskJumpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-info-circle"></i> 任务已创建</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="taskJumpModalBody">后台任务已创建</div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">留在当前页</button>
+                <a href="#" class="btn btn-primary" id="taskJumpBtn">查看任务详情</a>
             </div>
         </div>
     </div>
@@ -494,12 +511,24 @@
     var testTimer = null;
     var testSeconds = 0;
     var MAX_SELECT = 3;
+    var taskJumpModal;
+    var taskJumpTimer = null;
+    var taskJumpCancelled = false;
 
     document.addEventListener('DOMContentLoaded', function () {
         /* 初始化 Bootstrap 模态框 */
         customModal = new bootstrap.Modal(document.getElementById('customModal'));
         deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
         nodeDetailModal = new bootstrap.Modal(document.getElementById('nodeDetailModal'));
+        taskJumpModal = new bootstrap.Modal(document.getElementById('taskJumpModal'));
+
+        document.getElementById('taskJumpModal').addEventListener('hidden.bs.modal', function () {
+            taskJumpCancelled = true;
+            if (taskJumpTimer) {
+                clearTimeout(taskJumpTimer);
+                taskJumpTimer = null;
+            }
+        });
 
         /* 初始化标签搜索 */
         initTagSearch('#nodeSearchTagWrapper', '#nodeSearchHidden', '#searchForm');
@@ -558,8 +587,9 @@
     }
 
     /* ========== 通用弹窗工具 ========== */
-    function showCustomModal(title, content, showConfirm, confirmCallback) {
-        document.getElementById('customModalTitle').textContent = title;
+    function showCustomModal(title, content, showConfirm, confirmCallback, iconClass, confirmIconClass, confirmBtnClass) {
+        var iconHtml = iconClass ? '<i class="' + iconClass + '"></i> ' : '<i class="bi bi-info-circle"></i> ';
+        document.getElementById('customModalTitle').innerHTML = iconHtml + title;
         document.getElementById('modalContent').innerHTML = content;
         document.getElementById('loadingSpinner').style.display = 'none';
         var confirmBtn = document.getElementById('modalConfirmBtn');
@@ -568,6 +598,9 @@
             confirmBtn.onclick = function () {
                 if (confirmCallback) confirmCallback();
             };
+            var iconInner = confirmIconClass ? '<i class="' + confirmIconClass + '"></i> ' : '<i class="bi bi-play-circle"></i> ';
+            confirmBtn.innerHTML = iconInner + '确认';
+            confirmBtn.className = 'btn ' + (confirmBtnClass || 'btn-success');
         } else {
             confirmBtn.style.display = 'none';
         }
@@ -577,7 +610,7 @@
 
     function showLoading(title) {
         title = title || '处理中';
-        document.getElementById('customModalTitle').textContent = title;
+        document.getElementById('customModalTitle').innerHTML = '<i class="bi bi-hourglass-split text-primary me-2"></i>' + title;
         document.getElementById('modalContent').innerHTML = '';
         document.getElementById('loadingSpinner').style.display = 'block';
         document.getElementById('modalConfirmBtn').style.display = 'none';
@@ -778,43 +811,53 @@
             showCustomModal('提示', '<p class="text-warning">请先选择要测试的节点</p>');
             return;
         }
-        showLoading('批量测试连接中...');
-        stopTestTimer();
-        testSeconds = 10;
-        testTimer = setInterval(function () {
-            testSeconds--;
-            if (testSeconds <= 0) { stopTestTimer(); updateLoadingContent('<div class="text-center py-3"><p class="text-muted mb-0">即将完成...</p></div>'); }
-            else { updateLoadingContent('<div class="text-center py-3"><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>'); }
-        }, 1000);
+        showCustomModal('批量测试连接',
+            '<p>确定要对选中的 <strong>' + nodeIds.length + '</strong> 个节点进行SSH连接测试吗？</p><p class="text-muted">测试结果将更新节点状态。</p>',
+            true, function () {
+                showLoading('批量测试连接中...');
+                stopTestTimer();
+                testSeconds = 10;
+                testTimer = setInterval(function () {
+                    testSeconds--;
+                    if (testSeconds <= 0) { stopTestTimer(); updateLoadingContent('<div class="text-center py-3"><p class="text-muted mb-0">即将完成...</p></div>'); }
+                    else { updateLoadingContent('<div class="text-center py-3"><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>'); }
+                }, 1000);
 
-        fetch('{% url "nodes:batch_test" %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({ node_ids: nodeIds })
-        })
-        .then(function (resp) { return resp.json(); })
-        .then(function (result) {
-            stopTestTimer();
-            hideLoading();
-            if (!result.success) {
-                showCustomModal('测试失败', '<p class="text-danger">' + result.message + '</p>');
-                return;
-            }
-            if (result.async) {
-                var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
-                showCustomModal('批量测试已提交',
-                    '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> 已创建后台任务</div><p>' + result.message + '</p><p class="text-muted mb-0">即将跳转到任务详情...</p>');
-                setTimeout(function () { window.location.href = jumpUrl; }, 3000);
-            }
-        })
-        .catch(function () {
-            stopTestTimer();
-            hideLoading();
-            showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
-        });
+                fetch('{% url "nodes:batch_test" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({ node_ids: nodeIds })
+                })
+                .then(function (resp) { return resp.json(); })
+                .then(function (result) {
+                    stopTestTimer();
+                    hideLoading();
+                    if (!result.success) {
+                        showCustomModal('测试失败', '<p class="text-danger">' + result.message + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
+                        return;
+                    }
+                    if (result.async) {
+                        var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
+                        document.getElementById('taskJumpModalBody').textContent = result.message || '已创建后台测试任务';
+                        document.getElementById('taskJumpBtn').setAttribute('href', jumpUrl);
+                        taskJumpCancelled = false;
+                        taskJumpModal.show();
+                        taskJumpTimer = setTimeout(function () {
+                            if (!taskJumpCancelled) {
+                                window.location.href = jumpUrl;
+                            }
+                        }, 3000);
+                    }
+                })
+                .catch(function () {
+                    stopTestTimer();
+                    hideLoading();
+                    showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
+                });
+            }, 'bi-lightning-charge', 'bi-lightning-charge', 'btn-success');
     }
 
     /* ========== 锁定/解锁 ========== */
@@ -837,6 +880,8 @@
         var confirmMsg = isLock
             ? '确定要锁定该节点吗？锁定后节点状态将变为"离线"，且不可再进行操作。'
             : '确定要解锁该节点吗？解锁后将自动测试连接并更新状态。';
+        var iconClass = isLock ? 'bi-lock' : 'bi-unlock';
+        var confirmBtnClass = isLock ? 'btn-danger' : 'btn-success';
 
         showCustomModal(title, '<p>' + confirmMsg + '</p>', true, function () {
             stopTestTimer();
@@ -871,12 +916,12 @@
                             '<p><strong>主机名：</strong>' + r.hostname + '</p>' +
                             '<p><strong>IP：</strong><code>' + r.ip + '</code></p>' +
                             '<p><strong>详情：</strong>' + r.message + '</p>';
-                        showCustomModal('解锁完成', content, true, function () { location.reload(); });
+                        showCustomModal('解锁完成', content, true, function () { location.reload(); }, 'bi-check-circle text-success');
                     } else {
-                        showCustomModal('操作完成', '<p class="text-success">' + result.message + '</p>', true, function () { location.reload(); });
+                        showCustomModal('操作完成', '<p class="text-success">' + result.message + '</p>', true, function () { location.reload(); }, 'bi-check-circle text-success');
                     }
                 } else {
-                    showCustomModal('操作失败', '<p class="text-danger">' + result.message + '</p>');
+                    showCustomModal('操作失败', '<p class="text-danger">' + result.message + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
                 }
             })
             .catch(function () {
@@ -904,13 +949,13 @@
                     hideLoading();
                     if (result.success) {
                         var hostnamesHtml = result.hostnames.map(function (h) { return '<span class="badge bg-secondary me-1">' + h + '</span>'; }).join('');
-                        showCustomModal('批量锁定完成', '<div class="mb-2">' + hostnamesHtml + '</div><p class="text-success">' + result.message + '</p>', true, function () { location.reload(); });
+                        showCustomModal('批量锁定完成', '<div class="mb-2">' + hostnamesHtml + '</div><p class="text-success">' + result.message + '</p>', true, function () { location.reload(); }, 'bi-check-circle text-success');
                     } else {
-                        showCustomModal('批量锁定失败', '<p class="text-danger">' + result.message + '</p>');
+                        showCustomModal('批量锁定失败', '<p class="text-danger">' + result.message + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
                     }
                 })
                 .catch(function () { hideLoading(); showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>'); });
-            });
+            }, 'bi-lock', 'bi-lock', 'btn-danger');
     }
 
     function batchUnlockNodes() {
@@ -943,13 +988,13 @@
                             return '<tr><td><strong>' + r.hostname + '</strong></td><td><code>' + r.ip + '</code></td><td>' + statusBadge + '</td><td><small>' + (r.message || '') + '</small></td></tr>';
                         }).join('');
                         var content = '<div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead class="table-light"><tr><th>主机名</th><th>IP</th><th>状态</th><th>详情</th></tr></thead><tbody>' + resultsHtml + '</tbody></table></div>';
-                        showCustomModal('批量解锁完成', content, true, function () { location.reload(); });
+                        showCustomModal('批量解锁完成', content, true, function () { location.reload(); }, 'bi-check-circle text-success');
                     } else {
-                        showCustomModal('批量解锁失败', '<p class="text-danger">' + result.message + '</p>');
+                        showCustomModal('批量解锁失败', '<p class="text-danger">' + result.message + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
                     }
                 })
                 .catch(function () { stopTestTimer(); hideLoading(); showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>'); });
-            });
+            }, 'bi-unlock', 'bi-unlock', 'btn-success');
     }
 
     /* ========== 节点详情弹窗 ========== */

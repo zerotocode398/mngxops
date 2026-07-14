@@ -127,6 +127,36 @@ class ConfigDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         return redirect("configs:list")
 
 
+class ConfigDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    """配置标签详情"""
+    model = Config
+    template_name = "configs/detail.html"
+    context_object_name = "config"
+    permission_resource = "configs"
+    permission_action = "read"
+
+    def get_queryset(self):
+        """预加载绑定与节点关联"""
+        return super().get_queryset().prefetch_related(
+            "bindings__node", "bindings__versions"
+        )
+
+    def get_context_data(self, **kwargs):
+        """注入绑定的最新版本信息"""
+        context = super().get_context_data(**kwargs)
+        config = self.object
+        bindings = config.bindings.select_related("node").order_by("node__hostname")
+        context["bindings"] = bindings
+
+        latest_version = None
+        for binding in bindings:
+            bv = binding.versions.order_by("-version").first()
+            if bv and (latest_version is None or bv.created_at > latest_version.created_at):
+                latest_version = bv
+        context["latest_version"] = latest_version
+        return context
+
+
 # ==================== 配置节点绑定 CRUD ====================
 
 class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
@@ -827,8 +857,17 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
 
 class ConfigSyncProgressView(LoginRequiredMixin, View):
+    """同步进度查询接口，返回前端轮询所需的进度数据结构"""
+
     def get(self, request):
-        return JsonResponse({"progress": 100, "status": "success"})
+        return JsonResponse({
+            "success": True,
+            "progress": {
+                "completed": 0,
+                "total": 1,
+                "nodes": {},
+            },
+        })
 
 
 class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):

@@ -7,6 +7,7 @@ urlpatterns = [
     # 配置标签 CRUD
     path("", views.ConfigListView.as_view(), name="list"),
     path("create/", views.ConfigCreateView.as_view(), name="create"),
+    path("<int:pk>/", views.ConfigDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", views.ConfigEditView.as_view(), name="edit"),
     path("<int:pk>/delete/", views.ConfigDeleteView.as_view(), name="delete"),
 
