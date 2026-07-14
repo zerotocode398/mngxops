@@ -526,9 +526,13 @@ class ConfigGlobPreviewView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "message": "未配置SSH凭证"}, status=400)
 
         setting = get_or_create_sync_setting(node)
-        nginx_conf_path = setting.main_conf_path
+        main_conf_path = data.get("main_conf_path") or setting.main_conf_path
+        if main_conf_path and main_conf_path != setting.main_conf_path:
+            setting.main_conf_path = main_conf_path
+            setting.save(update_fields=["main_conf_path"])
+        nginx_conf_path = main_conf_path
         if not nginx_conf_path:
-            return JsonResponse({"success": False, "message": "未配置nginx路径"}, status=400)
+            return JsonResponse({"success": False, "message": "未配置nginx路径"})
 
         auth_kwargs = {}
         if credential.auth_type == "password":
@@ -666,7 +670,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 result["message"] = "未配置SSH凭证"
                 return result
             setting = get_or_create_sync_setting(node)
-            nginx_conf_path = setting.main_conf_path
+            nginx_conf_path = setting.main_conf_path or "/etc/nginx/nginx.conf"
             if not nginx_conf_path:
                 result["message"] = "未配置nginx路径"
                 return result
@@ -782,7 +786,11 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
             return JsonResponse({"success": False, "message": "未配置SSH凭证"})
 
         setting = get_or_create_sync_setting(node)
-        nginx_conf_path = setting.main_conf_path
+        main_conf_path = data.get("main_conf_path") or setting.main_conf_path
+        if main_conf_path and main_conf_path != setting.main_conf_path:
+            setting.main_conf_path = main_conf_path
+            setting.save(update_fields=["main_conf_path"])
+        nginx_conf_path = main_conf_path
         if not nginx_conf_path:
             return JsonResponse({"success": False, "message": "未配置nginx路径"})
 
