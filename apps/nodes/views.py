@@ -330,6 +330,7 @@ class NodeCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["query_string"] = self.request.GET.urlencode()
+        context["all_node_groups"] = NodeGroup.objects.all()
         return context
 
     def get_success_url(self):
@@ -367,6 +368,7 @@ class NodeUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["query_string"] = self.request.GET.urlencode()
+        context["all_node_groups"] = NodeGroup.objects.all()
         return context
 
     def get_success_url(self):
@@ -397,6 +399,7 @@ class NodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["query_string"] = self.request.GET.urlencode()
+        context["all_node_groups"] = NodeGroup.objects.all()
         return context
 
     def get_success_url(self):
@@ -1017,43 +1020,8 @@ def get_node_detail(request):
                 "created_by": node.created_by.username,
                 "created_at": node.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                 "updated_at": node.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "has_credential": credential is not None and credential.is_enabled,
             }
-
-            try:
-                if credential:
-                    if not credential.is_enabled:
-                        node.status = "offline"
-                        node.save()
-                        node_info["system_info"] = None
-                        return JsonResponse({"success": True, "node_info": node_info})
-
-                    if credential.auth_type == "password":
-                        success, system_info = get_system_info(
-                            node.ip,
-                            node.port,
-                            credential.username,
-                            password=credential.get_password(),
-                        )
-                    else:
-                        success, system_info = get_system_info(
-                            node.ip,
-                            node.port,
-                            credential.username,
-                            private_key=credential.get_private_key(),
-                        )
-
-                    if success:
-                        node.status = "online"
-                        node.save()
-                        node_info["system_info"] = system_info
-                    else:
-                        node.status = "offline"
-                        node.save()
-                        node_info["system_info"] = None
-                else:
-                    node_info["system_info"] = None
-            except:
-                node_info["system_info"] = None
 
             return JsonResponse({"success": True, "node_info": node_info})
         except Node.DoesNotExist:
@@ -1073,10 +1041,10 @@ def get_node_system_info(request):
     if request.method == "POST":
         import json
 
-        data = json.loads(request.body)
-        node_id = data.get("node_id")
-
         try:
+            data = json.loads(request.body)
+            node_id = data.get("node_id")
+
             node = Node.objects.get(id=node_id)
             credential = _get_node_credential(node)
             if not credential:
@@ -1124,9 +1092,10 @@ def get_node_nginx_version(request):
     if request.method == "POST":
         import json
 
-        data = json.loads(request.body)
-        node_id = data.get("node_id")
         try:
+            data = json.loads(request.body)
+            node_id = data.get("node_id")
+
             node = Node.objects.get(id=node_id)
             credential = _get_node_credential(node)
             if not credential:

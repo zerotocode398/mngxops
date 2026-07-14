@@ -2,68 +2,6 @@
 
 {% block title %}新增节点 - MngxOps{% endblock %}
 
-{% block extra_js %}
-<script>
-    // ===== 节点组多选组件 =====
-    (function() {
-        var searchInput = document.getElementById('groupSearchInput');
-        var listContainer = document.getElementById('groupListContainer');
-        var tagsContainer = document.getElementById('selectedGroupsTags');
-        var items = listContainer.querySelectorAll('.multi-select-item');
-        var MAX_GROUPS = 3;
-
-        function updateTags() {
-            tagsContainer.innerHTML = '';
-            items.forEach(function(item) {
-                var cb = item.querySelector('input[type="checkbox"]');
-                if (cb && cb.checked) {
-                    var label = item.getAttribute('data-value');
-                    var tag = document.createElement('span');
-                    tag.className = 'badge bg-primary me-1 mb-1 group-tag';
-                    tag.setAttribute('data-value', label);
-                    tag.innerHTML = label + ' <i class="bi bi-x" style="cursor:pointer;"></i>';
-                    tag.querySelector('i').addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        cb.checked = false;
-                        updateTags();
-                    });
-                    tagsContainer.appendChild(tag);
-                }
-            });
-        }
-
-        searchInput.addEventListener('input', function() {
-            var q = this.value.toLowerCase();
-            items.forEach(function(item) {
-                var label = (item.getAttribute('data-value') || '').toLowerCase();
-                item.style.display = label.indexOf(q) >= 0 ? '' : 'none';
-            });
-        });
-
-        items.forEach(function(item) {
-            var cb = item.querySelector('input[type="checkbox"]');
-            var label = item.querySelector('label');
-            if (!cb || !label) return;
-
-            cb.addEventListener('change', updateTags);
-
-            label.addEventListener('click', function(e) {
-                e.preventDefault();
-                var checked = listContainer.querySelectorAll('input[type="checkbox"]:checked').length;
-                if (!cb.checked && checked >= MAX_GROUPS) {
-                    alert('最多只能选择 ' + MAX_GROUPS + ' 个节点组');
-                    return;
-                }
-                cb.checked = !cb.checked;
-                updateTags();
-            });
-        });
-
-        updateTags();
-    })();
-</script>
-{% endblock %}
-
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -75,11 +13,8 @@
                 <div class="card-body">
                     <div class="row justify-content-center">
                         <div class="col-md-8">
-                            <form method="post">
+                            <form method="post" id="nodeForm">
                                 {% csrf_token %}
-
-                                <!-- 基本配置 -->
-                                <h6 class="text-muted mb-3"><i class="bi bi-sliders"></i> 基本配置</h6>
 
                                 <div class="mb-3">
                                     <label for="{{ form.hostname.id_for_label }}" class="form-label">
@@ -87,113 +22,73 @@
                                     </label>
                                     {{ form.hostname }}
                                     {% if form.hostname.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.hostname.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1"><small>{{ form.hostname.errors|join:", " }}</small></div>
                                     {% endif %}
                                 </div>
 
-                                <div class="mb-3">
-                                    <label for="{{ form.ip.id_for_label }}" class="form-label">
-                                        <i class="bi bi-globe"></i> {{ form.ip.label }} *
-                                    </label>
-                                    {{ form.ip }}
-                                    {% if form.ip.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.ip.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-8">
+                                        <label for="{{ form.ip.id_for_label }}" class="form-label">
+                                            <i class="bi bi-globe"></i> {{ form.ip.label }} *
+                                        </label>
+                                        {{ form.ip }}
+                                        {% if form.ip.errors %}
+                                        <div class="text-danger mt-1"><small>{{ form.ip.errors|join:", " }}</small></div>
+                                        {% endif %}
                                     </div>
-                                    {% endif %}
+                                    <div class="col-md-4">
+                                        <label for="{{ form.port.id_for_label }}" class="form-label">
+                                            <i class="bi bi-usb"></i> {{ form.port.label }}
+                                        </label>
+                                        {{ form.port }}
+                                        {% if form.port.errors %}
+                                        <div class="text-danger mt-1"><small>{{ form.port.errors|join:", " }}</small></div>
+                                        {% endif %}
+                                    </div>
                                 </div>
 
-                                <div class="mb-3">
-                                    <label for="{{ form.port.id_for_label }}" class="form-label">
-                                        <i class="bi bi-usb"></i> {{ form.port.label }}
-                                    </label>
-                                    {{ form.port }}
-                                    {% if form.port.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.port.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
-                                    {% endif %}
-                                </div>
-
-                                <!-- 环境 Radio -->
                                 <div class="mb-3">
                                     <label class="form-label"><i class="bi bi-layers"></i> 环境 *</label>
                                     <div class="d-flex gap-3">
                                         {% for choice in form.environment %}
                                         <div class="form-check">
                                             {{ choice.tag }}
-                                            <label class="form-check-label" for="{{ choice.id_for_label }}">
-                                                {{ choice.choice_label }}
-                                            </label>
+                                            <label class="form-check-label" for="{{ choice.id_for_label }}">{{ choice.choice_label }}</label>
                                         </div>
                                         {% endfor %}
                                     </div>
                                     {% if form.environment.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.environment.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1"><small>{{ form.environment.errors|join:", " }}</small></div>
                                     {% endif %}
                                 </div>
 
                                 <div class="mb-3">
-                                    <label class="form-label">
-                                        <i class="bi bi-collection"></i> {{ form.groups.label }}
-                                    </label>
-                                    <div class="multi-select-container" id="multiSelectGroups">
-                                        <div class="input-group mb-2">
-                                            <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                            <input type="text" class="form-control" id="groupSearchInput"
-                                                placeholder="搜索节点组..." autocomplete="off">
-                                        </div>
-                                        <div class="border rounded p-2" id="groupListContainer"
-                                            style="max-height:200px;overflow-y:auto;">
-                                            {% for checkbox in form.groups %}
-                                            <div class="form-check multi-select-item" data-value="{{ checkbox.choice_label }}">
-                                                {{ checkbox.tag }}
-                                                <label class="form-check-label" for="{{ checkbox.id_for_label }}">
-                                                    {{ checkbox.choice_label }}
-                                                </label>
-                                            </div>
-                                            {% empty %}
-                                            <span class="text-muted small">暂无可选节点组</span>
-                                            {% endfor %}
-                                        </div>
-                                        <div class="mt-2" id="selectedGroupsTags"></div>
+                                    <label class="form-label"><i class="bi bi-collection"></i> 节点组</label>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button type="button" class="btn btn-outline-primary btn-sm"
+                                                data-bs-toggle="modal" data-bs-target="#selectGroupModal">
+                                            <i class="bi bi-plus-circle"></i> 选择节点组
+                                        </button>
+                                        <small class="text-muted">最多 3 个</small>
                                     </div>
-                                    {% if form.groups.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.groups.errors %}
-                                        <small>{{ error }}</small>
+                                    <div style="display:none;" id="groupCheckboxContainer">
+                                        {% for checkbox in form.groups %}
+                                        <div>{{ checkbox.tag }}</div>
                                         {% endfor %}
                                     </div>
+                                    <div class="d-flex flex-wrap gap-1 mt-2" id="selectedGroupsTags"></div>
+                                    {% if form.groups.errors %}
+                                    <div class="text-danger mt-1"><small>{{ form.groups.errors|join:", " }}</small></div>
                                     {% endif %}
-                                    <small class="text-muted">可勾选多个节点组，最多 3 个</small>
                                 </div>
-
-                                <!-- SSH配置 -->
-                                <h6 class="text-muted mb-3 mt-4"><i class="bi bi-shield-lock"></i> SSH配置</h6>
 
                                 <div class="mb-3">
                                     <label for="{{ form.credential.id_for_label }}" class="form-label">
-                                        <i class="bi bi-key"></i> {{ form.credential.label }}
+                                        <i class="bi bi-key"></i> SSH 凭证
                                     </label>
                                     {{ form.credential }}
                                     {% if form.credential.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.credential.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1"><small>{{ form.credential.errors|join:", " }}</small></div>
                                     {% endif %}
                                     <small class="text-muted">可选，仅显示已启用的凭证。不设置则无法执行连接测试等远程操作</small>
                                 </div>
@@ -204,17 +99,10 @@
                                     </label>
                                     {{ form.nginx_path }}
                                     {% if form.nginx_path.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.nginx_path.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1"><small>{{ form.nginx_path.errors|join:", " }}</small></div>
                                     {% endif %}
                                     <small class="text-muted">如果nginx是自定义编译的，请填写完整路径，例如: /usr/local/nginx/sbin/nginx</small>
                                 </div>
-
-                                <!-- 其他 -->
-                                <h6 class="text-muted mb-3 mt-4"><i class="bi bi-three-dots"></i> 其他</h6>
 
                                 <div class="mb-3">
                                     <label for="{{ form.description.id_for_label }}" class="form-label">
@@ -222,11 +110,7 @@
                                     </label>
                                     {{ form.description }}
                                     {% if form.description.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.description.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1"><small>{{ form.description.errors|join:", " }}</small></div>
                                     {% endif %}
                                 </div>
 
@@ -247,35 +131,301 @@
     </div>
 </div>
 
-<!-- 测试连接弹窗 -->
-<div class="modal fade" id="customModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+<!-- 选择节点组弹窗 -->
+<div class="modal fade" id="selectGroupModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="customModalTitle">提示</h5>
+                <h5 class="modal-title"><i class="bi bi-collection"></i> 选择节点组</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div id="loadingSpinner" class="text-center" style="display: none;">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">加载中...</span>
+                <div class="mb-3">
+                    <div class="tag-input-wrapper form-control" id="groupModalTagWrapper">
+                        <input type="text" class="tag-input-field" id="groupModalSearchField"
+                            placeholder="搜索节点组名称" autocomplete="off">
                     </div>
-                    <p class="mt-2">处理中，请稍候...</p>
+                    <input type="hidden" id="groupModalSearchHidden">
                 </div>
-                <div id="modalContent"></div>
+
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-sm table-bordered table-hover group-modal-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 5%;"></th>
+                                <th style="width: 35%;">节点组名称</th>
+                                <th style="width: 60%;">描述</th>
+                            </tr>
+                        </thead>
+                        <tbody id="groupModalTbody">
+                            {% for g in all_node_groups %}
+                            <tr class="modal-group-row" data-name="{{ g.name }}">
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input modal-group-cb" value="{{ g.id }}">
+                                </td>
+                                <td>{{ g.name }}</td>
+                                <td><small class="text-muted">{{ g.description|default:"-" }}</small></td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-4"><i class="bi bi-inbox"></i><p class="mt-1 mb-0">暂无可选节点组</p></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted" id="groupResultInfo"></small>
+                    <small class="text-muted">
+                        已选 <strong id="modalGroupSelectedCount">0</strong> 个
+                    </small>
+                </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                <button type="button" class="btn btn-primary" id="modalConfirmBtn" style="display: none;">确认</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="groupModalConfirmBtn">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
             </div>
         </div>
     </div>
 </div>
 
 <style>
-    /* 环境 Radio 布局 */
-    .d-flex.gap-3 .form-check {
-        margin-right: 1.5rem;
+    .d-flex.gap-3 .form-check { margin-right: 1.5rem; }
+    .selected-group-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #e9ecef;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 0.82rem;
+    }
+    .selected-group-badge .remove-group {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .selected-group-badge .remove-group:hover { opacity: 1; color: #dc3545; }
+    .tag-input-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        min-height: 38px;
+        cursor: text;
+        overflow-y: auto;
+    }
+    .tag-input-wrapper .tag-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #667eea;
+        color: #fff;
+        border: 1px solid #5a6fd6;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove {
+        cursor: pointer;
+        opacity: 0.7;
+        font-size: 1.1rem;
+        line-height: 1;
+        margin-left: 2px;
+    }
+    .tag-input-wrapper .tag-badge .tag-remove:hover {
+        opacity: 1;
+        color: #ffc107;
+    }
+    .tag-input-wrapper .tag-input-field {
+        border: none;
+        outline: none;
+        flex: 1;
+        min-width: 100px;
+        padding: 0;
+        background: transparent;
+    }
+    .group-modal-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .group-modal-table td {
+        font-size: 0.82rem;
+        font-weight: normal;
+        vertical-align: middle;
+    }
+    .group-modal-table td code,
+    .group-modal-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .group-modal-table td .badge {
+        font-size: 0.78rem;
+    }
+    .group-modal-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
     }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    var MAX_GROUPS = 3;
+    var groupSelectedMap = {};
+
+    function syncSelectedTagsFromCheckboxes() {
+        var container = document.getElementById('selectedGroupsTags');
+        var cbs = document.querySelectorAll('#groupCheckboxContainer input[type="checkbox"]');
+        var html = '';
+        groupSelectedMap = {};
+        cbs.forEach(function(cb) {
+            if (cb.checked) {
+                var value = cb.value;
+                groupSelectedMap[value] = true;
+                var opt = document.querySelector('#groupModalTbody .modal-group-cb[value="' + value + '"]');
+                var label = (opt ? opt.closest('tr').getAttribute('data-name') : null) || value;
+                html += '<span class="selected-group-badge">' + label +
+                    '<span class="remove-group" onclick="removeSelectedGroup(\'' + value + '\')">&times;</span></span>';
+            }
+        });
+        container.innerHTML = html || '<span class="text-muted small">未选择</span>';
+    }
+
+    function removeSelectedGroup(value) {
+        var cb = document.querySelector('#groupCheckboxContainer input[value="' + value + '"]');
+        if (cb) cb.checked = false;
+        groupSelectedMap[value] = false;
+        syncSelectedTagsFromCheckboxes();
+        updateModalCheckboxes();
+        updateModalCounts();
+    }
+
+    function updateModalCheckboxes() {
+        document.querySelectorAll('#groupModalTbody .modal-group-cb').forEach(function(cb) {
+            var realCb = document.querySelector('#groupCheckboxContainer input[value="' + cb.value + '"]');
+            cb.checked = realCb ? realCb.checked : false;
+        });
+    }
+
+    function doGroupSearch() {
+        var wrapper = document.getElementById('groupModalTagWrapper');
+        var badges = wrapper.querySelectorAll('.tag-badge');
+        var tags = [];
+        badges.forEach(function(b) { tags.push(b.getAttribute('data-value')); });
+        var fieldVal = document.getElementById('groupModalSearchField').value.toLowerCase();
+
+        var visibleCount = 0;
+        document.querySelectorAll('#groupModalTbody .modal-group-row').forEach(function(r) {
+            var txt = (r.getAttribute('data-name') || '').toLowerCase();
+            var match = !tags.length || tags.some(function(t) { return txt.indexOf(t.toLowerCase()) >= 0; });
+            if (match && fieldVal) {
+                match = txt.indexOf(fieldVal) >= 0;
+            }
+            r.style.display = match ? '' : 'none';
+            if (match) visibleCount++;
+        });
+        updateModalCounts();
+        document.getElementById('groupResultInfo').textContent = '共 ' + visibleCount + ' 个结果';
+    }
+
+    function updateModalCounts() {
+        var count = document.querySelectorAll('#groupModalTbody .modal-group-cb:checked').length;
+        document.getElementById('modalGroupSelectedCount').textContent = String(count);
+    }
+
+    function initGroupModalTagSearch() {
+        var wrapper = document.getElementById('groupModalTagWrapper');
+        var searchHidden = document.getElementById('groupModalSearchHidden');
+        var field = document.getElementById('groupModalSearchField');
+        if (!wrapper || !field) return;
+
+        function focusField() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') field.setSelectionRange(len, len);
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function(b) { values.push(b.getAttribute('data-value')); });
+            searchHidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(function() { focusField(); doGroupSearch(); }, 0);
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        field.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) { createBadge(text); field.value = ''; }
+                updateHidden();
+                setTimeout(focusField, 0);
+                doGroupSearch();
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) { badges[badges.length - 1].remove(); updateHidden(); setTimeout(function() { focusField(); doGroupSearch(); }, 0); }
+            }
+        });
+
+        field.addEventListener('input', function() { doGroupSearch(); });
+        wrapper.addEventListener('click', function(e) { if (e.target === wrapper) focusField(); });
+        focusField();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        syncSelectedTagsFromCheckboxes();
+
+        document.getElementById('selectGroupModal').addEventListener('shown.bs.modal', function() {
+            updateModalCheckboxes();
+            updateModalCounts();
+            var wrapper = document.getElementById('groupModalTagWrapper');
+            wrapper.querySelectorAll('.tag-badge').forEach(function(b) { b.remove(); });
+            document.getElementById('groupModalSearchHidden').value = '';
+            document.getElementById('groupModalSearchField').value = '';
+            document.querySelectorAll('#groupModalTbody .modal-group-row').forEach(function(r) { r.style.display = ''; });
+            var totalRows = document.querySelectorAll('#groupModalTbody .modal-group-row').length;
+            document.getElementById('groupResultInfo').textContent = '共 ' + totalRows + ' 个结果';
+        });
+
+        initGroupModalTagSearch();
+
+        document.getElementById('groupModalTbody').addEventListener('change', function(e) {
+            if (e.target.classList.contains('modal-group-cb')) {
+                var checked = document.querySelectorAll('#groupModalTbody .modal-group-cb:checked').length;
+                if (checked > MAX_GROUPS) { e.target.checked = false; return; }
+                var realCb = document.querySelector('#groupCheckboxContainer input[value="' + e.target.value + '"]');
+                if (realCb) realCb.checked = e.target.checked;
+                groupSelectedMap[e.target.value] = e.target.checked;
+                updateModalCounts();
+            }
+        });
+
+        document.getElementById('groupModalConfirmBtn').addEventListener('click', function() {
+            syncSelectedTagsFromCheckboxes();
+            var modal = bootstrap.Modal.getInstance(document.getElementById('selectGroupModal'));
+            modal.hide();
+        });
+    });
+</script>
 {% endblock %}
