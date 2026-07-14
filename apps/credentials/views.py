@@ -311,7 +311,7 @@ class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, Vi
         if credential.is_enabled:
             # 禁用凭证：设为禁用，所有关联节点标记为离线
             credential.is_enabled = False
-            credential.save(update_fields=["is_enabled"])
+            credential.save(update_fields=["is_enabled", "updated_at"])
             affected = Node.objects.filter(credential=credential).update(status="offline")
             messages.success(
                 request,
@@ -320,7 +320,7 @@ class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, Vi
         else:
             # 启用凭证：设为启用，关联非锁定节点标记为未知，启动后台测试
             credential.is_enabled = True
-            credential.save(update_fields=["is_enabled"])
+            credential.save(update_fields=["is_enabled", "updated_at"])
 
             Node.objects.filter(credential=credential, is_locked=False).update(status="unknown")
 
