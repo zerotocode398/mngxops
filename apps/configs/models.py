@@ -27,7 +27,6 @@ class Config(models.Model):
     template_content = models.TextField(
         blank=True,
         verbose_name="内容模板",
-        help_text="创建绑定时若远程无此文件，可基于此模板生成初始内容",
     )
     source = models.CharField(
         max_length=20, choices=SOURCE_CHOICES, default="manual", verbose_name="来源",

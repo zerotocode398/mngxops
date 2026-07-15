@@ -97,7 +97,7 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             ]
             for term in terms:
                 queryset = queryset.filter(
-                    Q(hostname__icontains=term) | Q(ip__icontains=term)
+                    Q(hostname__icontains=term) | Q(ip__icontains=term) | Q(groups__name__icontains=term)
                 )
 
         if group_search:
