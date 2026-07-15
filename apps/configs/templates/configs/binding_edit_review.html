@@ -92,6 +92,37 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="saveLoadingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">保存中...</span>
+                </div>
+                <p class="mb-0 text-muted">正在保存，请稍候...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="saveResultModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="saveResultTitle"><i class="bi bi-info-circle"></i> 提示</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="saveResultBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="saveResultCloseBtn">关闭</button>
+                <button type="button" class="btn btn-primary" id="saveResultOkBtn" style="display: none;">
+                    <i class="bi bi-check-circle"></i> 返回列表
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -100,14 +131,59 @@
         var form = document.getElementById('saveReviewForm');
         var openBtn = document.getElementById('openConfirmModalBtn');
         var confirmBtn = document.getElementById('confirmSaveBtn');
-        var modal = new bootstrap.Modal(document.getElementById('confirmSaveModal'));
+        var confirmModal = new bootstrap.Modal(document.getElementById('confirmSaveModal'));
+        var loadingModal = new bootstrap.Modal(document.getElementById('saveLoadingModal'));
+        var resultModal = new bootstrap.Modal(document.getElementById('saveResultModal'));
+        var resultTitle = document.getElementById('saveResultTitle');
+        var resultBody = document.getElementById('saveResultBody');
+        var resultOkBtn = document.getElementById('saveResultOkBtn');
+        var resultCloseBtn = document.getElementById('saveResultCloseBtn');
 
         openBtn.addEventListener('click', function () {
-            modal.show();
+            confirmModal.show();
         });
 
         confirmBtn.addEventListener('click', function () {
-            form.submit();
+            confirmModal.hide();
+            loadingModal.show();
+
+            var formData = new FormData(form);
+
+            fetch(form.getAttribute('action'), {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                loadingModal.hide();
+                if (data.success) {
+                    resultTitle.innerHTML = '<i class="bi bi-check-circle text-success"></i> 保存成功';
+                    resultBody.innerHTML = '<p>' + (data.message || '保存成功') + '</p>';
+                    resultCloseBtn.style.display = 'none';
+                    resultOkBtn.style.display = 'inline-block';
+                    resultOkBtn.onclick = function () {
+                        window.location.href = data.redirect || '/configs/';
+                    };
+                } else {
+                    resultTitle.innerHTML = '<i class="bi bi-exclamation-triangle text-danger"></i> 保存失败';
+                    resultBody.innerHTML = '<p class="text-danger">' + (data.message || '保存失败，请检查输入') + '</p>';
+                    resultCloseBtn.style.display = 'inline-block';
+                    resultOkBtn.style.display = 'none';
+                }
+                resultModal.show();
+            })
+            .catch(function () {
+                loadingModal.hide();
+                resultTitle.innerHTML = '<i class="bi bi-exclamation-triangle text-danger"></i> 网络异常';
+                resultBody.innerHTML = '<p class="text-danger">网络请求失败或服务器异常，请重试</p>';
+                resultCloseBtn.style.display = 'inline-block';
+                resultOkBtn.style.display = 'none';
+                resultModal.show();
+            });
         });
     })();
 </script>
