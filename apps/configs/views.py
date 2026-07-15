@@ -170,7 +170,7 @@ class ConfigListView(
 
 
 class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
-    """创建配置标签"""
+    """创建配置标签：无 node_id 跳绑定创建页，有 node_id 自动绑定到该节点"""
     model = Config
     form_class = ConfigForm
     template_name = "configs/create.html"
@@ -178,13 +178,45 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     permission_action = "create"
 
     def get_success_url(self):
+        node_id = self.request.GET.get("node_id")
+        if node_id:
+            return reverse("configs:list")
         return reverse("configs:binding_create") + "?config_id=" + str(self.object.id)
 
     def form_valid(self, form):
+        from apps.nodes.models import Node
+
         form.instance.created_by = self.request.user
         form.instance.source = "manual"
-        messages.success(self.request, f"配置标签 {form.instance.name} 创建成功，请绑定节点")
-        return super().form_valid(form)
+        response = super().form_valid(form)
+
+        node_id = self.request.GET.get("node_id")
+        if node_id:
+            node = get_object_or_404(Node, pk=node_id)
+            binding = ConfigNodeBinding.objects.create(
+                config=self.object,
+                node=node,
+                remote_path=self.object.default_remote_path,
+                content=self.object.template_content or "",
+                current_version=1,
+                sync_status="not_synced",
+                source="manual",
+                created_by=self.request.user,
+            )
+            BindingVersion.objects.create(
+                binding=binding,
+                version=1,
+                content=binding.content,
+                remark="手动创建绑定",
+                created_by=self.request.user,
+            )
+            messages.success(
+                self.request,
+                f"配置标签 {self.object.name} 已创建并绑定到节点 {node.hostname}",
+            )
+        else:
+            messages.success(self.request, f"配置标签 {self.object.name} 创建成功，请绑定节点")
+        return response
 
 
 class ConfigEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
