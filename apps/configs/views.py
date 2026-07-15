@@ -974,6 +974,7 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         from utils.ssh import discover_nginx_configs
         from apps.releases.models import TaskCenterTask
         from django.utils import timezone
+        from django.db import close_old_connections
 
         data = json.loads(request.body)
         node_id = data.get("node_id")
@@ -997,14 +998,16 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         if not nginx_conf_path:
             return JsonResponse({"success": False, "message": "未配置nginx路径"})
 
+        selected_paths = data.get("selected_paths", [])
+        is_partial = bool(selected_paths)
+
         task_center = TaskCenterTask.objects.create(
             operation_type="config_batch_sync",
-            status="running",
-            detail=f"单节点同步：{node.hostname}",
+            status="pending",
+            detail=f"单节点{'部分' if is_partial else '全量'}同步：{node.hostname}",
             target_hostnames=node.hostname,
             target_ips=node.ip,
             trigger_user=request.user,
-            started_at=timezone.now(),
         )
 
         auth_kwargs = {}
@@ -1013,72 +1016,121 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         else:
             auth_kwargs["private_key"] = credential.get_private_key()
 
-        discovered, errors = discover_nginx_configs(
-            node.ip, node.port, credential.username,
-            nginx_conf_path=nginx_conf_path, **auth_kwargs,
-        )
+        def _run_single_sync_thread():
+            close_old_connections()
+            task = TaskCenterTask.objects.get(pk=task_center.id)
+            task.status = "running"
+            task.started_at = timezone.now()
+            task.progress = 5
+            task.detail = "正在连接远程节点..."
+            task.save(update_fields=["status", "started_at", "progress", "detail", "updated_at"])
 
-        if errors:
-            mark_discovery_failed_configs(node, errors, request.user, task_id=task_center.id)
+            discovered, errors = discover_nginx_configs(
+                node.ip, node.port, credential.username,
+                nginx_conf_path=nginx_conf_path, **auth_kwargs,
+            )
 
-        if not discovered:
-            task_center.status = "failed"
-            task_center.finished_at = timezone.now()
-            task_center.result = "未发现配置文件"
+            if is_partial:
+                selected_set = set(selected_paths)
+                discovered = [item for item in discovered if item["path"] in selected_set]
+
             if errors:
-                task_center.result += "\n" + "\n".join(errors)
-            task_center.save(update_fields=["status", "finished_at", "result", "updated_at"])
-            return JsonResponse({
-                "success": False,
-                "message": "未发现配置文件",
-                "errors": errors,
-                "task_center_id": task_center.id,
-                "task_center_detail_url": reverse("releases:task_center_detail", kwargs={"pk": task_center.id}),
-            })
+                task.progress = 15
+                task.detail = f"发现错误: {errors[0][:80]}"
+                task.save(update_fields=["progress", "detail", "updated_at"])
+                mark_discovery_failed_configs(node, errors, request.user, task_id=task.id)
 
-        created, updated, skipped, orphaned = sync_discovered_configs(
-            node, discovered, request.user, remark="单节点手动同步",
-            task_id=task_center.id,
-        )
-        save_sync_path(node, nginx_conf_path, request.user)
+            if not discovered:
+                task.status = "failed"
+                task.progress = 100
+                task.finished_at = timezone.now()
+                result_text = "未发现配置文件"
+                if errors:
+                    result_text += "\n" + "\n".join(errors)
+                task.result = result_text
+                task.detail = "同步失败：未发现配置文件"
+                task.save(update_fields=["status", "progress", "finished_at", "result", "detail", "updated_at"])
+                return
 
-        fail_count = len(errors)
-        all_ok = fail_count == 0
-        detail_parts = [f"已同步 {len(discovered)} 个配置文件"]
-        if created:
-            detail_parts.append(f"新建 {len(created)} 个")
-        if updated:
-            detail_parts.append(f"更新 {len(updated)} 个")
-        if errors:
-            detail_parts.append(f"失败 {fail_count} 个")
-        task_center.status = "success" if all_ok else "failed"
-        task_center.finished_at = timezone.now()
-        task_center.result = "；".join(detail_parts)
-        if errors:
-            task_center.result += "\n错误详情:\n" + "\n".join(errors)
-        task_center.save(update_fields=["status", "finished_at", "result", "updated_at"])
+            total = len(discovered)
+            processed = 0
+
+            def progress_callback(status, name):
+                nonlocal processed
+                processed += 1
+                pct = 15 + int(processed * 85 / total)
+                TaskCenterTask.objects.filter(pk=task.id).update(
+                    progress=pct,
+                    detail=f"{'新建' if status == 'created' else '更新' if status == 'updated' else status}: {name} ({processed}/{total})",
+                    updated_at=timezone.now(),
+                )
+
+            if is_partial:
+                created, updated, skipped, orphaned = sync_selected_configs(
+                    node, selected_paths, discovered, request.user,
+                    remark="单节点部分同步", progress_callback=progress_callback,
+                    task_id=task.id,
+                )
+            else:
+                created, updated, skipped, orphaned = sync_discovered_configs(
+                    node, discovered, request.user, remark="单节点全量同步",
+                    progress_callback=progress_callback, task_id=task.id,
+                )
+
+            save_sync_path(node, nginx_conf_path, request.user)
+
+            success = len(errors) == 0
+            detail_parts = [f"共发现 {total} 个配置文件"]
+            if created:
+                detail_parts.append(f"新建 {len(created)} 个")
+            if updated:
+                detail_parts.append(f"更新 {len(updated)} 个")
+            if errors:
+                detail_parts.append(f"失败 {len(errors)} 个")
+
+            TaskCenterTask.objects.filter(pk=task.id).update(
+                status="success" if success else "failed",
+                progress=100,
+                finished_at=timezone.now(),
+                result="；".join(detail_parts) + ("\n错误:\n" + "\n".join(errors) if errors else ""),
+                detail=f"同步{'完成' if success else '失败'}: {len(created)} 新增, {len(updated)} 更新",
+                updated_at=timezone.now(),
+            )
+
+        import threading
+        thread = threading.Thread(target=_run_single_sync_thread, daemon=True)
+        thread.start()
 
         return JsonResponse({
             "success": True,
-            "created": created,
-            "updated": updated,
-            "skipped": skipped,
-            "orphaned": orphaned,
-            "errors": errors,
+            "async": True,
             "task_center_id": task_center.id,
             "task_center_detail_url": reverse("releases:task_center_detail", kwargs={"pk": task_center.id}),
         })
 
 
 class ConfigSyncProgressView(LoginRequiredMixin, View):
-    """同步进度查询接口，返回前端轮询所需的进度数据结构"""
+    """同步进度查询接口，从 TaskCenterTask 读取真实进度"""
 
     def get(self, request):
+        from apps.releases.models import TaskCenterTask
+
+        task_id = request.GET.get("task_id", "")
+        try:
+            task = TaskCenterTask.objects.get(pk=int(task_id))
+        except (ValueError, TaskCenterTask.DoesNotExist):
+            return JsonResponse({
+                "success": True,
+                "progress": {"completed": 0, "total": 100, "nodes": {}},
+            })
+
         return JsonResponse({
             "success": True,
             "progress": {
-                "completed": 0,
-                "total": 1,
+                "completed": task.progress or 0,
+                "total": 100,
+                "detail": task.detail or "",
+                "status": task.status,
                 "nodes": {},
             },
         })
