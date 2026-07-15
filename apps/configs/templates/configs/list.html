@@ -1,5 +1,6 @@
- {% extends "base.html" %}
+{% extends "base.html" %}
 {% load permission_tags %}
+{% load config_filters %}
 
 {% block title %}配置列表 - MngxOps{% endblock %}
 
@@ -8,54 +9,49 @@
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h5 class="mb-0"><i class="bi bi-file-earmark-code"></i> 配置列表</h5>
-                    {% if user|has_perm_code:"configs.create" or user|has_perm_code:"configs.update" %}
-                    <div class="btn-group btn-group-sm">
-                        {% if user|has_perm_code:"configs.update" %}
-                        <a href="{% url 'configs:sync_wizard' %}" class="btn btn-outline-info">
-                            <i class="bi bi-cloud-download"></i> 配置同步
-                        </a>
-                        {% endif %}
+                    <div class="d-flex align-items-center gap-2">
                         {% if user|has_perm_code:"configs.create" %}
-                        <a href="{% url 'configs:create' %}" class="btn btn-outline-primary">
+                        <a href="{% url 'configs:create' %}" class="btn btn-outline-primary btn-sm">
                             <i class="bi bi-plus-circle"></i> 手动添加
                         </a>
                         {% endif %}
+                        {% if user|has_perm_code:"configs.update" %}
+                        <a href="{% url 'configs:sync_wizard' %}" class="btn btn-outline-info btn-sm">
+                            <i class="bi bi-cloud-download"></i> 配置同步
+                        </a>
+                        {% endif %}
                     </div>
-                    {% endif %}
                 </div>
                 <div class="card-body">
-                    <form method="get" class="mb-3" id="configSearchForm">
+                    <!-- 搜索筛选区 -->
+                    <form method="get" id="configSearchForm" class="mb-3" autocomplete="off">
                         <div class="row g-2">
-                            <div class="col-md-6">
-                                <div class="tag-input-wrapper form-control" id="configCombinedTagWrapper">
-                                    <input type="text" class="tag-input-field" id="configCombinedSearchField"
-                                        placeholder="搜索配置名或主机名或 IP">
-                                </div>
-                                <input type="hidden" name="search" id="configSearchHidden" value="{{ search }}">
+                            <div class="col-md-5">
+                                <input type="text" name="search" class="form-control"
+                                    placeholder="搜索主机名、IP、配置名或远程路径" value="{{ search }}">
                             </div>
-                            <div class="col-md-2">
-                                <select name="status" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
-                                    <option value="">全部状态</option>
-                                    <option value="online" {% if status_filter == "online" %}selected{% endif %}>在线
+                            <div class="col-md-3">
+                                <select name="group_id" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
+                                    <option value="">全部节点组</option>
+                                    {% for g in groups %}
+                                    <option value="{{ g.id }}" {% if group_id == g.id|stringformat:"s" %}selected{% endif %}>
+                                        {{ g.name }}
                                     </option>
-                                    <option value="offline" {% if status_filter == "offline" %}selected{% endif %}>离线
-                                    </option>
-                                    <option value="unknown" {% if status_filter == "unknown" %}selected{% endif %}>未知
-                                    </option>
-                                </select>
-                            </div>
-                            <div class="col-md-1">
-                                <select name="per_page" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
-                                    {% for size in per_page_options %}
-                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-3 d-grid">
+                            <div class="col-md-3">
+                                <select name="per_page" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
+                                    {% for size in per_page_options %}
+                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 节点/页</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-1 d-grid">
                                 {% if has_any_filter %}
-                                <a href="{% url 'configs:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选" onclick="sessionStorage.removeItem('configs_list_query')">
+                                <a href="{% url 'configs:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
                                     <i class="bi bi-x-circle"></i>
                                 </a>
                                 {% endif %}
@@ -63,157 +59,167 @@
                         </div>
                     </form>
 
-                    {% if node_configs %}
+                    <!-- 状态筛选标签 -->
+                    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+                        <span class="text-muted small me-1">状态:</span>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}"
+                           class="badge config-status-label {% if not sync_status %}config-status-active{% else %}bg-light text-dark border{% endif %} text-decoration-none">
+                            全部 {{ status_counts.total }}
+                        </a>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=pending"
+                           class="badge config-status-label config-status-pending {% if sync_status == 'pending' %}config-status-active{% else %}bg-light text-dark border{% endif %} text-decoration-none">
+                            📝待推送 {{ status_counts.pending }}
+                        </a>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=conflict"
+                           class="badge config-status-label config-status-conflict {% if sync_status == 'conflict' %}config-status-active{% else %}bg-light text-dark border{% endif %} text-decoration-none">
+                            ⚠️冲突 {{ status_counts.conflict }}
+                        </a>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=orphaned"
+                           class="badge config-status-label config-status-orphaned {% if sync_status == 'orphaned' %}config-status-active{% else %}bg-light text-dark border{% endif %} text-decoration-none">
+                            📭远程删除 {{ status_counts.orphaned }}
+                        </a>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=failed"
+                           class="badge config-status-label config-status-failed {% if sync_status == 'failed' %}config-status-active{% else %}bg-light text-dark border{% endif %} text-decoration-none">
+                            ❌失败 {{ status_counts.failed }}
+                        </a>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=syncing"
+                           class="badge config-status-label config-status-syncing {% if sync_status == 'syncing' %}config-status-active{% else %}bg-light text-dark border{% endif %} text-decoration-none">
+                            🔄同步中 {{ status_counts.syncing }}
+                        </a>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=marked_deleted"
+                           class="badge config-status-label config-status-marked {% if sync_status == 'marked_deleted' %}config-status-active{% else %}bg-light text-dark border{% endif %} text-decoration-none">
+                            🗑️标记删除 {{ status_counts.marked_deleted }}
+                        </a>
+                    </div>
+
+                    <!-- Accordion 节点列表 -->
+                    {% if nodes %}
                     <div class="accordion" id="configAccordion">
-                        {% for node, configs in node_configs.items %}
+                        {% for node in nodes %}
+                        {% with bindings=node_bindings_map|dict_get:node.id %}
+                        {% with stats=node_stats_map|dict_get:node.id %}
                         <div class="accordion-item">
                             <h2 class="accordion-header" id="heading{{ node.id }}">
-                                <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}"
-                                    type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ node.id }}"
-                                    aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}"
-                                    aria-controls="collapse{{ node.id }}">
+                                <button class="accordion-button collapsed" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#collapse{{ node.id }}"
+                                    aria-expanded="false" aria-controls="collapse{{ node.id }}">
                                     <div class="d-flex align-items-center gap-2 w-100 me-3">
                                         <i class="bi bi-server fs-5"></i>
                                         <strong>{{ node.hostname }}</strong>
-                                        {% if node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
-                                        <code class="text-muted">{{ node.ip }}:{{ node.port }}</code>
+                                        <code class="text-muted small">{{ node.ip }}:{{ node.port }}</code>
+                                        {% if node.groups.exists %}
+                                        <span class="config-node-groups">
+                                            {% for grp in node.groups.all %}
+                                            <span class="badge config-group-tag">{{ grp.name }}</span>
+                                            {% endfor %}
+                                        </span>
+                                        {% endif %}
                                         <span class="ms-auto"></span>
-                                        <span class="badge bg-info">{{ configs|length }} 个配置</span>
-                                        {% if node.pending_count > 0 %}
-                                        <span class="badge bg-secondary"
-                                            title="本地新增：{% for name in node.pending_names %}{{ name }}{% if not forloop.last %}、{% endif %}{% endfor %}">
-                                            本地新增{{ node.pending_count }}
-                                        </span>
-                                        {% endif %}
-                                        {% if node.orphaned_count > 0 %}
-                                        <span class="badge bg-warning text-dark"
-                                            title="远程已删除：{% for name in node.orphaned_names %}{{ name }}{% if not forloop.last %}、{% endif %}{% endfor %}">
-                                            远程已删除{{ node.orphaned_count }}
-                                        </span>
-                                        {% endif %}
-                                        {% if node.failed_count > 0 %}
-                                        <span class="badge bg-danger"
-                                            title="同步失败：{% for name in node.failed_names %}{{ name }}{% if not forloop.last %}、{% endif %}{% endfor %}">
-                                            同步失败{{ node.failed_count }}
-                                        </span>
-                                        {% endif %}
+                                        <span class="badge bg-info">{{ stats.total }}配置</span>
+                                        {% if stats.pending %}<span class="badge config-badge-pending">📝{{ stats.pending }}</span>{% endif %}
+                                        {% if stats.conflict %}<span class="badge config-badge-conflict">⚠️{{ stats.conflict }}</span>{% endif %}
+                                        {% if stats.orphaned %}<span class="badge config-badge-orphaned">📭{{ stats.orphaned }}</span>{% endif %}
+                                        {% if stats.failed %}<span class="badge config-badge-failed">❌{{ stats.failed }}</span>{% endif %}
+                                        {% if stats.syncing %}<span class="badge config-badge-syncing">🔄{{ stats.syncing }}</span>{% endif %}
+                                        {% if stats.marked_deleted %}<span class="badge config-badge-marked">🗑️{{ stats.marked_deleted }}</span>{% endif %}
                                     </div>
                                 </button>
                             </h2>
                             <div id="collapse{{ node.id }}"
-                                class="accordion-collapse collapse {% if forloop.first %}show{% endif %}"
-                                aria-labelledby="heading{{ node.id }}" data-bs-parent="#configAccordion">
+                                class="accordion-collapse collapse"
+                                aria-labelledby="heading{{ node.id }}">
                                 <div class="accordion-body p-0">
-                                    <div class="px-3 py-2 bg-light border-bottom d-flex justify-content-between align-items-center">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="selectAll{{ node.id }}" onchange="toggleSelectAll({{ node.id }})">
-                                            <label class="form-check-label" for="selectAll{{ node.id }}">全选</label>
-                                        </div>
-                                        {% if user|has_perm_code:"configs.delete" %}
-                                        <div>
-                                            <form method="post" action="{% url 'configs:node_delete' node.id %}" style="display:inline" onsubmit="return confirm('确定要删除节点 {{ node.hostname }} 的所有配置吗？\n此操作将删除该节点的所有配置文件，删除操作不可恢复。')">
-                                                {% csrf_token %}
-                                                <button type="submit" class="btn btn-outline-danger btn-sm">
-                                                    <i class="bi bi-trash"></i> 删除节点所有配置
-                                                </button>
-                                            </form>
-                                        </div>
-                                        {% endif %}
-                                    </div>
                                     <div class="table-responsive px-3">
                                         <table class="table table-hover table-sm mb-0 config-list-table">
                                             <thead class="table-light">
                                                 <tr>
-                                                    <th style="width: 3%"></th>
-                                                    <th style="width: 18%">配置名称</th>
-                                                    <th style="width: 25%">配置路径</th>
-                                                    <th style="width: 8%">状态</th>
-                                                    <th style="width: 7%">版本</th>
-                                                    <th style="width: 10%">创建人</th>
-                                                    <th style="width: 14%">更新时间</th>
-                                                    <th style="width: 10%">操作</th>
+                                                    <th style="width: 18%;">配置名称</th>
+                                                    <th style="width: 28%;">远程路径</th>
+                                                    <th style="width: 6%;">版本</th>
+                                                    <th style="width: 10%;">状态</th>
+                                                    <th style="width: 14%;">最后同步</th>
+                                                    <th style="width: 24%;">操作</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {% for config in configs %}
+                                                {% for binding in bindings %}
                                                 <tr>
                                                     <td>
-                                                        <input type="checkbox" class="config-checkbox" data-config-id="{{ config.id }}" data-node-id="{{ node.id }}">
+                                                        <code class="fw-bold">{{ binding.config.name }}</code>
                                                     </td>
                                                     <td>
-                                                        <i class="bi bi-file-earmark-code text-primary"></i>
-                                                        <code>{{ config.name }}</code>
+                                                        <small class="text-muted">{{ binding.remote_path }}</small>
                                                     </td>
                                                     <td>
-                                                        <small class="text-muted">{{ config.file_path }}</small>
+                                                        <span class="badge bg-info">V{{ binding.current_version }}</span>
                                                     </td>
                                                     <td>
-                                                        {% if config.sync_status == 'success' %}
-                                                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> 成功</span>
-                                                        {% elif config.sync_status == 'pending' %}
-                                                        <span class="badge bg-secondary" title="本地手动新增，尚未同步到远程"><i class="bi bi-plus-circle"></i> 本地新增</span>
-                                                        {% elif config.sync_status == 'orphaned' %}
-                                                        <span class="badge bg-warning text-dark" title="远程已删除此文件"><i class="bi bi-exclamation-triangle"></i> 远程已删除</span>
-                                                        {% elif config.sync_status == 'failed' %}
-                                                        <span class="badge bg-danger" title="{{ config.last_sync_error|default:''|truncatechars:100 }}"><i class="bi bi-x-circle"></i> 失败</span>
+                                                        {% if binding.sync_status == 'synced' %}
+                                                        <span class="badge config-badge-synced">✅ 已同步</span>
+                                                        {% elif binding.sync_status == 'syncing' %}
+                                                        <span class="badge config-badge-syncing">🔄 同步中</span>
+                                                        {% elif binding.sync_status == 'not_synced' or binding.sync_status == 'modified' %}
+                                                        <span class="badge config-badge-pending">📝 待推送</span>
+                                                        {% elif binding.sync_status == 'conflict' %}
+                                                        <span class="badge config-badge-conflict">⚠️ 冲突</span>
+                                                        {% elif binding.sync_status == 'orphaned' %}
+                                                        <span class="badge config-badge-orphaned">📭 远程已删除</span>
+                                                        {% elif binding.sync_status == 'failed' %}
+                                                        <span class="badge config-badge-failed">❌ 失败</span>
+                                                        {% elif binding.sync_status == 'marked_deleted' %}
+                                                        <span class="badge config-badge-marked">🗑️ 已标记删除</span>
                                                         {% else %}
-                                                        <span class="badge bg-light text-dark">-</span>
+                                                        <span class="badge bg-light text-dark">{{ binding.sync_status }}</span>
                                                         {% endif %}
                                                     </td>
                                                     <td>
-                                                        <span class="badge bg-info">v{{ config.current_version }}</span>
-                                                    </td>
-                                                    <td>
-                                                        <small>{{ config.created_by.username }}</small>
-                                                    </td>
-                                                    <td>
-                                                        <small>{{ config.updated_at|date:"Y-m-d H:i" }}</small>
+                                                        <small>
+                                                            {% if binding.last_sync_time %}
+                                                            {{ binding.last_sync_time|date:"Y-m-d H:i" }}
+                                                            {% else %}
+                                                            -
+                                                            {% endif %}
+                                                        </small>
                                                     </td>
                                                     <td>
                                                         <div class="btn-group btn-group-sm">
-                                                            <a href="{% url 'configs:detail' config.id %}"
-                                                                class="btn btn-outline-info" title="查看">
-                                                                <i class="bi bi-eye"></i>
-                                                            </a>
+                                                            {% if binding.sync_status == 'marked_deleted' %}
+                                                            <form method="post" action="{% url 'configs:binding_restore' binding.id %}" style="display:inline">
+                                                                {% csrf_token %}
+                                                                <button type="submit" class="btn btn-outline-success" title="恢复此绑定">
+                                                                    <i class="bi bi-arrow-counterclockwise"></i> 恢复
+                                                                </button>
+                                                            </form>
+                                                            {% elif binding.sync_status != 'syncing' %}
                                                             {% if user|has_perm_code:"configs.update" %}
-                                                            {% if not node.is_locked %}
-                                                            <a href="{% url 'configs:edit' config.id %}"
-                                                                class="btn btn-outline-primary" title="编辑">
+                                                            <a href="{% url 'configs:binding_edit' binding.id %}"
+                                                                class="btn btn-outline-primary" title="编辑内容">
                                                                 <i class="bi bi-pencil"></i>
                                                             </a>
-                                                            {% if config.sync_status != 'orphaned' %}
-                                                            <form method="post"
-                                                                action="{% url 'configs:update' config.id %}"
-                                                                style="display:inline" class="update-form">
-                                                                {% csrf_token %}
-                                                                <button type="button" class="btn btn-outline-success update-btn"
-                                                                    title="从远程节点更新"
-                                                                    data-config-id="{{ config.id }}"
-                                                                    data-config-name="{{ config.name }}"
-                                                                    data-node-hostname="{{ node.hostname }}">
-                                                                    <i class="bi bi-arrow-repeat"></i>
-                                                                </button>
-                                                            </form>
                                                             {% endif %}
-                                                            {% endif %}
-                                                            {% endif %}
-                                                            <a href="{% url 'configs:versions' config.id %}"
-                                                                class="btn btn-outline-secondary" title="版本">
+                                                            <a href="{% url 'configs:binding_compare' binding.id %}"
+                                                                class="btn btn-outline-info" title="版本对比">
+                                                                <i class="bi bi-file-diff"></i>
+                                                            </a>
+                                                            <a href="{% url 'configs:binding_versions' binding.id %}"
+                                                                class="btn btn-outline-secondary" title="版本历史">
                                                                 <i class="bi bi-clock-history"></i>
                                                             </a>
-                                                            {% if user|has_perm_code:"configs.delete" and config.sync_status == 'orphaned' or config.sync_status == 'pending' %}
-                                                            <form method="post"
-                                                                action="{% url 'configs:delete' config.id %}"
-                                                                style="display:inline"
-                                                                onsubmit="return confirm('确定要删除此配置吗？\n配置文件会保留在本地数据库版本历史中，删除操作不可恢复。')">
-                                                                {% csrf_token %}
-                                                                <button type="submit" class="btn btn-outline-danger"
-                                                                    title="{% if config.sync_status == 'orphaned' %}远程已删除，可删除本地记录{% else %}删除配置记录{% endif %}">
-                                                                    <i class="bi bi-trash"></i>
-                                                                </button>
-                                                            </form>
+                                                            {% if user|has_perm_code:"configs.delete" %}
+                                                            <button type="button" class="btn btn-outline-danger"
+                                                                title="解除绑定"
+                                                                onclick="openDeleteModal('{{ binding.config.name|escapejs }}', '{{ node.hostname|escapejs }}', '{% url 'configs:binding_delete' binding.id %}')">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                            {% endif %}
                                                             {% endif %}
                                                         </div>
+                                                    </td>
+                                                </tr>
+                                                {% empty %}
+                                                <tr>
+                                                    <td colspan="6" class="text-center text-muted py-3">
+                                                        暂无绑定数据
                                                     </td>
                                                 </tr>
                                                 {% endfor %}
@@ -223,34 +229,24 @@
                                 </div>
                             </div>
                         </div>
+                        {% endwith %}
+                        {% endwith %}
                         {% endfor %}
                     </div>
-                    {% else %}
-                    <div class="text-center text-muted py-5">
-                        <i class="bi bi-inbox" style="font-size: 4rem;"></i>
-                        <p class="mt-3 fs-5">暂无配置数据</p>
-                        {% if user|has_perm_code:"configs.create" or user|has_perm_code:"configs.update" %}
-                        <p>请先通过 <a href="{% url 'configs:sync_wizard' %}" class="btn btn-outline-info btn-sm">
-                                <i class="bi bi-cloud-download"></i> 配置同步</a> 从远程节点拉取配置，
-                            或 <a href="{% url 'configs:create' %}" class="btn btn-outline-primary btn-sm">
-                                <i class="bi bi-plus-circle"></i> 手动添加</a> 配置</p>
-                        {% else %}
-                        <p class="text-muted">请联系管理员同步配置</p>
-                        {% endif %}
-                    </div>
-                    {% endif %}
 
+                    <!-- 分页 -->
                     {% if is_paginated %}
+                    {% with qp=search|default:'' gid=group_id|default:'' ss=sync_status|default:'' pp=per_page|default:'' %}
                     <nav aria-label="Page navigation" class="mt-3">
                         <ul class="pagination justify-content-center">
                             {% if page_obj.has_previous %}
                             <li class="page-item">
-                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page=1&per_page={{ pp }}&search={{ qp }}&group_id={{ gid }}&sync_status={{ ss }}">
                                     <i class="bi bi-chevron-double-left"></i> 首页
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ pp }}&search={{ qp }}&group_id={{ gid }}&sync_status={{ ss }}">
                                     <i class="bi bi-chevron-left"></i> 上一页
                                 </a>
                             </li>
@@ -262,18 +258,39 @@
 
                             {% if page_obj.has_next %}
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ pp }}&search={{ qp }}&group_id={{ gid }}&sync_status={{ ss }}">
                                     下一页 <i class="bi bi-chevron-right"></i>
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ pp }}&search={{ qp }}&group_id={{ gid }}&sync_status={{ ss }}">
                                     末页 <i class="bi bi-chevron-double-right"></i>
                                 </a>
                             </li>
                             {% endif %}
                         </ul>
                     </nav>
+                    {% endwith %}
+                    {% endif %}
+
+                    {% else %}
+                    <!-- 空状态 -->
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                        <p class="mt-3 fs-5">暂无配置数据</p>
+                        <div class="d-flex justify-content-center gap-2">
+                            {% if user|has_perm_code:"configs.update" %}
+                            <a href="{% url 'configs:sync_wizard' %}" class="btn btn-outline-info btn-sm">
+                                <i class="bi bi-cloud-download"></i> 配置同步
+                            </a>
+                            {% endif %}
+                            {% if user|has_perm_code:"configs.create" %}
+                            <a href="{% url 'configs:create' %}" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-plus-circle"></i> 手动添加
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
                     {% endif %}
                 </div>
             </div>
@@ -281,123 +298,33 @@
     </div>
 </div>
 
-<div class="modal fade" id="updateConfirmModal" tabindex="-1" aria-hidden="true">
+<!-- 解除绑定确认弹窗（对齐节点列表样式） -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title">
-                    <i class="bi bi-arrow-repeat"></i> 从远程节点更新
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            <div class="modal-header">
+                <h5 class="modal-title">解除绑定</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p class="mb-1">确定要从远程节点同步以下配置吗？</p>
-                <div class="card bg-light mt-2">
-                    <div class="card-body py-2">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-file-earmark-code text-primary"></i>
-                            <code id="modalConfigName" class="fw-bold">-</code>
-                        </div>
-                        <div class="d-flex align-items-center gap-2 mt-1">
-                            <i class="bi bi-server text-muted"></i>
-                            <small id="modalNodeHostname" class="text-muted">-</small>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="updatePreviewLoading" class="text-center py-3" style="display:none;">
-                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                    <span class="text-muted">正在解析 include 指令，发现关联配置文件...</span>
-                </div>
-
-                <div id="updatePreviewError" class="alert alert-danger mt-2 py-2" style="display:none;"></div>
-
-                <div id="updatePreviewSection" class="mt-2" style="display:none;">
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                        <i class="bi bi-diagram-3 text-info"></i>
-                        <small class="text-muted fw-bold">include 解析结果（共 <span id="updatePreviewCount">0</span> 个文件）</small>
-                    </div>
-                    <div class="border rounded" style="max-height: 220px; overflow-y: auto;">
-                        <table class="table table-sm table-borderless mb-0 small">
-                            <thead class="table-light sticky-top">
-                                <tr>
-                                    <th style="width: 5%;">#</th>
-                                    <th style="width: 30%;">文件名</th>
-                                    <th>路径</th>
-                                </tr>
-                            </thead>
-                            <tbody id="updatePreviewList"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div id="updatePreviewErrors" class="text-danger small mt-2" style="display:none;">
-                    <i class="bi bi-exclamation-triangle"></i>
-                    <span id="updatePreviewErrorsText"></span>
-                </div>
-
-                <div class="alert alert-warning mt-2 mb-0 py-2">
-                    <i class="bi bi-exclamation-triangle"></i>
-                    <small>更新后将生成新版本，覆盖当前内容。</small>
-                </div>
+                确定要解除 <strong id="deleteConfigDisplay">-</strong> 在节点 <strong id="deleteNodeDisplay">-</strong> 上的绑定吗？
+                <br><br>
+                <small class="text-muted">解除后将标记为"待删除"，下次同步时会清理远程文件。</small>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="bi bi-x-circle"></i> 取消
-                </button>
-                <button type="button" class="btn btn-success" id="confirmUpdateBtn" disabled>
-                    <i class="bi bi-check-circle"></i> 确认更新
-                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <form method="post" id="deleteBindingForm" action="#">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">确认解除</button>
+                </form>
             </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block extra_js %}
 <style>
-    .tag-input-wrapper {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 8px;
-        min-height: 38px;
-        cursor: text;
-        overflow-y: auto;
-    }
-    .tag-input-wrapper .tag-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: #667eea;
-        color: #fff;
-        border: 1px solid #5a6fd6;
-        border-radius: 4px;
-        padding: 2px 8px;
-        font-size: 0.82rem;
-        white-space: nowrap;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove {
-        cursor: pointer;
-        opacity: 0.7;
-        font-size: 1.1rem;
-        line-height: 1;
-        margin-left: 2px;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove:hover {
-        opacity: 1;
-        color: #ffc107;
-    }
-    .tag-input-wrapper .tag-input-field {
-        border: none;
-        outline: none;
-        flex: 1;
-        min-width: 100px;
-        padding: 0;
-        background: transparent;
-    }
     .config-list-table {
         table-layout: fixed;
         width: 100%;
@@ -418,106 +345,81 @@
         font-weight: 500;
         white-space: nowrap;
     }
-</style>
-<script>
-    var pendingForm = null;
-    var updateModal = new bootstrap.Modal(document.getElementById('updateConfirmModal'));
-
-    initTagSearch('#configCombinedTagWrapper', '#configSearchHidden', '#configSearchForm');
-
-    document.querySelectorAll('.update-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            pendingForm = this.closest('form');
-            var configId = this.dataset.configId;
-            document.getElementById('modalConfigName').textContent = this.dataset.configName;
-            document.getElementById('modalNodeHostname').textContent = this.dataset.nodeHostname;
-
-            var previewSection = document.getElementById('updatePreviewSection');
-            var previewList = document.getElementById('updatePreviewList');
-            var previewCount = document.getElementById('updatePreviewCount');
-            var previewLoading = document.getElementById('updatePreviewLoading');
-            var previewError = document.getElementById('updatePreviewError');
-            var previewErrors = document.getElementById('updatePreviewErrors');
-            var previewErrorsText = document.getElementById('updatePreviewErrorsText');
-            var confirmBtn = document.getElementById('confirmUpdateBtn');
-
-            previewSection.style.display = 'none';
-            previewErrors.style.display = 'none';
-            previewError.style.display = 'none';
-            previewList.innerHTML = '';
-            confirmBtn.disabled = true;
-            previewLoading.style.display = 'block';
-
-            updateModal.show();
-
-            fetch('{% url "configs:api_update_preview" %}?config_id=' + encodeURIComponent(configId))
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    previewLoading.style.display = 'none';
-                    console.log('Update preview response:', data);
-                    if (data.success) {
-                        if (data.data && data.data.length > 0) {
-                            previewCount.textContent = data.total;
-                            data.data.forEach(function (item, index) {
-                                var row = document.createElement('tr');
-                                var isTarget = (item.name === data.config_name);
-                                row.innerHTML = '<td>' + (index + 1) + '</td>'
-                                    + '<td><code class="' + (isTarget ? 'fw-bold' : '') + '">' + escapeHtml(item.name) + '</code>'
-                                    + (isTarget ? ' <span class="badge bg-success">目标</span>' : '')
-                                    + '</td>'
-                                    + '<td><small class="text-muted">' + escapeHtml(item.path) + '</small></td>';
-                                previewList.appendChild(row);
-                            });
-                            previewSection.style.display = 'block';
-                            if (data.errors && data.errors.length > 0) {
-                                previewErrorsText.textContent = data.errors.map(function (e) { return e; }).join('；');
-                                previewErrors.style.display = 'block';
-                            }
-                        } else {
-                            previewError.textContent = '远程节点未发现配置文件，请检查节点状态';
-                            previewError.style.display = 'block';
-                        }
-                        if (data.data && data.data.length > 0) {
-                            confirmBtn.disabled = false;
-                        }
-                    } else {
-                        previewError.textContent = data.message || '预览失败';
-                        previewError.style.display = 'block';
-                    }
-                })
-                ['catch'](function (err) {
-                    previewLoading.style.display = 'none';
-                    previewError.textContent = '网络请求失败，请检查连接';
-                    previewError.style.display = 'block';
-                });
-        });
-    });
-
-    document.getElementById('confirmUpdateBtn').addEventListener('click', function () {
-        if (pendingForm) {
-            pendingForm.submit();
-        }
-    });
-
-    function toggleSelectAll(nodeId) {
-        var selectAll = document.getElementById('selectAll' + nodeId);
-        var checkboxes = document.querySelectorAll('.config-checkbox[data-node-id="' + nodeId + '"]');
-        checkboxes.forEach(function(checkbox) {
-            checkbox.checked = selectAll.checked;
-        });
+    .config-node-groups {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+    }
+    .config-group-tag {
+        background: #e9ecef;
+        color: #495057;
+        border: 1px solid #ced4da;
+        padding: 2px 6px;
+        font-size: 0.7rem;
+        font-weight: normal;
     }
 
-    (function() {
-        const currentUrl = window.location.href;
-        if (currentUrl.indexOf('?') !== -1) {
-            sessionStorage.setItem('configs_list_query', currentUrl);
-        }
-    })();
+    /* 状态筛选标签 */
+    .config-status-label {
+        padding: 5px 12px;
+        font-size: 0.78rem;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .config-status-label:hover {
+        opacity: 0.85;
+    }
+    .config-status-active {
+        color: #fff !important;
+        font-weight: 600;
+    }
 
-    function escapeHtml(text) {
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(text));
-        return div.innerHTML;
+    /* 状态筛选标签激活色 */
+    .config-status-active.config-status-pending { background-color: #0d6efd; border-color: #0d6efd; }
+    .config-status-active.config-status-conflict { background-color: #fd7e14; border-color: #fd7e14; }
+    .config-status-active.config-status-orphaned { background-color: #6c757d; border-color: #6c757d; }
+    .config-status-active.config-status-failed { background-color: #dc3545; border-color: #dc3545; }
+    .config-status-active.config-status-syncing { background-color: #17a2b8; border-color: #17a2b8; }
+    .config-status-active.config-status-marked { background-color: #e83e8c; border-color: #e83e8c; }
+
+    /* 状态徽标（行内） */
+    .config-badge-pending { background: #cce5ff; color: #004085; border: 1px solid #b8daff; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .config-badge-synced { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .config-badge-conflict { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .config-badge-orphaned { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .config-badge-failed { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .config-badge-syncing { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .config-badge-marked { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+
+    /* Accordion header */
+    .accordion-button:not(.collapsed) {
+        background-color: #f8f9fa;
+    }
+</style>
+<script>
+    var deleteConfirmModal = null;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+
+        // 搜索框回车提交
+        document.querySelector('#configSearchForm input[name="search"]').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('configSearchForm').submit();
+            }
+        });
+    });
+
+    function openDeleteModal(configName, hostname, deleteUrl) {
+        document.getElementById('deleteConfigDisplay').textContent = configName;
+        document.getElementById('deleteNodeDisplay').textContent = hostname;
+        document.getElementById('deleteBindingForm').setAttribute('action', deleteUrl);
+        if (!deleteConfirmModal) {
+            deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+        }
+        deleteConfirmModal.show();
     }
 </script>
 {% endblock %}

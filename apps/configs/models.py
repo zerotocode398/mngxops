@@ -73,6 +73,7 @@ class ConfigNodeBinding(models.Model):
         ("orphaned", "远程已删除"),
         ("syncing", "同步中"),
         ("failed", "同步失败"),
+        ("marked_deleted", "已标记删除"),
     )
 
     id = models.BigAutoField(primary_key=True)

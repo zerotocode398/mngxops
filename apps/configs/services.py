@@ -1,7 +1,10 @@
 """配置管理服务层 - 适配 ConfigNodeBinding 模型"""
 
+import logging
 from .models import Config, ConfigNodeBinding, BindingVersion, ConfigSyncSetting
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 SKIP_FILES = {"mime.types"}
 
@@ -27,22 +30,29 @@ def save_sync_path(node, main_conf_path, user=None):
 
 
 def _ensure_binding(config, node, remote_path, content, request_user, source="discovered"):
-    """确保绑定存在并更新内容"""
+    """确保绑定存在并更新内容，已标记删除的绑定会被跳过"""
     now = timezone.now()
-    binding, created = ConfigNodeBinding.objects.get_or_create(
-        config=config,
-        node=node,
-        defaults={
-            "remote_path": remote_path,
-            "content": content,
-            "current_version": 1,
-            "sync_status": "synced",
-            "synced_version": 1,
-            "last_sync_time": now,
-            "source": source,
-            "created_by": request_user,
-        },
-    )
+    existing = ConfigNodeBinding.objects.filter(
+        config=config, node=node
+    ).exclude(sync_status="marked_deleted").first()
+
+    if existing:
+        binding = existing
+        created = False
+    else:
+        binding = ConfigNodeBinding.objects.create(
+            config=config,
+            node=node,
+            remote_path=remote_path,
+            content=content,
+            current_version=1,
+            sync_status="synced",
+            synced_version=1,
+            last_sync_time=now,
+            source=source,
+            created_by=request_user,
+        )
+        created = True
 
     if created:
         BindingVersion.objects.create(
@@ -137,6 +147,8 @@ def sync_discovered_configs(
         discovered_paths = {item["path"] for item in discovered}
         orphaned = _mark_orphaned_bindings(node, discovered_paths)
 
+    _cleanup_marked_deleted_bindings(node, request_user)
+
     return created, updated, skipped, orphaned
 
 
@@ -153,6 +165,46 @@ def _mark_orphaned_bindings(node, discovered_paths):
         orphaned.append(binding.config.name)
 
     return orphaned
+
+
+def _cleanup_marked_deleted_bindings(node, request_user):
+    """清理节点上已标记删除的绑定：SSH删除远程文件后物理删除本地记录"""
+    from utils.ssh import SSHClient
+
+    marked = ConfigNodeBinding.objects.filter(node=node, sync_status="marked_deleted")
+    if not marked:
+        return
+
+    credential = node.credential
+    if not credential:
+        logger.warning(f"节点 {node.hostname} 无SSH凭证，跳过清理标记删除的绑定")
+        return
+
+    auth_kwargs = {}
+    if credential.auth_type == "password":
+        auth_kwargs["password"] = credential.get_password()
+    else:
+        auth_kwargs["private_key"] = credential.get_private_key()
+
+    ssh = SSHClient(node.ip, node.port, credential.username, **auth_kwargs)
+    ok, err = ssh.connect()
+    if not ok:
+        logger.warning(f"SSH连接 {node.hostname} 失败，跳过清理: {err}")
+        ssh.close()
+        return
+
+    for binding in marked:
+        try:
+            success, output = ssh.execute_command(f"rm -f {binding.remote_path}")
+            if success:
+                binding.delete()
+                logger.info(f"已清理标记删除绑定: {binding.config.name} @ {node.hostname}")
+            else:
+                logger.warning(f"删除远程文件失败 {binding.remote_path}: {output}")
+        except Exception as e:
+            logger.error(f"清理绑定异常 {binding.config.name} @ {node.hostname}: {str(e)}")
+
+    ssh.close()
 
 
 def sync_selected_configs(
