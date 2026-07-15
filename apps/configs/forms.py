@@ -19,7 +19,7 @@ class ConfigForm(forms.ModelForm):
                     "rows": 8,
                     "spellcheck": "false",
                     "wrap": "off",
-                    "placeholder": "可选：创建绑定时若远程无此文件，基于此模板生成初始内容",
+                    "placeholder": "",
                 }
             ),
             "description": forms.Textarea(
@@ -37,6 +37,12 @@ class ConfigForm(forms.ModelForm):
 class BindingForm(forms.ModelForm):
     """配置节点绑定表单"""
 
+    node = forms.ModelChoiceField(
+        queryset=None,
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select"}),
+        label="目标节点",
+    )
     remark = forms.CharField(
         max_length=500,
         required=False,
@@ -50,7 +56,7 @@ class BindingForm(forms.ModelForm):
         fields = ["config", "node", "remote_path", "content"]
         widgets = {
             "config": forms.Select(attrs={"class": "form-select"}),
-            "node": forms.Select(attrs={"class": "form-select"}),
+            "node": forms.Select(attrs={"class": "form-select", "required": False}),
             "remote_path": forms.TextInput(
                 attrs={"class": "form-control", "placeholder": "如 /etc/nginx/nginx.conf"}
             ),
@@ -69,3 +75,9 @@ class BindingForm(forms.ModelForm):
             "remote_path": "远程文件路径",
             "content": "配置内容",
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.nodes.models import Node
+        if "node" in self.fields:
+            self.fields["node"].queryset = Node.objects.filter(is_locked=False).order_by("hostname")

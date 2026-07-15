@@ -296,6 +296,52 @@
                         </div>
                     </div>
                     {% endif %}
+
+                    {% if unbound_configs %}
+                    <hr class="my-3">
+                    <div class="mb-2">
+                        <strong><i class="bi bi-tags"></i> 未绑定的配置标签</strong>
+                        <small class="text-muted ms-2">（{{ unbound_configs|length }} 个）</small>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0 config-list-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 22%;">配置名称</th>
+                                    <th style="width: 30%;">默认远程路径</th>
+                                    <th style="width: 14%;">创建人</th>
+                                    <th style="width: 14%;">创建时间</th>
+                                    <th style="width: 20%;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for cfg in unbound_configs %}
+                                <tr>
+                                    <td><code class="fw-bold">{{ cfg.name }}</code></td>
+                                    <td><small class="text-muted">{{ cfg.default_remote_path|default:"—" }}</small></td>
+                                    <td><small>{{ cfg.created_by.username }}</small></td>
+                                    <td><small>{{ cfg.created_at|date:"Y-m-d H:i" }}</small></td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'configs:binding_create' %}?config_id={{ cfg.id }}"
+                                                class="btn btn-outline-primary" title="绑定节点">
+                                                <i class="bi bi-link-45deg"></i> 绑定
+                                            </a>
+                                            {% if user|has_perm_code:"configs.delete" %}
+                                            <button type="button" class="btn btn-outline-danger"
+                                                title="删除配置标签"
+                                                onclick="openUnboundDeleteModal('{{ cfg.name|escapejs }}', '{% url 'configs:delete' cfg.id %}')">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -320,6 +366,30 @@
                 <form method="post" id="deleteBindingForm" action="#">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-danger">确认解除</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除配置标签确认弹窗 -->
+<div class="modal fade" id="unboundDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">删除配置标签</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                确定要删除配置标签 <strong id="unboundDeleteConfigDisplay">-</strong> 吗？
+                <br><br>
+                <small class="text-muted">该标签没有绑定节点，删除后不可恢复。</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <form method="post" id="unboundDeleteForm" action="#">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">确认删除</button>
                 </form>
             </div>
         </div>
@@ -431,6 +501,13 @@
             deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
         }
         deleteConfirmModal.show();
+    }
+
+    function openUnboundDeleteModal(configName, deleteUrl) {
+        document.getElementById('unboundDeleteConfigDisplay').textContent = configName;
+        document.getElementById('unboundDeleteForm').setAttribute('action', deleteUrl);
+        var modal = new bootstrap.Modal(document.getElementById('unboundDeleteModal'));
+        modal.show();
     }
 
     function saveExpandedNodes() {

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load permission_tags %}
 
-{% block title %}创建绑定 - MngxOps{% endblock %}
+{% block title %}创建节点绑定 - MngxOps{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -17,8 +17,9 @@
                 <div class="card-body">
                     <div class="row justify-content-center">
                         <div class="col-md-10">
-                            <form method="post">
+                            <form method="post" id="bindingForm">
                                 {% csrf_token %}
+                                <input type="hidden" name="node_ids" id="selectedNodeIdsInput" value="">
 
                                 <div class="mb-3">
                                     <label for="{{ form.config.id_for_label }}" class="form-label">
@@ -35,17 +36,18 @@
                                 </div>
 
                                 <div class="mb-3">
-                                    <label for="{{ form.node.id_for_label }}" class="form-label">
-                                        <i class="bi bi-server"></i> {{ form.node.label }}
+                                    <label class="form-label">
+                                        <i class="bi bi-server"></i> 目标节点
                                     </label>
-                                    {{ form.node }}
-                                    {% if form.node.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.node.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
+                                    <div class="border rounded p-2 mb-2" style="min-height: 48px; max-height: 120px; overflow-y: auto;">
+                                        <div id="selectedNodesContainer" class="d-flex flex-wrap gap-1">
+                                            <span id="noSelectedNodes" class="text-muted small">请选择目标节点</span>
+                                        </div>
                                     </div>
-                                    {% endif %}
+                                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
+                                        <i class="bi bi-search"></i> 选择节点
+                                    </button>
+                                    <small class="form-text text-muted ms-2">支持同时选择多个节点，将为每个节点创建独立绑定</small>
                                 </div>
 
                                 <div class="mb-3">
@@ -92,4 +94,423 @@
         </div>
     </div>
 </div>
+
+<!-- 选择节点弹窗 -->
+<div class="modal fade" id="selectNodeModal" tabindex="-1" aria-labelledby="selectNodeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="selectNodeModalLabel">
+                    <i class="bi bi-search"></i> 选择节点
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="tag-input-wrapper form-control" id="selectNodeTagWrapper">
+                        <input type="text" class="tag-input-field" id="selectNodeSearchField"
+                            placeholder="搜索主机名、IP 或节点组名称" autocomplete="off">
+                    </div>
+                    <input type="hidden" id="selectNodeSearchHidden">
+                </div>
+
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-sm table-bordered table-hover modal-node-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 5%;">
+                                    <input type="checkbox" class="form-check-input" id="selectAllInModal">
+                                </th>
+                                <th style="width: 28%;">主机名</th>
+                                <th style="width: 28%;">IP</th>
+                                <th style="width: 22%;">节点组</th>
+                                <th style="width: 17%;">状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="searchResultTbody">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    <i class="bi bi-search"></i>
+                                    <p class="mt-1 mb-0">加载中...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted" id="searchResultCount">
+                        共 <span id="resultCount">0</span> 个结果（最多显示 50 个）
+                    </small>
+                    <small class="text-muted">
+                        已选 <strong id="modalSelectedCount">0</strong> 个
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmSelectBtn" onclick="confirmNodeSelection()">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .modal-node-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .modal-node-table td {
+        font-size: 0.82rem;
+        font-weight: normal;
+        vertical-align: middle;
+    }
+    .modal-node-table td code,
+    .modal-node-table td small {
+        font-size: inherit;
+        color: #212529;
+    }
+    .modal-node-table td .badge {
+        font-size: 0.78rem;
+    }
+    .modal-node-table thead th {
+        font-weight: 500;
+        white-space: nowrap;
+    }
+    .modal-node-table tbody tr {
+        cursor: pointer;
+    }
+
+    /* 已选节点 badge */
+    .selected-node-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #e9ecef;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 0.82rem;
+    }
+    .selected-node-badge .remove-node {
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .selected-node-badge .remove-node:hover {
+        opacity: 1;
+        color: #dc3545;
+    }
+
+    /* 标签搜索样式复用 base.html 定义 */
+    .badge-status-online {
+        background: #d4edda; color: #155724;
+        border: 1px solid #c3e6cb; padding: 3px 8px;
+        border-radius: 4px; font-size: 0.75rem;
+    }
+    .badge-status-offline {
+        background: #f8d7da; color: #721c24;
+        border: 1px solid #f5c6cb; padding: 3px 8px;
+        border-radius: 4px; font-size: 0.75rem;
+    }
+    .badge-status-unknown {
+        background: #e2e3e5; color: #383d41;
+        border: 1px solid #d6d8db; padding: 3px 8px;
+        border-radius: 4px; font-size: 0.75rem;
+    }
+</style>
+<script>
+    var selectedNodeMap = {};
+    var selectNodeModal = null;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        initSelectNodeTagInput();
+        selectNodeModal = new bootstrap.Modal(document.getElementById('selectNodeModal'));
+
+        document.getElementById('selectAllInModal').addEventListener('change', toggleSelectAllInModal);
+
+        // 弹窗打开时初始化
+        document.getElementById('selectNodeModal').addEventListener('shown.bs.modal', function () {
+            var field = document.getElementById('selectNodeSearchField');
+            var wrapper = document.getElementById('selectNodeTagWrapper');
+            var hidden = document.getElementById('selectNodeSearchHidden');
+            field.value = '';
+            wrapper.querySelectorAll('.tag-badge').forEach(function (b) { b.remove(); });
+            hidden.value = '';
+            field.focus();
+            doNodeSearch();
+        });
+
+        // 表单提交前校验
+        document.getElementById('bindingForm').addEventListener('submit', function (e) {
+            var ids = Object.keys(selectedNodeMap).filter(function (k) { return selectedNodeMap[k]; });
+            if (ids.length === 0) {
+                e.preventDefault();
+                alert('请至少选择一个目标节点');
+                return;
+            }
+            document.getElementById('selectedNodeIdsInput').value = ids.join(',');
+        });
+
+        // 从 URL 参数恢复已选节点（编辑回退时可能带参数）
+        var urlParams = new URLSearchParams(window.location.search);
+        var initialNodeIds = urlParams.get('node_ids');
+        if (initialNodeIds) {
+            initialNodeIds.split(',').filter(Boolean).forEach(function (nid) {
+                selectedNodeMap[nid] = true;
+            });
+            renderSelectedNodes();
+        }
+    });
+
+    function initSelectNodeTagInput() {
+        var wrapper = document.getElementById('selectNodeTagWrapper');
+        var field = document.getElementById('selectNodeSearchField');
+        var hidden = document.getElementById('selectNodeSearchHidden');
+
+        function focusField() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') {
+                field.setSelectionRange(len, len);
+            }
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function (b) { values.push(b.getAttribute('data-value')); });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            if (!text) return;
+            var existing = wrapper.querySelector('.tag-badge[data-value="' + text + '"]');
+            if (existing) return;
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(focusField, 0);
+                doNodeSearch();
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        field.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) {
+                    createBadge(text);
+                    field.value = '';
+                }
+                updateHidden();
+                doNodeSearch();
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    doNodeSearch();
+                }
+            }
+        });
+
+        field.addEventListener('blur', function () {
+            var text = field.value.trim();
+            if (text) {
+                createBadge(text);
+                field.value = '';
+                updateHidden();
+                doNodeSearch();
+            }
+        });
+
+        wrapper.addEventListener('click', function (e) {
+            if (e.target === wrapper) { focusField(); }
+        });
+
+        focusField();
+    }
+
+    function doNodeSearch() {
+        var search = document.getElementById('selectNodeSearchHidden').value || '';
+        var tbody = document.getElementById('searchResultTbody');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">' +
+            '<div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>搜索中...</td></tr>';
+
+        var url = '/nodes/api/search-nodes/?search=' + encodeURIComponent(search);
+
+        fetch(url, { method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (resp) { return resp.json(); })
+            .then(function (result) {
+                document.getElementById('resultCount').textContent = result.nodes.length;
+                if (result.nodes.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">' +
+                        '<i class="bi bi-inbox"></i><p class="mt-1 mb-0">未找到匹配的节点</p></td></tr>';
+                    return;
+                }
+
+                var html = '';
+                result.nodes.forEach(function (node) {
+                    var checked = selectedNodeMap[node.id] ? ' checked' : '';
+                    var statusBadge = '';
+                    if (node.status === 'online') {
+                        statusBadge = '<span class="badge-status-online"><i class="bi bi-check-circle-fill"></i> 在线</span>';
+                    } else if (node.status === 'offline') {
+                        statusBadge = '<span class="badge-status-offline"><i class="bi bi-x-circle-fill"></i> 离线</span>';
+                    } else {
+                        statusBadge = '<span class="badge-status-unknown"><i class="bi bi-question-circle-fill"></i> 未知</span>';
+                    }
+
+                    var groupBadges = '';
+                    if (node.groups && node.groups.length > 0) {
+                        node.groups.forEach(function (g) {
+                            groupBadges += '<span class="badge bg-info me-1">' + g.name + '</span>';
+                        });
+                    } else {
+                        groupBadges = '<span class="text-muted small">-</span>';
+                    }
+
+                    html += '<tr>' +
+                        '<td><input type="checkbox" class="form-check-input node-checkbox"' +
+                        ' value="' + node.id + '"' + checked + ' data-node-id="' + node.id + '"' +
+                        ' data-node-hostname="' + node.hostname + '" data-node-ip="' + node.ip + '"></td>' +
+                        '<td>' + node.hostname + '</td>' +
+                        '<td><code>' + node.ip + '</code></td>' +
+                        '<td>' + groupBadges + '</td>' +
+                        '<td>' + statusBadge + '</td>' +
+                        '</tr>';
+                });
+                tbody.innerHTML = html;
+
+                // 绑定 checkbox 事件
+                tbody.querySelectorAll('.node-checkbox').forEach(function (cb) {
+                    cb.addEventListener('change', function () {
+                        var nodeId = this.getAttribute('data-node-id');
+                        var hostname = this.getAttribute('data-node-hostname');
+                        var ip = this.getAttribute('data-node-ip');
+                        selectedNodeMap[nodeId] = this.checked;
+                        if (this.checked && !window._nodeNameMap) {
+                            window._nodeNameMap = window._nodeNameMap || {};
+                        }
+                        if (this.checked) {
+                            window._nodeNameMap = window._nodeNameMap || {};
+                            window._nodeNameMap[nodeId] = { hostname: hostname, ip: ip };
+                        }
+                        updateModalSelectedCount();
+                    });
+                });
+
+                // 点击表行自动勾选/取消勾选
+                tbody.querySelectorAll('tr').forEach(function (row) {
+                    row.style.cursor = 'pointer';
+                    row.addEventListener('click', function (e) {
+                        if (e.target.tagName === 'INPUT' || e.target.tagName === 'A') return;
+                        var cb = row.querySelector('.node-checkbox');
+                        if (cb) {
+                            cb.checked = !cb.checked;
+                            cb.dispatchEvent(new Event('change'));
+                        }
+                    });
+                });
+
+                updateModalSelectedCount();
+            })
+            .catch(function () {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">' +
+                    '<i class="bi bi-exclamation-triangle"></i><p class="mt-1 mb-0">搜索失败，请重试</p></td></tr>';
+            });
+    }
+
+    function updateModalSelectedCount() {
+        var checked = document.querySelectorAll('#searchResultTbody .node-checkbox:checked');
+        document.getElementById('modalSelectedCount').textContent = checked.length;
+        var selectAll = document.getElementById('selectAllInModal');
+        var allCbs = document.querySelectorAll('#searchResultTbody .node-checkbox');
+        if (allCbs.length === 0) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+        } else if (checked.length === allCbs.length) {
+            selectAll.checked = true;
+            selectAll.indeterminate = false;
+        } else if (checked.length === 0) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+        } else {
+            selectAll.checked = false;
+            selectAll.indeterminate = true;
+        }
+    }
+
+    function toggleSelectAllInModal() {
+        var checked = document.getElementById('selectAllInModal').checked;
+        document.querySelectorAll('#searchResultTbody .node-checkbox').forEach(function (cb) {
+            if (cb.offsetParent !== null) {
+                cb.checked = checked;
+                var nodeId = cb.getAttribute('data-node-id');
+                var hostname = cb.getAttribute('data-node-hostname');
+                var ip = cb.getAttribute('data-node-ip');
+                selectedNodeMap[nodeId] = checked;
+                if (checked) {
+                    window._nodeNameMap = window._nodeNameMap || {};
+                    window._nodeNameMap[nodeId] = { hostname: hostname, ip: ip };
+                }
+            }
+        });
+        updateModalSelectedCount();
+    }
+
+    function renderSelectedNodes() {
+        var container = document.getElementById('selectedNodesContainer');
+        var noSelected = document.getElementById('noSelectedNodes');
+        var ids = Object.keys(selectedNodeMap).filter(function (k) { return selectedNodeMap[k]; });
+
+        container.innerHTML = '';
+        if (ids.length === 0) {
+            var span = document.createElement('span');
+            span.id = 'noSelectedNodes';
+            span.className = 'text-muted small';
+            span.textContent = '请选择目标节点';
+            container.appendChild(span);
+            return;
+        }
+
+        ids.forEach(function (nid) {
+            var info = (window._nodeNameMap && window._nodeNameMap[nid]) || { hostname: '节点 #' + nid, ip: '' };
+            var badge = document.createElement('span');
+            badge.className = 'selected-node-badge';
+            badge.innerHTML = info.hostname + (info.ip ? ' (' + info.ip + ')' : '') +
+                '<span class="remove-node" onclick="removeSelectedNode(\'' + nid + '\')">&times;</span>';
+            container.appendChild(badge);
+        });
+    }
+
+    window.removeSelectedNode = function (nid) {
+        selectedNodeMap[nid] = false;
+        renderSelectedNodes();
+    };
+
+    function confirmNodeSelection() {
+        // 确保弹窗内所有已勾选的节点都记录到 selectedNodeMap
+        document.querySelectorAll('#searchResultTbody .node-checkbox:checked').forEach(function (cb) {
+            var nodeId = cb.getAttribute('data-node-id');
+            selectedNodeMap[nodeId] = true;
+        });
+        renderSelectedNodes();
+        if (selectNodeModal) { selectNodeModal.hide(); }
+    }
+</script>
 {% endblock %}

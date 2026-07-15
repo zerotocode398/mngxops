@@ -158,6 +158,14 @@ class ConfigListView(
         context["has_any_filter"] = bool(search or group_id or sync_status)
         context["groups"] = NodeGroup.objects.all().order_by("name")
         context["status_counts"] = _build_global_status_counts()
+
+        # 未绑定的配置标签（无 filter 时才展示）
+        if not (search or group_id or sync_status):
+            context["unbound_configs"] = Config.objects.filter(
+                bindings__isnull=True
+            ).select_related("created_by").order_by("-created_at")
+        else:
+            context["unbound_configs"] = []
         return context
 
 
@@ -166,14 +174,16 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     model = Config
     form_class = ConfigForm
     template_name = "configs/create.html"
-    success_url = reverse_lazy("configs:list")
     permission_resource = "configs"
     permission_action = "create"
+
+    def get_success_url(self):
+        return reverse("configs:binding_create") + "?config_id=" + str(self.object.id)
 
     def form_valid(self, form):
         form.instance.created_by = self.request.user
         form.instance.source = "manual"
-        messages.success(self.request, f"配置标签 {form.instance.name} 创建成功")
+        messages.success(self.request, f"配置标签 {form.instance.name} 创建成功，请绑定节点")
         return super().form_valid(form)
 
 
@@ -243,7 +253,7 @@ class ConfigDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 # ==================== 配置节点绑定 CRUD ====================
 
 class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
-    """创建配置-节点绑定"""
+    """创建配置-节点绑定，支持批量绑定多个节点"""
     model = ConfigNodeBinding
     form_class = BindingForm
     template_name = "configs/binding_create.html"
@@ -266,26 +276,53 @@ class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
         context["all_nodes"] = Node.objects.filter(is_locked=False).order_by("hostname")
         return context
 
-    def form_valid(self, form):
-        form.instance.created_by = self.request.user
-        form.instance.current_version = 1
-        form.instance.sync_status = "not_synced"
-        response = super().form_valid(form)
+    def post(self, request, *args, **kwargs):
+        from apps.nodes.models import Node
 
-        # 创建初始版本
-        BindingVersion.objects.create(
-            binding=self.object,
-            version=1,
-            content=self.object.content,
-            remark="手动创建绑定",
-            created_by=self.request.user,
-        )
+        node_ids_raw = request.POST.get("node_ids", "")
+        node_ids = [int(nid) for nid in node_ids_raw.split(",") if nid.strip()]
 
-        messages.success(
-            self.request,
-            f"绑定 {self.object.config.name} @ {self.object.node.hostname} 创建成功",
-        )
-        return response
+        form = self.get_form()
+        if not form.is_valid():
+            return self.form_invalid(form)
+
+        nodes = []
+        if node_ids:
+            nodes = list(Node.objects.filter(id__in=node_ids, is_locked=False).order_by("hostname"))
+        elif form.cleaned_data.get("node"):
+            nodes = [form.cleaned_data["node"]]
+
+        if not nodes:
+            form.add_error(None, "请至少选择一个目标节点")
+            return self.form_invalid(form)
+
+        created_count = 0
+        for node in nodes:
+            binding = ConfigNodeBinding.objects.create(
+                config=form.cleaned_data["config"],
+                node=node,
+                remote_path=form.cleaned_data.get("remote_path", ""),
+                content=form.cleaned_data.get("content", ""),
+                current_version=1,
+                sync_status="not_synced",
+                source="manual",
+                created_by=request.user,
+            )
+            BindingVersion.objects.create(
+                binding=binding,
+                version=1,
+                content=binding.content,
+                remark="手动创建绑定",
+                created_by=request.user,
+            )
+            created_count += 1
+
+        if created_count == 1:
+            msg = f"绑定 {form.cleaned_data['config'].name} @ {nodes[0].hostname} 创建成功"
+        else:
+            msg = f"已为配置 {form.cleaned_data['config'].name} 创建 {created_count} 个节点绑定"
+        messages.success(request, msg)
+        return redirect(self.get_success_url())
 
     def get_success_url(self):
         return reverse("configs:list")
