@@ -117,9 +117,12 @@
                                         {% if stat and stat.total > 0 %}
                                         <div class="small">
                                             {% if stat.failed > 0 %}
-                                            <span class="badge bg-warning text-dark" title="成功 {{ stat.success }} / 失败 {{ stat.failed }} / 共 {{ stat.total }} 个">
-                                                <i class="bi bi-exclamation-triangle"></i> {{ stat.success }}/{{ stat.total }}
-                                            </span>
+                                            <a href="{% url 'configs:list' %}?search={{ node.hostname }}" class="text-decoration-none"
+                                                title="点击查看该节点配置详情">
+                                                <span class="badge bg-warning text-dark">
+                                                    <i class="bi bi-exclamation-triangle"></i> {{ stat.success }}/{{ stat.total }}
+                                                </span>
+                                            </a>
                                             {% elif stat.syncing > 0 %}
                                             <span class="badge bg-info" title="同步中 {{ stat.syncing }} / 共 {{ stat.total }} 个">
                                                 <i class="bi bi-arrow-repeat spin"></i> {{ stat.success }}/{{ stat.total }}

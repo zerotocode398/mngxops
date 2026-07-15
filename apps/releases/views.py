@@ -442,7 +442,10 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         queryset = super().get_queryset()
         if self.can_read_release_tasks:
             return queryset
-        return queryset.filter(operation_type="node_batch_test", trigger_user=self.request.user)
+        return queryset.filter(
+            operation_type__in=["node_batch_test", "config_batch_sync"],
+            trigger_user=self.request.user,
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

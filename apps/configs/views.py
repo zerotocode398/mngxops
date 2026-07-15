@@ -420,7 +420,7 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
 
 
 class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """解除绑定（逻辑删除：标记为 marked_deleted）"""
+    """解除绑定：not_synced/orphaned 直接物理删除，其他标记为 marked_deleted"""
     permission_resource = "configs"
     permission_action = "delete"
 
@@ -431,9 +431,14 @@ class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def post(self, request, pk):
         binding = get_object_or_404(ConfigNodeBinding, pk=pk)
         label = f"{binding.config.name} @ {binding.node.hostname}"
-        binding.sync_status = "marked_deleted"
-        binding.save(update_fields=["sync_status", "updated_at"])
-        messages.success(request, f"绑定 {label} 已标记删除，下次同步时将清理远程文件")
+
+        if binding.sync_status in ("not_synced", "orphaned"):
+            binding.delete()
+            messages.success(request, f"绑定 {label} 已删除")
+        else:
+            binding.sync_status = "marked_deleted"
+            binding.save(update_fields=["sync_status", "updated_at"])
+            messages.success(request, f"绑定 {label} 已标记删除，下次同步时将清理远程文件")
         return redirect("configs:list")
 
 
@@ -882,12 +887,13 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 )
 
             if errors:
-                mark_discovery_failed_configs(node, errors, request.user)
+                mark_discovery_failed_configs(node, errors, request.user, task_id=task_center.id)
                 result["errors"].extend(errors)
 
             if discovered:
                 created, updated, skipped, orphaned = sync_discovered_configs(
                     node, discovered, request.user, remark="批量节点全量同步",
+                    task_id=task_center.id,
                 )
                 save_sync_path(node, nginx_conf_path, request.user)
                 result["created"] = len(created)
@@ -966,6 +972,8 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         from apps.nodes.models import Node
         from apps.nodes.views import _get_node_credential
         from utils.ssh import discover_nginx_configs
+        from apps.releases.models import TaskCenterTask
+        from django.utils import timezone
 
         data = json.loads(request.body)
         node_id = data.get("node_id")
@@ -989,6 +997,16 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         if not nginx_conf_path:
             return JsonResponse({"success": False, "message": "未配置nginx路径"})
 
+        task_center = TaskCenterTask.objects.create(
+            operation_type="config_batch_sync",
+            status="running",
+            detail=f"单节点同步：{node.hostname}",
+            target_hostnames=node.hostname,
+            target_ips=node.ip,
+            trigger_user=request.user,
+            started_at=timezone.now(),
+        )
+
         auth_kwargs = {}
         if credential.auth_type == "password":
             auth_kwargs["password"] = credential.get_password()
@@ -1001,15 +1019,44 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         )
 
         if errors:
-            mark_discovery_failed_configs(node, errors, request.user)
+            mark_discovery_failed_configs(node, errors, request.user, task_id=task_center.id)
 
         if not discovered:
-            return JsonResponse({"success": False, "message": "未发现配置文件", "errors": errors})
+            task_center.status = "failed"
+            task_center.finished_at = timezone.now()
+            task_center.result = "未发现配置文件"
+            if errors:
+                task_center.result += "\n" + "\n".join(errors)
+            task_center.save(update_fields=["status", "finished_at", "result", "updated_at"])
+            return JsonResponse({
+                "success": False,
+                "message": "未发现配置文件",
+                "errors": errors,
+                "task_center_id": task_center.id,
+                "task_center_detail_url": reverse("releases:task_center_detail", kwargs={"pk": task_center.id}),
+            })
 
         created, updated, skipped, orphaned = sync_discovered_configs(
             node, discovered, request.user, remark="单节点手动同步",
+            task_id=task_center.id,
         )
         save_sync_path(node, nginx_conf_path, request.user)
+
+        fail_count = len(errors)
+        all_ok = fail_count == 0
+        detail_parts = [f"已同步 {len(discovered)} 个配置文件"]
+        if created:
+            detail_parts.append(f"新建 {len(created)} 个")
+        if updated:
+            detail_parts.append(f"更新 {len(updated)} 个")
+        if errors:
+            detail_parts.append(f"失败 {fail_count} 个")
+        task_center.status = "success" if all_ok else "failed"
+        task_center.finished_at = timezone.now()
+        task_center.result = "；".join(detail_parts)
+        if errors:
+            task_center.result += "\n错误详情:\n" + "\n".join(errors)
+        task_center.save(update_fields=["status", "finished_at", "result", "updated_at"])
 
         return JsonResponse({
             "success": True,
@@ -1018,6 +1065,8 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
             "skipped": skipped,
             "orphaned": orphaned,
             "errors": errors,
+            "task_center_id": task_center.id,
+            "task_center_detail_url": reverse("releases:task_center_detail", kwargs={"pk": task_center.id}),
         })
 
 

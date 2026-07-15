@@ -161,7 +161,14 @@
                                                         {% if binding.sync_status == 'synced' %}
                                                         <span class="badge config-badge-synced">✅ 已同步</span>
                                                         {% elif binding.sync_status == 'syncing' %}
+                                                        {% if binding.last_sync_task_id %}
+                                                        <a href="{% url 'releases:task_center_detail' binding.last_sync_task_id %}"
+                                                            class="badge config-badge-syncing text-decoration-none" title="查看任务详情">
+                                                            🔄 同步中
+                                                        </a>
+                                                        {% else %}
                                                         <span class="badge config-badge-syncing">🔄 同步中</span>
+                                                        {% endif %}
                                                         {% elif binding.sync_status == 'not_synced' or binding.sync_status == 'modified' %}
                                                         <span class="badge config-badge-pending">📝 待推送</span>
                                                         {% elif binding.sync_status == 'conflict' %}
@@ -169,7 +176,14 @@
                                                         {% elif binding.sync_status == 'orphaned' %}
                                                         <span class="badge config-badge-orphaned">📭 远程已删除</span>
                                                         {% elif binding.sync_status == 'failed' %}
+                                                        {% if binding.last_sync_task_id %}
+                                                        <a href="{% url 'releases:task_center_detail' binding.last_sync_task_id %}"
+                                                            class="badge config-badge-failed text-decoration-none" title="查看任务详情">
+                                                            ❌ 失败
+                                                        </a>
+                                                        {% else %}
                                                         <span class="badge config-badge-failed">❌ 失败</span>
+                                                        {% endif %}
                                                         {% elif binding.sync_status == 'marked_deleted' %}
                                                         <span class="badge config-badge-marked">🗑️ 已标记删除</span>
                                                         {% else %}
@@ -212,7 +226,7 @@
                                                             {% if user|has_perm_code:"configs.delete" %}
                                                             <button type="button" class="btn btn-outline-danger"
                                                                 title="解除绑定"
-                                                                onclick="openDeleteModal('{{ binding.config.name|escapejs }}', '{{ node.hostname|escapejs }}', '{% url 'configs:binding_delete' binding.id %}')">
+                                                                onclick="openDeleteModal('{{ binding.config.name|escapejs }}', '{{ node.hostname|escapejs }}', '{% url 'configs:binding_delete' binding.id %}', '{{ binding.sync_status }}')">
                                                                 <i class="bi bi-trash"></i>
                                                             </button>
                                                             {% endif %}
@@ -359,7 +373,7 @@
             <div class="modal-body">
                 确定要解除 <strong id="deleteConfigDisplay">-</strong> 在节点 <strong id="deleteNodeDisplay">-</strong> 上的绑定吗？
                 <br><br>
-                <small class="text-muted">解除后将标记为"待删除"，下次同步时会清理远程文件。</small>
+                <small class="text-muted" id="deleteHintText">解除后将标记为"待删除"，下次同步时会清理远程文件。</small>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
@@ -493,10 +507,20 @@
         }
     })();
 
-    function openDeleteModal(configName, hostname, deleteUrl) {
+    function openDeleteModal(configName, hostname, deleteUrl, syncStatus) {
         document.getElementById('deleteConfigDisplay').textContent = configName;
         document.getElementById('deleteNodeDisplay').textContent = hostname;
         document.getElementById('deleteBindingForm').setAttribute('action', deleteUrl);
+
+        var hintEl = document.getElementById('deleteHintText');
+        if (syncStatus === 'not_synced') {
+            hintEl.textContent = '该绑定从未同步到远程，删除后不可恢复。';
+        } else if (syncStatus === 'orphaned') {
+            hintEl.textContent = '远程已无此文件，仅删除本地记录。';
+        } else {
+            hintEl.textContent = '解除后将标记为"待删除"，下次同步时会清理远程文件。';
+        }
+
         if (!deleteConfirmModal) {
             deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
         }
