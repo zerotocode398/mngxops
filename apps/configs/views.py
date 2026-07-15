@@ -26,55 +26,138 @@ from apps.users.permissions import PermissionRequiredMixin
 from utils.pagination import PerPagePaginationMixin
 
 
+def _build_node_stats(node):
+    """构建单个节点的绑定状态统计"""
+    stats = {
+        "total": 0, "pending": 0, "conflict": 0, "orphaned": 0,
+        "failed": 0, "syncing": 0, "marked_deleted": 0,
+    }
+    for b in node.config_bindings.all():
+        stats["total"] += 1
+        s = b.sync_status
+        if s in ("not_synced", "modified"):
+            stats["pending"] += 1
+        elif s == "conflict":
+            stats["conflict"] += 1
+        elif s == "orphaned":
+            stats["orphaned"] += 1
+        elif s == "failed":
+            stats["failed"] += 1
+        elif s == "syncing":
+            stats["syncing"] += 1
+        elif s == "marked_deleted":
+            stats["marked_deleted"] += 1
+    return stats
+
+
+def _build_global_status_counts():
+    """构建全局绑定状态计数"""
+    from django.db.models import Q
+    total = ConfigNodeBinding.objects.count()
+    pending = ConfigNodeBinding.objects.filter(
+        sync_status__in=["not_synced", "modified"]
+    ).count()
+    conflict = ConfigNodeBinding.objects.filter(sync_status="conflict").count()
+    orphaned = ConfigNodeBinding.objects.filter(sync_status="orphaned").count()
+    failed = ConfigNodeBinding.objects.filter(sync_status="failed").count()
+    syncing = ConfigNodeBinding.objects.filter(sync_status="syncing").count()
+    marked_deleted = ConfigNodeBinding.objects.filter(sync_status="marked_deleted").count()
+    return {
+        "total": total, "pending": pending, "conflict": conflict,
+        "orphaned": orphaned, "failed": failed, "syncing": syncing,
+        "marked_deleted": marked_deleted,
+    }
+
+
 # ==================== 配置标签 CRUD ====================
 
 class ConfigListView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
-    """配置标签列表 - 展开绑定树"""
-    model = Config
+    """配置列表 - 以节点为基准展示绑定（每个节点展开显示其所有配置绑定）"""
     template_name = "configs/list.html"
-    context_object_name = "configs"
+    context_object_name = "nodes"
     paginate_by = None
-    ordering = ["-updated_at"]
     permission_resource = "configs"
     permission_action = "read"
+    default_paginate_by = 10
 
     def get_queryset(self):
-        queryset = super().get_queryset().select_related("created_by").prefetch_related(
-            "bindings__node", "bindings__node__groups"
+        from apps.nodes.models import Node
+        queryset = (
+            Node.objects.filter(is_locked=False)
+            .prefetch_related("config_bindings__config", "groups")
+            .order_by("hostname")
         )
-        search = self.request.GET.get("search", "")
+        search = self.request.GET.get("search", "").strip()
+        group_id = self.request.GET.get("group_id", "")
+
         if search:
             queryset = queryset.filter(
-                Q(name__icontains=search)
-                | Q(bindings__node__hostname__icontains=search)
-                | Q(description__icontains=search)
+                Q(hostname__icontains=search)
+                | Q(ip__icontains=search)
+                | Q(config_bindings__config__name__icontains=search)
+                | Q(config_bindings__remote_path__icontains=search)
             ).distinct()
+        if group_id:
+            queryset = queryset.filter(groups__id=group_id).distinct()
         return queryset
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        search = self.request.GET.get("search", "")
-        sync_status_filter = self.request.GET.get("sync_status", "")
+        from apps.nodes.models import Node, NodeGroup
 
-        configs = self.get_queryset()
-        if sync_status_filter:
-            configs = configs.filter(bindings__sync_status=sync_status_filter).distinct()
+        context = super().get_context_data(**kwargs)
+        all_nodes = list(self.get_queryset())
+        sync_status = self.request.GET.get("sync_status", "").strip()
+        search = self.request.GET.get("search", "").strip()
+        group_id = self.request.GET.get("group_id", "").strip()
+
+        node_bindings_map = {}
+        node_stats_map = {}
+
+        for node in all_nodes:
+            bindings_qs = ConfigNodeBinding.objects.filter(
+                node=node
+            ).select_related("config").order_by("config__name")
+
+            if sync_status:
+                if sync_status == "pending":
+                    bindings_qs = bindings_qs.filter(
+                        sync_status__in=["not_synced", "modified"]
+                    )
+                else:
+                    bindings_qs = bindings_qs.filter(sync_status=sync_status)
+
+            bindings = list(bindings_qs)
+            if not bindings and sync_status:
+                continue
+
+            node_bindings_map[node.id] = bindings
+            node_stats_map[node.id] = _build_node_stats(node)
+
+        if sync_status:
+            filtered_nodes = [n for n in all_nodes if n.id in node_bindings_map]
+        else:
+            filtered_nodes = all_nodes
 
         per_page = self.get_paginate_by(None)
-        paginator = Paginator(list(configs), per_page)
+        paginator = Paginator(filtered_nodes, per_page)
         page_num = self.request.GET.get("page", 1)
         page_obj = paginator.get_page(page_num)
 
-        context["configs"] = page_obj.object_list
+        context["nodes"] = page_obj.object_list
+        context["node_bindings_map"] = node_bindings_map
+        context["node_stats_map"] = node_stats_map
         context["page_obj"] = page_obj
         context["is_paginated"] = page_obj.has_other_pages()
-        context["search"] = search
-        context["sync_status_filter"] = sync_status_filter
-        context["has_any_filter"] = bool(search or sync_status_filter)
         context["per_page"] = per_page
         context["per_page_options"] = self.per_page_options
+        context["search"] = search
+        context["group_id"] = group_id
+        context["sync_status"] = sync_status
+        context["has_any_filter"] = bool(search or group_id or sync_status)
+        context["groups"] = NodeGroup.objects.all().order_by("name")
+        context["status_counts"] = _build_global_status_counts()
         return context
 
 
@@ -217,6 +300,13 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     permission_resource = "configs"
     permission_action = "update"
 
+    def dispatch(self, request, *args, **kwargs):
+        obj = self.get_object()
+        if obj.sync_status == "marked_deleted":
+            messages.error(request, "已标记删除的绑定无法编辑")
+            return redirect("configs:list")
+        return super().dispatch(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["next_version"] = self.object.current_version + 1
@@ -278,7 +368,7 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
 
 
 class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """解除绑定"""
+    """解除绑定（逻辑删除：标记为 marked_deleted）"""
     permission_resource = "configs"
     permission_action = "delete"
 
@@ -289,8 +379,25 @@ class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def post(self, request, pk):
         binding = get_object_or_404(ConfigNodeBinding, pk=pk)
         label = f"{binding.config.name} @ {binding.node.hostname}"
-        binding.delete()
-        messages.success(request, f"绑定 {label} 已解除")
+        binding.sync_status = "marked_deleted"
+        binding.save(update_fields=["sync_status", "updated_at"])
+        messages.success(request, f"绑定 {label} 已标记删除，下次同步时将清理远程文件")
+        return redirect("configs:list")
+
+
+class BindingRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """恢复已标记删除的绑定"""
+    permission_resource = "configs"
+    permission_action = "update"
+
+    def post(self, request, pk):
+        binding = get_object_or_404(ConfigNodeBinding, pk=pk)
+        if binding.sync_status != "marked_deleted":
+            messages.error(request, "该绑定未处于标记删除状态")
+            return redirect("configs:list")
+        binding.sync_status = "not_synced"
+        binding.save(update_fields=["sync_status", "updated_at"])
+        messages.success(request, f"绑定 {binding.config.name} @ {binding.node.hostname} 已恢复")
         return redirect("configs:list")
 
 
@@ -359,6 +466,9 @@ class BindingVersionRestoreView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 
     def post(self, request, pk, version_id):
         binding = get_object_or_404(ConfigNodeBinding, pk=pk)
+        if binding.sync_status == "marked_deleted":
+            messages.error(request, "已标记删除的绑定无法恢复版本")
+            return redirect("configs:list")
         if binding.node.is_locked:
             messages.error(request, f"节点 {binding.node.hostname} 已锁定，无法恢复")
             return redirect("configs:binding_versions", pk=binding.pk)
@@ -467,6 +577,9 @@ class BindingVersionCompareApplyView(LoginRequiredMixin, PermissionRequiredMixin
 
     def post(self, request, pk):
         binding = get_object_or_404(ConfigNodeBinding, pk=pk)
+        if binding.sync_status == "marked_deleted":
+            messages.error(request, "已标记删除的绑定无法应用差异变更")
+            return redirect("configs:list")
         if binding.node.is_locked:
             messages.error(request, f"节点 {binding.node.hostname} 已锁定")
             return redirect("configs:binding_versions", pk=binding.pk)

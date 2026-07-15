@@ -16,6 +16,7 @@ urlpatterns = [
     path("bindings/<int:pk>/", views.BindingDetailView.as_view(), name="binding_detail"),
     path("bindings/<int:pk>/edit/", views.BindingEditView.as_view(), name="binding_edit"),
     path("bindings/<int:pk>/delete/", views.BindingDeleteView.as_view(), name="binding_delete"),
+    path("bindings/<int:pk>/restore/", views.BindingRestoreView.as_view(), name="binding_restore"),
 
     # 绑定版本历史
     path("bindings/<int:pk>/versions/", views.BindingVersionListView.as_view(), name="binding_versions"),

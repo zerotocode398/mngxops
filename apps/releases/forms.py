@@ -37,7 +37,7 @@ class ReleaseCreateForm(forms.ModelForm):
         self.fields["config"].queryset = Config.objects.order_by("name")
         self.fields["binding"].queryset = ConfigNodeBinding.objects.select_related(
             "config", "node"
-        ).order_by("config__name", "node__hostname")
+        ).exclude(sync_status="marked_deleted").order_by("config__name", "node__hostname")
         self.fields["version"].queryset = BindingVersion.objects.select_related(
             "binding__config"
         ).order_by("-version")
