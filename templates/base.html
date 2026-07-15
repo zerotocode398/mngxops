@@ -376,6 +376,11 @@
                             任务中心
                         </a>
                         {% endif %}
+                        {% if user|has_perm_code:"releases.read" %}
+                        <a class="nav-link" href="{% url 'releases:list' %}" data-nav="releases:list">
+                            发布历史
+                        </a>
+                        {% endif %}
                     </div>
                     {% endif %}
 
@@ -702,6 +707,8 @@
                     'releases': 'submenu-releases',
                     'releases:center': 'submenu-releases',
                     'releases:history': 'submenu-releases',
+                    'releases:list': 'submenu-releases',
+                    'releases:create': 'submenu-releases',
                     'users': 'submenu-users',
                     'users:list': 'submenu-users',
                     'users:role_list': 'submenu-users',

@@ -281,6 +281,7 @@ class ReleaseExecutorMixin:
 class ReleaseCreateView(
     LoginRequiredMixin, PermissionRequiredMixin, ReleaseExecutorMixin, CreateView
 ):
+    """发布任务创建视图 - 支持表单提交和 JSON 提交两种方式"""
     model = ReleaseTask
     form_class = ReleaseCreateForm
     template_name = "releases/create.html"
@@ -291,6 +292,14 @@ class ReleaseCreateView(
     max_tasks_per_batch = 1000
 
     def post(self, request, *args, **kwargs):
+        content_type = request.content_type or ""
+        is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+        # JSON 提交方式（来自新版发布中心）
+        if "application/json" in content_type:
+            return self._post_json(request)
+
+        # 传统表单提交方式（来自 create.html）
         binding_ids = request.POST.getlist("binding_ids")
         if not binding_ids:
             messages.error(request, "请至少选择一个配置绑定")
@@ -330,10 +339,99 @@ class ReleaseCreateView(
         )
         return redirect("releases:center")
 
+    def _post_json(self, request):
+        """处理 JSON 格式的发布任务创建请求"""
+        is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"success": False, "message": "请求数据格式错误"}, status=400)
+
+        bindings_data = data.get("bindings", [])
+        auto_execute = data.get("auto_execute", False)
+
+        if not bindings_data:
+            return JsonResponse({"success": False, "message": "请至少选择一个配置绑定"}, status=400)
+
+        batch_number = generate_batch_number()
+        task_ids = []
+
+        for item in bindings_data:
+            binding_id = item.get("binding_id", 0)
+            version = item.get("version")
+
+            try:
+                binding = ConfigNodeBinding.objects.select_related("node", "config").get(pk=binding_id)
+            except ConfigNodeBinding.DoesNotExist:
+                continue
+
+            if binding.node.is_locked:
+                continue
+
+            publish_version = version if version else binding.current_version
+
+            task = ReleaseTask.objects.create(
+                batch_number=batch_number,
+                binding=binding,
+                config=binding.config,
+                node=binding.node,
+                version=binding.versions.filter(version=publish_version).first(),
+                publish_version=publish_version,
+                remote_path=binding.remote_path,
+                operator=request.user,
+                status="pending",
+            )
+            task_ids.append(task.id)
+
+        if not task_ids:
+            return JsonResponse({"success": False, "message": "未找到可发布的配置绑定"}, status=400)
+
+        response_data = {
+            "success": True,
+            "batch_number": batch_number,
+            "task_count": len(task_ids),
+            "message": f"发布任务已创建，批次号: {batch_number}，共 {len(task_ids)} 个任务",
+        }
+
+        # 如果请求自动执行，则创建 TaskCenterTask 并异步执行
+        if auto_execute:
+            parallel = data.get("parallel", False)
+            max_workers = 1
+            if parallel:
+                from utils.setting_service import get_setting
+                try:
+                    max_workers = int(get_setting("release.max_parallel_tasks", "3"))
+                except (ValueError, TypeError):
+                    max_workers = 3
+
+            task_center = TaskCenterTask.objects.create(
+                operation_type="release_publish",
+                status="running",
+                source_batch=batch_number,
+                detail=f"执行中：成功 0，失败 0，共 {len(task_ids)}",
+                progress=0,
+                started_at=timezone.now(),
+                trigger_user=request.user,
+            )
+
+            target_func = _run_release_tasks_parallel if parallel and max_workers > 1 else _run_release_tasks
+            thread = threading.Thread(
+                target=target_func,
+                args=(task_ids, task_center.id) if target_func == _run_release_tasks else (task_ids, task_center.id, max_workers),
+                daemon=True,
+            )
+            thread.start()
+
+            response_data["task_center_id"] = task_center.id
+            response_data["async"] = True
+
+        return JsonResponse(response_data)
+
 
 class ReleaseListView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
+    """发布历史 - 按批次→节点→配置三级折叠展示"""
     model = ReleaseTask
     template_name = "releases/list.html"
     context_object_name = "tasks"
@@ -354,6 +452,7 @@ class ReleaseListView(
             queryset = queryset.filter(
                 Q(config__name__icontains=search)
                 | Q(node__hostname__icontains=search)
+                | Q(batch_number__icontains=search)
                 | Q(operator__username__icontains=search)
             )
         if status_filter:
@@ -361,17 +460,43 @@ class ReleaseListView(
         return queryset
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
         from collections import OrderedDict
+        context = super().get_context_data(**kwargs)
         search = self.request.GET.get("search", "")
         status_filter = self.request.GET.get("status", "")
         context["search"] = search
         context["status_filter"] = status_filter
         context["status_choices"] = ReleaseTask.STATUS_CHOICES
-        node_tasks = OrderedDict()
+
+        # 三级分组：批次 → 节点 → 任务
+        batch_groups = OrderedDict()
         for task in context["tasks"]:
-            node_tasks.setdefault(task.node, []).append(task)
-        context["node_tasks"] = node_tasks
+            batch_key = task.batch_number or f"task-{task.id}"
+            if batch_key not in batch_groups:
+                batch_groups[batch_key] = {
+                    "batch_number": task.batch_number,
+                    "created_at": task.created_at,
+                    "operator": task.operator.username,
+                    "total": 0,
+                    "success": 0,
+                    "failed": 0,
+                    "nodes": OrderedDict(),
+                }
+            batch = batch_groups[batch_key]
+            node_key = task.node_id
+            if node_key not in batch["nodes"]:
+                batch["nodes"][node_key] = {
+                    "node": task.node,
+                    "tasks": [],
+                }
+            batch["nodes"][node_key]["tasks"].append(task)
+            batch["total"] += 1
+            if task.status == "success":
+                batch["success"] += 1
+            elif task.status == "failed":
+                batch["failed"] += 1
+
+        context["batch_groups"] = batch_groups
         context["has_any_filter"] = bool(search or status_filter)
         return context
 
@@ -427,6 +552,7 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
 
 
 class TaskCenterDetailView(LoginRequiredMixin, DetailView):
+    """任务中心详情 - 按节点→配置树形展示执行结果"""
     model = TaskCenterTask
     template_name = "releases/task_detail.html"
     context_object_name = "task"
@@ -451,13 +577,36 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         task = self.object
         result_text = (task.result or "").strip()
-        success_lines = []
-        failed_lines = []
-        other_lines = []
+
+        # 解析目标节点和目标配置
+        target_nodes = []
+        target_configs = []
+        if task.target_hostnames:
+            ips = (task.target_ips or "").split(",")
+            hostnames = task.target_hostnames.split(",")
+            seen = set()
+            for i in range(min(len(ips), len(hostnames))):
+                ip = ips[i].strip()
+                if ip and ip not in seen:
+                    seen.add(ip)
+                    hn = hostnames[i].strip() if i < len(hostnames) else ""
+                    target_nodes.append(f"{ip} ({hn})" if hn else ip)
+        if task.target_configs:
+            configs_raw = task.target_configs.split(",")
+            target_configs = [c.strip() for c in configs_raw if c.strip()]
+            seen_c = set()
+            target_configs = [c for c in target_configs if not (c in seen_c or seen_c.add(c))]
+
+        context["target_nodes"] = target_nodes[:50]
+        context["target_configs"] = target_configs[:50]
+        context["target_configs_count"] = len(target_configs)
+
+        # 解析结果树（按节点分组 + 成功/失败配置）
         result_tree = []
+        success_total = 0
+        failed_total = 0
 
         if result_text:
-            current_group = None
             current_node = None
             for raw in result_text.splitlines():
                 stripped = raw.strip()
@@ -465,37 +614,30 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                     continue
                 if stripped.startswith("[节点] "):
                     node_text = stripped[len("[节点] "):]
-                    node_match = re.match(r"(.+?)\s+\((.+?)\)", node_text)
+                    if current_node:
+                        result_tree.append(current_node)
                     current_node = {
-                        "node": node_text,
-                        "ip": node_match.group(1) if node_match else "",
-                        "hostname": node_match.group(2) if node_match else "",
+                        "name": node_text,
                         "configs": [],
+                        "success": 0,
+                        "failed": 0,
                     }
-                    result_tree.append(current_node)
-                    current_group = "node"
-                    other_lines.append(stripped)
-                elif raw.startswith("  [") and current_node is not None:
-                    status = "success" if stripped.startswith("[成功]") else "failed"
-                    current_node["configs"].append({"name": stripped, "status": status})
-                    if status == "success":
-                        success_lines.append(stripped)
-                    else:
-                        failed_lines.append(stripped)
-                elif stripped.startswith("[成功]"):
-                    success_lines.append(stripped)
-                    current_group = "success"
-                elif stripped.startswith("[失败]"):
-                    failed_lines.append(stripped)
-                    current_group = "failed"
-                else:
-                    other_lines.append(stripped)
+                elif stripped.startswith("  [成功]") and current_node is not None:
+                    name = stripped[len("  [成功] "):].strip()
+                    current_node["configs"].append({"name": name, "status": "success"})
+                    current_node["success"] += 1
+                    success_total += 1
+                elif stripped.startswith("  [失败]") and current_node is not None:
+                    name = stripped[len("  [失败] "):].strip()
+                    current_node["configs"].append({"name": name, "status": "failed"})
+                    current_node["failed"] += 1
+                    failed_total += 1
 
-        context["task_result_groups"] = {"success": success_lines, "failed": failed_lines, "other": other_lines}
-        context["has_grouped_result"] = bool(success_lines or failed_lines or other_lines)
+            if current_node:
+                result_tree.append(current_node)
+
         context["result_tree"] = result_tree
-        context["has_result_tree"] = len(result_tree) > 0
-
+        context["result_summary"] = {"success": success_total, "failed": failed_total}
         return context
 
 
@@ -567,6 +709,7 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
 class ReleaseCenterView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
+    """发布中心 - 节点为主维度选择 + 配置绑定展开（数据通过 AJAX 加载）"""
     model = ReleaseTask
     template_name = "releases/center.html"
     context_object_name = "tasks"
@@ -576,76 +719,25 @@ class ReleaseCenterView(
     permission_action = "read"
 
     def get_queryset(self):
-        queryset = (
-            super().get_queryset()
-            .select_related("node", "config", "binding", "operator")
-            .filter(status__in=["pending", "running"])
-        )
-        search = self.request.GET.get("search", "").strip()
-        status_filter = self.request.GET.get("status", "")
-        if search:
-            terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
-            if terms:
-                for term in terms:
-                    queryset = queryset.filter(
-                        Q(batch_number__icontains=term)
-                        | Q(config__name__icontains=term)
-                        | Q(node__hostname__icontains=term)
-                    )
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        return queryset
+        # 数据由前端 AJAX 加载，服务端无需查询
+        return ReleaseTask.objects.none()
 
     def get_context_data(self, **kwargs):
-        from collections import OrderedDict
-        from django.core.paginator import Paginator
         context = super().get_context_data(**kwargs)
-        search = self.request.GET.get("search", "")
-        status_filter = self.request.GET.get("status", "")
-        context["search"] = search
-        context["status_filter"] = status_filter
-        context["status_choices"] = ReleaseTask.STATUS_CHOICES
-
-        batch_tasks = OrderedDict()
-        for task in context["tasks"]:
-            key = task.batch_number or f"task-{task.id}"
-            batch_tasks.setdefault(key, []).append(task)
-        context["batch_tasks"] = batch_tasks
-        context["has_any_filter"] = bool(search or status_filter)
-
-        recent_history = (
-            ReleaseTask.objects.select_related("node", "config", "binding", "operator")
-            .exclude(status__in=["pending", "running"])
-            .order_by("-created_at")
-        )
-        history_search = self.request.GET.get("history_search", "")
-        history_status = self.request.GET.get("history_status", "")
-        if history_search:
-            terms = [t.strip() for t in history_search.replace("，", ",").split(",") if t.strip()]
-            if terms:
-                for term in terms:
-                    recent_history = recent_history.filter(
-                        Q(batch_number__icontains=term)
-                        | Q(config__name__icontains=term)
-                        | Q(node__hostname__icontains=term)
-                    )
-        if history_status:
-            recent_history = recent_history.filter(status=history_status)
-        paginator = Paginator(recent_history, 10)
-        history_page = paginator.get_page(self.request.GET.get("history_page", 1))
-        context["history_page"] = history_page
-        context["history_search"] = history_search
-        context["history_status"] = history_status
-        context["is_history_paginated"] = history_page.has_other_pages()
+        context["pre_node_id"] = self.request.GET.get("node_id", "")
+        context["pre_binding_id"] = self.request.GET.get("binding_id", "")
+        context["environment_choices"] = Node.ENV_CHOICES
         return context
 
 
 def _run_release_tasks(task_ids, task_center_id=None):
+    """异步执行发布任务（顺序模式），按节点分组输出结构化日志"""
     executor = ReleaseExecutorMixin()
     total = len(task_ids)
     success = 0
     failed = 0
     detail_lines = []
+    node_results = {}
 
     if task_center_id:
         TaskCenterTask.objects.filter(pk=task_center_id).update(
@@ -667,16 +759,21 @@ def _run_release_tasks(task_ids, task_center_id=None):
             detail_lines.append(f"[失败] 任务#{task_id} 不存在")
 
     for node_key, tasks in node_tasks.items():
+        node_success = 0
+        node_failed = 0
         detail_lines.append(f"[节点] {node_key}")
+
         for task in tasks:
             ok, _ = executor._execute_release(task, "publish")
             if ok:
                 success += 1
+                node_success += 1
                 detail_lines.append(f"  [成功] {task.config.name} v{task.publish_version}")
             else:
                 failed += 1
+                node_failed += 1
                 reason = (task.result or "").split("\n")[-1]
-                detail_lines.append(f"  [失败] {task.config.name} v{task.publish_version} - {reason}")
+                detail_lines.append(f"  [失败] {task.config.name} v{task.publish_version} - 失败原因: {reason}")
 
             if task_center_id:
                 done = success + failed
@@ -686,11 +783,102 @@ def _run_release_tasks(task_ids, task_center_id=None):
                     updated_at=timezone.now(),
                 )
 
+        node_results[node_key] = {"success": node_success, "failed": node_failed}
+
     if task_center_id:
         status = "success" if failed == 0 else "failed"
+        result_lines = [f"执行完成：成功 {success}，失败 {failed}，共 {total}"]
+        for nk, nr in node_results.items():
+            result_lines.append(f"[节点摘要] {nk}: 成功 {nr['success']}, 失败 {nr['failed']}")
+        result_lines.extend(detail_lines)
+
         TaskCenterTask.objects.filter(pk=task_center_id).update(
             status=status, progress=100, finished_at=timezone.now(),
-            result="\n".join([f"执行完成：成功 {success}，失败 {failed}，共 {total}"] + detail_lines),
+            result="\n".join(result_lines),
+            detail=f"执行完成：成功 {success}，失败 {failed}，共 {total}",
+        )
+
+
+def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
+    """并行发布：使用 ThreadPoolExecutor 并行执行多个节点，每节点内逐配置执行"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    executor = ReleaseExecutorMixin()
+    total = len(task_ids)
+    success = 0
+    failed = 0
+    detail_lines = []
+    node_results = {}
+
+    if task_center_id:
+        TaskCenterTask.objects.filter(pk=task_center_id).update(
+            status="running", started_at=timezone.now(), progress=0,
+        )
+
+    node_tasks = {}
+    for task_id in task_ids:
+        try:
+            task = ReleaseTask.objects.select_related(
+                "node", "config", "binding", "operator",
+            ).get(pk=task_id)
+            node_key = f"{task.node.ip} ({task.node.hostname})"
+            if node_key not in node_tasks:
+                node_tasks[node_key] = []
+            node_tasks[node_key].append(task)
+        except ReleaseTask.DoesNotExist:
+            failed += 1
+            detail_lines.append(f"[失败] 任务#{task_id} 不存在")
+
+    def _execute_node(node_key, tasks):
+        """执行单个节点的所有配置发布"""
+        node_success = 0
+        node_failed = 0
+        node_lines = []
+        node_lines.append(f"[节点] {node_key}")
+        for t in tasks:
+            ok, _ = executor._execute_release(t, "publish")
+            if ok:
+                node_success += 1
+                node_lines.append(f"  [成功] {t.config.name} v{t.publish_version}")
+            else:
+                node_failed += 1
+                reason = (t.result or "").split("\n")[-1]
+                node_lines.append(f"  [失败] {t.config.name} v{t.publish_version} - 失败原因: {reason}")
+        return node_key, node_success, node_failed, node_lines
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {}
+        for node_key, tasks in node_tasks.items():
+            futures[pool.submit(_execute_node, node_key, tasks)] = node_key
+
+        for future in futures:
+            try:
+                node_key, node_success, node_failed, node_lines = future.result()
+                success += node_success
+                failed += node_failed
+                detail_lines.extend(node_lines)
+                node_results[node_key] = {"success": node_success, "failed": node_failed}
+
+                if task_center_id:
+                    done = success + failed
+                    TaskCenterTask.objects.filter(pk=task_center_id).update(
+                        progress=int(done * 100 / total) if total else 100,
+                        detail=f"并行执行中：成功 {success}，失败 {failed}，共 {total}",
+                        updated_at=timezone.now(),
+                    )
+            except Exception as e:
+                logger.error(f"并行节点执行异常: {e}")
+
+    if task_center_id:
+        status = "success" if failed == 0 else "failed"
+        result_lines = [f"执行完成（并行模式）：成功 {success}，失败 {failed}，共 {total}"]
+        for nk, nr in node_results.items():
+            result_lines.append(f"[节点摘要] {nk}: 成功 {nr['success']}, 失败 {nr['failed']}")
+        result_lines.extend(detail_lines)
+
+        TaskCenterTask.objects.filter(pk=task_center_id).update(
+            status=status, progress=100, finished_at=timezone.now(),
+            result="\n".join(result_lines),
             detail=f"执行完成：成功 {success}，失败 {failed}，共 {total}",
         )
 
@@ -860,4 +1048,231 @@ class VersionContentAPIView(LoginRequiredMixin, View):
             "remark": version.remark,
             "created_at": version.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             "created_by": version.created_by.username if version.created_by else "",
+        })
+
+
+class ReleaseNodeListAPIView(LoginRequiredMixin, View):
+    """获取发布中心可选节点列表（含绑定统计）"""
+
+    def get(self, request):
+        search = request.GET.get("search", "").strip()
+        environment = request.GET.get("environment", "").strip()
+        group_id = request.GET.get("group_id", "").strip()
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 20))
+
+        queryset = Node.objects.all().prefetch_related("groups")
+
+        if search:
+            terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+            for term in terms:
+                queryset = queryset.filter(
+                    Q(hostname__icontains=term)
+                    | Q(ip__icontains=term)
+                    | Q(groups__name__icontains=term)
+                ).distinct()
+        if environment:
+            queryset = queryset.filter(environment=environment)
+        if group_id and group_id.isdigit():
+            queryset = queryset.filter(groups__id=int(group_id)).distinct()
+
+        total = queryset.count()
+        nodes_page = queryset[(page - 1) * page_size: page * page_size]
+
+        node_ids = [n.id for n in nodes_page]
+        binding_stats = {}
+        if node_ids:
+            from django.db.models import Count, Q as DQ
+            stats_qs = (
+                ConfigNodeBinding.objects
+                .filter(node_id__in=node_ids)
+                .values("node_id")
+                .annotate(
+                    total_bindings=Count("id"),
+                    modified_bindings=Count("id", filter=DQ(sync_status="modified")),
+                )
+            )
+            for row in stats_qs:
+                binding_stats[row["node_id"]] = {
+                    "total_bindings": row["total_bindings"],
+                    "modified_bindings": row["modified_bindings"],
+                }
+
+        node_list = []
+        for node in nodes_page:
+            stats = binding_stats.get(node.id, {"total_bindings": 0, "modified_bindings": 0})
+            node_list.append({
+                "id": node.id,
+                "hostname": node.hostname,
+                "ip": f"{node.ip}:{node.port}",
+                "environment": node.environment,
+                "status": node.status,
+                "is_locked": node.is_locked,
+                "has_credential": node.credential_id is not None,
+                "total_bindings": stats["total_bindings"],
+                "modified_bindings": stats["modified_bindings"],
+                "group_names": [g.name for g in node.groups.all()],
+            })
+
+        return JsonResponse({
+            "success": True,
+            "nodes": node_list,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": max(1, (total + page_size - 1) // page_size),
+        })
+
+
+class ReleaseNodeBindingsAPIView(LoginRequiredMixin, View):
+    """获取指定节点的所有绑定详情（含版本列表）"""
+
+    def get(self, request, node_id):
+        bindings = (
+            ConfigNodeBinding.objects
+            .filter(node_id=node_id)
+            .exclude(sync_status="marked_deleted")
+            .select_related("config")
+            .order_by("config__name")
+        )
+
+        result = []
+        for binding in bindings:
+            versions = (
+                binding.versions
+                .order_by("-version")
+                .values("id", "version", "created_at")
+            )
+            result.append({
+                "id": binding.id,
+                "config_id": binding.config_id,
+                "config_name": binding.config.name,
+                "remote_path": binding.remote_path,
+                "current_version": binding.current_version,
+                "sync_status": binding.sync_status,
+                "synced_version": binding.synced_version,
+                "versions": [
+                    {
+                        "id": v["id"],
+                        "version": v["version"],
+                        "created_at": v["created_at"].strftime("%Y-%m-%d %H:%M:%S") if v["created_at"] else "",
+                    }
+                    for v in versions
+                ],
+            })
+
+        return JsonResponse({"success": True, "bindings": result})
+
+
+class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """重试单条失败的发布任务"""
+    permission_resource = "releases"
+    permission_action = "update"
+
+    def post(self, request, pk):
+        task = get_object_or_404(
+            ReleaseTask.objects.select_related("node", "config", "binding", "operator"),
+            pk=pk,
+        )
+        if task.status not in ["failed"]:
+            return JsonResponse({"success": False, "message": "只能重试失败的任务"}, status=400)
+
+        if task.node.is_locked:
+            return JsonResponse({"success": False, "message": f"节点 {task.node.hostname} 已锁定"}, status=400)
+
+        task.status = "pending"
+        task.result = ""
+        task.save(update_fields=["status", "result"])
+
+        task_center = TaskCenterTask.objects.create(
+            operation_type="release_publish",
+            status="running",
+            source_batch=task.batch_number or f"retry-task-{task.id}",
+            detail=f"重试: {task.config.name} → {task.node.hostname}",
+            progress=0,
+            started_at=timezone.now(),
+            trigger_user=request.user,
+        )
+
+        thread = threading.Thread(
+            target=_run_release_tasks,
+            args=([task.id], task_center.id),
+            daemon=True,
+        )
+        thread.start()
+
+        return JsonResponse({
+            "success": True,
+            "message": f"重试任务已开始: {task.config.name} → {task.node.hostname}",
+            "task_center_id": task_center.id,
+        })
+
+
+class ReleaseBatchRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """按批次号批量回滚"""
+    permission_resource = "releases"
+    permission_action = "update"
+
+    def post(self, request, batch_number):
+        tasks = ReleaseTask.objects.filter(
+            batch_number=batch_number,
+            status__in=["success", "failed"],
+        ).select_related("node", "config", "binding")
+
+        if not tasks.exists():
+            return JsonResponse({"success": False, "message": "未找到可回滚的任务"}, status=400)
+
+        rollback_batch = generate_batch_number()
+        rollback_task_ids = []
+
+        for task in tasks:
+            if task.node.is_locked:
+                continue
+
+            # 回滚使用 synced_version（发布前的版本）
+            rollback_version = task.binding.synced_version if task.binding else None
+            if rollback_version is None:
+                continue
+
+            binding = task.binding
+            version_obj = binding.versions.filter(version=rollback_version).first()
+
+            new_task = ReleaseTask.objects.create(
+                batch_number=rollback_batch,
+                binding=binding,
+                config=task.config,
+                node=task.node,
+                version=version_obj,
+                publish_version=rollback_version,
+                remote_path=task.remote_path or (binding.remote_path if binding else ""),
+                operator=request.user,
+                status="pending",
+            )
+            rollback_task_ids.append(new_task.id)
+
+        if not rollback_task_ids:
+            return JsonResponse({"success": False, "message": "未生成任何回滚任务"}, status=400)
+
+        task_center = TaskCenterTask.objects.create(
+            operation_type="release_rollback",
+            status="running",
+            source_batch=rollback_batch,
+            detail=f"批量回滚：{len(rollback_task_ids)} 个任务",
+            progress=0,
+            started_at=timezone.now(),
+            trigger_user=request.user,
+        )
+
+        thread = threading.Thread(
+            target=_run_release_tasks,
+            args=(rollback_task_ids, task_center.id),
+            daemon=True,
+        )
+        thread.start()
+
+        return JsonResponse({
+            "success": True,
+            "message": f"批量回滚已开始，批次号: {rollback_batch}，共 {len(rollback_task_ids)} 个任务",
+            "task_center_id": task_center.id,
+            "batch_number": rollback_batch,
         })
