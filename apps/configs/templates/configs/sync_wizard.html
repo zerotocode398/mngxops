@@ -548,6 +548,25 @@
         }
     }
 
+    var progressTimerInterval = null;
+
+    function startProgressTimer() {
+        var startTime = Date.now();
+        stopProgressTimer();
+        document.getElementById('progressTimer').textContent = '已用时: 0秒';
+        progressTimerInterval = setInterval(function () {
+            var sec = Math.floor((Date.now() - startTime) / 1000);
+            document.getElementById('progressTimer').textContent = '已用时: ' + sec + '秒';
+        }, 1000);
+    }
+
+    function stopProgressTimer() {
+        if (progressTimerInterval) {
+            clearInterval(progressTimerInterval);
+            progressTimerInterval = null;
+        }
+    }
+
     function hideLoading() {
         document.getElementById('syncAlertBody').innerHTML = '';
         if (syncAlertModalInstance) {
@@ -690,8 +709,12 @@
         };
 
         var allDone = progress.completed >= progress.total;
-        var pct = progress.total > 0 ? Math.round(progress.completed / progress.total * 100) : 0;
-        document.getElementById('progressPercent').textContent = progress.completed + '/' + progress.total + ' (' + pct + '%)';
+
+        var detailEl = document.getElementById('progressDetail');
+        if (progress.detail) {
+            detailEl.textContent = progress.detail;
+            detailEl.style.display = 'block';
+        }
 
         for (var nodeId in progress.nodes) {
             var node = progress.nodes[nodeId];
@@ -790,7 +813,8 @@
         hostnames[nodeId] = document.getElementById('syncModal' + nodeId).querySelector('.modal-title').textContent.split('：')[1];
         var progressList = document.getElementById('progressList');
         progressList.innerHTML = buildProgressHTML([nodeId], hostnames);
-        document.getElementById('progressPercent').textContent = '0/0 (0%)';
+        document.getElementById('progressTimer').textContent = '已用时: 0秒';
+        startProgressTimer();
         document.getElementById('progressSpinner').style.display = 'inline-block';
         document.getElementById('progressCloseBtn').disabled = true;
         document.getElementById('progressCloseBtn').textContent = '同步中...';
@@ -800,50 +824,25 @@
         document.getElementById('progressModalTitle').innerHTML = '<i class="bi bi-cloud-download me-2"></i>同步进度';
         progressModal.show();
 
-        var taskId = 'single_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-
-        pollProgress(taskId, progressModal, 'single');
-
         fetch('{% url "configs:sync_single_api" %}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             },
-            body: JSON.stringify({ node_id: nodeId, main_conf_path: mainConfPath, task_id: taskId })
+            body: JSON.stringify({ node_id: nodeId, main_conf_path: mainConfPath })
         }).then(function(response) {
             return response.json();
         }).then(function(data) {
-            if (data.success) {
-                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-                var nodeName = hostnames[nodeId] || ('节点 #' + nodeId);
-                document.getElementById('progressPercent').textContent = '同步完成';
-                document.getElementById('progressSpinner').style.display = 'none';
-                var summaryHtml = '节点 ' + nodeName + ' 同步完成';
-                var discovered = data.discovered || 0;
-                if (discovered) summaryHtml += '，发现 ' + discovered + ' 个配置文件';
-                document.getElementById('progressSummaryText').textContent = summaryHtml;
-                document.getElementById('progressSummary').style.display = 'block';
-                var iconEl = document.getElementById('prog-icon-' + nodeId);
-                var statusEl = document.getElementById('prog-status-' + nodeId);
-                if (iconEl) iconEl.innerHTML = '<i class="bi bi-check-circle text-success"></i>';
-                if (statusEl) { statusEl.textContent = '已完成'; statusEl.className = 'badge bg-success me-2'; }
-                document.getElementById('progressCloseBtn').textContent = '完成';
-                document.getElementById('progressCloseBtn').onclick = function() {
-                    bootstrap.Modal.getInstance(document.getElementById('syncProgressModal')).hide();
-                    location.reload();
-                };
-                document.getElementById('progressCloseBtn').disabled = false;
-                document.getElementById('progressCloseBtn').removeAttribute('data-bs-dismiss');
+            if (data.success && data.task_center_id) {
+                pollProgress(data.task_center_id, progressModal, 'single');
             } else {
-                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 updateProgressError(data.message || '同步请求失败');
                 document.getElementById('progressCloseBtn').disabled = false;
                 document.getElementById('progressCloseBtn').textContent = '关闭';
                 document.getElementById('progressSpinner').style.display = 'none';
             }
         })['catch'](function(err) {
-            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             updateProgressError('网络请求失败: ' + err.message);
             document.getElementById('progressCloseBtn').disabled = false;
             document.getElementById('progressCloseBtn').textContent = '关闭';
@@ -984,43 +983,19 @@
                             if (syncType === 'single') {
                                 progressModal.hide();
                                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                                stopProgressTimer();
 
-                                var statusIcon = totalFailed ? 'bi-exclamation-triangle text-warning' : 'bi-check-circle text-success';
-                                var statusTitle = totalFailed ? '同步失败' : '同步完成';
-                                var statusBg = totalFailed ? 'alert-warning' : 'alert-success';
-                                var summaryHtml = summaryParts.length ? summaryParts.join('，') : '未发现新配置';
-                                var errorMsg = '';
-                                for (var nid in data.progress.nodes) {
-                                    if (data.progress.nodes[nid].error) {
-                                        errorMsg = '<div class="text-danger small mt-1"><i class="bi bi-exclamation-circle"></i> ' + data.progress.nodes[nid].error + '</div>';
-                                    }
-                                }
-                                var fileListHtml = '';
-                                for (var nid in data.progress.nodes) {
-                                    var files = data.progress.nodes[nid].files;
-                                    if (files && files.length > 0) {
-                                        fileListHtml += '<div class="border rounded p-2 mt-2 text-start" style="background:#f8f9fa; max-height:180px; overflow-y:auto;">';
-                                        fileListHtml += '<div class="small fw-bold mb-1 text-muted">配置文件详情：</div>';
-                                        var fIcons = {'created': 'bi-plus-circle text-success', 'updated': 'bi-pencil text-warning', 'skipped': 'bi-dash-circle text-muted', 'orphaned': 'bi-exclamation-triangle text-warning', 'failed': 'bi-exclamation-circle text-danger'};
-                                        var fTexts = {'created': '新增', 'updated': '更新', 'skipped': '未变化', 'orphaned': '远程已删除', 'failed': '失败'};
-                                        files.forEach(function(f) {
-                                            fileListHtml += '<div class="d-flex align-items-center small mb-0">';
-                                            fileListHtml += '<i class="bi ' + (fIcons[f.status] || 'bi-dash-circle text-muted') + ' me-1"></i>';
-                                            fileListHtml += '<span class="me-1 badge bg-light text-dark border" style="font-size:0.65rem;">' + (fTexts[f.status] || f.status) + '</span>';
-                                            fileListHtml += '<code class="text-truncate" style="font-size:0.7rem; max-width:260px;" title="' + f.path + '">' + f.path + '</code>';
-                                            if (f.error) {
-                                                fileListHtml += ' <span class="text-danger" style="font-size:0.65rem;" title="' + f.error + '"><i class="bi bi-info-circle"></i></span>';
-                                            }
-                                            fileListHtml += '</div>';
-                                        });
-                                        fileListHtml += '</div>';
-                                    }
-                                }
+                                var isFailed = (data.progress.status === 'failed');
+                                var statusIcon = isFailed ? 'bi-exclamation-triangle text-warning' : 'bi-check-circle text-success';
+                                var statusTitle = isFailed ? '同步失败' : '同步完成';
+                                var statusBg = isFailed ? 'alert-warning' : 'alert-success';
+                                var msg = data.progress.detail || (isFailed ? '同步失败' : '同步完成');
+
                                 showCustomModal(statusTitle,
                                     '<div class="text-center mb-2"><i class="bi ' + statusIcon + ' fs-1"></i></div>' +
                                     '<div class="alert ' + statusBg + ' mb-0 text-center">' +
-                                    '<strong>' + nodeName + '</strong>：' + summaryHtml +
-                                    '</div>' + errorMsg + fileListHtml,
+                                    msg +
+                                    '</div>',
                                     true);
                                 document.getElementById('syncAlertClose').onclick = function() {
                                     location.reload();
@@ -1035,6 +1010,7 @@
                                     location.reload();
                                 };
                             }
+                            stopProgressTimer();
                             document.getElementById('progressCloseBtn').disabled = false;
                             document.getElementById('progressSpinner').style.display = 'none';
                         }
@@ -1065,6 +1041,7 @@
     }
 
     function updateProgressError(msg) {
+        stopProgressTimer();
         document.getElementById('progressSummaryText').textContent = msg;
         document.getElementById('progressSummary').className = 'alert alert-danger mt-3 mb-0';
         document.getElementById('progressSummary').style.display = 'block';
@@ -1100,7 +1077,8 @@
         hostnames[nodeId] = document.getElementById('syncModal' + nodeId).querySelector('.modal-title').textContent.split('：')[1];
         var progressList = document.getElementById('progressList');
         progressList.innerHTML = buildProgressHTML([nodeId], hostnames);
-        document.getElementById('progressPercent').textContent = '0/0 (0%)';
+        document.getElementById('progressTimer').textContent = '已用时: 0秒';
+        startProgressTimer();
         document.getElementById('progressSpinner').style.display = 'inline-block';
         document.getElementById('progressCloseBtn').disabled = true;
         document.getElementById('progressCloseBtn').textContent = '同步中...';
@@ -1110,9 +1088,6 @@
         document.getElementById('progressModalTitle').innerHTML = '<i class="bi bi-cloud-download me-2"></i>部分同步进度';
         progressModal.show();
 
-        var taskId = 'partial_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-
-        pollProgress(taskId, progressModal, 'partial');
 
         fetch('{% url "configs:sync_single_api" %}', {
             method: 'POST',
@@ -1124,39 +1099,19 @@
                 node_id: nodeId, 
                 main_conf_path: mainConfPath, 
                 selected_paths: selectedPaths,
-                task_id: taskId 
             })
         }).then(function(response) {
             return response.json();
         }).then(function(data) {
-            if (data.success) {
-                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-                var nodeName = hostnames[nodeId] || ('节点 #' + nodeId);
-                document.getElementById('progressPercent').textContent = '同步完成';
-                document.getElementById('progressSpinner').style.display = 'none';
-                var summaryHtml = '节点 ' + nodeName + ' 部分同步完成';
-                document.getElementById('progressSummaryText').textContent = summaryHtml;
-                document.getElementById('progressSummary').style.display = 'block';
-                var iconEl = document.getElementById('prog-icon-' + nodeId);
-                var statusEl = document.getElementById('prog-status-' + nodeId);
-                if (iconEl) iconEl.innerHTML = '<i class="bi bi-check-circle text-success"></i>';
-                if (statusEl) { statusEl.textContent = '已完成'; statusEl.className = 'badge bg-success me-2'; }
-                document.getElementById('progressCloseBtn').textContent = '完成';
-                document.getElementById('progressCloseBtn').onclick = function() {
-                    bootstrap.Modal.getInstance(document.getElementById('syncProgressModal')).hide();
-                    location.reload();
-                };
-                document.getElementById('progressCloseBtn').disabled = false;
-                document.getElementById('progressCloseBtn').removeAttribute('data-bs-dismiss');
+            if (data.success && data.task_center_id) {
+                pollProgress(data.task_center_id, progressModal, 'partial');
             } else {
-                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 updateProgressError(data.message || '同步请求失败');
                 document.getElementById('progressCloseBtn').disabled = false;
                 document.getElementById('progressCloseBtn').textContent = '关闭';
                 document.getElementById('progressSpinner').style.display = 'none';
             }
         })['catch'](function(err) {
-            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             updateProgressError('网络请求失败: ' + err.message);
             document.getElementById('progressCloseBtn').disabled = false;
             document.getElementById('progressCloseBtn').textContent = '关闭';
@@ -1180,11 +1135,16 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="progressModalTitle"><i class="bi bi-cloud-upload me-2"></i>批量同步进度</h5>
-                <span id="progressSpinner" style="display:none;"></span>
-                <span class="ms-2 fw-bold" id="progressPercent">0/0 (0%)</span>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="progressSpinner" style="display:none;">
+                        <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                    </span>
+                    <span class="fw-bold text-muted" id="progressTimer">已用时: 0秒</span>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <div class="mb-2 small text-muted" id="progressDetail" style="display:none;"></div>
                 <div id="progressList"></div>
                 <div id="progressSummary" class="alert alert-info mt-3 mb-0" style="display:none;">
                     <i class="bi bi-info-circle"></i> <span id="progressSummaryText"></span>
