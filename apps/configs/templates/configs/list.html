@@ -407,6 +407,13 @@
     document.addEventListener('DOMContentLoaded', function () {
         deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
         initTagSearch('#configSearchTagWrapper', '#configSearchHidden', '#configSearchForm');
+
+        var accordion = document.getElementById('configAccordion');
+        if (accordion) {
+            accordion.addEventListener('shown.bs.collapse', saveExpandedNodes);
+            accordion.addEventListener('hidden.bs.collapse', saveExpandedNodes);
+        }
+        restoreExpandedNodes();
     });
 
     (function() {
@@ -424,6 +431,28 @@
             deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
         }
         deleteConfirmModal.show();
+    }
+
+    function saveExpandedNodes() {
+        var expanded = [];
+        document.querySelectorAll('#configAccordion .accordion-collapse.show').forEach(function (el) {
+            expanded.push(el.id.replace('collapse', ''));
+        });
+        if (expanded.length) {
+            sessionStorage.setItem('configs_expanded_nodes', expanded.join(','));
+        } else {
+            sessionStorage.removeItem('configs_expanded_nodes');
+        }
+    }
+
+    function restoreExpandedNodes() {
+        var ids = (sessionStorage.getItem('configs_expanded_nodes') || '').split(',').filter(Boolean);
+        ids.forEach(function (id) {
+            var el = document.getElementById('collapse' + id);
+            if (el) {
+                new bootstrap.Collapse(el, { toggle: false }).show();
+            }
+        });
     }
 </script>
 {% endblock %}

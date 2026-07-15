@@ -42,6 +42,8 @@
 
                             <form method="post">
                                 {% csrf_token %}
+                                <input type="hidden" name="config" value="{{ object.config_id }}">
+                                <input type="hidden" name="node" value="{{ object.node_id }}">
 
                                 <div class="mb-3">
                                     <label for="{{ form.remote_path.id_for_label }}" class="form-label">

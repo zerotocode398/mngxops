@@ -316,11 +316,22 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
         self.object = self.get_object()
         original_content = self.object.content
         form = self.get_form()
+        is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
         if not form.is_valid():
+            if is_ajax:
+                errors = []
+                for field, errs in form.errors.items():
+                    for e in errs:
+                        errors.append(f"{form.fields[field].label}: {e}")
+                return JsonResponse({
+                    "success": False,
+                    "message": "请检查输入：" + "; ".join(errors) if errors else "表单验证失败",
+                })
             return self.form_invalid(form)
 
         if request.POST.get("confirm_save") == "yes":
-            return self._save_after_review(form)
+            return self._save_after_review(form, is_ajax=is_ajax)
         return self._render_review(form, original_content)
 
     def _render_review(self, form, current_content):
@@ -334,7 +345,7 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
         }
         return render(self.request, "configs/binding_edit_review.html", context)
 
-    def _save_after_review(self, form):
+    def _save_after_review(self, form, is_ajax=False):
         binding = form.save(commit=False)
         remark = form.cleaned_data.get("remark", "")
         new_content = form.cleaned_data["content"]
@@ -353,10 +364,14 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
         binding.sync_status = "modified"
         binding.save()
 
-        messages.success(
-            self.request,
-            f"绑定 {self.object.config.name} @ {self.object.node.hostname} 保存成功（v{new_version}）",
-        )
+        success_msg = f"绑定 {self.object.config.name} @ {self.object.node.hostname} 保存成功（v{new_version}）"
+        if is_ajax:
+            return JsonResponse({
+                "success": True,
+                "message": success_msg,
+                "redirect": reverse("configs:list"),
+            })
+        messages.success(self.request, success_msg)
         return redirect("configs:list")
 
     def form_valid(self, form):
@@ -486,7 +501,7 @@ class BindingVersionRestoreView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 
         binding.content = old_version.content
         binding.current_version = new_version_num
-        binding.sync_status = "modified"
+        binding.sync_status = "synced" if old_version.version == binding.synced_version else "modified"
         binding.save()
 
         messages.success(
