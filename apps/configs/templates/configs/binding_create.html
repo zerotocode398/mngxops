@@ -1,6 +1,7 @@
 {% extends "base.html" %}
+{% load permission_tags %}
 
-{% block title %}新增配置 - MngxOps{% endblock %}
+{% block title %}创建绑定 - MngxOps{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -8,7 +9,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="bi bi-plus-circle"></i> 手动添加配置标签</h5>
+                    <h5 class="mb-0"><i class="bi bi-link-45deg"></i> 创建节点绑定</h5>
                     <a href="#" class="btn btn-outline-secondary btn-sm" onclick="goBackToConfigList(event)">
                         <i class="bi bi-arrow-left"></i> 返回列表
                     </a>
@@ -16,22 +17,17 @@
                 <div class="card-body">
                     <div class="row justify-content-center">
                         <div class="col-md-10">
-                            <div class="alert alert-light">
-                                <i class="bi bi-info-circle"></i>
-                                <small>此页面创建的是 <strong>配置标签</strong>。创建后需要在列表页或详情页中绑定节点，或通过"配置同步"从远程节点发现并导入。</small>
-                            </div>
-
-                            <form method="post" id="configForm">
+                            <form method="post">
                                 {% csrf_token %}
 
                                 <div class="mb-3">
-                                    <label for="{{ form.name.id_for_label }}" class="form-label">
-                                        <i class="bi bi-tag"></i> {{ form.name.label }}
+                                    <label for="{{ form.config.id_for_label }}" class="form-label">
+                                        <i class="bi bi-tag"></i> {{ form.config.label }}
                                     </label>
-                                    {{ form.name }}
-                                    {% if form.name.errors %}
+                                    {{ form.config }}
+                                    {% if form.config.errors %}
                                     <div class="text-danger mt-1">
-                                        {% for error in form.name.errors %}
+                                        {% for error in form.config.errors %}
                                         <small>{{ error }}</small>
                                         {% endfor %}
                                     </div>
@@ -39,43 +35,41 @@
                                 </div>
 
                                 <div class="mb-3">
-                                    <label for="{{ form.default_remote_path.id_for_label }}" class="form-label">
-                                        <i class="bi bi-folder"></i> {{ form.default_remote_path.label }}
+                                    <label for="{{ form.node.id_for_label }}" class="form-label">
+                                        <i class="bi bi-server"></i> {{ form.node.label }}
                                     </label>
-                                    {{ form.default_remote_path }}
-                                    {% if form.default_remote_path.errors %}
+                                    {{ form.node }}
+                                    {% if form.node.errors %}
                                     <div class="text-danger mt-1">
-                                        {% for error in form.default_remote_path.errors %}
+                                        {% for error in form.node.errors %}
                                         <small>{{ error }}</small>
                                         {% endfor %}
                                     </div>
                                     {% endif %}
-                                    <small class="form-text text-muted">创建绑定时自动填入此路径，可修改</small>
                                 </div>
 
                                 <div class="mb-3">
-                                    <label for="{{ form.template_content.id_for_label }}" class="form-label">
-                                        <i class="bi bi-file-text"></i> {{ form.template_content.label }}
+                                    <label for="{{ form.remote_path.id_for_label }}" class="form-label">
+                                        <i class="bi bi-folder"></i> {{ form.remote_path.label }}
                                     </label>
-                                    {{ form.template_content }}
-                                    {% if form.template_content.errors %}
+                                    {{ form.remote_path }}
+                                    {% if form.remote_path.errors %}
                                     <div class="text-danger mt-1">
-                                        {% for error in form.template_content.errors %}
+                                        {% for error in form.remote_path.errors %}
                                         <small>{{ error }}</small>
                                         {% endfor %}
                                     </div>
                                     {% endif %}
-                                    <small class="form-text text-muted">可选：创建绑定时若远程无此文件，可基于此模板生成初始内容</small>
                                 </div>
 
                                 <div class="mb-3">
-                                    <label for="{{ form.description.id_for_label }}" class="form-label">
-                                        <i class="bi bi-chat-left-text"></i> {{ form.description.label }}
+                                    <label for="{{ form.content.id_for_label }}" class="form-label">
+                                        <i class="bi bi-code-slash"></i> {{ form.content.label }}
                                     </label>
-                                    {{ form.description }}
-                                    {% if form.description.errors %}
+                                    {{ form.content }}
+                                    {% if form.content.errors %}
                                     <div class="text-danger mt-1">
-                                        {% for error in form.description.errors %}
+                                        {% for error in form.content.errors %}
                                         <small>{{ error }}</small>
                                         {% endfor %}
                                     </div>
@@ -87,7 +81,7 @@
                                         <i class="bi bi-x-circle"></i> 取消
                                     </a>
                                     <button type="submit" class="btn btn-primary">
-                                        <i class="bi bi-check-circle"></i> 创建配置标签
+                                        <i class="bi bi-check-circle"></i> 创建绑定
                                     </button>
                                 </div>
                             </form>

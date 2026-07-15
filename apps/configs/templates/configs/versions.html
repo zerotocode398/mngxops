@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% load permission_tags %}
-{% load config_filters %}
 
-{% block title %}{{ config.name }} 版本历史 - MngxOps{% endblock %}
+{% block title %}{{ binding.config.name }} 版本历史 - MngxOps{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -12,34 +11,46 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">
                         <i class="bi bi-clock-history"></i>
-                        {{ config.name }} 版本历史
-                        <span class="badge bg-info ms-2">最新 v{{ config.current_version }}</span>
+                        {{ binding.config.name }} @ {{ binding.node.hostname }} 版本历史
+                        <span class="badge bg-info ms-2">最新 V{{ binding.current_version }}</span>
                     </h5>
                     <div class="btn-group btn-group-sm">
-                        <a href="{% url 'configs:version_compare' config.id %}" class="btn btn-outline-warning">
+                        <a href="{% url 'configs:binding_compare' binding.id %}" class="btn btn-outline-warning">
                             <i class="bi bi-intersect"></i> 版本差异
                         </a>
                         <a href="{% url 'configs:detail' config.id %}" class="btn btn-outline-secondary">
                             <i class="bi bi-eye"></i> 查看配置
                         </a>
-                        <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary" onclick="goBackToConfigList(event)">
+                        <a href="#" class="btn btn-outline-secondary" onclick="goBackToConfigList(event)">
                             <i class="bi bi-arrow-left"></i> 返回列表
                         </a>
                     </div>
                 </div>
                 <div class="card-body">
                     <div class="row mb-4">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <div class="text-muted small">节点</div>
-                            <div><strong>{{ config|nodes_hostnames }}</strong> ({{ config|nodes_ips }})</div>
+                            <div><strong>{{ binding.node.hostname }}</strong> ({{ binding.node.ip }})</div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <div class="text-muted small">配置路径</div>
-                            <div><code>{{ config.file_path }}</code></div>
+                            <div><code>{{ binding.remote_path }}</code></div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <div class="text-muted small">总版本数</div>
                             <div><strong>{{ versions.count }}</strong> 个版本</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">同步状态</div>
+                            <div>
+                                {% if binding.sync_status == "synced" %}
+                                <span class="badge bg-success">已同步</span>
+                                {% elif binding.sync_status == "modified" %}
+                                <span class="badge bg-primary">待推送</span>
+                                {% elif binding.sync_status == "not_synced" %}
+                                <span class="badge bg-secondary">未同步</span>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
 
@@ -58,14 +69,6 @@
                         {% endif %}
                     </div>
 
-                    <div class="alert alert-light py-2 mb-3">
-                        <small class="text-muted">
-                            <i class="bi bi-info-circle"></i>
-                            每次配置更新都会生成独立历史版本，版本号格式：<code>YYYYMMDD - V(版本号)</code>；
-                            系统仅保留近 {{ retention_days }} 天历史。
-                        </small>
-                    </div>
-
                     <div class="table-responsive">
                         <table class="table table-hover table-sm config-versions-table">
                             <thead>
@@ -82,7 +85,7 @@
                                 {% for version in versions %}
                                 <tr>
                                     <td>
-                                        {% if version.version == config.current_version %}
+                                        {% if version.version == binding.current_version %}
                                         <span class="badge bg-success">{{ version.version_label }}</span>
                                         <br>
                                         <small class="text-success">当前版本</small>
@@ -108,11 +111,11 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
-                                            <a href="{% url 'configs:version_detail' config.id version.id %}"
+                                            <a href="{% url 'configs:binding_version_detail' binding.id version.id %}"
                                                 class="btn btn-outline-info" title="查看内容">
                                                 <i class="bi bi-eye"></i> 查看
                                             </a>
-                                            {% if user|has_perm_code:"configs.update" and version.version != config.current_version and not config|any_node_locked %}
+                                            {% if user|has_perm_code:"configs.update" and version.version != binding.current_version and not binding.node.is_locked %}
                                             <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal"
                                                 data-bs-target="#restoreModal{{ version.id }}" title="恢复此版本">
                                                 <i class="bi bi-arrow-counterclockwise"></i> 恢复
@@ -120,7 +123,7 @@
                                             {% endif %}
                                         </div>
 
-                                        {% if user|has_perm_code:"configs.update" and version.version != config.current_version %}
+                                        {% if user|has_perm_code:"configs.update" and version.version != binding.current_version %}
                                         <div class="modal fade" id="restoreModal{{ version.id }}" tabindex="-1">
                                             <div class="modal-dialog">
                                                 <div class="modal-content">
@@ -130,10 +133,10 @@
                                                             data-bs-dismiss="modal"></button>
                                                     </div>
                                                     <div class="modal-body">
-                                                        <p>确定要将 <strong>{{ config.name }}</strong> 恢复到 <strong>v{{ version.version }}</strong> 吗？</p>
+                                                        <p>确定要将 <strong>{{ binding.config.name }} @ {{ binding.node.hostname }}</strong> 恢复到 <strong>V{{ version.version }}</strong> 吗？</p>
                                                         <p class="text-muted">
                                                             <i class="bi bi-info-circle"></i>
-                                                            此操作将创建一个新版本（v{{ next_version }}），内容与 v{{ version.version }} 一致。
+                                                            此操作将创建一个新版本（V{{ next_version }}），内容与 V{{ version.version }} 一致。
                                                         </p>
                                                         {% if version.remark %}
                                                         <div class="alert alert-light mb-0">
@@ -145,7 +148,7 @@
                                                         <button type="button" class="btn btn-secondary"
                                                             data-bs-dismiss="modal">取消</button>
                                                         <form method="post"
-                                                            action="{% url 'configs:restore' config.id version.id %}">
+                                                            action="{% url 'configs:binding_version_restore' binding.id version.id %}">
                                                             {% csrf_token %}
                                                             <button type="submit" class="btn btn-warning">
                                                                 <i class="bi bi-arrow-counterclockwise"></i> 确认恢复

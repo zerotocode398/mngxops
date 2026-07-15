@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}{{ object.config.name }} @ {{ object.node.hostname }} - MngxOps{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-earmark-code"></i>
+                        {{ object.config.name }} @ {{ object.node.hostname }}
+                        <span class="badge bg-secondary ms-2">V{{ object.current_version }}</span>
+                    </h5>
+                    <div class="btn-group btn-group-sm">
+                        <a href="#" class="btn btn-outline-secondary" onclick="goBackToConfigList(event)">
+                            <i class="bi bi-arrow-left"></i> 返回列表
+                        </a>
+                        {% if user|has_perm_code:"configs.update" and object.sync_status != 'marked_deleted' %}
+                        <a href="{% url 'configs:binding_edit' object.id %}" class="btn btn-outline-primary">
+                            <i class="bi bi-pencil"></i> 编辑
+                        </a>
+                        {% endif %}
+                        <a href="{% url 'configs:binding_versions' object.id %}" class="btn btn-outline-info">
+                            <i class="bi bi-clock-history"></i> 版本历史
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="text-muted small">配置标签</div>
+                            <div><code>{{ object.config.name }}</code></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">节点</div>
+                            <div><strong>{{ object.node.hostname }}</strong> ({{ object.node.ip }})</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">远程路径</div>
+                            <div><code class="small">{{ object.remote_path }}</code></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">同步状态</div>
+                            <div>
+                                {% if object.sync_status == "synced" %}
+                                <span class="badge bg-success">✅ 已同步</span>
+                                {% elif object.sync_status == "syncing" %}
+                                <span class="badge bg-info">🔄 同步中</span>
+                                {% elif object.sync_status == "not_synced" or object.sync_status == "modified" %}
+                                <span class="badge bg-primary">📝 待推送</span>
+                                {% elif object.sync_status == "conflict" %}
+                                <span class="badge bg-warning text-dark">⚠️ 冲突</span>
+                                {% elif object.sync_status == "orphaned" %}
+                                <span class="badge bg-secondary">📭 远程已删除</span>
+                                {% elif object.sync_status == "failed" %}
+                                <span class="badge bg-danger">❌ 失败</span>
+                                {% elif object.sync_status == "marked_deleted" %}
+                                <span class="badge bg-danger">🗑️ 已标记删除</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <div class="text-muted small">创建人</div>
+                            <div>{{ object.created_by.username }}</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">来源</div>
+                            <div>
+                                {% if object.source == "discovered" %}
+                                <span class="badge bg-info">远程发现</span>
+                                {% else %}
+                                <span class="badge bg-light text-dark">手动创建</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">最后同步</div>
+                            <div>{{ object.last_sync_time|date:"Y-m-d H:i"|default:"—" }}</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">更新时间</div>
+                            <div>{{ object.updated_at|date:"Y-m-d H:i" }}</div>
+                        </div>
+                    </div>
+
+                    {% if object.last_sync_error %}
+                    <div class="alert alert-danger py-2 mb-3">
+                        <strong><i class="bi bi-exclamation-triangle"></i> 同步错误：</strong>{{ object.last_sync_error }}
+                    </div>
+                    {% endif %}
+
+                    <div class="mb-2">
+                        <strong><i class="bi bi-code-slash"></i> 配置内容</strong>
+                    </div>
+                    <pre class="bg-light p-3 rounded border"
+                        style="max-height: 600px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; white-space: pre-wrap; word-wrap: break-word;">{{ object.content }}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
