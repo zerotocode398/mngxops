@@ -29,8 +29,11 @@
                     <form method="get" id="configSearchForm" class="mb-3" autocomplete="off">
                         <div class="row g-2">
                             <div class="col-md-5">
-                                <input type="text" name="search" class="form-control"
-                                    placeholder="搜索主机名、IP、配置名或远程路径" value="{{ search }}">
+                                <div class="tag-input-wrapper form-control" id="configSearchTagWrapper">
+                                    <input type="text" class="tag-input-field" id="configSearchField"
+                                        placeholder="搜索主机名、IP、配置名或远程路径" autocomplete="off">
+                                </div>
+                                <input type="hidden" name="search" id="configSearchHidden" value="{{ search }}">
                             </div>
                             <div class="col-md-3">
                                 <select name="group_id" class="form-select" onchange="document.getElementById('configSearchForm').submit()">
@@ -51,7 +54,8 @@
                             </div>
                             <div class="col-md-1 d-grid">
                                 {% if has_any_filter %}
-                                <a href="{% url 'configs:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
+                                <a href="{% url 'configs:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选"
+                                    onclick="sessionStorage.removeItem('configs_list_query')">
                                     <i class="bi bi-x-circle"></i>
                                 </a>
                                 {% endif %}
@@ -402,15 +406,15 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-
-        // 搜索框回车提交
-        document.querySelector('#configSearchForm input[name="search"]').addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                document.getElementById('configSearchForm').submit();
-            }
-        });
+        initTagSearch('#configSearchTagWrapper', '#configSearchHidden', '#configSearchForm');
     });
+
+    (function() {
+        var currentUrl = window.location.href;
+        if (currentUrl.indexOf('?') !== -1) {
+            sessionStorage.setItem('configs_list_query', currentUrl);
+        }
+    })();
 
     function openDeleteModal(configName, hostname, deleteUrl) {
         document.getElementById('deleteConfigDisplay').textContent = configName;

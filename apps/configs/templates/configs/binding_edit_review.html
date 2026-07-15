@@ -9,15 +9,16 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">
-                        <i class="bi bi-git"></i> 保存前对比：{{ config.name }}
+                        <i class="bi bi-git"></i> 保存前对比：{{ binding.config.name }} @ {{ binding.node.hostname }}
                     </h5>
-                    <a href="{% url 'configs:edit' config.id %}" class="btn btn-outline-secondary btn-sm">
+                    <a href="{% url 'configs:binding_edit' binding.id %}" class="btn btn-outline-secondary btn-sm">
                         <i class="bi bi-arrow-left"></i> 返回编辑
                     </a>
                 </div>
                 <div class="card-body">
                     <div class="alert alert-info">
-                        <strong>文件：</strong><code>{{ new_file_path }}</code>
+                        <strong>配置：</strong>{{ binding.config.name }} @ {{ binding.node.hostname }}
+                        <span class="ms-3"><strong>远程路径：</strong><code>{{ binding.remote_path }}</code></span>
                         <span class="ms-3"><strong>保存后版本：</strong>V{{ next_version }}</span>
                     </div>
 
@@ -44,16 +45,17 @@
                         </table>
                     </div>
 
-                    <form method="post" action="{% url 'configs:edit' config.id %}" class="mt-3" id="saveReviewForm">
+                    <form method="post" action="{% url 'configs:binding_edit' binding.id %}" class="mt-3" id="saveReviewForm">
                         {% csrf_token %}
-                        <input type="hidden" name="name" value="{{ new_name|escape }}">
-                        <input type="hidden" name="file_path" value="{{ new_file_path|escape }}">
+                        <input type="hidden" name="config" value="{{ binding.config_id }}">
+                        <input type="hidden" name="node" value="{{ binding.node_id }}">
+                        <input type="hidden" name="remote_path" value="{{ binding.remote_path|escape }}">
                         <textarea name="content" class="d-none">{{ new_content }}</textarea>
                         <textarea name="remark" class="d-none">{{ remark }}</textarea>
                         <input type="hidden" name="confirm_save" value="yes">
 
                         <div class="d-flex justify-content-end gap-2">
-                            <a href="{% url 'configs:edit' config.id %}" class="btn btn-secondary">
+                            <a href="{% url 'configs:binding_edit' binding.id %}" class="btn btn-secondary">
                                 <i class="bi bi-x-circle"></i> 取消
                             </a>
                             <button type="button" class="btn btn-primary" id="openConfirmModalBtn">
@@ -110,4 +112,3 @@
     })();
 </script>
 {% endblock %}
-

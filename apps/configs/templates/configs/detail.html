@@ -17,7 +17,7 @@
                         {% endif %}
                     </h5>
                     <div class="btn-group btn-group-sm">
-                        <a href="{% url 'configs:list' %}" class="btn btn-outline-secondary">
+                        <a href="#" class="btn btn-outline-secondary" onclick="goBackToConfigList(event)">
                             <i class="bi bi-arrow-left"></i> 返回列表
                         </a>
                         <a href="{% url 'configs:edit' config.id %}" class="btn btn-outline-primary">
