@@ -29,7 +29,7 @@ def save_sync_path(node, main_conf_path, user=None):
     return setting
 
 
-def _ensure_binding(config, node, remote_path, content, request_user, source="discovered"):
+def _ensure_binding(config, node, remote_path, content, request_user, source="discovered", task_id=None):
     """确保绑定存在并更新内容，已标记删除的绑定会被跳过"""
     now = timezone.now()
     existing = ConfigNodeBinding.objects.filter(
@@ -49,6 +49,7 @@ def _ensure_binding(config, node, remote_path, content, request_user, source="di
             sync_status="synced",
             synced_version=1,
             last_sync_time=now,
+            last_sync_task_id=task_id,
             source=source,
             created_by=request_user,
         )
@@ -72,6 +73,7 @@ def _ensure_binding(config, node, remote_path, content, request_user, source="di
         binding.sync_status = "synced"
         binding.synced_version = new_version
         binding.last_sync_time = now
+        binding.last_sync_task_id = task_id
         binding.remote_path = remote_path
         binding.save()
         BindingVersion.objects.create(
@@ -86,8 +88,9 @@ def _ensure_binding(config, node, remote_path, content, request_user, source="di
         # 内容未变，更新同步状态
         binding.sync_status = "synced"
         binding.last_sync_time = now
+        binding.last_sync_task_id = task_id
         binding.remote_path = remote_path
-        binding.save(update_fields=["sync_status", "last_sync_time", "remote_path", "updated_at"])
+        binding.save(update_fields=["sync_status", "last_sync_time", "last_sync_task_id", "remote_path", "updated_at"])
         return "skipped", binding
 
 
@@ -98,6 +101,7 @@ def sync_discovered_configs(
     remark="从远程节点同步",
     mark_orphaned=True,
     progress_callback=None,
+    task_id=None,
 ):
     """同步发现的配置到绑定"""
     created = []
@@ -127,6 +131,7 @@ def sync_discovered_configs(
             content=item["content"],
             request_user=request_user,
             source="discovered",
+            task_id=task_id,
         )
 
         if status == "created":
@@ -214,6 +219,7 @@ def sync_selected_configs(
     request_user,
     remark="部分配置同步",
     progress_callback=None,
+    task_id=None,
 ):
     selected_set = set(selected_paths)
     filtered = [item for item in discovered if item["path"] in selected_set]
@@ -224,6 +230,7 @@ def sync_selected_configs(
         remark=remark,
         mark_orphaned=False,
         progress_callback=progress_callback,
+        task_id=task_id,
     )
 
 
@@ -242,7 +249,7 @@ def mark_sync_failed(node, error_message):
     return failed
 
 
-def mark_discovery_failed_configs(node, errors, request_user=None):
+def mark_discovery_failed_configs(node, errors, request_user=None, task_id=None):
     import re
     from django.utils import timezone
 
@@ -275,6 +282,7 @@ def mark_discovery_failed_configs(node, errors, request_user=None):
                     "sync_status": "failed",
                     "last_sync_error": error,
                     "last_sync_time": timezone.now(),
+                    "last_sync_task_id": task_id,
                     "source": "discovered",
                     "created_by": request_user or node.created_by,
                 },
@@ -282,7 +290,8 @@ def mark_discovery_failed_configs(node, errors, request_user=None):
             if not created:
                 binding.sync_status = "failed"
                 binding.last_sync_error = error
-                binding.save(update_fields=["sync_status", "last_sync_error", "updated_at"])
+                binding.last_sync_task_id = task_id
+                binding.save(update_fields=["sync_status", "last_sync_error", "last_sync_task_id", "updated_at"])
             failed.append(failed_name)
 
     return failed

@@ -100,6 +100,11 @@ class ConfigNodeBinding(models.Model):
     )
     last_sync_time = models.DateTimeField(null=True, blank=True, verbose_name="最后同步时间")
     last_sync_error = models.TextField(blank=True, verbose_name="最后同步错误")
+    last_sync_task_id = models.BigIntegerField(
+        null=True, blank=True,
+        verbose_name="最后同步任务ID",
+        help_text="关联 TaskCenterTask.id，用于跳转任务详情",
+    )
     remote_content_hash = models.CharField(
         max_length=64, blank=True,
         verbose_name="远程内容 Hash(MD5)",
