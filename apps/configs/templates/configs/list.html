@@ -209,6 +209,12 @@
                                                                 </button>
                                                             </form>
                                                             {% elif binding.sync_status != 'syncing' %}
+                                                            {% if user|has_perm_code:"releases.update" %}
+                                                            <a href="{% url 'releases:center' %}?node_id={{ node.id }}&binding_id={{ binding.id }}"
+                                                                class="btn btn-outline-success" title="快速推送">
+                                                                <i class="bi bi-rocket-takeoff"></i>
+                                                            </a>
+                                                            {% endif %}
                                                             {% if user|has_perm_code:"configs.update" %}
                                                             <a href="{% url 'configs:binding_edit' binding.id %}"
                                                                 class="btn btn-outline-primary" title="编辑内容">

@@ -2,260 +2,116 @@
 
 {% block title %}任务详情 - MngxOps{% endblock %}
 
-{% block extra_js %}
-<script>
-(function() {
-    var ips = '{{ task.target_ips }}';
-    var hostnames = '{{ task.target_hostnames }}';
-    if (!ips) return;
-
-    function esc(s) {
-        var d = document.createElement('div');
-        d.textContent = s;
-        return d.innerHTML;
-    }
-
-    var ipList = ips.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    var hostList = hostnames.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-
-    var seen = {};
-    var uniquePairs = [];
-    for (var i = 0; i < ipList.length; i++) {
-        var ip = ipList[i];
-        if (!seen[ip]) {
-            seen[ip] = true;
-            uniquePairs.push({ ip: ip, host: hostList[i] || '' });
-        }
-    }
-    var total = uniquePairs.length;
-
-    var collapsedEl = document.getElementById('targetNodeListCollapsed');
-    var expandedEl = document.getElementById('targetNodeListExpanded');
-    var toggleBtn = document.getElementById('targetToggleBtn');
-
-    // Build expanded view
-    var html = '';
-    for (var i = 0; i < total; i++) {
-        html += '<div class="small mb-1"><code>' + esc(uniquePairs[i].ip) + '</code> <small class="text-muted">(' + esc(uniquePairs[i].host) + ')</small></div>';
-    }
-    expandedEl.innerHTML = html;
-    expandedEl.classList.remove('d-none');
-
-    if (total > 1) {
-        toggleBtn.textContent = '收起';
-        toggleBtn.classList.remove('d-none');
-
-        toggleBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            var isExpanded = expandedEl.classList.toggle('d-none');
-            toggleBtn.textContent = isExpanded ? '展开 (' + total + ')' : '收起';
-        });
-    }
-})();
-</script>
-
-{{ node_config_map|json_script:"nodeConfigMapData" }}
-<script>
-(function() {
-    var dataEl = document.getElementById('nodeConfigMapData');
-    if (!dataEl) return;
-    var nodeConfigMap;
-    try { nodeConfigMap = JSON.parse(dataEl.textContent); } catch(e) { return; }
-
-    var nodeKeys = Object.keys(nodeConfigMap);
-    if (nodeKeys.length === 0) {
-        document.getElementById('targetConfigContainer').classList.add('d-none');
-        return;
-    }
-
-    function esc(s) {
-        var d = document.createElement('div');
-        d.textContent = s;
-        return d.innerHTML;
-    }
-
-    var collapsedEl = document.getElementById('targetConfigCollapsed');
-    var expandedEl = document.getElementById('targetConfigExpanded');
-    var toggleBtn = document.getElementById('targetConfigToggleBtn');
-
-    // Build collapsed view: just show expand button
-    collapsedEl.innerHTML = '';
-
-    // Build expanded view: tree structure with node headers and indented configs
-    var html = '';
-    nodeKeys.forEach(function(nodeKey) {
-        var configs = nodeConfigMap[nodeKey];
-        html += '<div class="fw-bold small mb-1"><code>' + esc(nodeKey) + '</code></div>';
-        configs.forEach(function(cfgName) {
-            html += '<div class="small ms-4 mb-1 text-muted">' + esc(cfgName) + '</div>';
-        });
-    });
-    expandedEl.innerHTML = html;
-
-    toggleBtn.textContent = '展开 (' + nodeKeys.length + ')';
-    toggleBtn.classList.remove('d-none');
-
-    toggleBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        var isExpanded = expandedEl.classList.toggle('d-none');
-        toggleBtn.textContent = isExpanded ? '展开 (' + nodeKeys.length + ')' : '收起';
-    });
-})();
-</script>
-{% endblock %}
-
 {% block content %}
 <div class="container-fluid">
     <div class="row">
         <div class="col-lg-10">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="bi bi-card-text"></i> 任务详情</h5>
-                    <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-secondary">返回任务中心</a>
+                    <h5 class="mb-0"><i class="bi bi-card-text"></i> 任务详情 #{{ task.id }}</h5>
+                    <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> 返回任务中心
+                    </a>
                 </div>
                 <div class="card-body">
-                    <div class="row g-3">
-                        <div class="col-md-6"><strong>任务类型：</strong>{{ task.get_operation_type_display }}</div>
-                        <div class="col-md-3"><strong>状态：</strong>{{ task.get_status_display }}</div>
-                        <div class="col-md-3"><strong>来源批次：</strong>{{ task.source_batch|default:'-' }}</div>
-                        <div class="col-md-12" id="targetNodeListContainer">
-                            <strong>目标节点：</strong>
-                            <span id="targetNodeListCollapsed"></span>
-                            <div id="targetNodeListExpanded" class="mt-2 border rounded p-2 d-none" style="max-height: 200px; overflow-y: auto;"></div>
-                            <a href="#" id="targetToggleBtn" class="small d-none"></a>
-                        </div>
-                        <div class="col-md-12" id="targetConfigContainer">
-                            <strong>目标配置：</strong>
-                            <span id="targetConfigCollapsed"></span>
-                            <div id="targetConfigExpanded" class="mt-2 border rounded p-2 d-none" style="max-height: 200px; overflow-y: auto;"></div>
-                            <a href="#" id="targetConfigToggleBtn" class="small d-none"></a>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4"><strong>任务类型：</strong>{{ task.get_operation_type_display }}</div>
+                        <div class="col-md-4"><strong>来源批次：</strong><code>{{ task.source_batch|default:'-' }}</code></div>
+                        <div class="col-md-4">
+                            <strong>状态：</strong>
+                            {% if task.status == 'success' %}<span class="badge bg-success">成功</span>
+                            {% elif task.status == 'failed' %}<span class="badge bg-danger">失败</span>
+                            {% elif task.status == 'running' %}<span class="badge bg-info">执行中</span>
+                            {% else %}<span class="badge bg-secondary">{{ task.status }}</span>{% endif %}
                         </div>
                         <div class="col-md-3"><strong>进度：</strong>{{ task.progress }}%</div>
                         <div class="col-md-3"><strong>触发人：</strong>{{ task.trigger_user.username|default:'-' }}</div>
-                        <div class="col-md-3"><strong>开始时间：</strong>{{ task.started_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
-                        <div class="col-md-3"><strong>结束时间：</strong>{{ task.finished_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
+                        <div class="col-md-3"><strong>开始：</strong>{{ task.started_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
+                        <div class="col-md-3"><strong>结束：</strong>{{ task.finished_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
                     </div>
-                    <hr>
-                    <p class="mb-1"><strong>执行结果</strong></p>
 
-                    {% if has_result_tree %}
-                    <div class="mb-2">
-                        <span class="badge bg-success me-1">成功 {{ tree_summary.success }}</span>
-                        <span class="badge bg-danger me-1">失败 {{ tree_summary.failed }}</span>
-                        <span class="badge bg-secondary">其他 {{ tree_summary.other }}</span>
-                    </div>
-                    <div class="bg-light p-3 border rounded small mb-3" style="max-height: 400px; overflow-y: auto;">
-                        {% for node in result_tree %}
-                        <div class="mb-2">
-                            {% if task.source_batch and node.hostname %}
-                            <div class="fw-bold small mb-1">
-                                <code>{{ node.node }}</code>
-                                <a href="{% url 'releases:center' %}?history_search={{ task.source_batch|urlencode }},{{ node.hostname|urlencode }}#historySection"
-                                   class="text-decoration-none ms-1" title="查看此节点在发布中心的记录">
-                                    <i class="bi bi-box-arrow-up-right small"></i>
-                                </a>
-                            </div>
-                            {% else %}
-                            <div class="fw-bold small mb-1"><code>{{ node.node }}</code></div>
-                            {% endif %}
-                            {% for cfg in node.configs %}
-                            <div class="small ms-4 mb-1">
-                                {% if task.source_batch and cfg.raw_name %}
-                                <a href="{% url 'releases:center' %}?history_search={{ task.source_batch|urlencode }},{{ cfg.raw_name|urlencode }}#historySection"
-                                   class="text-decoration-none" title="查看此配置在发布中心的记录">
-                                    <span class="text-muted">{{ cfg.name }}</span>
-                                </a>
-                                {% else %}
-                                <span class="text-muted">{{ cfg.name }}</span>
-                                {% endif %}
-                                {% if cfg.status == "success" %}
-                                <span class="badge bg-success ms-2">成功</span>
-                                {% else %}
-                                <span class="badge bg-danger ms-2">失败</span>
-                                {% endif %}
-                            </div>
+                    {% if task.detail %}
+                    <div class="alert alert-info py-2 mb-3"><i class="bi bi-info-circle"></i> {{ task.detail }}</div>
+                    {% endif %}
+
+                    {% if target_nodes %}
+                    <div class="mb-3">
+                        <strong><i class="bi bi-server"></i> 目标节点（{{ target_nodes|length }}台）：</strong>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            {% for node in target_nodes %}
+                            <span class="badge bg-light text-dark border">{{ node }}</span>
                             {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if target_configs %}
+                    <div class="mb-3">
+                        <strong><i class="bi bi-file-earmark-code"></i> 目标配置（{{ target_configs_count }}个）：</strong>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            {% for cfg in target_configs %}
+                            <span class="badge bg-light text-dark border">{{ cfg }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <hr>
+                    <h6 class="mb-3"><i class="bi bi-clipboard-data"></i> 执行结果</h6>
+
+                    {% if result_tree %}
+                    <div class="mb-2">
+                        <span class="badge bg-success me-1">✅ 成功 {{ result_summary.success }}</span>
+                        <span class="badge bg-danger me-1">❌ 失败 {{ result_summary.failed }}</span>
+                    </div>
+                    <div class="border rounded" id="resultTreeContainer">
+                        {% for node in result_tree %}
+                        <div class="border-bottom result-node-group">
+                            <div class="result-node-header d-flex align-items-center gap-2 px-3 py-2 cursor-pointer"
+                                 style="background: {% if node.failed > 0 %}#f8d7da{% else %}#d4edda{% endif %};"
+                                 onclick="var b=this.nextElementSibling;b.classList.toggle('d-none');var i=this.querySelector('.toggle-icon');i.textContent=i.textContent==='▶'?'▼':'▶';">
+                                <span class="toggle-icon">▼</span>
+                                {% if node.failed > 0 %}❌{% else %}✅{% endif %}
+                                <strong>{{ node.name }}</strong>
+                                <span class="ms-2 small text-muted">{{ node.success }}成功{% if node.failed > 0 %} / {{ node.failed }}失败{% endif %}</span>
+                            </div>
+                            <div class="result-node-body px-3 py-2">
+                                {% for cfg in node.configs %}
+                                <div class="result-config-item d-flex align-items-center gap-2 py-1 small">
+                                    {% if cfg.status == 'success' %}
+                                    <span class="text-success">✅</span>
+                                    {% else %}
+                                    <span class="text-danger">❌</span>
+                                    {% endif %}
+                                    <span>{{ cfg.name }}</span>
+                                    {% if cfg.status == 'success' %}
+                                    <span class="badge bg-success">成功</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">失败</span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
                         </div>
                         {% endfor %}
                     </div>
-
-                    {% elif has_grouped_result %}
-                    <div class="accordion" id="taskResultAccordion">
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingSummary">
-                                <button class="accordion-button py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSummary" aria-expanded="true" aria-controls="collapseSummary">
-                                    概要
-                                </button>
-                            </h2>
-                            <div id="collapseSummary" class="accordion-collapse collapse show" aria-labelledby="headingSummary">
-                                <div class="accordion-body py-2">
-                                    <span class="badge bg-success me-1">成功 {{ task_result_groups.success|length }}</span>
-                                    <span class="badge bg-danger me-1">失败 {{ task_result_groups.failed|length }}</span>
-                                    <span class="badge bg-secondary">其他 {{ task_result_groups.other|length }}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingFailed">
-                                <button class="accordion-button py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFailed" aria-expanded="true" aria-controls="collapseFailed">
-                                    失败明细（{{ task_result_groups.failed|length }}）
-                                </button>
-                            </h2>
-                            <div id="collapseFailed" class="accordion-collapse collapse show" aria-labelledby="headingFailed">
-                                <div class="accordion-body py-2">
-                                    {% if task_result_groups.failed %}
-                                    <pre class="bg-dark text-light p-2 border rounded small mb-0" style="white-space: pre-wrap;">{% for line in task_result_groups.failed %}{{ line }}
-{% endfor %}</pre>
-                                    {% else %}
-                                    <span class="text-muted">无失败记录</span>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingSuccess">
-                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSuccess" aria-expanded="false" aria-controls="collapseSuccess">
-                                    成功明细（{{ task_result_groups.success|length }}）
-                                </button>
-                            </h2>
-                            <div id="collapseSuccess" class="accordion-collapse collapse" aria-labelledby="headingSuccess">
-                                <div class="accordion-body py-2">
-                                    {% if task_result_groups.success %}
-                                    <pre class="bg-dark text-light p-2 border rounded small mb-0" style="white-space: pre-wrap;">{% for line in task_result_groups.success %}{{ line }}
-{% endfor %}</pre>
-                                    {% else %}
-                                    <span class="text-muted">无成功记录</span>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingOther">
-                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOther" aria-expanded="false" aria-controls="collapseOther">
-                                    其他日志（{{ task_result_groups.other|length }}）
-                                </button>
-                            </h2>
-                            <div id="collapseOther" class="accordion-collapse collapse" aria-labelledby="headingOther">
-                                <div class="accordion-body py-2">
-                                    {% if task_result_groups.other %}
-                                    <pre class="bg-dark text-light p-2 border rounded small mb-0" style="white-space: pre-wrap;">{% for line in task_result_groups.other %}{{ line }}
-{% endfor %}</pre>
-                                    {% else %}
-                                    <span class="text-muted">无额外日志</span>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                     {% else %}
-                    <pre class="bg-dark text-light p-2 border rounded small mb-0" style="white-space: pre-wrap;">{{ task.result|default:'-' }}</pre>
+                    <pre class="bg-dark text-light p-3 rounded small" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">{{ task.result|default:'暂无结果数据' }}</pre>
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .cursor-pointer { cursor: pointer; }
+    .result-node-group:last-child { border-bottom: none !important; }
+    .result-node-header { transition: background 0.15s; user-select: none; }
+    .result-node-header:hover { opacity: 0.9; }
+    .result-config-item { border-top: 1px dashed #eee; }
+    .result-config-item:first-child { border-top: none; }
+</style>
 {% endblock %}

@@ -9,12 +9,10 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">
-                        <i class="bi bi-rocket-takeoff"></i> 发布中心
-                    </h5>
+                    <h5 class="mb-0"><i class="bi bi-rocket-takeoff"></i> 发布中心</h5>
                     <div class="btn-group btn-group-sm">
-                        <a href="{% url 'releases:create' %}" class="btn btn-primary">
-                            <i class="bi bi-plus-lg"></i> 新建发布
+                        <a href="{% url 'releases:create' %}" class="btn btn-outline-primary">
+                            <i class="bi bi-window-stack"></i> 传统方式
                         </a>
                         <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary">
                             <i class="bi bi-list-task"></i> 任务中心
@@ -22,767 +20,977 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="d-flex align-items-center mb-3">
-                        <h6 class="mb-0 me-3">
-                            <i class="bi bi-hourglass-split text-warning"></i> 待发布批次
-                        </h6>
-                        <span class="badge bg-warning text-dark">
-                            {% with total=0 %}{% for batch in batch_tasks.values %}{% for t in batch %}{% endfor %}{% endfor %}{% endwith %}
-                            {{ batch_tasks|length }} 个批次
-                        </span>
-                    </div>
 
-                    <form method="get" class="mb-3" id="releaseSearchForm">
-                        <div class="row g-2">
-                            <div class="col-md-8">
-                                <div class="tag-input-wrapper form-control" id="releaseSearchTagWrapper">
-                                    <input type="text" class="tag-input-field" id="releaseSearchField"
-                                        placeholder="搜索批次号或主机名或配置名称">
+                    <!-- ===== Step 1: 选择节点与配置 ===== -->
+                    <div id="step1">
+                        <h6 class="mb-3 text-primary"><span class="step-badge">1</span> 选择目标节点</h6>
+
+                        <!-- 筛选行 -->
+                        <div class="row g-2 mb-3 align-items-center">
+                            <div class="col-md-5">
+                                <div class="tag-input-wrapper" id="nodeSearchTagWrapper">
+                                    <input type="text" class="tag-input-field" id="nodeSearchField"
+                                        placeholder="搜索主机名、IP 或节点组" autocomplete="off">
                                 </div>
-                                <input type="hidden" name="search" id="releaseSearchHidden" value="{{ search }}">
+                                <input type="hidden" id="nodeSearchHidden" value="">
                             </div>
                             <div class="col-md-2">
-                                <select class="form-select form-select-sm" name="status" onchange="document.getElementById('releaseSearchForm').submit()">
-                                    <option value="">全部状态</option>
-                                    {% for val, label in status_choices %}
-                                    {% if val == 'pending' or val == 'running' %}
-                                    <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
-                                    {% endif %}
+                                <select class="form-select form-select-sm" id="envFilter">
+                                    <option value="">全部环境</option>
+                                    {% for val, label in environment_choices %}
+                                    <option value="{{ val }}">{{ label }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-2 d-grid">
-                                {% if search or status_filter %}
-                                <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary" title="清空筛选">
-                                    <i class="bi bi-x-circle"></i>
-                                </a>
-                                {% endif %}
+                            <div class="col-md-2">
+                                <select class="form-select form-select-sm" id="statusFilter">
+                                    <option value="">全部状态</option>
+                                    <option value="online">在线</option>
+                                    <option value="offline">离线</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 d-flex justify-content-end">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnClearSelection">
+                                    <i class="bi bi-x-circle"></i> 清除选择
+                                </button>
                             </div>
                         </div>
-                    </form>
 
-                    {% if not batch_tasks %}
-                    <div class="text-center text-muted py-4">
-                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-                        <p class="mt-2">暂无待发布任务</p>
-                        <a href="{% url 'releases:create' %}" class="btn btn-primary btn-sm mt-1">
-                            <i class="bi bi-plus-lg"></i> 新建发布
-                        </a>
-                    </div>
-                    {% else %}
-                    {% for batch_number, batch in batch_tasks.items %}
-                    <div class="card mb-3 border">
-                        <div class="card-header bg-light d-flex justify-content-between align-items-center py-2">
-                            <div class="d-flex align-items-center">
-                                <button type="button" class="btn btn-sm btn-outline-secondary me-2 p-0 px-1 btn-toggle-batch" data-bs-toggle="collapse" data-bs-target="#collapse-{{ batch_number }}">
-                                    <i class="bi bi-chevron-down"></i>
+                        <!-- 节点表格 -->
+                        <div class="table-responsive border rounded" style="max-height: 480px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0 release-table">
+                                <thead class="sticky-top" style="background: #f1f3f5;">
+                                    <tr>
+                                        <th style="width: 40px;" class="text-center">
+                                            <input type="checkbox" class="form-check-input" id="selectAllNodes" title="全选/全不选本页节点">
+                                        </th>
+                                        <th style="width: 28px;"></th>
+                                        <th>节点</th>
+                                        <th style="width: 70px;">环境</th>
+                                        <th style="width: 60px;">状态</th>
+                                        <th style="width: 100px;">绑定数</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="nodeTableBody">
+                                    <tr id="nodeTableLoading">
+                                        <td colspan="6" class="text-center text-muted py-4">
+                                            <div class="spinner-border spinner-border-sm" role="status"></div> 加载中...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 状态栏：已选信息 + 分页 -->
+                        <div class="d-flex justify-content-between align-items-center mt-2">
+                            <div>
+                                <small class="text-muted me-3" id="nodePaginationInfo">共 0 条</small>
+                                <span class="text-muted small">已选 <strong id="selectedNodeCountTop" class="text-primary">0</strong> 个节点，<strong id="selectedBindingCountTop" class="text-primary">0</strong> 个配置</span>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="btn-group btn-group-sm" id="nodePaginationBtns"></div>
+                                <button type="button" class="btn btn-primary btn-sm" id="btnNextToStep2" disabled>
+                                    下一步：确认发布清单 <i class="bi bi-arrow-right"></i>
                                 </button>
-                                <div>
-                                    <span class="fw-bold text-primary">
-                                        <i class="bi bi-tag"></i> {{ batch_number }}
-                                    </span>
-                                    <span class="text-muted ms-3 small">
-                                        <i class="bi bi-person"></i> {{ batch.0.operator.username }}
-                                    </span>
-                                    <span class="text-muted ms-3 small">
-                                        <i class="bi bi-clock"></i> {{ batch.0.created_at|date:"Y-m-d H:i" }}
-                                    </span>
-                                    <span class="badge bg-secondary ms-3">{{ batch|length }} 个任务</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ===== Step 2: 发布清单确认 ===== -->
+                    <div id="step2" class="d-none">
+                        <h6 class="mb-3 text-primary"><span class="step-badge">2</span> 确认发布清单</h6>
+
+                        <div class="alert alert-light border mb-3 py-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>共 <strong id="publishUnitCount" class="text-primary">0</strong> 个发布单元，
+                                      涉及 <strong id="publishNodeCount" class="text-primary">0</strong> 个节点，
+                                      <strong id="publishConfigCount" class="text-primary">0</strong> 个配置标签</span>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive border rounded" style="max-height: 360px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0 release-table">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>节点</th>
+                                        <th>配置</th>
+                                        <th style="width: 80px;">版本</th>
+                                        <th>远程路径</th>
+                                        <th style="width: 90px;">状态</th>
+                                        <th style="width: 60px;">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="previewTableBody">
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-3">暂无待发布项</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div class="d-flex align-items-center gap-3">
+                                <small class="text-muted">发布策略：</small>
+                                <div class="form-check form-check-inline mb-0">
+                                    <input class="form-check-input" type="radio" name="publishMode" id="modeSequential" value="sequential" checked>
+                                    <label class="form-check-label small" for="modeSequential">顺序（逐台）</label>
+                                </div>
+                                <div class="form-check form-check-inline mb-0">
+                                    <input class="form-check-input" type="radio" name="publishMode" id="modeParallel" value="parallel">
+                                    <label class="form-check-label small" for="modeParallel">并行（多台同时）</label>
                                 </div>
                             </div>
                             <div>
-                                {% if batch.0.status == 'pending' %}
-                                {% if user|has_perm_code:"releases.update" %}
-                                <form method="post" action="{% url 'releases:center_cancel' batch_number %}" class="d-inline" id="form-cancel-{{ batch_number }}">
-                                    {% csrf_token %}
-                                    <button type="button" class="btn btn-sm btn-outline-danger btn-cancel-batch" data-batch="{{ batch_number }}" data-count="{{ batch|length }}">
-                                        <i class="bi bi-x-circle"></i> 取消
-                                    </button>
-                                </form>
-                                    <button type="button" class="btn btn-sm btn-success btn-execute-batch ms-1" data-batch="{{ batch_number }}" data-count="{{ batch|length }}">
-                                        <i class="bi bi-play-fill"></i> 发布
-                                    </button>
-                                {% else %}
-                                <span class="text-muted small">无发布操作权限</span>
-                                {% endif %}
-                                {% elif batch.0.status == 'running' %}
-                                <span class="text-info small">
-                                    <span class="spinner-border spinner-border-sm"></span> 执行中...
-                                </span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="card-body p-0">
-                            <div id="collapse-{{ batch_number }}" class="collapse show">
-                                <div class="table-responsive px-3">
-                                    <table class="table table-hover table-sm mb-0 release-center-table">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th style="width: 16%">节点</th>
-                                                <th style="width: 18%">配置</th>
-                                                <th style="width: 10%">版本</th>
-                                                <th style="width: 12%">状态</th>
-                                                <th style="width: 14%">创建时间</th>
-                                                <th style="width: 10%">操作人</th>
-                                                <th style="width: 10%">操作</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {% for task in batch %}
-                                            <tr>
-                                                <td>
-                                                    <strong>{{ task.node.hostname }}</strong>
-                                                    {% if task.node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
-                                                    <br><small class="text-muted">{{ task.node.ip }}</small>
-                                                </td>
-                                                <td>
-                                                    <code>{{ task.config.name }}</code>
-                                                    <br><small class="text-muted">{{ task.config.file_path }}</small>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-secondary version-link" data-version-id="{{ task.version.id }}" style="cursor: pointer;">
-                                                        v{{ task.version.version }}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    {% if task.status == "pending" %}
-                                                    <span class="badge bg-secondary">等待发布</span>
-                                                    {% elif task.status == "running" %}
-                                                    <span class="badge bg-info">发布中</span>
-                                                    {% elif task.status == "success" %}
-                                                    <span class="badge bg-success">发布成功</span>
-                                                    {% elif task.status == "failed" %}
-                                                    <span class="badge bg-danger">发布失败</span>
-                                                    {% elif task.status == "cancelled" %}
-                                                    <span class="badge bg-warning">已取消</span>
-                                                    {% endif %}
-                                                </td>
-                                                <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
-                                                <td>{{ task.operator.username }}</td>
-                                                <td>
-                                                    <div class="btn-group btn-group-sm">
-                                                        {% if user|has_perm_code:"releases.update" %}
-                                                        {% if task.status == "pending" or task.status == "failed" %}
-                                                        {% if not task.node.is_locked %}
-                                                        <button type="button" class="btn btn-outline-success btn-execute-single"
-                                                                data-task-id="{{ task.id }}" data-node="{{ task.node.hostname }}" data-config="{{ task.config.name }}">
-                                                            <i class="bi bi-play-fill"></i>
-                                                        </button>
-                                                        {% endif %}
-                                                        {% endif %}
-                                                        {% endif %}
-                                                        <a href="{% url 'releases:detail' task.id %}?search={{ search|urlencode }}&status_filter={{ status_filter|urlencode }}&history_search={{ history_search|urlencode }}&history_status={{ history_status|urlencode }}" class="btn btn-outline-secondary">
-                                                            <i class="bi bi-eye"></i>
-                                                        </a>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            {% endfor %}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <button type="button" class="btn btn-outline-secondary me-2" id="btnBackToStep1">
+                                    <i class="bi bi-arrow-left"></i> 返回上一步
+                                </button>
+                                <button type="button" class="btn btn-success" id="btnPublish">
+                                    <i class="bi bi-rocket-takeoff"></i> 开始发布
+                                </button>
                             </div>
                         </div>
                     </div>
-                    {% endfor %}
 
-                    {% if is_paginated %}
-                    <nav>
-                        <ul class="pagination pagination-sm justify-content-center">
-                            {% if page_obj.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">&laquo;</a>
-                            </li>
-                            {% endif %}
-                            {% for num in page_obj.paginator.page_range %}
-                            <li class="page-item {% if page_obj.number == num %}active{% endif %}">
-                                <a class="page-link" href="?page={{ num }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">{{ num }}</a>
-                            </li>
-                            {% endfor %}
-                            {% if page_obj.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">&raquo;</a>
-                            </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endif %}
-                    {% endif %}
-                </div>
-            </div>
-
-            <div class="card mt-3" id="historySection">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">
-                        <i class="bi bi-clock-history text-info"></i> 最近发布记录
-                    </h6>
-                    <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-info">
-                        <i class="bi bi-list-ul"></i> 去任务中心
-                    </a>
-                </div>
-                <div class="card-body p-0">
-                    <form method="get" class="mb-3 px-3 pt-3" id="historySearchForm">
-                        <input type="hidden" name="search" value="{{ search }}">
-                        <input type="hidden" name="status" value="{{ status_filter }}">
-                        <div class="row g-2">
-                            <div class="col-md-8">
-                                <div class="tag-input-wrapper form-control" id="historySearchTagWrapper">
-                                    <input type="text" class="tag-input-field" id="historySearchField"
-                                        placeholder="搜索批次号或主机名或配置名称">
-                                </div>
-                                <input type="hidden" name="history_search" id="historySearchHidden" value="{{ history_search }}">
-                            </div>
-                            <div class="col-md-2">
-                                <select class="form-select form-select-sm" name="history_status" onchange="document.getElementById('historySearchForm').submit()">
-                                    <option value="">全部状态</option>
-                                    <option value="success" {% if history_status == 'success' %}selected{% endif %}>发布成功</option>
-                                    <option value="failed" {% if history_status == 'failed' %}selected{% endif %}>发布失败</option>
-                                    <option value="rollback" {% if history_status == 'rollback' %}selected{% endif %}>已回滚</option>
-                                    <option value="cancelled" {% if history_status == 'cancelled' %}selected{% endif %}>已取消</option>
-                                </select>
-                            </div>
-                            <div class="col-md-2 d-grid">
-                                {% if history_search or history_status %}
-                                <a href="{% url 'releases:center' %}" class="btn btn-sm btn-outline-secondary" title="清空筛选">
-                                    <i class="bi bi-x-circle"></i>
-                                </a>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </form>
-
-                    {% if history_page %}
-                    <div class="table-responsive mt-2 px-3">
-                        <table class="table table-hover table-sm mb-0 release-center-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width: 15%">时间</th>
-                                    <th style="width: 15%">节点</th>
-                                    <th style="width: 20%">配置</th>
-                                    <th style="width: 8%">版本</th>
-                                    <th style="width: 12%">批次号</th>
-                                    <th style="width: 10%">状态</th>
-                                    <th style="width: 20%">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for task in history_page %}
-                                <tr>
-                                    <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
-                                    <td>
-                                        <strong>{{ task.node.hostname }}</strong>
-                                        <br><small class="text-muted">{{ task.node.ip }}</small>
-                                    </td>
-                                    <td>
-                                        <code>{{ task.config.name }}</code>
-                                        <br><small class="text-muted">{{ task.config.file_path }}</small>
-                                    </td>
-                                    <td><span class="badge bg-secondary version-link" data-version-id="{{ task.version.id }}" style="cursor: pointer;">v{{ task.version.version }}</span></td>
-                                    <td>
-                                        {% if task.batch_number %}
-                                        <a href="{% url 'releases:history' %}?search={{ task.batch_number|urlencode }}&focus_tag={{ task.batch_number|urlencode }}" class="text-decoration-none">
-                                            <code class="small">{{ task.batch_number }}</code>
-                                        </a>
-                                        {% else %}
-                                        <small class="text-muted">-</small>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if task.status == "success" %}
-                                        <span class="badge bg-success">成功</span>
-                                        {% elif task.status == "failed" %}
-                                        <span class="badge bg-danger">失败</span>
-                                        {% elif task.status == "rollback" %}
-                                        <span class="badge bg-warning">已回滚</span>
-                                        {% elif task.status == "cancelled" %}
-                                        <span class="badge bg-secondary">已取消</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <a href="{% url 'releases:detail' task.id %}?search={{ search|urlencode }}&status_filter={{ status_filter|urlencode }}&history_search={{ history_search|urlencode }}&history_status={{ history_status|urlencode }}" class="btn btn-outline-info" title="详情">
-                                                <i class="bi bi-eye"></i>
-                                            </a>
-                                            <a href="{% url 'releases:rollback' task.id %}" class="btn btn-outline-warning" title="回滚">
-                                                <i class="bi bi-arrow-counterclockwise"></i>
-                                            </a>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {% if is_history_paginated %}
-                    <nav class="px-3 pb-2">
-                        <ul class="pagination pagination-sm justify-content-center mb-0">
-                            {% if history_page.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?history_page={{ history_page.previous_page_number }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if history_search %}&history_search={{ history_search }}{% endif %}{% if history_status %}&history_status={{ history_status }}{% endif %}">&laquo;</a>
-                            </li>
-                            {% endif %}
-                            <li class="page-item active">
-                                <span class="page-link">{{ history_page.number }} / {{ history_page.paginator.num_pages }}</span>
-                            </li>
-                            {% if history_page.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="?history_page={{ history_page.next_page_number }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if history_search %}&history_search={{ history_search }}{% endif %}{% if history_status %}&history_status={{ history_status }}{% endif %}">&raquo;</a>
-                            </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endif %}
-                    {% else %}
-                    <div class="text-center text-muted py-4">
-                        <i class="bi bi-inbox fs-3"></i>
-                        <p class="mt-2">暂无发布记录</p>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- 确认弹窗 -->
-<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-sm">
+<!-- 配置内容预览弹窗 -->
+<div class="modal fade" id="contentPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="confirmModalTitle">确认操作</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
-            </div>
-            <div class="modal-body" id="confirmModalBody"></div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="btnConfirmYes">确认</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 配置版本内容弹窗 -->
-<div class="modal fade" id="versionModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="versionModalTitle">配置版本</h5>
+                <h5 class="modal-title" id="contentPreviewTitle">
+                    <i class="bi bi-file-earmark-code"></i> 配置预览
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
             </div>
             <div class="modal-body">
-                <pre id="versionContentPre" class="mb-0">加载中...</pre>
+                <div class="d-flex align-items-center mb-2 gap-2">
+                    <span class="badge bg-info" id="cpVersionBadge"></span>
+                    <small class="text-muted" id="cpPathLabel"></small>
+                </div>
+                <pre id="cpContent" class="bg-dark text-light rounded p-3" style="max-height: 55vh; overflow: auto; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;">加载中...</pre>
             </div>
             <div class="modal-footer">
-                <small class="text-muted">
-                    <i class="bi bi-info-circle"></i> 此内容仅供查看，不可编辑
-                </small>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- 发布结果自定义居中弹窗 -->
-<div id="publishOverlay" class="publish-overlay" style="display: none;">
-    <div class="publish-popup" id="publishPopup">
-        <div class="publish-popup-icon" id="popupIcon">
-            <i class="bi bi-check-circle-fill"></i>
+<!-- 发布进度弹窗 -->
+<div id="progressOverlay" class="publish-overlay" style="display: none;">
+    <div class="publish-progress-dialog" id="progressDialog">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0"><i class="bi bi-rocket-takeoff"></i> 发布执行中</h6>
+            <button type="button" class="btn-close" id="btnCloseProgress" title="关闭"></button>
         </div>
-        <h5 class="publish-popup-title" id="popupTitle">发布结果</h5>
-        <p class="publish-popup-msg" id="popupMsg"></p>
-        <p class="publish-popup-hint" id="popupHint"></p>
+        <div class="mb-2">
+            <small class="text-muted">批次号: <span id="progressBatchNumber">-</span></small>
+        </div>
+        <div class="progress mb-2" style="height: 8px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%;"></div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <small id="progressText" class="text-muted">准备中...</small>
+            <small class="text-muted"><span id="progressPercent">0</span>%</small>
+        </div>
+        <div id="progressTree" class="progress-tree" style="max-height: 350px; overflow-y: auto;">
+            <div class="text-center text-muted py-3">
+                <div class="spinner-border spinner-border-sm"></div> 初始化中...
+            </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSkipFailed">
+                <i class="bi bi-skip-forward"></i> 跳过失败继续
+            </button>
+            <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-info" target="_blank">
+                <i class="bi bi-journal-text"></i> 完整日志
+            </a>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <style>
-    .version-link:hover { opacity: 0.8; }
+    .step-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; border-radius: 50%;
+        background: #667eea; color: #fff;
+        font-size: 13px; font-weight: 700; margin-right: 6px; vertical-align: middle;
+    }
+    .release-table { table-layout: fixed; width: 100%; }
+    .release-table td { font-size: 0.84rem; vertical-align: middle; padding: 10px 12px; }
+    .release-table thead th {
+        font-weight: 600; white-space: nowrap; font-size: 0.85rem;
+        color: #495057; border-bottom: 2px solid #dee2e6; padding: 10px 12px;
+    }
+    .node-row { cursor: pointer; transition: background 0.12s; }
+    .node-row:hover { background: #f0f6ff; }
+    .node-row.disabled { cursor: not-allowed; opacity: 0.5; background: #f8f8f8; }
+    .node-row.disabled .node-cb { pointer-events: none; }
+
+    .binding-row { background: #fafbfc; }
+    .binding-row td { padding-top: 5px; padding-bottom: 5px; border-top: 1px dashed #e0e0e0; }
+    .binding-row td:first-child { padding-left: 48px; }
+
+    .env-badge { font-size: 11px; padding: 2px 7px; border-radius: 3px; }
+    .env-badge-prod { background: #f8d7da; color: #dc3545; }
+    .env-badge-test { background: #d1ecf1; color: #0c5460; }
+    .env-badge-dev { background: #e2e3e5; color: #6c757d; }
+    .status-badge-online { color: #198754; }
+    .status-badge-offline { color: #dc3545; }
+
+    .sync-badge { font-size: 11px; padding: 2px 7px; border-radius: 3px; }
+    .sync-badge-modified { background: #cce5ff; color: #004085; }
+    .sync-badge-synced { background: #d4edda; color: #155724; }
+    .sync-badge-conflict { background: #fff3cd; color: #856404; }
+    .sync-badge-failed { background: #f8d7da; color: #721c24; }
+    .sync-badge-syncing { background: #d1ecf1; color: #0c5460; }
+
+    .path-link { cursor: pointer; color: #667eea; }
+    .path-link:hover { text-decoration: underline; }
+
+    /* 进度弹窗 */
+    .publish-overlay {
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.45); z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .publish-progress-dialog {
+        background: #fff; border-radius: 12px; padding: 24px 28px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+        width: 600px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+    }
+    .progress-tree .node-group { margin-bottom: 8px; }
+    .progress-tree .node-group-header {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 8px; border-radius: 6px; cursor: pointer;
+        background: #f8f9fa; font-size: 0.85rem;
+    }
+    .progress-tree .node-group-header.success { background: #d4edda; }
+    .progress-tree .node-group-header.failed { background: #f8d7da; }
+    .progress-tree .node-group-header.running { background: #fff3cd; }
+    .progress-tree .node-group-body { padding-left: 20px; }
+    .progress-tree .config-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 3px 0; font-size: 0.8rem;
+    }
+    .config-item .retry-btn {
+        font-size: 11px; padding: 0 4px; line-height: 1.4;
+        cursor: pointer; color: #dc3545;
+    }
+    .config-item .retry-btn:hover { text-decoration: underline; }
     .tag-input-wrapper {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 8px;
-        min-height: 38px;
-        cursor: text;
-        overflow-y: auto;
+        display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+        padding: 4px 10px; min-height: 35px; cursor: text;
+        overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px;
+        background: #fff; font-size: 0.88rem;
     }
     .tag-input-wrapper .tag-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: #667eea;
-        color: #fff;
-        border: 1px solid #5a6fd6;
-        border-radius: 4px;
-        padding: 2px 8px;
-        font-size: 0.82rem;
-        white-space: nowrap;
+        display: inline-flex; align-items: center; gap: 4px;
+        background: #667eea; color: #fff; border: 1px solid #5a6fd6;
+        border-radius: 4px; padding: 2px 8px; font-size: 0.82rem; white-space: nowrap;
     }
     .tag-input-wrapper .tag-badge .tag-remove {
-        cursor: pointer;
-        opacity: 0.7;
-        font-size: 1.1rem;
-        line-height: 1;
-        margin-left: 2px;
+        cursor: pointer; opacity: 0.7; font-size: 1.1rem; line-height: 1; margin-left: 2px;
     }
-    .tag-input-wrapper .tag-badge .tag-remove:hover {
-        opacity: 1;
-        color: #ffc107;
-    }
+    .tag-input-wrapper .tag-badge .tag-remove:hover { opacity: 1; color: #ffc107; }
     .tag-input-wrapper .tag-input-field {
-        border: none;
-        outline: none;
-        flex: 1;
-        min-width: 120px;
-        padding: 0;
-        background: transparent;
+        border: none; outline: none; flex: 1; min-width: 120px;
+        padding: 3px 4px; background: transparent; font-size: 0.88rem;
     }
-    #versionModal .modal-body pre {
-        max-height: 450px;
-        overflow: auto;
-        background: #1e1e1e;
-        color: #d4d4d4;
-        padding: 16px;
-        border-radius: 6px;
-        font-size: 13px;
-        line-height: 1.5;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }
-
-    .publish-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background: rgba(0, 0, 0, 0.45);
-        z-index: 9999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .publish-popup {
-        background: #fff;
-        border-radius: 16px;
-        padding: 36px 44px;
-        text-align: center;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
-        cursor: pointer;
-        max-width: 420px;
-        width: 90%;
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .publish-popup:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
-    }
-    .publish-popup-icon {
-        font-size: 3rem;
-        margin-bottom: 12px;
-    }
-    .publish-popup-icon.success { color: #198754; }
-    .publish-popup-icon.fail { color: #dc3545; }
-    .publish-popup-title {
-        font-weight: 700;
-        margin-bottom: 8px;
-        color: #212529;
-    }
-    .publish-popup-msg {
-        color: #6c757d;
-        margin-bottom: 6px;
-        font-size: 0.95rem;
-    }
-    .publish-popup-hint {
-        color: #adb5bd;
-        font-size: 0.8rem;
-        margin-bottom: 0;
-    }
-    .release-center-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .release-center-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .release-center-table td code,
-    .release-center-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
-    .release-center-table td .badge {
-        font-size: 0.78rem;
-    }
-    .release-center-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
+    .tag-input-wrapper .tag-input-field::placeholder { color: #adb5bd; }
 </style>
 <script>
 (function() {
-    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
-    const versionModal = new bootstrap.Modal(document.getElementById('versionModal'));
-    let confirmCallback = null;
-    let popupTimer = null;
-    let popupDetailUrl = null;
+    var PAGE_SIZE = 20;
+    var currentNodePage = 1;
+    var currentFilters = { search: '', environment: '', status: '' };
+    var selectedNodes = {};
+    var selectedBindings = {};
+    var bindingCache = {};
+    var expandedNodes = {};
+    var publishInterval = null;
+    var contentPreviewModal = null;
 
-    const overlayEl = document.getElementById('publishOverlay');
-    const popupEl = document.getElementById('publishPopup');
+    var preNodeId = parseInt('{{ pre_node_id }}' || '0') || 0;
+    var preBindingId = parseInt('{{ pre_binding_id }}' || '0') || 0;
 
-    function getCsrfToken() {
-        return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    function loadNodes(page) {
+        var tbody = document.getElementById('nodeTableBody');
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm"></div> 加载中...</td></tr>';
+
+        var params = new URLSearchParams({
+            page: page, page_size: PAGE_SIZE,
+            search: currentFilters.search, environment: currentFilters.environment,
+            status: currentFilters.status
+        });
+
+        fetch('/releases/api/nodes/?' + params.toString(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">加载失败</td></tr>'; return; }
+            renderNodeTable(res.nodes, res.total, res.page, res.total_pages);
+        })
+        .catch(function() {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">网络错误</td></tr>';
+        });
     }
 
-    function showPublishPopup(success, title, message, detailUrl) {
-        const iconEl = document.getElementById('popupIcon');
-        const titleEl = document.getElementById('popupTitle');
-        const msgEl = document.getElementById('popupMsg');
-        const hintEl = document.getElementById('popupHint');
-
-        iconEl.className = 'publish-popup-icon ' + (success ? 'success' : 'fail');
-        iconEl.innerHTML = success
-            ? '<i class="bi bi-check-circle-fill"></i>'
-            : '<i class="bi bi-exclamation-triangle-fill"></i>';
-        titleEl.textContent = title;
-        msgEl.textContent = message;
-
-        popupDetailUrl = detailUrl || null;
-        if (popupDetailUrl) {
-            popupEl.style.cursor = 'pointer';
-            hintEl.textContent = '3 秒后自动刷新，点击可跳转任务中心';
+    function renderNodeTable(nodes, total, page, totalPages) {
+        var tbody = document.getElementById('nodeTableBody');
+        if (nodes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">暂无匹配节点</td></tr>';
         } else {
-            popupEl.style.cursor = 'default';
-            hintEl.textContent = '3 秒后自动刷新';
+            var html = '';
+            nodes.forEach(function(n) {
+                var noCred = !n.has_credential;
+                var isLocked = n.is_locked;
+                var canSelect = !isLocked;
+                var rowClass = canSelect ? 'node-row' : 'node-row disabled';
+                var envLabel = n.environment === 'prod' ? '生产' : (n.environment === 'test' ? '测试' : '开发');
+                var envCls = 'env-badge env-badge-' + n.environment;
+                var statusIcon = n.status === 'online' ? '🟢' : '🔴';
+                var statusCls = 'status-badge-' + n.status;
+                var groupNames = n.group_names.join(', ');
+                var lockIcon = isLocked ? ' <i class="bi bi-lock-fill text-warning" title="已锁定"></i>' : '';
+                var isChecked = selectedNodes[n.id] !== undefined ? 'checked' : '';
+                var disabledAttr = canSelect ? '' : 'disabled';
+
+                html += '<tr class="' + rowClass + '" data-node-id="' + n.id + '">';
+                html += '<td class="text-center"><input type="checkbox" class="form-check-input node-cb" value="' + n.id + '" ' + isChecked + ' ' + disabledAttr + '></td>';
+                html += '<td class="text-center"><button type="button" class="btn btn-sm btn-link text-muted p-0 toggle-expand" data-node-id="' + n.id + '" title="展开绑定"><i class="bi bi-chevron-right"></i></button></td>';
+                html += '<td><strong>' + n.hostname + '</strong>' + lockIcon + '<br><small class="text-muted">' + n.ip + '</small>' + (groupNames ? '<br><small class="text-muted"><i class="bi bi-collection"></i> ' + groupNames + '</small>' : '') + '</td>';
+                html += '<td><span class="' + envCls + '">' + envLabel + '</span></td>';
+                html += '<td><span class="' + statusCls + '">' + statusIcon + ' ' + (n.status === 'online' ? '在线' : '离线') + '</span></td>';
+                html += '<td><span class="badge bg-info me-1">' + n.total_bindings + '</span>' + (n.modified_bindings > 0 ? '<span class="badge sync-badge-modified">📝' + n.modified_bindings + '</span>' : '') + '</td>';
+                html += '</tr>';
+
+                if (expandedNodes[n.id]) {
+                    html += '<tr class="binding-row d-none" id="bindingRow-' + n.id + '" style="display: table-row;"><td colspan="6" class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm"></div> 加载绑定...</td></tr>';
+                } else {
+                    html += '<tr class="binding-row d-none" id="bindingRow-' + n.id + '"><td colspan="6"></td></tr>';
+                }
+            });
+            tbody.innerHTML = html;
+            bindNodeEvents();
         }
 
-        overlayEl.style.display = 'flex';
-        schedulePopupAutoRefresh();
+        document.getElementById('nodePaginationInfo').textContent = '共 ' + total + ' 条';
+        document.getElementById('selectAllNodes').checked = false;
+        renderPagination(totalPages, page);
     }
 
-    function hidePublishPopup() {
-        overlayEl.style.display = 'none';
-        clearPopupAutoRefresh();
+    function bindNodeEvents() {
+        var tbody = document.getElementById('nodeTableBody');
+
+        tbody.querySelectorAll('.node-cb').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var nodeId = parseInt(this.value);
+                var row = this.closest('tr');
+                if (this.checked) {
+                    selectedNodes[nodeId] = { id: nodeId, hostname: row.querySelector('strong').textContent.trim() };
+                    if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
+                    if (!bindingCache[nodeId]) bindingCache[nodeId] = [];
+                } else {
+                    delete selectedNodes[nodeId];
+                    delete selectedBindings[nodeId];
+                }
+                refreshSelectionUI();
+            });
+        });
+
+        tbody.querySelectorAll('.toggle-expand').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var nodeId = parseInt(this.dataset.nodeId);
+                toggleNodeBindings(nodeId);
+            });
+        });
+
+        tbody.querySelectorAll('.node-row:not(.disabled)').forEach(function(row) {
+            row.addEventListener('click', function(e) {
+                if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button')) return;
+                var cb = this.querySelector('.node-cb');
+                if (cb && !cb.disabled) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+            });
+        });
     }
 
-    function schedulePopupAutoRefresh() {
-        clearPopupAutoRefresh();
-        popupTimer = setTimeout(function() {
-            popupTimer = null;
-            location.reload();
-        }, 3000);
-    }
-
-    function clearPopupAutoRefresh() {
-        if (popupTimer) {
-            clearTimeout(popupTimer);
-            popupTimer = null;
-        }
-    }
-
-    // Popup click → navigate to task center
-    popupEl.addEventListener('click', function() {
-        clearPopupAutoRefresh();
-        if (popupDetailUrl) {
-            window.location.href = popupDetailUrl;
-        }
+    // 全选/全不选
+    document.getElementById('selectAllNodes').addEventListener('change', function() {
+        var checked = this.checked;
+        document.querySelectorAll('.node-cb:not(:disabled)').forEach(function(cb) {
+            cb.checked = checked;
+            cb.dispatchEvent(new Event('change'));
+        });
     });
 
-    function pollTaskStatus(taskId, detailUrl, startTime) {
-        var elapsed = Date.now() - startTime;
-        if (elapsed > 60000) {
-            showPublishPopup(false, '执行超时', '任务执行超过60秒，请手动查看详情', detailUrl);
-            schedulePopupAutoRefresh();
+    function toggleNodeBindings(nodeId) {
+        var bindingRow = document.getElementById('bindingRow-' + nodeId);
+        if (!bindingRow) return;
+
+        var isExpanded = expandedNodes[nodeId];
+        if (isExpanded) {
+            delete expandedNodes[nodeId];
+            bindingRow.classList.add('d-none');
+            bindingRow.style.display = 'none';
+            updateExpandIcon(nodeId, false);
+        } else {
+            expandedNodes[nodeId] = true;
+            bindingRow.classList.remove('d-none');
+            bindingRow.style.display = 'table-row';
+            updateExpandIcon(nodeId, true);
+
+            if (!bindingCache[nodeId] || bindingCache[nodeId].length === 0) {
+                loadBindings(nodeId);
+            } else {
+                renderBindingRow(nodeId, bindingCache[nodeId]);
+            }
+        }
+        sessionStorage.setItem('releases_expanded_nodes', JSON.stringify(Object.keys(expandedNodes)));
+    }
+
+    function updateExpandIcon(nodeId, expanded) {
+        var btn = document.querySelector('.toggle-expand[data-node-id="' + nodeId + '"]');
+        if (btn) {
+            var icon = btn.querySelector('i');
+            if (icon) {
+                icon.className = expanded ? 'bi bi-chevron-down' : 'bi bi-chevron-right';
+            }
+        }
+    }
+
+    function loadBindings(nodeId) {
+        var bindingRow = document.getElementById('bindingRow-' + nodeId);
+        if (!bindingRow) return;
+        bindingRow.innerHTML = '<td colspan="6" class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm"></div> 加载绑定...</td>';
+
+        fetch('/releases/api/node-bindings/' + nodeId + '/', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) { bindingRow.innerHTML = '<td colspan="6" class="text-center text-danger py-2">加载失败</td>'; return; }
+            bindingCache[nodeId] = res.bindings;
+            renderBindingRow(nodeId, res.bindings);
+        })
+        .catch(function() {
+            bindingRow.innerHTML = '<td colspan="6" class="text-center text-danger py-2">网络错误</td>';
+        });
+    }
+
+    function renderBindingRow(nodeId, bindings) {
+        var bindingRow = document.getElementById('bindingRow-' + nodeId);
+        if (!bindingRow) return;
+        if (!expandedNodes[nodeId]) return;
+
+        if (bindings.length === 0) {
+            bindingRow.innerHTML = '<td colspan="6" class="text-center text-muted py-2">当前节点无配置绑定</td>';
             return;
         }
 
-        fetch('/releases/center/task/' + taskId + '/status/', {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.finished) {
-                if (data.status === 'success') {
-                    showPublishPopup(true, '发布成功',
-                        data.node + ' / ' + data.config + ' 发布成功', detailUrl);
+        if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
+
+        var html = '<td colspan="6" style="padding:0;">';
+        html += '<table class="table table-sm mb-0" style="background: #fafbfc; width: 100%;">';
+        bindings.forEach(function(b) {
+            var isModified = b.sync_status === 'modified' || b.sync_status === 'not_synced';
+            var isConflict = b.sync_status === 'conflict';
+            var isFailed = b.sync_status === 'failed';
+            var syncLabel = '';
+            var syncCls = '';
+            if (isModified) { syncLabel = '📝 待推送'; syncCls = 'sync-badge-modified'; }
+            else if (isConflict) { syncLabel = '⚠️ 冲突'; syncCls = 'sync-badge-conflict'; }
+            else if (isFailed) { syncLabel = '❌ 失败'; syncCls = 'sync-badge-failed'; }
+            else if (b.sync_status === 'synced') { syncLabel = '✅ 已同步'; syncCls = 'sync-badge-synced'; }
+            else if (b.sync_status === 'syncing') { syncLabel = '🔄 同步中'; syncCls = 'sync-badge-syncing'; }
+            else { syncLabel = b.sync_status; }
+
+            // 节点被勾选后 → 展开时自动勾选 modified 绑定
+            var isChecked = selectedBindings[nodeId][b.id] !== undefined;
+            if (!isChecked && isModified && selectedNodes[nodeId] !== undefined) {
+                isChecked = true;
+                selectedBindings[nodeId][b.id] = {
+                    id: b.id, config_name: b.config_name,
+                    version: b.current_version, remote_path: b.remote_path, sync_status: b.sync_status
+                };
+            }
+
+            var versionsOpts = b.versions.map(function(v) {
+                return '<option value="' + v.version + '"' + (v.version === b.current_version ? ' selected' : '') + '>V' + v.version + '</option>';
+            }).join('');
+
+            html += '<tr class="binding-item" style="border-top: 1px dashed #e0e0e0;">';
+            html += '<td style="width: 30px; padding-left: 48px;"><input type="checkbox" class="form-check-input binding-cb" data-node-id="' + nodeId + '" data-binding-id="' + b.id + '" data-config-name="' + b.config_name + '" data-version="' + b.current_version + '" data-remote-path="' + (b.remote_path || '') + '" data-sync-status="' + b.sync_status + '" data-binding-content-loaded="false" ' + (isChecked ? 'checked' : '') + '></td>';
+            html += '<td><code>' + b.config_name + '</code></td>';
+            html += '<td style="width: 110px;"><select class="form-select form-select-sm version-select" data-binding-id="' + b.id + '" data-node-id="' + nodeId + '" style="font-size: 11px;">' + versionsOpts + '</select></td>';
+            html += '<td><small class="path-link" data-binding-id="' + b.id + '" data-config-name="' + b.config_name + '" title="点击预览配置内容">' + (b.remote_path || '-') + '</small></td>';
+            html += '<td style="width: 95px;"><span class="sync-badge ' + syncCls + '">' + syncLabel + '</span></td>';
+            html += '</tr>';
+        });
+        html += '</table></td>';
+        bindingRow.innerHTML = html;
+
+        // 绑定复选框事件
+        bindingRow.querySelectorAll('.binding-cb').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var nid = parseInt(this.dataset.nodeId);
+                var bid = parseInt(this.dataset.bindingId);
+                if (this.checked) {
+                    if (!selectedBindings[nid]) selectedBindings[nid] = {};
+                    var sel = bindingRow.querySelector('.version-select[data-binding-id="' + bid + '"]');
+                    selectedBindings[nid][bid] = {
+                        id: bid, config_name: this.dataset.configName,
+                        version: sel ? parseInt(sel.value) : (parseInt(this.dataset.version) || 0),
+                        remote_path: this.dataset.remotePath, sync_status: this.dataset.syncStatus
+                    };
                 } else {
-                    showPublishPopup(false, '发布失败',
-                        data.node + ' / ' + data.config + ' 发布失败', detailUrl);
+                    if (selectedBindings[nid]) delete selectedBindings[nid][bid];
                 }
-                schedulePopupAutoRefresh();
-            } else {
-                setTimeout(function() { pollTaskStatus(taskId, detailUrl, startTime); }, 2000);
-            }
-        })
-        .catch(function() {
-            setTimeout(function() { pollTaskStatus(taskId, detailUrl, startTime); }, 2000);
+                refreshSelectionUI();
+            });
+        });
+
+        // 版本切换事件
+        bindingRow.querySelectorAll('.version-select').forEach(function(sel) {
+            sel.addEventListener('change', function(e) {
+                e.stopPropagation();
+                var nid = parseInt(this.dataset.nodeId);
+                var bid = parseInt(this.dataset.bindingId);
+                if (selectedBindings[nid] && selectedBindings[nid][bid]) {
+                    selectedBindings[nid][bid].version = parseInt(this.value);
+                }
+            });
+        });
+
+        // 配置路径点击预览
+        bindingRow.querySelectorAll('.path-link').forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var bindingId = parseInt(this.dataset.bindingId);
+                var configName = this.dataset.configName;
+                showContentPreview(bindingId, configName);
+            });
         });
     }
 
-    function submitAjax(url, taskId, onResponse) {
-        var btn = document.getElementById('btnConfirmYes');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 执行中...';
+    function showContentPreview(bindingId, configName) {
+        if (!contentPreviewModal) {
+            contentPreviewModal = new bootstrap.Modal(document.getElementById('contentPreviewModal'));
+        }
+        document.getElementById('contentPreviewTitle').textContent = '配置预览 - ' + configName;
+        document.getElementById('cpVersionBadge').textContent = '加载中...';
+        document.getElementById('cpPathLabel').textContent = '';
+        document.getElementById('cpContent').textContent = '加载中...';
+        contentPreviewModal.show();
 
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRFToken': getCsrfToken()
-            }
-        })
-        .then(async function(r) {
-            const contentType = r.headers.get('content-type') || '';
-            if (!contentType.includes('application/json')) {
-                throw new Error('服务器返回非JSON响应，请检查权限或登录状态');
-            }
-            const data = await r.json();
-            if (!r.ok) {
-                throw new Error(data.message || ('请求失败（HTTP ' + r.status + '）'));
-            }
-            return data;
-        })
-        .then(function(data) {
-            btn.disabled = false;
-            btn.innerHTML = '确认';
-            modal.hide();
-            onResponse(data, taskId);
-        })
-        .catch(function(err) {
-            showPublishPopup(false, '请求失败', err.message);
-            btn.disabled = false;
-            btn.innerHTML = '确认';
-            modal.hide();
+        // 获取绑定信息 + 当前版本内容
+        var nodeId = Object.keys(bindingCache).find(function(nid) {
+            return bindingCache[nid].some(function(b) { return b.id === bindingId; });
         });
-    }
+        if (!nodeId) {
+            document.getElementById('cpContent').textContent = '未找到绑定信息';
+            return;
+        }
+        var bindingInfo = bindingCache[nodeId].find(function(b) { return b.id === bindingId; });
+        if (!bindingInfo) {
+            document.getElementById('cpContent').textContent = '未找到绑定信息';
+            return;
+        }
 
-    document.getElementById('btnConfirmYes').addEventListener('click', function() {
-        if (confirmCallback) confirmCallback();
-    });
+        document.getElementById('cpPathLabel').textContent = bindingInfo.remote_path || '';
+        document.getElementById('cpVersionBadge').textContent = 'V' + bindingInfo.current_version;
 
-    function showConfirm(title, message, callback) {
-        document.getElementById('confirmModalTitle').textContent = title;
-        document.getElementById('confirmModalBody').textContent = message;
-        document.getElementById('btnConfirmYes').disabled = false;
-        document.getElementById('btnConfirmYes').innerHTML = '确认';
-        confirmCallback = callback;
-        modal.show();
-    }
+        // 加载当前版本内容
+        var latestVersionId = null;
+        if (bindingInfo.versions && bindingInfo.versions.length > 0) {
+            latestVersionId = bindingInfo.versions[0].id;
+        }
 
-    document.querySelectorAll('.btn-execute-batch').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var batch = this.dataset.batch;
-            var count = this.dataset.count;
-            var url = '/releases/center/' + batch + '/execute/';
-            showConfirm('确认发布', '确认执行批次 ' + batch + ' 的全部 ' + count + ' 个任务？', function() {
-                var thatBtn = btn;
-                thatBtn.disabled = true;
-                thatBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-                submitAjax(url, null, function(data, _taskId) {
-                    thatBtn.disabled = false;
-                    thatBtn.innerHTML = '<i class="bi bi-play-fill"></i> 发布';
-                    if (data.success && data.async) {
-                        const jumpUrl = data.task_center_home_url || '{% url "releases:history" %}';
-                        showPublishPopup(true, '异步执行中', data.message, jumpUrl);
-                        schedulePopupAutoRefresh();
-                    } else if (data.success) {
-                        showPublishPopup(true, '发布完成', data.message);
-                        schedulePopupAutoRefresh();
-                    } else {
-                        showPublishPopup(false, '发布失败', data.message);
-                    }
-                });
-            });
-        });
-    });
-
-    document.querySelectorAll('.btn-cancel-batch').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var batch = this.dataset.batch;
-            var count = this.dataset.count;
-            var form = document.getElementById('form-cancel-' + batch);
-            showConfirm('确认取消', '确认取消批次 ' + batch + ' 的全部 ' + count + ' 个任务？', function() {
-                form.submit();
-            });
-        });
-    });
-
-    document.querySelectorAll('.btn-execute-single').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var taskId = this.dataset.taskId;
-            var node = this.dataset.node;
-            var config = this.dataset.config;
-            var url = '/releases/center/task/' + taskId + '/execute/';
-            showConfirm('确认发布单个任务', '确认将配置 ' + config + ' 发布到节点 ' + node + '？', function() {
-                var thatBtn = btn;
-                thatBtn.disabled = true;
-                thatBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-                submitAjax(url, taskId, function(data, tid) {
-                    thatBtn.disabled = false;
-                    thatBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
-                    if (data.success && data.async) {
-                        var jumpUrl = data.task_center_home_url || '{% url "releases:history" %}';
-                        showPublishPopup(true, '异步执行中', data.message, jumpUrl);
-                        pollTaskStatus(tid, jumpUrl, Date.now());
-                    } else if (data.success) {
-                        var successJump = data.task_center_home_url || '{% url "releases:history" %}';
-                        showPublishPopup(true, '发布成功', data.message, successJump);
-                        schedulePopupAutoRefresh();
-                    } else {
-                        var failJump = data.task_center_home_url || '{% url "releases:history" %}';
-                        showPublishPopup(false, '发布失败', data.message, failJump);
-                        schedulePopupAutoRefresh();
-                    }
-                });
-            });
-        });
-    });
-
-    document.querySelectorAll('.version-link').forEach(function(el) {
-        el.addEventListener('click', function() {
-            var versionId = this.dataset.versionId;
-            var pre = document.getElementById('versionContentPre');
-            var title = document.getElementById('versionModalTitle');
-            pre.textContent = '加载中...';
-            title.textContent = '配置版本 v' + versionId;
-            versionModal.show();
-
-            fetch('/configs/api/version-content/' + versionId + '/', {
+        if (latestVersionId) {
+            fetch('/configs/api/version-content/' + latestVersionId + '/', {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             })
-            .then(function(r) { return r.json(); })
+            .then(r => r.json())
             .then(function(res) {
-                if (res.success) {
-                    title.textContent = res.data.config_name + ' v' + res.data.version
-                        + ' (' + res.data.node_name + ')';
-                    pre.textContent = res.data.content;
+                if (res.success && res.data) {
+                    document.getElementById('cpContent').textContent = res.data.content || '(空文件)';
                 } else {
-                    pre.textContent = '加载失败';
+                    document.getElementById('cpContent').textContent = '加载内容失败';
                 }
             })
             .catch(function() {
-                pre.textContent = '网络错误';
+                document.getElementById('cpContent').textContent = '网络错误';
             });
+        } else {
+            document.getElementById('cpContent').textContent = '(无版本记录)';
+        }
+    }
+
+    function refreshSelectionUI() {
+        var totalNodeCount = Object.keys(selectedNodes).length;
+        document.getElementById('selectedNodeCountTop').textContent = totalNodeCount;
+
+        var totalBindings = 0;
+        Object.values(selectedBindings).forEach(function(nodeBindings) {
+            totalBindings += Object.keys(nodeBindings).length;
+        });
+        document.getElementById('selectedBindingCountTop').textContent = totalBindings;
+
+        document.getElementById('btnNextToStep2').disabled = (totalBindings === 0);
+    }
+
+    function renderPagination(totalPages, page) {
+        var container = document.getElementById('nodePaginationBtns');
+        if (totalPages <= 1) { container.innerHTML = ''; return; }
+        var html = '';
+        html += '<button type="button" class="btn btn-sm btn-outline-secondary" data-page="' + (page - 1) + '" ' + (page <= 1 ? 'disabled' : '') + '>&laquo;</button>';
+        for (var p = 1; p <= totalPages; p++) {
+            html += '<button type="button" class="btn btn-sm ' + (p === page ? 'btn-primary' : 'btn-outline-secondary') + '" data-page="' + p + '">' + p + '</button>';
+        }
+        html += '<button type="button" class="btn btn-sm btn-outline-secondary" data-page="' + (page + 1) + '" ' + (page >= totalPages ? 'disabled' : '') + '>&raquo;</button>';
+        container.innerHTML = html;
+        container.querySelectorAll('button').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var p = parseInt(this.dataset.page);
+                if (p >= 1 && p <= totalPages && p !== currentNodePage) {
+                    currentNodePage = p;
+                    loadNodes(p);
+                }
+            });
+        });
+    }
+
+    function doSearch() {
+        var hidden = document.getElementById('nodeSearchHidden');
+        currentFilters.search = hidden ? hidden.value : '';
+        currentFilters.environment = document.getElementById('envFilter').value;
+        currentFilters.status = document.getElementById('statusFilter').value;
+        currentNodePage = 1;
+        loadNodes(1);
+    }
+
+    function initNodeSearchTag() {
+        var wrapper = document.getElementById('nodeSearchTagWrapper');
+        var field = document.getElementById('nodeSearchField');
+        var hidden = document.getElementById('nodeSearchHidden');
+        if (!wrapper || !field || !hidden) return;
+
+        function focusFieldWithCaret() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') field.setSelectionRange(len, len);
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function(b) { values.push(b.getAttribute('data-value')); });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            if (!text) return;
+            var existing = wrapper.querySelector('.tag-badge[data-value="' + text + '"]');
+            if (existing) return;
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                e.stopPropagation(); badge.remove(); updateHidden(); doSearch(); setTimeout(focusFieldWithCaret, 0);
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        field.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) { createBadge(text); field.value = ''; }
+                updateHidden(); doSearch(); setTimeout(focusFieldWithCaret, 0);
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) { badges[badges.length - 1].remove(); updateHidden(); doSearch(); setTimeout(focusFieldWithCaret, 0); }
+            }
+        });
+
+        wrapper.addEventListener('click', function(e) { if (e.target === wrapper) focusFieldWithCaret(); });
+        focusFieldWithCaret();
+    }
+
+    document.getElementById('envFilter').addEventListener('change', doSearch);
+    document.getElementById('statusFilter').addEventListener('change', doSearch);
+
+    // 清除选择
+    document.getElementById('btnClearSelection').addEventListener('click', function() {
+        selectedNodes = {};
+        selectedBindings = {};
+        bindingCache = {};
+        expandedNodes = {};
+        sessionStorage.removeItem('releases_expanded_nodes');
+        refreshSelectionUI();
+        loadNodes(currentNodePage);
+    });
+
+    // Step 导航
+    document.getElementById('btnNextToStep2').addEventListener('click', function() {
+        buildPreview();
+        document.getElementById('step1').classList.add('d-none');
+        document.getElementById('step2').classList.remove('d-none');
+    });
+
+    document.getElementById('btnBackToStep1').addEventListener('click', function() {
+        document.getElementById('step2').classList.add('d-none');
+        document.getElementById('step1').classList.remove('d-none');
+    });
+
+    function buildPreview() {
+        var tbody = document.getElementById('previewTableBody');
+        var totalUnits = 0;
+        var nodeIds = new Set();
+        var configIds = new Set();
+
+        var rows = [];
+        Object.keys(selectedBindings).forEach(function(nodeId) {
+            var node = selectedNodes[nodeId];
+            var nodeName = node ? node.hostname : ('节点#' + nodeId);
+            Object.values(selectedBindings[nodeId]).forEach(function(b) {
+                totalUnits++;
+                nodeIds.add(nodeId);
+                rows.push({
+                    nodeName: nodeName, configName: b.config_name,
+                    version: 'V' + b.version, remotePath: b.remote_path,
+                    syncStatus: b.sync_status, bindingId: b.id, nodeId: nodeId
+                });
+            });
+        });
+
+        document.getElementById('publishUnitCount').textContent = totalUnits;
+        document.getElementById('publishNodeCount').textContent = nodeIds.size;
+
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">暂无待发布项</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = rows.map(function(r) {
+            var statusLabel = '';
+            if (r.syncStatus === 'modified' || r.syncStatus === 'not_synced') statusLabel = '📝 待推送';
+            else if (r.syncStatus === 'synced') statusLabel = '✅ 已同步';
+            else statusLabel = r.syncStatus;
+            return '<tr>' +
+                '<td><strong>' + r.nodeName + '</strong></td>' +
+                '<td><code>' + r.configName + '</code></td>' +
+                '<td><span class="badge bg-info">' + r.version + '</span></td>' +
+                '<td><small class="text-muted">' + r.remotePath + '</small></td>' +
+                '<td><span class="sync-badge sync-badge-modified">' + statusLabel + '</span></td>' +
+                '<td><button type="button" class="btn btn-sm btn-outline-danger btn-remove-preview" data-node-id="' + r.nodeId + '" data-binding-id="' + r.bindingId + '"><i class="bi bi-x"></i></button></td>' +
+            '</tr>';
+        }).join('');
+
+        tbody.querySelectorAll('.btn-remove-preview').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var nid = parseInt(this.dataset.nodeId);
+                var bid = parseInt(this.dataset.bindingId);
+                if (selectedBindings[nid]) delete selectedBindings[nid][bid];
+                refreshSelectionUI();
+                buildPreview();
+            });
+        });
+    }
+
+    // 发布
+    document.getElementById('btnPublish').addEventListener('click', function() {
+        var bindings = [];
+        Object.keys(selectedBindings).forEach(function(nodeId) {
+            Object.values(selectedBindings[nodeId]).forEach(function(b) {
+                bindings.push({ binding_id: b.id, version: b.version });
+            });
+        });
+
+        if (bindings.length === 0) { showToast('请至少选择一个配置绑定', 'warning'); return; }
+
+        var btn = document.getElementById('btnPublish');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 创建中...';
+
+        var parallelMode = document.getElementById('modeParallel').checked;
+        fetch('/releases/create/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ bindings: bindings, auto_execute: true, parallel: parallelMode })
+        })
+        .then(r => r.json())
+        .then(function(data) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 开始发布';
+            if (data.success) {
+                showToast(data.message, 'success');
+                if (data.task_center_id) {
+                    showProgressOverlay(data.batch_number, data.task_center_id);
+                }
+            } else {
+                showToast(data.message || '创建失败', 'danger');
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 开始发布';
+            showToast('网络错误，请重试', 'danger');
         });
     });
 
-    document.querySelectorAll('.btn-toggle-batch').forEach(function(btn) {
-        var target = document.querySelector(btn.dataset.bsTarget);
-        if (target) {
-            target.addEventListener('show.bs.collapse', function() {
-                btn.querySelector('i').className = 'bi bi-chevron-down';
+    // 进度弹窗
+    function showProgressOverlay(batchNumber, taskCenterId) {
+        document.getElementById('progressBatchNumber').textContent = batchNumber;
+        document.getElementById('progressBar').style.width = '0%';
+        document.getElementById('progressPercent').textContent = '0';
+        document.getElementById('progressText').textContent = '初始化中...';
+        document.getElementById('progressTree').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 等待任务启动...</div>';
+        document.getElementById('progressOverlay').style.display = 'flex';
+
+        startProgressPolling([taskCenterId], batchNumber);
+    }
+
+    function startProgressPolling(checkedIds, batchNumber) {
+        if (publishInterval) clearInterval(publishInterval);
+
+        publishInterval = setInterval(function() {
+            fetch('/releases/tasks/progress/?ids=' + checkedIds.join(','), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success || !data.tasks || data.tasks.length === 0) return;
+                var task = data.tasks[0];
+                var progress = task.progress || 0;
+                var detail = task.detail || '';
+                var result = task.result || '';
+                var finished = task.finished;
+
+                document.getElementById('progressBar').style.width = progress + '%';
+                document.getElementById('progressPercent').textContent = progress;
+                document.getElementById('progressText').textContent = detail || '执行中...';
+
+                if (result) renderProgressTree(result);
+
+                if (finished) {
+                    clearInterval(publishInterval);
+                    publishInterval = null;
+                    document.getElementById('progressBar').classList.remove('progress-bar-animated');
+                    if (task.status === 'success') {
+                        document.getElementById('progressBar').classList.add('bg-success');
+                        document.getElementById('progressText').textContent = '全部发布成功';
+                    } else {
+                        document.getElementById('progressBar').classList.add('bg-warning');
+                        document.getElementById('progressText').textContent = '部分任务失败，请查看详情';
+                    }
+                    document.getElementById('btnCloseProgress').classList.remove('d-none');
+                }
             });
-            target.addEventListener('hide.bs.collapse', function() {
-                btn.querySelector('i').className = 'bi bi-chevron-right';
-            });
-        }
+        }, 1500);
+    }
+
+    function renderProgressTree(resultText) {
+        var container = document.getElementById('progressTree');
+        var lines = (resultText || '').split('\n');
+        var html = '';
+        var currentNode = null;
+
+        lines.forEach(function(line) {
+            var trimmed = line.trim();
+            if (!trimmed) return;
+            if (trimmed.startsWith('[节点] ')) {
+                if (currentNode) html += buildNodeGroup(currentNode.name, currentNode.status, currentNode.configs);
+                currentNode = { name: trimmed.replace('[节点] ', ''), configs: [], status: 'running' };
+            } else if (currentNode && trimmed.startsWith('[成功]')) {
+                var name = trimmed.replace('[成功] ', '').replace(/ v\d+.*$/, '').trim();
+                currentNode.configs.push({ name: name, status: 'success' });
+            } else if (currentNode && trimmed.startsWith('[失败]')) {
+                var fname = trimmed.replace('[失败] ', '').replace(/ v\d+.*$/, '').replace(/\s*-.*$/, '').trim();
+                currentNode.configs.push({ name: fname, status: 'failed' });
+            }
+        });
+        if (currentNode) html += buildNodeGroup(currentNode.name, currentNode.status, currentNode.configs);
+
+        container.innerHTML = html || '<div class="text-center text-muted py-2">等待进度更新...</div>';
+    }
+
+    function buildNodeGroup(nodeName, nodeStatus, configs) {
+        var statusCls = nodeStatus === 'running' ? 'running' : (configs.every(function(c) { return c.status === 'success'; }) ? 'success' : 'failed');
+        var statusIcon = statusCls === 'success' ? '✅' : (statusCls === 'failed' ? '❌' : '⏳');
+        var html = '<div class="node-group">';
+        html += '<div class="node-group-header ' + statusCls + '">';
+        html += '<span class="toggle-icon">▶</span> ' + statusIcon + ' <strong>' + nodeName + '</strong>';
+        html += '</div>';
+        html += '<div class="node-group-body">';
+        configs.forEach(function(c) {
+            var icon = c.status === 'success' ? '✅' : (c.status === 'running' ? '🔄' : '❌');
+            html += '<div class="config-item">' + icon + ' ' + c.name + '</div>';
+        });
+        html += '</div></div>';
+        return html;
+    }
+
+    document.getElementById('btnCloseProgress').addEventListener('click', function() {
+        document.getElementById('progressOverlay').style.display = 'none';
+        if (publishInterval) { clearInterval(publishInterval); publishInterval = null; }
+        loadNodes(currentNodePage);
     });
 
-    initTagSearch('#releaseSearchTagWrapper', '#releaseSearchHidden', '#releaseSearchForm');
-    initTagSearch('#historySearchTagWrapper', '#historySearchHidden', '#historySearchForm');
+    document.getElementById('btnSkipFailed').addEventListener('click', function() {
+        showToast('跳过失败功能开发中', 'info');
+    });
+
+    function handlePreSelection() {
+        if (!preNodeId) return;
+        selectedNodes[preNodeId] = { id: preNodeId, hostname: '预选节点' };
+        if (preBindingId) { if (!selectedBindings[preNodeId]) selectedBindings[preNodeId] = {}; }
+        expandedNodes[preNodeId] = true;
+        sessionStorage.setItem('releases_expanded_nodes', JSON.stringify([preNodeId]));
+
+        loadNodes(1);
+        setTimeout(function() {
+            toggleNodeBindings(preNodeId);
+            setTimeout(function() {
+                var cb = document.querySelector('.binding-cb[data-binding-id="' + preBindingId + '"]');
+                if (cb && cb.dataset.nodeId == preNodeId) {
+                    cb.checked = true;
+                    cb.dispatchEvent(new Event('change'));
+                    var nodeCb = document.querySelector('.node-cb[value="' + preNodeId + '"]');
+                    if (nodeCb && !nodeCb.disabled) { nodeCb.checked = true; nodeCb.dispatchEvent(new Event('change')); }
+                }
+            }, 500);
+        }, 300);
+    }
+
+    function restoreExpandedNodes() {
+        try {
+            var saved = JSON.parse(sessionStorage.getItem('releases_expanded_nodes') || '[]');
+            saved.forEach(function(id) { expandedNodes[id] = true; });
+        } catch(e) {}
+    }
+
+    // 初始化
+    initNodeSearchTag();
+    restoreExpandedNodes();
+    loadNodes(1);
+    if (preNodeId) handlePreSelection();
 })();
 </script>
 {% endblock %}
