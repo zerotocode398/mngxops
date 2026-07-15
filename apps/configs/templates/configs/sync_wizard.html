@@ -547,6 +547,9 @@
 
     function hideLoading() {
         document.getElementById('syncAlertBody').innerHTML = '';
+        if (syncAlertModalInstance) {
+            syncAlertModalInstance.hide();
+        }
     }
 
     var syncConfirmModalInstance = null;
