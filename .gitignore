@@ -5,6 +5,7 @@ __pycache__/
 .trae/个人需求.md
 .trae/desc.md
 optimize.md
+image/
 # C extensions
 *.so
 stand.md

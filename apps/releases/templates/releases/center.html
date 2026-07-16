@@ -116,49 +116,47 @@
                         <div class="alert alert-light border mb-3 py-2">
                             <div class="d-flex justify-content-between align-items-center">
                                 <span>共 <strong id="publishUnitCount" class="text-primary">0</strong> 个发布单元，
-                                      涉及 <strong id="publishNodeCount" class="text-primary">0</strong> 个节点，
-                                      <strong id="publishConfigCount" class="text-primary">0</strong> 个配置标签</span>
+                                      涉及 <strong id="publishNodeCount" class="text-primary">0</strong> 个节点</span>
                             </div>
                         </div>
 
-                        <div class="table-responsive border rounded" style="max-height: 360px; overflow-y: auto;">
-                            <table class="table table-sm table-hover mb-0 release-table">
+                        <!-- 搜索框 -->
+                        <div class="mb-2">
+                            <div class="tag-input-wrapper" id="previewSearchTagWrapper">
+                                <input type="text" class="tag-input-field" id="previewSearchField"
+                                    placeholder="搜索主机名、配置名、远程路径" autocomplete="off">
+                            </div>
+                            <input type="hidden" id="previewSearchHidden" value="">
+                        </div>
+
+                        <!-- 发布清单（节点分组折叠） -->
+                        <div class="border rounded" style="max-height: 360px; overflow-y: auto;" id="previewContainer">
+                            <table class="table table-sm table-hover mb-0 release-table" id="previewTable">
                                 <thead class="table-light sticky-top">
                                     <tr>
-                                        <th>节点</th>
-                                        <th>配置</th>
-                                        <th style="width: 80px;">版本</th>
+                                        <th style="width: 28px;"></th>
+                                        <th>节点 / 配置</th>
+                                        <th style="width: 70px;">版本</th>
                                         <th>远程路径</th>
-                                        <th style="width: 90px;">状态</th>
-                                        <th style="width: 60px;">操作</th>
+                                        <th style="width: 145px;">操作</th>
                                     </tr>
                                 </thead>
-                                <tbody id="previewTableBody">
+                                <tbody id="previewEmptyTbody">
                                     <tr>
-                                        <td colspan="6" class="text-center text-muted py-3">暂无待发布项</td>
+                                        <td colspan="5" class="text-center text-muted py-3">暂无待发布项</td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center mt-3">
-                            <div class="d-flex align-items-center gap-3">
-                                <small class="text-muted">发布策略：</small>
-                                <div class="form-check form-check-inline mb-0">
-                                    <input class="form-check-input" type="radio" name="publishMode" id="modeSequential" value="sequential" checked>
-                                    <label class="form-check-label small" for="modeSequential">顺序（逐台）</label>
-                                </div>
-                                <div class="form-check form-check-inline mb-0">
-                                    <input class="form-check-input" type="radio" name="publishMode" id="modeParallel" value="parallel">
-                                    <label class="form-check-label small" for="modeParallel">并行（多台同时）</label>
-                                </div>
-                            </div>
+                            <span class="text-muted small" id="previewSummary"></span>
                             <div>
                                 <button type="button" class="btn btn-outline-secondary me-2" id="btnBackToStep1">
                                     <i class="bi bi-arrow-left"></i> 返回上一步
                                 </button>
-                                <button type="button" class="btn btn-success" id="btnPublish">
-                                    <i class="bi bi-rocket-takeoff"></i> 开始发布
+                                <button type="button" class="btn btn-success" id="btnPublishAll">
+                                    <i class="bi bi-rocket-takeoff"></i> 全量发布 (<span id="btnPublishAllCount">0</span>)
                                 </button>
                             </div>
                         </div>
@@ -293,6 +291,14 @@
     .status-filter-active[data-status="syncing"] { background-color: #17a2b8; }
     .status-filter-active[data-status="orphaned"] { background-color: #6c757d; }
     .status-filter-active[data-status="marked_deleted"] { background-color: #e83e8c; }
+
+    /* 发布清单节点分组 */
+    .preview-node-group { border-bottom: 2px solid #dee2e6; }
+    .preview-node-header { background: #f8f9fa; cursor: pointer; }
+    .preview-node-header td { font-weight: 600; padding: 8px 12px; }
+    .preview-node-header .toggle-preview-expand { padding: 0 4px; }
+    .preview-binding td { padding: 6px 12px; font-size: 0.82rem; }
+    .btn-publish-node { white-space: nowrap; }
 
     /* 进度弹窗 */
     .publish-overlay {
@@ -478,7 +484,7 @@
                 html += '</tr>';
 
                 if (expandedNodes[n.id]) {
-                    html += '<tr class="binding-row d-none" id="bindingRow-' + n.id + '" style="display: table-row;"><td colspan="6" class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm"></div> 加载绑定...</td></tr>';
+                    html += '<tr class="binding-row" id="bindingRow-' + n.id + '" style="display: table-row;"><td colspan="6" class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm"></div> 加载绑定...</td></tr>';
                 } else {
                     html += '<tr class="binding-row d-none" id="bindingRow-' + n.id + '"><td colspan="6"></td></tr>';
                 }
@@ -915,51 +921,115 @@
     });
 
     function buildPreview() {
-        var tbody = document.getElementById('previewTableBody');
+        var table = document.getElementById('previewTable');
+        var emptyTbody = document.getElementById('previewEmptyTbody');
         var totalUnits = 0;
-        var nodeIds = new Set();
-        var configIds = new Set();
+        var nodeGroups = {};
 
-        var rows = [];
+        // 移除旧的节点分组 tbody（上一次 buildPreview 产生的）
+        table.querySelectorAll('.preview-node-group').forEach(function(t) { t.remove(); });
+
+        // 按节点分组绑定
         Object.keys(selectedBindings).forEach(function(nodeId) {
+            var bindings = Object.values(selectedBindings[nodeId]);
+            if (bindings.length === 0) return;
             var node = selectedNodes[nodeId];
-            var nodeName = node ? node.hostname : ('节点#' + nodeId);
-            Object.values(selectedBindings[nodeId]).forEach(function(b) {
-                totalUnits++;
-                nodeIds.add(nodeId);
-                rows.push({
-                    nodeName: nodeName, configName: b.config_name,
-                    version: 'V' + b.version, remotePath: b.remote_path,
-                    syncStatus: b.sync_status, bindingId: b.id, nodeId: nodeId
-                });
-            });
+            var nodeName = node ? node.hostname : getNodeNameFromDOM(nodeId);
+            nodeGroups[nodeId] = { nodeId: nodeId, nodeName: nodeName, bindings: bindings };
+            totalUnits += bindings.length;
         });
 
+        var nodeCount = Object.keys(nodeGroups).length;
         document.getElementById('publishUnitCount').textContent = totalUnits;
-        document.getElementById('publishNodeCount').textContent = nodeIds.size;
+        document.getElementById('publishNodeCount').textContent = nodeCount;
+        document.getElementById('btnPublishAllCount').textContent = totalUnits;
 
-        if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">暂无待发布项</td></tr>';
+        if (totalUnits === 0) {
+            emptyTbody.style.display = '';
+            document.getElementById('previewSummary').textContent = '';
             return;
         }
 
-        tbody.innerHTML = rows.map(function(r) {
-            var statusLabel = '';
-            if (r.syncStatus === 'modified' || r.syncStatus === 'not_synced') statusLabel = '📝 待推送';
-            else if (r.syncStatus === 'synced') statusLabel = '✅ 已同步';
-            else statusLabel = r.syncStatus;
-            return '<tr>' +
-                '<td><strong>' + r.nodeName + '</strong></td>' +
-                '<td><code>' + r.configName + '</code></td>' +
-                '<td><span class="badge bg-info">' + r.version + '</span></td>' +
-                '<td><small class="text-muted">' + r.remotePath + '</small></td>' +
-                '<td><span class="sync-badge sync-badge-modified">' + statusLabel + '</span></td>' +
-                '<td><button type="button" class="btn btn-sm btn-outline-danger btn-remove-preview" data-node-id="' + r.nodeId + '" data-binding-id="' + r.bindingId + '"><i class="bi bi-x"></i></button></td>' +
-            '</tr>';
-        }).join('');
+        emptyTbody.style.display = 'none';
+        document.getElementById('previewSummary').textContent = nodeCount + ' 个节点，' + totalUnits + ' 个配置';
 
-        tbody.querySelectorAll('.btn-remove-preview').forEach(function(btn) {
-            btn.addEventListener('click', function() {
+        var html = '';
+        Object.keys(nodeGroups).forEach(function(nodeId) {
+            var g = nodeGroups[nodeId];
+            var bindingCount = g.bindings.length;
+            html += '<tbody class="preview-node-group" data-node-id="' + nodeId + '">';
+            html += '<tr class="preview-node-header" data-node-id="' + nodeId + '">';
+            html += '<td><button type="button" class="btn btn-sm btn-link text-muted p-0 toggle-preview-expand" data-node-id="' + nodeId + '"><i class="bi bi-chevron-down"></i></button></td>';
+            html += '<td><strong>' + g.nodeName + '</strong> <span class="badge bg-info ms-1">' + bindingCount + ' 个配置</span></td>';
+            html += '<td></td><td></td>';
+            html += '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary btn-publish-node" data-node-id="' + nodeId + '">📤 发布此节点</button></td>';
+            html += '</tr>';
+            g.bindings.forEach(function(b) {
+                html += '<tr class="preview-binding" data-node-id="' + nodeId + '" data-binding-id="' + b.id + '">';
+                html += '<td></td>';
+                html += '<td><code>' + b.config_name + '</code></td>';
+                html += '<td><span class="badge bg-info">V' + b.version + '</span></td>';
+                html += '<td><small class="text-muted">' + (b.remote_path || '-') + '</small></td>';
+                html += '<td class="text-end">';
+                html += '<button type="button" class="btn btn-sm btn-outline-success btn-publish-binding me-1" data-node-id="' + nodeId + '" data-binding-id="' + b.id + '" title="发布此配置">📤</button>';
+                html += '<button type="button" class="btn btn-sm btn-outline-danger btn-remove-preview" data-node-id="' + nodeId + '" data-binding-id="' + b.id + '"><i class="bi bi-x"></i></button>';
+                html += '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody>';
+        });
+
+        // 将合法结构的 tbody 插入到 emptyTbody 之前（作为 table 的直接子元素）
+        emptyTbody.insertAdjacentHTML('beforebegin', html);
+
+        // 展开/折叠按钮事件
+        table.querySelectorAll('.toggle-preview-expand').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                togglePreviewNode(this.dataset.nodeId);
+            });
+        });
+
+        // 节点标题行点击切换伸缩
+        table.querySelectorAll('.preview-node-header').forEach(function(header) {
+            header.addEventListener('click', function(e) {
+                if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT'
+                    || e.target.closest('button') || e.target.closest('select')) return;
+                togglePreviewNode(this.dataset.nodeId);
+            });
+        });
+
+        // "发布此节点"按钮事件
+        table.querySelectorAll('.btn-publish-node').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var nodeId = parseInt(this.dataset.nodeId);
+                if (selectedBindings[nodeId]) {
+                    var bindings = Object.values(selectedBindings[nodeId]).map(function(b) {
+                        return { binding_id: b.id, version: b.version };
+                    });
+                    publishBindings(bindings, this);
+                }
+            });
+        });
+
+        // "发布单个配置"按钮事件
+        table.querySelectorAll('.btn-publish-binding').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var bid = parseInt(this.dataset.bindingId);
+                var nodeId = parseInt(this.dataset.nodeId);
+                if (selectedBindings[nodeId] && selectedBindings[nodeId][bid]) {
+                    var b = selectedBindings[nodeId][bid];
+                    publishBindings([{ binding_id: b.id, version: b.version }], this);
+                }
+            });
+        });
+
+        // 移除按钮事件
+        table.querySelectorAll('.btn-remove-preview').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
                 var nid = parseInt(this.dataset.nodeId);
                 var bid = parseInt(this.dataset.bindingId);
                 if (selectedBindings[nid]) delete selectedBindings[nid][bid];
@@ -969,22 +1039,44 @@
         });
     }
 
-    // 发布
-    document.getElementById('btnPublish').addEventListener('click', function() {
-        var bindings = [];
-        Object.keys(selectedBindings).forEach(function(nodeId) {
-            Object.values(selectedBindings[nodeId]).forEach(function(b) {
-                bindings.push({ binding_id: b.id, version: b.version });
-            });
-        });
+    // 从 DOM 获取节点主机名（用于 selectedNodes 未设置时的 fallback）
+    function getNodeNameFromDOM(nodeId) {
+        var nodeRow = document.querySelector('.node-row[data-node-id="' + nodeId + '"]');
+        if (nodeRow) {
+            var strong = nodeRow.querySelector('.node-identity strong');
+            if (strong) return strong.textContent.trim();
+        }
+        return '节点#' + nodeId;
+    }
 
+    // 切换发布清单节点分组折叠/展开
+    function togglePreviewNode(nodeId) {
+        var group = document.querySelector('.preview-node-group[data-node-id="' + nodeId + '"]');
+        if (!group) return;
+        var btn = group.querySelector('.toggle-preview-expand');
+        var icon = btn ? btn.querySelector('i') : null;
+        var bindings = group.querySelectorAll('.preview-binding');
+        var allHidden = true;
+        bindings.forEach(function(r) { if (r.style.display !== 'none') allHidden = false; });
+        if (allHidden) {
+            bindings.forEach(function(r) { r.style.display = ''; });
+            if (icon) icon.className = 'bi bi-chevron-down';
+        } else {
+            bindings.forEach(function(r) { r.style.display = 'none'; });
+            if (icon) icon.className = 'bi bi-chevron-right';
+        }
+    }
+
+    // 统一发布函数
+    function publishBindings(bindings, triggerBtn) {
         if (bindings.length === 0) { showToast('请至少选择一个配置绑定', 'warning'); return; }
 
-        var btn = document.getElementById('btnPublish');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 创建中...';
+        if (triggerBtn) {
+            triggerBtn.disabled = true;
+            var origHTML = triggerBtn.innerHTML;
+            triggerBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        }
 
-        var parallelMode = document.getElementById('modeParallel').checked;
         fetch('/releases/create/', {
             method: 'POST',
             headers: {
@@ -992,12 +1084,14 @@
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             },
-            body: JSON.stringify({ bindings: bindings, auto_execute: true, parallel: parallelMode })
+            body: JSON.stringify({ bindings: bindings, auto_execute: true, parallel: false })
         })
-        .then(r => r.json())
+        .then(function(r) { return r.json(); })
         .then(function(data) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 开始发布';
+            if (triggerBtn) {
+                triggerBtn.disabled = false;
+                triggerBtn.innerHTML = origHTML;
+            }
             if (data.success) {
                 showToast(data.message, 'success');
                 if (data.task_center_id) {
@@ -1008,11 +1102,99 @@
             }
         })
         .catch(function() {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> 开始发布';
+            if (triggerBtn) {
+                triggerBtn.disabled = false;
+                triggerBtn.innerHTML = origHTML;
+            }
             showToast('网络错误，请重试', 'danger');
         });
+    }
+
+    // 全量发布
+    document.getElementById('btnPublishAll').addEventListener('click', function() {
+        var allBindings = [];
+        Object.keys(selectedBindings).forEach(function(nodeId) {
+            Object.values(selectedBindings[nodeId]).forEach(function(b) {
+                allBindings.push({ binding_id: b.id, version: b.version });
+            });
+        });
+        if (allBindings.length === 0) { showToast('请至少选择一个配置绑定', 'warning'); return; }
+        publishBindings(allBindings, this);
     });
+
+    // 发布清单搜索过滤（多标签 AND 关系）
+    function filterPreviewTable() {
+        var hidden = document.getElementById('previewSearchHidden');
+        var terms = hidden && hidden.value ? hidden.value.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean) : [];
+        var groups = document.querySelectorAll('.preview-node-group');
+        groups.forEach(function(group) {
+            var visibleBindingCount = 0;
+            var bindings = group.querySelectorAll('.preview-binding');
+            bindings.forEach(function(r) {
+                var text = r.textContent.toLowerCase();
+                var match = terms.length === 0 || terms.every(function(term) { return text.indexOf(term) !== -1; });
+                r.style.display = match ? '' : 'none';
+                if (match) visibleBindingCount++;
+            });
+            group.style.display = terms.length > 0 && visibleBindingCount === 0 ? 'none' : '';
+        });
+    }
+
+    // 初始化发布清单搜索 tag-input
+    function initPreviewSearchTag() {
+        var wrapper = document.getElementById('previewSearchTagWrapper');
+        var field = document.getElementById('previewSearchField');
+        var hidden = document.getElementById('previewSearchHidden');
+        if (!wrapper || !field || !hidden) return;
+
+        function focusField() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') field.setSelectionRange(len, len);
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function(b) { values.push(b.getAttribute('data-value')); });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            if (!text) return;
+            var existing = wrapper.querySelector('.tag-badge[data-value="' + text + '"]');
+            if (existing) return;
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                e.stopPropagation(); badge.remove(); updateHidden(); filterPreviewTable(); focusField();
+            });
+            wrapper.insertBefore(badge, field);
+        }
+
+        field.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                var val = field.value.replace(/,/g, '').trim();
+                if (val) { createBadge(val); field.value = ''; updateHidden(); filterPreviewTable(); }
+            } else if (e.key === 'Backspace' && field.value === '' && field.selectionStart === 0) {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) { badges[badges.length - 1].remove(); updateHidden(); filterPreviewTable(); }
+            }
+        });
+
+        field.addEventListener('blur', function() {
+            var val = field.value.trim();
+            if (val) { createBadge(val); field.value = ''; updateHidden(); filterPreviewTable(); }
+        });
+
+        wrapper.addEventListener('click', function(e) { if (e.target === wrapper) focusField(); });
+        focusField();
+    }
+
+    initPreviewSearchTag();
 
     // 进度弹窗
     function showProgressOverlay(batchNumber, taskCenterId) {
