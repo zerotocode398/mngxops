@@ -8,7 +8,7 @@ urlpatterns = [
     path("api/nodes/", views.ReleaseNodeListAPIView.as_view(), name="api_nodes"),
     path("api/node-bindings/<int:node_id>/", views.ReleaseNodeBindingsAPIView.as_view(), name="api_node_bindings"),
     # 创建
-    path("create/", views.ReleaseCreateView.as_view(), name="create"),
+    path("api/create/", views.ReleaseCreateAPIView.as_view(), name="api_create"),
     # 任务中心
     path("history/", views.TaskCenterListView.as_view(), name="history"),
     path("tasks/<int:pk>/", views.TaskCenterDetailView.as_view(), name="task_center_detail"),

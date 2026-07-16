@@ -1,8 +1,9 @@
+import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.configs.models import Config, ConfigVersion
+from apps.configs.models import Config, ConfigNodeBinding, BindingVersion
 from apps.nodes.models import Node
 from apps.releases.models import TaskCenterTask
 from apps.releases.models import ReleaseTask
@@ -97,127 +98,103 @@ class TaskCenterScopedAccessTests(TestCase):
 		self.assertEqual([t["id"] for t in payload["tasks"]], [self.own_node_task.id])
 
 
-class ReleaseCreateNodeScopedSelectionTests(TestCase):
-	def setUp(self):
-		user_model = get_user_model()
-		self.user = user_model.objects.create_superuser(
-			username="admin",
-			email="admin@example.com",
-			password="pass1234",
-		)
-		self.client.force_login(self.user)
+class ReleaseCreateJSONAPITests(TestCase):
+    """测试 JSON API 发布任务创建"""
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="pass1234",
+        )
+        self.client.force_login(self.user)
 
-		self.node_a = Node.objects.create(
-			hostname="node-a",
-			ip="10.10.0.11",
-			created_by=self.user,
-		)
-		self.node_b = Node.objects.create(
-			hostname="node-b",
-			ip="10.10.0.12",
-			created_by=self.user,
-		)
+        self.node_a = Node.objects.create(
+            hostname="node-a",
+            ip="10.10.0.11",
+            created_by=self.user,
+        )
+        self.node_b = Node.objects.create(
+            hostname="node-b",
+            ip="10.10.0.12",
+            created_by=self.user,
+        )
 
-		self.config_a = Config.objects.create(
-			node=self.node_a,
-			name="site-a.conf",
-			file_path="/etc/nginx/conf.d/site-a.conf",
-			content="server { listen 80; }",
-			current_version=1,
-			created_by=self.user,
-		)
-		self.config_b = Config.objects.create(
-			node=self.node_b,
-			name="site-b.conf",
-			file_path="/etc/nginx/conf.d/site-b.conf",
-			content="server { listen 8080; }",
-			current_version=1,
-			created_by=self.user,
-		)
+        self.config_a = Config.objects.create(
+            name="site-a.conf",
+            default_remote_path="/etc/nginx/conf.d/site-a.conf",
+            created_by=self.user,
+        )
+        self.config_b = Config.objects.create(
+            name="site-b.conf",
+            default_remote_path="/etc/nginx/conf.d/site-b.conf",
+            created_by=self.user,
+        )
 
-		self.version_a = ConfigVersion.objects.create(
-			config=self.config_a,
-			version=1,
-			content=self.config_a.content,
-			remark="init",
-			created_by=self.user,
-		)
-		self.version_b = ConfigVersion.objects.create(
-			config=self.config_b,
-			version=1,
-			content=self.config_b.content,
-			remark="init",
-			created_by=self.user,
-		)
+        self.binding_a = ConfigNodeBinding.objects.create(
+            config=self.config_a,
+            node=self.node_a,
+            remote_path="/etc/nginx/conf.d/site-a.conf",
+            content="server { listen 80; }",
+            current_version=1,
+            created_by=self.user,
+        )
+        self.binding_b = ConfigNodeBinding.objects.create(
+            config=self.config_b,
+            node=self.node_b,
+            remote_path="/etc/nginx/conf.d/site-b.conf",
+            content="server { listen 8080; }",
+            current_version=1,
+            created_by=self.user,
+        )
 
-	def test_create_release_tasks_from_node_config_pairs(self):
-		response = self.client.post(
-			reverse("releases:create"),
-			data={
-				"node_ids": [str(self.node_a.id), str(self.node_b.id)],
-				"node_config_pairs": [
-					f"{self.node_a.id}:{self.config_a.id}",
-					f"{self.node_b.id}:{self.config_b.id}",
-				],
-				"config_ids": [str(self.config_a.id), str(self.config_b.id)],
-				"version_ids": [
-					f"{self.config_a.id}:{self.version_a.id}",
-					f"{self.config_b.id}:{self.version_b.id}",
-				],
-			},
-		)
+        BindingVersion.objects.create(
+            binding=self.binding_a,
+            version=1,
+            content=self.binding_a.content,
+            created_by=self.user,
+        )
+        BindingVersion.objects.create(
+            binding=self.binding_b,
+            version=1,
+            content=self.binding_b.content,
+            created_by=self.user,
+        )
 
-		self.assertEqual(response.status_code, 302)
-		self.assertEqual(response.url, reverse("releases:center"))
+    def test_create_release_tasks_json_api(self):
+        response = self.client.post(
+            reverse("releases:api_create"),
+            data=json.dumps({
+                "bindings": [
+                    {"binding_id": self.binding_a.id, "version": 1},
+                    {"binding_id": self.binding_b.id, "version": 1},
+                ],
+            }),
+            content_type="application/json",
+        )
 
-		tasks = ReleaseTask.objects.order_by("id")
-		self.assertEqual(tasks.count(), 2)
-		self.assertEqual(tasks[0].node_id, self.node_a.id)
-		self.assertEqual(tasks[0].config_id, self.config_a.id)
-		self.assertEqual(tasks[1].node_id, self.node_b.id)
-		self.assertEqual(tasks[1].config_id, self.config_b.id)
-		self.assertEqual(tasks[0].batch_number, tasks[1].batch_number)
+        self.assertEqual(response.status_code, 200)
+        resp = json.loads(response.content)
+        self.assertTrue(resp["success"])
+        self.assertEqual(resp["task_count"], 2)
 
-	def test_create_release_tasks_allows_more_than_ten_selected_pairs(self):
-		extra_configs = []
-		for idx in range(2, 12):
-			cfg = Config.objects.create(
-				node=self.node_a,
-				name=f"site-a-{idx}.conf",
-				file_path=f"/etc/nginx/conf.d/site-a-{idx}.conf",
-				content=f"server {{ listen 80{idx}; }}",
-				current_version=1,
-				created_by=self.user,
-			)
-			version = ConfigVersion.objects.create(
-				config=cfg,
-				version=1,
-				content=cfg.content,
-				remark="init",
-				created_by=self.user,
-			)
-			extra_configs.append((cfg, version))
+        tasks = ReleaseTask.objects.order_by("id")
+        self.assertEqual(tasks.count(), 2)
+        self.assertEqual(tasks[0].node_id, self.node_a.id)
+        self.assertEqual(tasks[0].config_id, self.config_a.id)
+        self.assertEqual(tasks[1].node_id, self.node_b.id)
+        self.assertEqual(tasks[1].config_id, self.config_b.id)
+        self.assertEqual(tasks[0].batch_number, tasks[1].batch_number)
 
-		pairs = [f"{self.node_a.id}:{self.config_a.id}"] + [
-			f"{self.node_a.id}:{cfg.id}" for cfg, _ in extra_configs
-		]
-		version_ids = [f"{self.config_a.id}:{self.version_a.id}"] + [
-			f"{cfg.id}:{version.id}" for cfg, version in extra_configs
-		]
-
-		response = self.client.post(
-			reverse("releases:create"),
-			data={
-				"node_ids": [str(self.node_a.id)],
-				"node_config_pairs": pairs,
-				"config_ids": [str(self.config_a.id)] + [str(cfg.id) for cfg, _ in extra_configs],
-				"version_ids": version_ids,
-			},
-		)
-
-		self.assertEqual(response.status_code, 302)
-		self.assertEqual(response.url, reverse("releases:center"))
-		self.assertEqual(ReleaseTask.objects.count(), 11)
+    def test_create_release_tasks_json_api_empty_bindings(self):
+        response = self.client.post(
+            reverse("releases:api_create"),
+            data=json.dumps({"bindings": []}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        resp = json.loads(response.content)
+        self.assertFalse(resp["success"])
 
 
 class TaskCenterTagSearchTests(TestCase):

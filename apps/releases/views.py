@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse
-from django.views.generic import ListView, DetailView, CreateView, View
+from django.views.generic import ListView, DetailView, View
 
 from apps.nodes.views import _get_node_credential
 from apps.nodes.models import Node
@@ -33,7 +33,6 @@ from utils.ssh import (
     execute_nginx_reload,
 )
 
-from .forms import ReleaseCreateForm
 from .models import ReleaseTask, ReleaseHistory, TaskCenterTask, generate_batch_number
 from utils.pagination import PerPagePaginationMixin
 
@@ -278,70 +277,12 @@ class ReleaseExecutorMixin:
             log_lines.append(f"回滚失败: {rollback_msg}")
 
 
-class ReleaseCreateView(
-    LoginRequiredMixin, PermissionRequiredMixin, ReleaseExecutorMixin, CreateView
-):
-    """发布任务创建视图 - 支持表单提交和 JSON 提交两种方式"""
-    model = ReleaseTask
-    form_class = ReleaseCreateForm
-    template_name = "releases/create.html"
+class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseExecutorMixin, View):
+    """发布任务创建 API — 处理 JSON 格式的发布任务创建请求"""
     permission_resource = "releases"
     permission_action = "create"
-    recommended_nodes_per_batch = 5
-    recommended_configs_per_batch = 10
-    max_tasks_per_batch = 1000
 
-    def post(self, request, *args, **kwargs):
-        content_type = request.content_type or ""
-        is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-
-        # JSON 提交方式（来自新版发布中心）
-        if "application/json" in content_type:
-            return self._post_json(request)
-
-        # 传统表单提交方式（来自 create.html）
-        binding_ids = request.POST.getlist("binding_ids")
-        if not binding_ids:
-            messages.error(request, "请至少选择一个配置绑定")
-            return redirect("releases:create")
-
-        batch_number = generate_batch_number()
-        created_count = 0
-
-        for bid in binding_ids:
-            if not bid.isdigit():
-                continue
-            binding = get_object_or_404(ConfigNodeBinding, pk=int(bid))
-            if binding.node.is_locked:
-                messages.warning(request, f"节点 {binding.node.hostname} 已锁定，跳过")
-                continue
-
-            task = ReleaseTask.objects.create(
-                batch_number=batch_number,
-                binding=binding,
-                config=binding.config,
-                node=binding.node,
-                version=binding.versions.order_by("-version").first(),
-                publish_version=binding.current_version,
-                remote_path=binding.remote_path,
-                operator=request.user,
-                status="pending",
-            )
-            created_count += 1
-
-        if created_count == 0:
-            messages.error(request, "未找到可发布的配置绑定")
-            return redirect("releases:create")
-
-        messages.success(
-            request,
-            f"发布任务已创建，批次号: {batch_number}，共 {created_count} 个任务",
-        )
-        return redirect("releases:center")
-
-    def _post_json(self, request):
-        """处理 JSON 格式的发布任务创建请求"""
-        is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    def post(self, request):
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
@@ -393,7 +334,6 @@ class ReleaseCreateView(
             "message": f"发布任务已创建，批次号: {batch_number}，共 {len(task_ids)} 个任务",
         }
 
-        # 如果请求自动执行，则创建 TaskCenterTask 并异步执行
         if auto_execute:
             parallel = data.get("parallel", False)
             max_workers = 1
