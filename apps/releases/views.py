@@ -1075,6 +1075,7 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
         search = request.GET.get("search", "").strip()
         environment = request.GET.get("environment", "").strip()
         group_id = request.GET.get("group_id", "").strip()
+        node_status = request.GET.get("status", "").strip()
         sync_status = request.GET.get("sync_status", "").strip()
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 20))
@@ -1088,9 +1089,12 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
                     Q(hostname__icontains=term)
                     | Q(ip__icontains=term)
                     | Q(groups__name__icontains=term)
+                    | Q(config_bindings__config__name__icontains=term)
                 ).distinct()
         if environment:
             queryset = queryset.filter(environment=environment)
+        if node_status:
+            queryset = queryset.filter(status=node_status)
         if group_id and group_id.isdigit():
             queryset = queryset.filter(groups__id=int(group_id)).distinct()
 

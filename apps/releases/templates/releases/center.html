@@ -30,7 +30,7 @@
                             <div class="col-md-5">
                                 <div class="tag-input-wrapper" id="nodeSearchTagWrapper">
                                     <input type="text" class="tag-input-field" id="nodeSearchField"
-                                        placeholder="搜索主机名、IP 或节点组" autocomplete="off">
+                                        placeholder="搜索主机名、IP、节点组或配置名称" autocomplete="off">
                                 </div>
                                 <input type="hidden" id="nodeSearchHidden" value="">
                             </div>
@@ -135,7 +135,7 @@
                                 <thead class="table-light sticky-top">
                                     <tr>
                                         <th style="width: 28px;"></th>
-                                        <th>节点 / 配置</th>
+                                        <th>配置名称</th>
                                         <th style="width: 70px;">版本</th>
                                         <th>远程路径</th>
                                         <th style="width: 145px;">操作</th>
@@ -431,7 +431,7 @@
             params.set('sync_status', currentFilters.syncStatus);
         }
 
-        fetch('/releases/api/nodes/?' + params.toString(), {
+        return fetch('/releases/api/nodes/?' + params.toString(), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(r => r.json())
@@ -474,8 +474,8 @@
                 html += '<td class="text-center"><input type="checkbox" class="form-check-input node-cb" value="' + n.id + '" ' + isChecked + ' ' + disabledAttr + '></td>';
                 html += '<td class="text-center"><button type="button" class="btn btn-sm btn-link text-muted p-0 toggle-expand" data-node-id="' + n.id + '" title="展开绑定"><i class="bi bi-chevron-right"></i></button></td>';
                 html += '<td><div class="node-info-cell">' +
-                    '<span class="node-identity">' + (isLocked ? '<i class="bi bi-lock-fill text-warning me-1" title="已锁定"></i>' : '') +
-                    '<strong>' + n.hostname + '</strong><small class="text-muted">(' + n.ip + ')</small></span>' +
+                    '<span class="node-identity" data-hostname="' + n.hostname + '" data-ip="' + n.ip + '">' + (isLocked ? '<i class="bi bi-lock-fill text-warning me-1" title="已锁定"></i>' : '') +
+                    n.hostname + '<small class="text-muted">(' + n.ip + ')</small></span>' +
                     (groupBadges ? groupBadges : '') +
                     '</div></td>';
                 html += '<td style="white-space: nowrap;"><span class="' + envCls + '">' + envLabel + '</span></td>';
@@ -506,7 +506,13 @@
                 var nodeId = parseInt(this.value);
                 var row = this.closest('tr');
                 if (this.checked) {
-                    selectedNodes[nodeId] = { id: nodeId, hostname: row.querySelector('strong').textContent.trim() };
+                    var identity = row.querySelector('.node-identity');
+                    selectedNodes[nodeId] = {
+                        id: nodeId,
+                        hostname: identity ? identity.dataset.hostname : '',
+                        ip: identity ? identity.dataset.ip : '',
+                        group_names: Array.from(row.querySelectorAll('.node-info-cell .badge')).map(function(b) { return b.textContent.trim(); })
+                    };
                     if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
                     if (!bindingCache[nodeId]) bindingCache[nodeId] = [];
                     // 绑定已缓存时直接填充；未缓存时异步加载
@@ -934,8 +940,20 @@
             var bindings = Object.values(selectedBindings[nodeId]);
             if (bindings.length === 0) return;
             var node = selectedNodes[nodeId];
-            var nodeName = node ? node.hostname : getNodeNameFromDOM(nodeId);
-            nodeGroups[nodeId] = { nodeId: nodeId, nodeName: nodeName, bindings: bindings };
+            var nodeName = '', nodeIp = '', groupNames = [];
+            var nodeRow = document.querySelector('.node-row[data-node-id="' + nodeId + '"]');
+            var identity = nodeRow ? nodeRow.querySelector('.node-identity') : null;
+
+            if (node && node.hostname && node.hostname !== '预选节点') {
+                nodeName = node.hostname;
+                nodeIp = node.ip || '';
+                groupNames = node.group_names || [];
+            } else {
+                nodeName = identity && identity.dataset.hostname ? identity.dataset.hostname : getNodeNameFromDOM(nodeId);
+                nodeIp = identity && identity.dataset.ip ? identity.dataset.ip : '';
+                groupNames = nodeRow ? Array.from(nodeRow.querySelectorAll('.node-info-cell .badge')).map(function(b) { return b.textContent.trim(); }) : [];
+            }
+            nodeGroups[nodeId] = { nodeId: nodeId, nodeName: nodeName, nodeIp: nodeIp, groupNames: groupNames, bindings: bindings };
             totalUnits += bindings.length;
         });
 
@@ -960,7 +978,10 @@
             html += '<tbody class="preview-node-group" data-node-id="' + nodeId + '">';
             html += '<tr class="preview-node-header" data-node-id="' + nodeId + '">';
             html += '<td><button type="button" class="btn btn-sm btn-link text-muted p-0 toggle-preview-expand" data-node-id="' + nodeId + '"><i class="bi bi-chevron-down"></i></button></td>';
-            html += '<td><strong>' + g.nodeName + '</strong> <span class="badge bg-info ms-1">' + bindingCount + ' 个配置</span></td>';
+            html += '<td><div class="node-info-cell">' +
+                '<span class="node-identity">' + g.nodeName + '<small class="text-muted">(' + g.nodeIp + ')</small></span>' +
+                (g.groupNames && g.groupNames.length > 0 ? g.groupNames.map(function(gn) { return '<span class="badge bg-info text-dark" style="font-size: 0.72rem; font-weight: normal;">' + gn + '</span>'; }).join(' ') : '') +
+                '</div></td>';
             html += '<td></td><td></td>';
             html += '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary btn-publish-node" data-node-id="' + nodeId + '">📤 发布此节点</button></td>';
             html += '</tr>';
@@ -1043,8 +1064,8 @@
     function getNodeNameFromDOM(nodeId) {
         var nodeRow = document.querySelector('.node-row[data-node-id="' + nodeId + '"]');
         if (nodeRow) {
-            var strong = nodeRow.querySelector('.node-identity strong');
-            if (strong) return strong.textContent.trim();
+            var identity = nodeRow.querySelector('.node-identity');
+            if (identity && identity.dataset.hostname) return identity.dataset.hostname;
         }
         return '节点#' + nodeId;
     }
@@ -1305,19 +1326,18 @@
         expandedNodes[preNodeId] = true;
         sessionStorage.setItem('releases_expanded_nodes', JSON.stringify([preNodeId]));
 
-        loadNodes(1);
-        setTimeout(function() {
+        loadNodes(1).then(function() {
             toggleNodeBindings(preNodeId);
-            setTimeout(function() {
-                var cb = document.querySelector('.binding-cb[data-binding-id="' + preBindingId + '"]');
-                if (cb && cb.dataset.nodeId == preNodeId) {
-                    cb.checked = true;
-                    cb.dispatchEvent(new Event('change'));
-                    var nodeCb = document.querySelector('.node-cb[value="' + preNodeId + '"]');
-                    if (nodeCb && !nodeCb.disabled) { nodeCb.checked = true; nodeCb.dispatchEvent(new Event('change')); }
-                }
-            }, 500);
-        }, 300);
+            return new Promise(function(resolve) { setTimeout(resolve, 500); });
+        }).then(function() {
+            var cb = document.querySelector('.binding-cb[data-binding-id="' + preBindingId + '"]');
+            if (cb && cb.dataset.nodeId == preNodeId) {
+                cb.checked = true;
+                cb.dispatchEvent(new Event('change'));
+                var nodeCb = document.querySelector('.node-cb[value="' + preNodeId + '"]');
+                if (nodeCb && !nodeCb.disabled) { nodeCb.checked = true; nodeCb.dispatchEvent(new Event('change')); }
+            }
+        });
     }
 
     function restoreExpandedNodes() {
