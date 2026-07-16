@@ -44,10 +44,6 @@
                         <div class="col-md-3"><span class="text-muted">结束时间</span> {{ task.finished_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
                     </div>
 
-                    {% if task.detail %}
-                    <div class="alert alert-info py-2 mb-3 small"><i class="bi bi-info-circle"></i> {{ task.detail }}</div>
-                    {% endif %}
-
                     {% if target_nodes %}
                     <div class="mb-3">
                         <div class="small fw-semibold mb-1"><i class="bi bi-server"></i> 目标节点（{{ target_nodes|length }} 台）</div>
@@ -71,38 +67,38 @@
                     {% endif %}
 
                     <hr>
-                    <h6 class="mb-3"><i class="bi bi-clipboard-data"></i> 执行结果</h6>
+                    <h6 class="mb-2">
+                        <i class="bi bi-clipboard-data"></i> 执行结果
+                        {% if execution_duration %}
+                        <span class="text-muted fw-normal small ms-2">耗时 {{ execution_duration }}</span>
+                        {% endif %}
+                    </h6>
 
                     {% if result_tree %}
-                    <div class="mb-2">
-                        <span class="badge bg-success me-1">✅ 成功 {{ result_summary.success }}</span>
-                        <span class="badge bg-danger me-1">❌ 失败 {{ result_summary.failed }}</span>
+                    <div class="d-flex gap-2 mb-3">
+                        <span class="badge bg-success">✅ 成功 {{ result_summary.success }}</span>
+                        <span class="badge bg-danger">❌ 失败 {{ result_summary.failed }}</span>
                     </div>
-                    <div class="border rounded" id="resultTreeContainer">
+                    <div class="border rounded shadow-sm" id="resultTreeContainer">
                         {% for node in result_tree %}
                         <div class="border-bottom result-node-group">
                             <div class="result-node-header d-flex align-items-center gap-2 px-3 py-2 cursor-pointer"
                                  style="background: {% if node.failed > 0 %}#f8d7da{% else %}#d4edda{% endif %};"
                                  onclick="var b=this.nextElementSibling;b.classList.toggle('d-none');var i=this.querySelector('.toggle-icon');i.textContent=i.textContent==='▶'?'▼':'▶';">
-                                <span class="toggle-icon">▼</span>
+                                <span class="toggle-icon">{% if node.failed > 0 %}▼{% else %}▶{% endif %}</span>
                                 {% if node.failed > 0 %}❌{% else %}✅{% endif %}
                                 {{ node.name }}
-                                <span class="ms-2 small text-muted">{{ node.success }}成功{% if node.failed > 0 %} / {{ node.failed }}失败{% endif %}</span>
+                                <span class="ms-2 small text-muted">{{ node.success }} 成功{% if node.failed > 0 %} / {{ node.failed }} 失败{% endif %}</span>
                             </div>
-                            <div class="result-node-body px-3 py-2">
+                            <div class="result-node-body px-3 py-2{% if node.failed == 0 %} d-none{% endif %}">
                                 {% for cfg in node.configs %}
-                                <div class="result-config-item d-flex align-items-center gap-2 py-1 small">
+                                <div class="result-config-item d-flex align-items-center gap-2 py-1 small{% if cfg.status == 'failed' %} bg-failed-light{% endif %}">
                                     {% if cfg.status == 'success' %}
                                     <span class="text-success">✅</span>
                                     {% else %}
                                     <span class="text-danger">❌</span>
                                     {% endif %}
                                     <span>{{ cfg.name }}</span>
-                                    {% if cfg.status == 'success' %}
-                                    <span class="badge bg-success">成功</span>
-                                    {% else %}
-                                    <span class="badge bg-danger">失败</span>
-                                    {% endif %}
                                 </div>
                                 {% endfor %}
                             </div>
@@ -111,6 +107,13 @@
                     </div>
                     {% else %}
                     <pre class="bg-dark text-light p-3 rounded small" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">{{ task.result|default:'暂无结果数据' }}</pre>
+                    {% endif %}
+
+                    {% if task.result %}
+                    <details class="mt-3">
+                        <summary class="small text-muted cursor-pointer">查看原始日志</summary>
+                        <pre class="bg-dark text-light p-2 rounded small mt-2" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap;">{{ task.result }}</pre>
+                    </details>
                     {% endif %}
                 </div>
             </div>
@@ -131,5 +134,9 @@
     .result-node-header:hover { opacity: 0.9; }
     .result-config-item { border-top: 1px dashed #eee; }
     .result-config-item:first-child { border-top: none; }
+    .bg-failed-light { background: #fff5f5; }
+    #resultTreeContainer { border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    details summary { font-size: 0.82rem; color: #6c757d; user-select: none; cursor: pointer; }
+    details summary:hover { color: #495057; }
 </style>
 {% endblock %}
