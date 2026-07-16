@@ -436,6 +436,12 @@
             if (!res.success) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">加载失败</td></tr>'; return; }
             updateStatusCounts(res.status_counts);
             renderNodeTable(res.nodes, res.total, res.page, res.total_pages);
+            // 恢复展开节点的绑定数据（刷新页面后 sessionStorage 恢复的展开状态需要主动加载）
+            res.nodes.forEach(function(n) {
+                if (expandedNodes[n.id] && (!bindingCache[n.id] || bindingCache[n.id].length === 0)) {
+                    loadBindings(n.id);
+                }
+            });
         })
         .catch(function() {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">网络错误</td></tr>';
