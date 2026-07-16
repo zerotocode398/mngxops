@@ -61,25 +61,19 @@
                         <table class="table table-sm table-hover align-middle mb-0 task-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 28px;"></th>
-                                    <th style="width: 75px;">ID</th>
-                                    <th style="width: 95px;">类型</th>
+                                    <th style="width: 65px;">ID</th>
+                                    <th style="width: 90px;">类型</th>
                                     <th style="width: 80px;">状态</th>
                                     <th style="width: 120px;">进度</th>
-                                    <th>摘要</th>
-                                    <th style="width: 90px;">操作人</th>
+                                    <th style="width: 240px;">摘要</th>
+                                    <th style="width: 110px;">操作人</th>
                                     <th style="width: 110px;">时间</th>
                                     <th style="width: 60px;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for task in tasks %}
-                                <tr class="task-row" data-task-id="{{ task.id }}" data-task-finished="{% if task.status == 'success' or task.status == 'failed' or task.status == 'cancelled' %}true{% else %}false{% endif %}" data-result="{{ task.result|escapejs }}">
-                                    <td class="text-center">
-                                        <button type="button" class="btn btn-sm btn-link text-muted p-0 task-expand-btn" data-task-id="{{ task.id }}">
-                                            <i class="bi bi-chevron-right"></i>
-                                        </button>
-                                    </td>
+                                <tr class="task-row" data-task-id="{{ task.id }}" data-task-finished="{% if task.status == 'success' or task.status == 'failed' or task.status == 'cancelled' %}true{% else %}false{% endif %}">
                                     <td><code>#{{ task.id }}</code></td>
                                     <td><span class="badge bg-light text-dark border">{{ task.get_operation_type_display }}</span></td>
                                     <td id="taskStatus{{ task.id }}">
@@ -101,7 +95,7 @@
                                         </div>
                                         <small class="text-muted" id="taskProgressText{{ task.id }}">{{ task.progress }}%</small>
                                     </td>
-                                    <td>
+                                    <td class="task-summary-cell">
                                         <span class="small">
                                             {% if task.target_hostnames %}
                                             <strong>{{ task.target_hostnames|truncatechars:40 }}</strong>
@@ -121,13 +115,6 @@
                                         <a href="{% url 'releases:task_center_detail' task.id %}" class="btn btn-sm btn-outline-primary" title="详情">
                                             <i class="bi bi-eye"></i> 详情
                                         </a>
-                                    </td>
-                                </tr>
-                                <tr class="task-expand-row d-none" id="taskExpandRow{{ task.id }}">
-                                    <td colspan="9" class="p-0">
-                                        <div class="border-top bg-light p-3" id="taskExpandContent{{ task.id }}">
-                                            <div class="text-center text-muted py-2 small">解析中...</div>
-                                        </div>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -164,23 +151,14 @@
 {% block extra_js %}
 <style>
     .task-table { table-layout: fixed; width: 100%; }
-    .task-table td { font-size: 0.82rem; vertical-align: middle; }
+    .task-table td { font-size: 0.82rem; vertical-align: middle; white-space: nowrap; }
+    .task-table td.task-summary-cell { white-space: normal; }
     .task-table td code,
     .task-table td small { font-size: inherit; color: #212529; }
     .task-table td .badge { font-size: 0.78rem; }
     .task-table thead th { font-weight: 500; white-space: nowrap; }
-    .task-expand-row td { background: #f8f9fa; }
-    .task-tree-node-header {
-        display: flex; align-items: center; gap: 6px; padding: 4px 8px;
-        border-radius: 6px; cursor: pointer; font-size: 0.85rem; margin-bottom: 4px;
-    }
-    .task-tree-node-header.success { background: #d4edda; }
-    .task-tree-node-header.failed { background: #f8d7da; }
-    .task-tree-node-header.running { background: #fff3cd; }
-    .task-tree-node-body { padding-left: 20px; }
-    .task-tree-config {
-        display: flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 2px 0;
-    }
+    .task-row { cursor: pointer; }
+    .task-row:hover { background: #f0f6ff; }
     .tag-input-wrapper {
         display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
         padding: 4px 8px; min-height: 31px; cursor: text; overflow-y: auto;
@@ -201,7 +179,6 @@
 </style>
 <script>
     (function () {
-        var expandedTasks = {};
         var progressApiUrl = '{% url "releases:task_center_progress" %}';
 
         function renderStatusBadge(status) {
@@ -211,105 +188,6 @@
             if (status === 'pending') return '<span class="badge bg-secondary">等待中</span>';
             return '<span class="badge bg-warning text-dark">已取消</span>';
         }
-
-        function parseResultText(resultText) {
-            if (!resultText || !resultText.trim()) return { nodes: [], summary: '' };
-            var lines = resultText.split('\n');
-            var nodes = [];
-            var currentNode = null;
-            var summary = '';
-
-            lines.forEach(function(line) {
-                var trimmed = line.trim();
-                if (!trimmed) return;
-
-                if (trimmed.startsWith('[节点] ')) {
-                    if (currentNode) nodes.push(currentNode);
-                    currentNode = { name: trimmed.replace('[节点] ', ''), configs: [], status: 'running' };
-                } else if (trimmed.startsWith('[节点摘要]')) {
-                    // 跳过摘要行
-                } else if (currentNode && trimmed.startsWith('  [成功]')) {
-                    var name = trimmed.replace(/^\s*\[成功\]\s*/, '').replace(/ v\d+.*/, '').trim();
-                    currentNode.configs.push({ name: name, status: 'success', raw: trimmed });
-                } else if (currentNode && trimmed.startsWith('  [失败]')) {
-                    var fname = trimmed.replace(/^\s*\[失败\]\s*/, '').replace(/ v\d+.*/, '');
-                    currentNode.configs.push({ name: fname, status: 'failed', raw: trimmed });
-                } else if (trimmed.startsWith('执行完成')) {
-                    summary = trimmed;
-                }
-            });
-            if (currentNode) nodes.push(currentNode);
-
-            // 如果没有节点分组，使用原始文本
-            if (nodes.length === 0 && resultText.trim()) {
-                return { nodes: [], plainText: resultText.trim(), summary: '' };
-            }
-            return { nodes: nodes, summary: summary, plainText: '' };
-        }
-
-        function buildTaskTreeHtml(parsed) {
-            if (parsed.plainText) {
-                return '<pre class="bg-dark text-light p-2 small mb-0 rounded" style="white-space:pre-wrap;max-height:300px;overflow-y:auto;">' + parsed.plainText + '</pre>';
-            }
-            if (parsed.nodes.length === 0) {
-                return '<div class="text-muted small">暂无详细结果</div>';
-            }
-            var html = '';
-            if (parsed.summary) {
-                html += '<div class="small text-muted mb-2">' + parsed.summary + '</div>';
-            }
-            parsed.nodes.forEach(function(node) {
-                var successCount = node.configs.filter(function(c) { return c.status === 'success'; }).length;
-                var failedCount = node.configs.filter(function(c) { return c.status === 'failed'; }).length;
-                var nodeStatus = failedCount > 0 ? 'failed' : 'success';
-                var statusIcon = nodeStatus === 'success' ? '✅' : '❌';
-
-                html += '<div class="task-tree-node-header ' + nodeStatus + '" onclick="var b=this.nextElementSibling;b.classList.toggle(\'d-none\');">';
-                html += '<span class="toggle-icon">▶</span> ' + statusIcon + ' <strong>' + node.name + '</strong> ';
-                html += '<span class="ms-2 text-muted small">' + successCount + '成功 / ' + failedCount + '失败</span>';
-                html += '</div>';
-                html += '<div class="task-tree-node-body">';
-                node.configs.forEach(function(cfg) {
-                    var icon = cfg.status === 'success' ? '✅' : '❌';
-                    html += '<div class="task-tree-config">' + icon + ' ' + cfg.name + '</div>';
-                });
-                html += '</div>';
-            });
-            return html;
-        }
-
-        function toggleTaskExpand(taskId) {
-            var button = document.querySelector('.task-expand-btn[data-task-id="' + taskId + '"]');
-            var row = document.getElementById('taskExpandRow' + taskId);
-            var content = document.getElementById('taskExpandContent' + taskId);
-
-            if (!row || !content) return;
-            if (expandedTasks[taskId]) {
-                delete expandedTasks[taskId];
-                row.classList.add('d-none');
-                if (button) { button.querySelector('i').className = 'bi bi-chevron-right'; }
-            } else {
-                expandedTasks[taskId] = true;
-                row.classList.remove('d-none');
-                if (button) { button.querySelector('i').className = 'bi bi-chevron-down'; }
-
-                if (content.querySelector('.task-tree-node-header') || content.textContent.indexOf('暂无详细结果') >= 0) {
-                    return; // 已加载
-                }
-
-                var taskRow = document.querySelector('.task-row[data-task-id="' + taskId + '"]');
-                var resultText = taskRow ? taskRow.getAttribute('data-result') || '' : '';
-                var parsed = parseResultText(resultText);
-                content.innerHTML = buildTaskTreeHtml(parsed);
-            }
-        }
-
-        document.querySelectorAll('.task-expand-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var taskId = parseInt(this.dataset.taskId);
-                toggleTaskExpand(taskId);
-            });
-        });
 
         function initTaskCenterSearchTagInput() {
             var wrapper = document.getElementById('taskCenterSearchTagWrapper');
@@ -398,16 +276,7 @@
                         if (status) status.innerHTML = renderStatusBadge(task.status);
                         if (isFinished) {
                             row.setAttribute('data-task-finished', 'true');
-                            row.setAttribute('data-result', task.result || '');
                             if (!wasFinished) hasFreshCompletion = true;
-                            // 如果已展开，刷新展开内容
-                            if (expandedTasks[task.id]) {
-                                var content = document.getElementById('taskExpandContent' + task.id);
-                                if (content) {
-                                    var parsed = parseResultText(task.result || '');
-                                    content.innerHTML = buildTaskTreeHtml(parsed);
-                                }
-                            }
                         }
                     });
                     if (hasFreshCompletion) setTimeout(function() { window.location.reload(); }, 1000);
