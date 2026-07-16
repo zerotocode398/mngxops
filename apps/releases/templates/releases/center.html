@@ -694,13 +694,13 @@
         }
 
         if (latestVersionId) {
-            fetch('/configs/api/version-content/' + latestVersionId + '/', {
+            fetch('/releases/version/' + latestVersionId + '/content/', {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(r => r.json())
             .then(function(res) {
-                if (res.success && res.data) {
-                    document.getElementById('cpContent').textContent = res.data.content || '(空文件)';
+                if (res.content !== undefined) {
+                    document.getElementById('cpContent').textContent = res.content || '(空文件)';
                 } else {
                     document.getElementById('cpContent').textContent = '加载内容失败';
                 }
