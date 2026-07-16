@@ -1051,6 +1051,23 @@ class VersionContentAPIView(LoginRequiredMixin, View):
         })
 
 
+
+def _build_release_status_counts():
+    """构建发布中心绑定状态全局统计（含 marked_deleted）"""
+    from apps.configs.models import ConfigNodeBinding
+    bindings = ConfigNodeBinding.objects.all()
+    return {
+        "total": bindings.count(),
+        "pending": bindings.filter(sync_status__in=["not_synced", "modified"]).count(),
+        "synced": bindings.filter(sync_status="synced").count(),
+        "conflict": bindings.filter(sync_status="conflict").count(),
+        "failed": bindings.filter(sync_status="failed").count(),
+        "syncing": bindings.filter(sync_status="syncing").count(),
+        "orphaned": bindings.filter(sync_status="orphaned").count(),
+        "marked_deleted": bindings.filter(sync_status="marked_deleted").count(),
+    }
+
+
 class ReleaseNodeListAPIView(LoginRequiredMixin, View):
     """获取发布中心可选节点列表（含绑定统计）"""
 
@@ -1058,6 +1075,7 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
         search = request.GET.get("search", "").strip()
         environment = request.GET.get("environment", "").strip()
         group_id = request.GET.get("group_id", "").strip()
+        sync_status = request.GET.get("sync_status", "").strip()
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 20))
 
@@ -1075,6 +1093,20 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
             queryset = queryset.filter(environment=environment)
         if group_id and group_id.isdigit():
             queryset = queryset.filter(groups__id=int(group_id)).distinct()
+
+        # 按绑定同步状态过滤节点
+        if sync_status:
+            if sync_status == "pending":
+                status_values = ["not_synced", "modified"]
+            else:
+                status_values = [sync_status]
+            node_ids_with_status = (
+                ConfigNodeBinding.objects
+                .filter(sync_status__in=status_values)
+                .values_list("node_id", flat=True)
+                .distinct()
+            )
+            queryset = queryset.filter(id__in=node_ids_with_status)
 
         total = queryset.count()
         nodes_page = queryset[(page - 1) * page_size: page * page_size]
@@ -1121,6 +1153,7 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
             "page": page,
             "page_size": page_size,
             "total_pages": max(1, (total + page_size - 1) // page_size),
+            "status_counts": _build_release_status_counts(),
         })
 
 
@@ -1131,7 +1164,6 @@ class ReleaseNodeBindingsAPIView(LoginRequiredMixin, View):
         bindings = (
             ConfigNodeBinding.objects
             .filter(node_id=node_id)
-            .exclude(sync_status="marked_deleted")
             .select_related("config")
             .order_by("config__name")
         )

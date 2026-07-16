@@ -56,6 +56,19 @@
                             </div>
                         </div>
 
+                        <!-- 绑定状态过滤栏 -->
+                        <div class="d-flex flex-wrap gap-2 align-items-center mb-2" id="bindingStatusFilter">
+                            <small class="text-muted">状态:</small>
+                            <span class="badge status-filter-tag status-filter-active" data-status="">全部 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="pending">📝待推送 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="synced">✅已同步 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="conflict">⚠️冲突 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="failed">❌失败 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="syncing">🔄同步中 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="orphaned">📭远程删除 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="marked_deleted">🗑️标记删除 <span class="ms-1 status-count">0</span></span>
+                        </div>
+
                         <!-- 节点表格 -->
                         <div class="table-responsive border rounded" style="max-height: 480px; overflow-y: auto;">
                             <table class="table table-sm table-hover mb-0 release-table">
@@ -264,6 +277,23 @@
         font-size: 0.72rem; font-weight: normal;
     }
 
+    /* 状态过滤标签 */
+    .status-filter-tag {
+        padding: 5px 12px; font-size: 0.78rem; border-radius: 4px;
+        cursor: pointer; transition: all 0.15s ease;
+        background: #f8f9fa; color: #495057; border: 1px solid #dee2e6;
+    }
+    .status-filter-tag:hover { opacity: 0.85; }
+    .status-filter-active { color: #fff !important; font-weight: 600; border-color: transparent; }
+    .status-filter-active[data-status=""] { background-color: #6c757d; }
+    .status-filter-active[data-status="pending"] { background-color: #0d6efd; }
+    .status-filter-active[data-status="synced"] { background-color: #28a745; }
+    .status-filter-active[data-status="conflict"] { background-color: #fd7e14; }
+    .status-filter-active[data-status="failed"] { background-color: #dc3545; }
+    .status-filter-active[data-status="syncing"] { background-color: #17a2b8; }
+    .status-filter-active[data-status="orphaned"] { background-color: #6c757d; }
+    .status-filter-active[data-status="marked_deleted"] { background-color: #e83e8c; }
+
     /* 进度弹窗 */
     .publish-overlay {
         position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -319,7 +349,7 @@
 (function() {
     var PAGE_SIZE = 20;
     var currentNodePage = 1;
-    var currentFilters = { search: '', environment: '', status: '' };
+    var currentFilters = { search: '', environment: '', status: '', syncStatus: '' };
     var selectedNodes = {};
     var selectedBindings = {};
     var bindingCache = {};
@@ -391,6 +421,9 @@
             search: currentFilters.search, environment: currentFilters.environment,
             status: currentFilters.status
         });
+        if (currentFilters.syncStatus) {
+            params.set('sync_status', currentFilters.syncStatus);
+        }
 
         fetch('/releases/api/nodes/?' + params.toString(), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -398,6 +431,7 @@
         .then(r => r.json())
         .then(res => {
             if (!res.success) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">加载失败</td></tr>'; return; }
+            updateStatusCounts(res.status_counts);
             renderNodeTable(res.nodes, res.total, res.page, res.total_pages);
         })
         .catch(function() {
@@ -637,6 +671,20 @@
             });
         });
 
+        // 绑定整行点击切换复选框
+        bindingRow.querySelectorAll('.binding-item').forEach(function(itemRow) {
+            itemRow.addEventListener('click', function(e) {
+                if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT'
+                    || e.target.tagName === 'SELECT'
+                    || e.target.closest('button') || e.target.closest('select')) return;
+                var bindingCb = this.querySelector('.binding-cb');
+                if (bindingCb) {
+                    bindingCb.checked = !bindingCb.checked;
+                    bindingCb.dispatchEvent(new Event('change'));
+                }
+            });
+        });
+
         // 版本切换事件
         bindingRow.querySelectorAll('.version-select').forEach(function(sel) {
             sel.addEventListener('change', function(e) {
@@ -685,16 +733,23 @@
         }
 
         document.getElementById('cpPathLabel').textContent = bindingInfo.remote_path || '';
-        document.getElementById('cpVersionBadge').textContent = 'V' + bindingInfo.current_version;
 
-        // 加载当前版本内容
-        var latestVersionId = null;
+        // 读取用户当前选择的版本号，匹配对应版本 ID
+        var versionSelect = document.querySelector('.version-select[data-binding-id="' + bindingId + '"]');
+        var selectedVersion = versionSelect ? parseInt(versionSelect.value) : null;
+        var versionId = null;
         if (bindingInfo.versions && bindingInfo.versions.length > 0) {
-            latestVersionId = bindingInfo.versions[0].id;
+            if (selectedVersion) {
+                var matched = bindingInfo.versions.find(function(v) { return v.version === selectedVersion; });
+                if (matched) versionId = matched.id;
+            }
+            if (!versionId) versionId = bindingInfo.versions[0].id;
         }
+        document.getElementById('cpVersionBadge').textContent = 'V' + (selectedVersion || bindingInfo.current_version);
 
-        if (latestVersionId) {
-            fetch('/releases/version/' + latestVersionId + '/content/', {
+        // 加载选中版本内容
+        if (versionId) {
+            fetch('/releases/version/' + versionId + '/content/', {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(r => r.json())
@@ -809,6 +864,32 @@
 
     document.getElementById('envFilter').addEventListener('change', doSearch);
     document.getElementById('statusFilter').addEventListener('change', doSearch);
+
+    // 绑定状态过滤标签点击事件
+    document.querySelectorAll('#bindingStatusFilter .status-filter-tag').forEach(function(tag) {
+        tag.addEventListener('click', function() {
+            currentFilters.syncStatus = this.dataset.status;
+            currentNodePage = 1;
+            loadNodes(1);
+            // 切换 active 样式
+            document.querySelectorAll('#bindingStatusFilter .status-filter-tag').forEach(function(t) {
+                t.classList.remove('status-filter-active');
+            });
+            this.classList.add('status-filter-active');
+        });
+    });
+
+    // 更新状态过滤栏计数
+    function updateStatusCounts(counts) {
+        if (!counts) return;
+        document.querySelectorAll('#bindingStatusFilter .status-filter-tag').forEach(function(tag) {
+            var status = tag.dataset.status;
+            var countSpan = tag.querySelector('.status-count');
+            if (countSpan) {
+                countSpan.textContent = status === '' ? (counts.total || 0) : (counts[status] || 0);
+            }
+        });
+    }
 
     // 清除选择
     document.getElementById('btnClearSelection').addEventListener('click', function() {
