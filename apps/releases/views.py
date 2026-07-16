@@ -562,13 +562,15 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                         "success": 0,
                         "failed": 0,
                     }
-                elif stripped.startswith("  [成功]") and current_node is not None:
-                    name = stripped[len("  [成功] "):].strip()
+                elif raw.startswith("  [成功]") and current_node is not None:
+                    name = raw[len("  [成功] "):].strip()
+                    name = re.sub(r'\s+v\d+.*', '', name)
                     current_node["configs"].append({"name": name, "status": "success"})
                     current_node["success"] += 1
                     success_total += 1
-                elif stripped.startswith("  [失败]") and current_node is not None:
-                    name = stripped[len("  [失败] "):].strip()
+                elif raw.startswith("  [失败]") and current_node is not None:
+                    name = raw[len("  [失败] "):].strip()
+                    name = re.sub(r'\s+v\d+.*', '', name)
                     current_node["configs"].append({"name": name, "status": "failed"})
                     current_node["failed"] += 1
                     failed_total += 1
@@ -576,8 +578,21 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
             if current_node:
                 result_tree.append(current_node)
 
+        # 失败节点排前面
+        result_tree.sort(key=lambda n: (n["failed"] == 0, n["name"]))
+
+        # 计算执行耗时
+        duration = ""
+        if task.started_at and task.finished_at:
+            delta = (task.finished_at - task.started_at).total_seconds()
+            if delta >= 60:
+                duration = f"{delta / 60:.1f} 分钟"
+            else:
+                duration = f"{delta:.1f} 秒"
+
         context["result_tree"] = result_tree
         context["result_summary"] = {"success": success_total, "failed": failed_total}
+        context["execution_duration"] = duration
         return context
 
 
