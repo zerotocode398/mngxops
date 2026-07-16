@@ -67,7 +67,7 @@
                                         <th style="width: 28px;"></th>
                                         <th>节点</th>
                                         <th style="width: 70px;">环境</th>
-                                        <th style="width: 60px;">状态</th>
+                                        <th style="width: 80px;">状态</th>
                                         <th style="width: 100px;">绑定数</th>
                                     </tr>
                                 </thead>
@@ -255,6 +255,15 @@
     .path-link { cursor: pointer; color: #667eea; }
     .path-link:hover { text-decoration: underline; }
 
+    /* 节点信息单元格 */
+    .node-info-cell {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+    }
+    .node-identity { white-space: nowrap; }
+    .node-info-cell .badge {
+        font-size: 0.72rem; font-weight: normal;
+    }
+
     /* 进度弹窗 */
     .publish-overlay {
         position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -321,6 +330,58 @@
     var preNodeId = parseInt('{{ pre_node_id }}' || '0') || 0;
     var preBindingId = parseInt('{{ pre_binding_id }}' || '0') || 0;
 
+    // 同步展开状态的绑定复选框勾选/取消
+    function syncExpandedBindingsCheckboxes(nodeId, checked) {
+        var bindingRow = document.getElementById('bindingRow-' + nodeId);
+        if (!bindingRow || !expandedNodes[nodeId]) return;
+        bindingRow.querySelectorAll('.binding-cb').forEach(function(cb) {
+            cb.checked = checked;
+        });
+    }
+
+    // 从已缓存的绑定数据填充 selectedBindings
+    function populateBindingsFromCache(nodeId) {
+        if (!bindingCache[nodeId] || bindingCache[nodeId].length === 0) return;
+        if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
+        bindingCache[nodeId].forEach(function(b) {
+            if (!selectedBindings[nodeId][b.id]) {
+                selectedBindings[nodeId][b.id] = {
+                    id: b.id, config_name: b.config_name,
+                    version: b.current_version, remote_path: b.remote_path, sync_status: b.sync_status
+                };
+            }
+        });
+    }
+
+    // 异步加载节点绑定并填充 selectedBindings
+    function fetchAndPopulateBindings(nodeId) {
+        fetch('/releases/api/node-bindings/' + nodeId + '/', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (!res.success) return;
+            bindingCache[nodeId] = res.bindings;
+            if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
+            res.bindings.forEach(function(b) {
+                if (!selectedBindings[nodeId][b.id]) {
+                    selectedBindings[nodeId][b.id] = {
+                        id: b.id, config_name: b.config_name,
+                        version: b.current_version, remote_path: b.remote_path, sync_status: b.sync_status
+                    };
+                }
+            });
+            // 如果已展开，重新渲染以同步复选框状态
+            if (expandedNodes[nodeId]) {
+                renderBindingRow(nodeId, res.bindings);
+            }
+            refreshSelectionUI();
+        })
+        .catch(function() {
+            // 网络错误静默忽略
+        });
+    }
+
     function loadNodes(page) {
         var tbody = document.getElementById('nodeTableBody');
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm"></div> 加载中...</td></tr>';
@@ -359,18 +420,27 @@
                 var envCls = 'env-badge env-badge-' + n.environment;
                 var statusIcon = n.status === 'online' ? '🟢' : '🔴';
                 var statusCls = 'status-badge-' + n.status;
-                var groupNames = n.group_names.join(', ');
-                var lockIcon = isLocked ? ' <i class="bi bi-lock-fill text-warning" title="已锁定"></i>' : '';
                 var isChecked = selectedNodes[n.id] !== undefined ? 'checked' : '';
                 var disabledAttr = canSelect ? '' : 'disabled';
+
+                var groupBadges = '';
+                if (n.group_names && n.group_names.length > 0) {
+                    groupBadges = n.group_names.map(function(g) {
+                        return '<span class="badge bg-info text-dark" style="font-size: 0.72rem; font-weight: normal;">' + g + '</span>';
+                    }).join(' ');
+                }
 
                 html += '<tr class="' + rowClass + '" data-node-id="' + n.id + '">';
                 html += '<td class="text-center"><input type="checkbox" class="form-check-input node-cb" value="' + n.id + '" ' + isChecked + ' ' + disabledAttr + '></td>';
                 html += '<td class="text-center"><button type="button" class="btn btn-sm btn-link text-muted p-0 toggle-expand" data-node-id="' + n.id + '" title="展开绑定"><i class="bi bi-chevron-right"></i></button></td>';
-                html += '<td><strong>' + n.hostname + '</strong>' + lockIcon + '<br><small class="text-muted">' + n.ip + '</small>' + (groupNames ? '<br><small class="text-muted"><i class="bi bi-collection"></i> ' + groupNames + '</small>' : '') + '</td>';
-                html += '<td><span class="' + envCls + '">' + envLabel + '</span></td>';
-                html += '<td><span class="' + statusCls + '">' + statusIcon + ' ' + (n.status === 'online' ? '在线' : '离线') + '</span></td>';
-                html += '<td><span class="badge bg-info me-1">' + n.total_bindings + '</span>' + (n.modified_bindings > 0 ? '<span class="badge sync-badge-modified">📝' + n.modified_bindings + '</span>' : '') + '</td>';
+                html += '<td><div class="node-info-cell">' +
+                    '<span class="node-identity">' + (isLocked ? '<i class="bi bi-lock-fill text-warning me-1" title="已锁定"></i>' : '') +
+                    '<strong>' + n.hostname + '</strong><small class="text-muted">(' + n.ip + ')</small></span>' +
+                    (groupBadges ? groupBadges : '') +
+                    '</div></td>';
+                html += '<td style="white-space: nowrap;"><span class="' + envCls + '">' + envLabel + '</span></td>';
+                html += '<td style="white-space: nowrap;"><span class="' + statusCls + '">' + statusIcon + ' ' + (n.status === 'online' ? '在线' : '离线') + '</span></td>';
+                html += '<td style="white-space: nowrap;"><span class="badge bg-info">' + n.total_bindings + '</span></td>';
                 html += '</tr>';
 
                 if (expandedNodes[n.id]) {
@@ -399,9 +469,17 @@
                     selectedNodes[nodeId] = { id: nodeId, hostname: row.querySelector('strong').textContent.trim() };
                     if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
                     if (!bindingCache[nodeId]) bindingCache[nodeId] = [];
+                    // 绑定已缓存时直接填充；未缓存时异步加载
+                    if (bindingCache[nodeId] && bindingCache[nodeId].length > 0) {
+                        populateBindingsFromCache(nodeId);
+                        syncExpandedBindingsCheckboxes(nodeId, true);
+                    } else {
+                        fetchAndPopulateBindings(nodeId);
+                    }
                 } else {
                     delete selectedNodes[nodeId];
                     delete selectedBindings[nodeId];
+                    syncExpandedBindingsCheckboxes(nodeId, false);
                 }
                 refreshSelectionUI();
             });
@@ -418,8 +496,8 @@
         tbody.querySelectorAll('.node-row:not(.disabled)').forEach(function(row) {
             row.addEventListener('click', function(e) {
                 if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button')) return;
-                var cb = this.querySelector('.node-cb');
-                if (cb && !cb.disabled) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+                var nodeId = parseInt(this.dataset.nodeId);
+                toggleNodeBindings(nodeId);
             });
         });
     }
@@ -514,9 +592,9 @@
             else if (b.sync_status === 'syncing') { syncLabel = '🔄 同步中'; syncCls = 'sync-badge-syncing'; }
             else { syncLabel = b.sync_status; }
 
-            // 节点被勾选后 → 展开时自动勾选 modified 绑定
+            // 节点被勾选后 → 展开时自动勾选所有绑定
             var isChecked = selectedBindings[nodeId][b.id] !== undefined;
-            if (!isChecked && isModified && selectedNodes[nodeId] !== undefined) {
+            if (!isChecked && selectedNodes[nodeId] !== undefined) {
                 isChecked = true;
                 selectedBindings[nodeId][b.id] = {
                     id: b.id, config_name: b.config_name,
