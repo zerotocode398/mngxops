@@ -108,16 +108,14 @@
                                     data-bs-toggle="collapse" data-bs-target="#collapse{{ node.id }}"
                                     aria-expanded="false" aria-controls="collapse{{ node.id }}">
                                     <div class="d-flex align-items-center gap-2 w-100 me-3">
-                                        <i class="bi bi-server fs-5"></i>
-                                        <strong>{{ node.hostname }}</strong>
-                                        <code class="text-muted small">{{ node.ip }}:{{ node.port }}</code>
-                                        {% if node.groups.exists %}
-                                        <span class="config-node-groups">
+                                        <div class="node-info-cell">
+                                            <span class="node-identity">{{ node.hostname }}<small class="text-muted">({{ node.ip }}:{{ node.port }})</small></span>
+                                            {% if node.groups.exists %}
                                             {% for grp in node.groups.all %}
-                                            <span class="badge config-group-tag">{{ grp.name }}</span>
+                                            <span class="badge bg-info text-dark" style="font-size: 0.72rem; font-weight: normal;">{{ grp.name }}</span>
                                             {% endfor %}
-                                        </span>
-                                        {% endif %}
+                                            {% endif %}
+                                        </div>
                                         <span class="ms-auto"></span>
                                         <span class="badge bg-info">{{ stats.total }}配置</span>
                                         {% if stats.pending %}<span class="badge config-badge-pending">📝{{ stats.pending }}</span>{% endif %}
@@ -209,12 +207,6 @@
                                                                 </button>
                                                             </form>
                                                             {% elif binding.sync_status != 'syncing' %}
-                                                            {% if user|has_perm_code:"releases.update" %}
-                                                            <a href="{% url 'releases:center' %}?node_id={{ node.id }}&binding_id={{ binding.id }}"
-                                                                class="btn btn-outline-success" title="快速推送">
-                                                                <i class="bi bi-rocket-takeoff"></i>
-                                                            </a>
-                                                            {% endif %}
                                                             {% if user|has_perm_code:"configs.update" %}
                                                             <a href="{% url 'configs:binding_edit' binding.id %}"
                                                                 class="btn btn-outline-primary" title="编辑内容">
@@ -439,22 +431,12 @@
         font-weight: 500;
         white-space: nowrap;
     }
-    .config-node-groups {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 3px;
-    }
-    .config-group-tag {
-        background: #e9ecef;
-        color: #495057;
-        border: 1px solid #ced4da;
-        padding: 2px 6px;
-        font-size: 0.7rem;
-        font-weight: normal;
-    }
+
+    /* 节点信息展示（与发布中心保持一致） */
+    .node-info-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .node-identity { white-space: nowrap; }
 
     /* 状态筛选标签 */
-    .config-status-label {
         padding: 5px 12px;
         font-size: 0.78rem;
         border-radius: 4px;
