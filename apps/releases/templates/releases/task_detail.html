@@ -9,35 +9,49 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-card-text"></i> 任务详情 #{{ task.id }}</h5>
-                    <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-secondary">
-                        <i class="bi bi-arrow-left"></i> 返回任务中心
-                    </a>
+                    <div class="btn-group btn-group-sm">
+                        {% if task.source_batch and task.operation_type in 'release_publish,release_rollback' %}
+                        <a href="{% url 'releases:list' %}?search={{ task.source_batch|urlencode }}" class="btn btn-outline-info">
+                            <i class="bi bi-clock-history"></i> 发布历史
+                        </a>
+                        {% endif %}
+                        <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> 返回任务中心
+                        </a>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4"><strong>任务类型：</strong>{{ task.get_operation_type_display }}</div>
-                        <div class="col-md-4"><strong>来源批次：</strong><code>{{ task.source_batch|default:'-' }}</code></div>
-                        <div class="col-md-4">
-                            <strong>状态：</strong>
+                <div class="card-body task-detail-body">
+                    <div class="row g-2 small mb-3">
+                        <div class="col-md-3"><span class="text-muted">任务类型</span> {{ task.get_operation_type_display }}</div>
+                        <div class="col-md-3">
+                            <span class="text-muted">来源批次</span>
+                            {% if task.source_batch and task.operation_type in 'release_publish,release_rollback' %}
+                            <a href="{% url 'releases:list' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none">{{ task.source_batch }}</a>
+                            {% else %}
+                            <code>{{ task.source_batch|default:'-' }}</code>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3">
+                            <span class="text-muted">状态</span>
                             {% if task.status == 'success' %}<span class="badge bg-success">成功</span>
                             {% elif task.status == 'failed' %}<span class="badge bg-danger">失败</span>
                             {% elif task.status == 'running' %}<span class="badge bg-info">执行中</span>
                             {% else %}<span class="badge bg-secondary">{{ task.status }}</span>{% endif %}
                         </div>
-                        <div class="col-md-3"><strong>进度：</strong>{{ task.progress }}%</div>
-                        <div class="col-md-3"><strong>触发人：</strong>{{ task.trigger_user.username|default:'-' }}</div>
-                        <div class="col-md-3"><strong>开始：</strong>{{ task.started_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
-                        <div class="col-md-3"><strong>结束：</strong>{{ task.finished_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
+                        <div class="col-md-3"><span class="text-muted">进度</span> {{ task.progress }}%</div>
+                        <div class="col-md-3"><span class="text-muted">触发人</span> {{ task.trigger_user.username|default:'-' }}</div>
+                        <div class="col-md-3"><span class="text-muted">开始时间</span> {{ task.started_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
+                        <div class="col-md-3"><span class="text-muted">结束时间</span> {{ task.finished_at|date:"Y-m-d H:i:s"|default:'-' }}</div>
                     </div>
 
                     {% if task.detail %}
-                    <div class="alert alert-info py-2 mb-3"><i class="bi bi-info-circle"></i> {{ task.detail }}</div>
+                    <div class="alert alert-info py-2 mb-3 small"><i class="bi bi-info-circle"></i> {{ task.detail }}</div>
                     {% endif %}
 
                     {% if target_nodes %}
                     <div class="mb-3">
-                        <strong><i class="bi bi-server"></i> 目标节点（{{ target_nodes|length }}台）：</strong>
-                        <div class="d-flex flex-wrap gap-1 mt-1">
+                        <div class="small fw-semibold mb-1"><i class="bi bi-server"></i> 目标节点（{{ target_nodes|length }} 台）</div>
+                        <div class="d-flex flex-wrap gap-1">
                             {% for node in target_nodes %}
                             <span class="badge bg-light text-dark border">{{ node }}</span>
                             {% endfor %}
@@ -47,8 +61,8 @@
 
                     {% if target_configs %}
                     <div class="mb-3">
-                        <strong><i class="bi bi-file-earmark-code"></i> 目标配置（{{ target_configs_count }}个）：</strong>
-                        <div class="d-flex flex-wrap gap-1 mt-1">
+                        <div class="small fw-semibold mb-1"><i class="bi bi-file-earmark-code"></i> 目标配置（{{ target_configs_count }} 个）</div>
+                        <div class="d-flex flex-wrap gap-1">
                             {% for cfg in target_configs %}
                             <span class="badge bg-light text-dark border">{{ cfg }}</span>
                             {% endfor %}
@@ -72,7 +86,7 @@
                                  onclick="var b=this.nextElementSibling;b.classList.toggle('d-none');var i=this.querySelector('.toggle-icon');i.textContent=i.textContent==='▶'?'▼':'▶';">
                                 <span class="toggle-icon">▼</span>
                                 {% if node.failed > 0 %}❌{% else %}✅{% endif %}
-                                <strong>{{ node.name }}</strong>
+                                {{ node.name }}
                                 <span class="ms-2 small text-muted">{{ node.success }}成功{% if node.failed > 0 %} / {{ node.failed }}失败{% endif %}</span>
                             </div>
                             <div class="result-node-body px-3 py-2">
@@ -107,9 +121,13 @@
 
 {% block extra_js %}
 <style>
+    .task-detail-body { font-size: 0.86rem; line-height: 1.5; }
+    .task-detail-body .text-muted { font-size: 0.82rem; }
+    .task-detail-body hr { margin: 0.75rem 0; }
+    .task-detail-body h6 { font-size: 0.92rem; }
     .cursor-pointer { cursor: pointer; }
     .result-node-group:last-child { border-bottom: none !important; }
-    .result-node-header { transition: background 0.15s; user-select: none; }
+    .result-node-header { transition: background 0.15s; user-select: none; font-size: 0.86rem; }
     .result-node-header:hover { opacity: 0.9; }
     .result-config-item { border-top: 1px dashed #eee; }
     .result-config-item:first-child { border-top: none; }
