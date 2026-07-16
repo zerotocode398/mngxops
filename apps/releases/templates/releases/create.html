@@ -1059,7 +1059,7 @@
         pre.textContent = '加载中...';
         modal.show();
 
-        fetch('/configs/api/version-content/' + versionId + '/', {
+        fetch('/releases/version/' + versionId + '/content/', {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
         .then(r => r.json())
