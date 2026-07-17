@@ -1019,51 +1019,86 @@
         if (!currentDetailNodeId) return;
         document.getElementById('detailSystemInfo').innerHTML =
             '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div><p class="mt-1 small">加载中...</p></div>';
+        showAsyncProgressOverlay('系统信息采集');
         var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
         fetch('{% url "nodes:system-info" %}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
             body: JSON.stringify({ node_id: parseInt(currentDetailNodeId) })
         })
-        .then(function (resp) {
-            if (!resp.ok) {
-                throw new Error('HTTP ' + resp.status);
-            }
-            return resp.json();
-        })
+        .then(function (resp) { return resp.json(); })
         .then(function (result) {
-            if (result.success && result.system_info) {
-                renderSystemInfo(result.system_info);
-            } else {
+            if (!result.success) {
+                closeAsyncProgressOverlay();
                 document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">' + (result.message || '获取失败') + '</p>';
+                return;
+            }
+            if (result.async && result.task_center_id) {
+                startAsyncProgressPolling(result.task_center_id);
+                var pollTimer = setInterval(function() {
+                    fetch('/releases/tasks/progress/?ids=' + result.task_center_id, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+                    .then(function(r){return r.json();})
+                    .then(function(d){
+                        if (d.success && d.tasks && d.tasks[0].finished) {
+                            clearInterval(pollTimer);
+                            if (d.tasks[0].status === 'success') {
+                                try {
+                                    var sysInfo = JSON.parse(d.tasks[0].result);
+                                    renderSystemInfo(sysInfo);
+                                } catch(e) {
+                                    document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">结果解析失败</p>';
+                                }
+                            } else {
+                                document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">' + (d.tasks[0].detail || '获取失败') + '</p>';
+                            }
+                        }
+                    });
+                }, 2000);
             }
         })
-        .catch(function (err) {
-            document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">' + (err.message || '网络错误') + '</p>';
+        .catch(function () {
+            closeAsyncProgressOverlay();
+            document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">网络错误</p>';
         });
     }
 
     function detectNginxVersion() {
         if (!currentDetailNodeId) return;
         document.getElementById('detailNginxVersion').textContent = '检测中...';
+        showAsyncProgressOverlay('Nginx版本检测');
         var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
         fetch('{% url "nodes:nginx-version" %}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
             body: JSON.stringify({ node_id: parseInt(currentDetailNodeId) })
         })
-        .then(function (resp) {
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            return resp.json();
-        })
+        .then(function (resp) { return resp.json(); })
         .then(function (result) {
-            if (result.success) {
-                document.getElementById('detailNginxVersion').textContent = formatNginxVersion(result.version);
-            } else {
-                document.getElementById('detailNginxVersion').textContent = '获取失败';
+            if (!result.success) {
+                closeAsyncProgressOverlay();
+                document.getElementById('detailNginxVersion').textContent = result.message || '获取失败';
+                return;
+            }
+            if (result.async && result.task_center_id) {
+                startAsyncProgressPolling(result.task_center_id);
+                var pollTimer = setInterval(function() {
+                    fetch('/releases/tasks/progress/?ids=' + result.task_center_id, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+                    .then(function(r){return r.json();})
+                    .then(function(d){
+                        if (d.success && d.tasks && d.tasks[0].finished) {
+                            clearInterval(pollTimer);
+                            if (d.tasks[0].status === 'success') {
+                                document.getElementById('detailNginxVersion').textContent = formatNginxVersion(d.tasks[0].result || '');
+                            } else {
+                                document.getElementById('detailNginxVersion').textContent = d.tasks[0].detail || '获取失败';
+                            }
+                        }
+                    });
+                }, 2000);
             }
         })
         .catch(function () {
+            closeAsyncProgressOverlay();
             document.getElementById('detailNginxVersion').textContent = '网络错误';
         });
     }

@@ -24,6 +24,7 @@ from .services import (
 )
 from apps.users.permissions import PermissionRequiredMixin
 from utils.pagination import PerPagePaginationMixin
+from utils.setting_service import get_setting
 
 
 def _build_node_stats(node):
@@ -850,6 +851,7 @@ class ConfigSyncWizardView(
         context["node_groups"] = node_groups
         context["search"] = search
         context["group_search"] = group_search
+        context["batch_max_count"] = int(get_setting("node.batch_max_count", "3"))
         return context
 
 
@@ -871,7 +873,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         if not node_ids:
             return JsonResponse({"success": False, "message": "请至少选择一个节点"})
 
-        MAX_BATCH = 3
+        MAX_BATCH = int(get_setting("node.batch_max_count", "3"))
         if len(node_ids) > MAX_BATCH:
             return JsonResponse({"success": False, "message": f"最多只能选择 {MAX_BATCH} 个节点"})
 

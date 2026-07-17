@@ -3,6 +3,8 @@ from io import StringIO
 import time
 import logging
 
+from utils.setting_service import get_setting
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,7 +49,7 @@ class SSHClient:
                     port=self.port,
                     username=self.username,
                     pkey=pkey,
-                    timeout=10,
+                    timeout=int(get_setting("node.ssh_connect_timeout", "10")),
                 )
             else:
                 self.client.connect(
@@ -55,7 +57,7 @@ class SSHClient:
                     port=self.port,
                     username=self.username,
                     password=self.password,
-                    timeout=10,
+                    timeout=int(get_setting("node.ssh_connect_timeout", "10")),
                 )
             return True, "连接成功"
         except Exception as e:
@@ -110,7 +112,7 @@ def _build_ssh_client(host, port, username, password=None, private_key=None):
             port=port,
             username=username,
             pkey=pkey,
-            timeout=10,
+            timeout=int(get_setting("node.ssh_connect_timeout", "10")),
         )
     else:
         client.connect(
@@ -118,7 +120,7 @@ def _build_ssh_client(host, port, username, password=None, private_key=None):
             port=port,
             username=username,
             password=password,
-            timeout=10,
+            timeout=int(get_setting("node.ssh_connect_timeout", "10")),
         )
     return client
 

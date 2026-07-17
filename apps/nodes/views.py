@@ -16,6 +16,7 @@ from apps.releases.models import TaskCenterTask
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.ssh import test_ssh_connection, get_nginx_version, get_system_info
 from utils.pagination import PerPagePaginationMixin
+from utils.setting_service import get_setting
 
 
 def _get_node_credential(node):
@@ -434,7 +435,7 @@ def node_lock(request):
         if not node_ids:
             return JsonResponse({"success": False, "message": "未指定节点"})
 
-        MAX_BATCH = 3
+        MAX_BATCH = int(get_setting("node.batch_max_count", "3"))
         if len(node_ids) > MAX_BATCH:
             return JsonResponse(
                 {"success": False, "message": f"最多只能操作 {MAX_BATCH} 个节点"}
@@ -716,7 +717,7 @@ def batch_test_node_connection(request):
         if not node_ids:
             return JsonResponse({"success": False, "message": "未选择任何节点"})
 
-        MAX_BATCH = 3
+        MAX_BATCH = int(get_setting("node.batch_max_count", "3"))
         if len(node_ids) > MAX_BATCH:
             return JsonResponse(
                 {"success": False, "message": f"最多只能测试 {MAX_BATCH} 个节点"}
@@ -1067,29 +1068,64 @@ def get_node_system_info(request):
             if not credential.is_enabled:
                 return JsonResponse({"success": False, "message": "节点关联凭证已禁用"})
 
-            if credential.auth_type == "password":
-                success, system_info = get_system_info(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    password=credential.get_password(),
-                )
-            else:
-                success, system_info = get_system_info(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    private_key=credential.get_private_key(),
+            task = TaskCenterTask.objects.create(
+                operation_type="node_system_info",
+                status="pending",
+                detail="任务已创建，等待执行",
+                target_hostnames=node.hostname,
+                target_ips=node.ip,
+                trigger_user=request.user,
+            )
+
+            def _run():
+                tid = task.id
+                TaskCenterTask.objects.filter(pk=tid).update(
+                    status="running", progress=5, detail="正在采集系统信息...", started_at=timezone.now()
                 )
 
-            if success:
-                node.status = "online"
-                node.save()
-                return JsonResponse({"success": True, "system_info": system_info})
-            else:
-                node.status = "offline"
-                node.save()
-                return JsonResponse({"success": False, "message": system_info})
+                try:
+                    if credential.auth_type == "password":
+                        success, system_info = get_system_info(
+                            node.ip, node.port, credential.username,
+                            password=credential.get_password(),
+                        )
+                    else:
+                        success, system_info = get_system_info(
+                            node.ip, node.port, credential.username,
+                            private_key=credential.get_private_key(),
+                        )
+
+                    if success:
+                        node.status = "online"
+                        node.save()
+                    else:
+                        node.status = "offline"
+                        node.save()
+
+                    status = "success" if success else "failed"
+                    result_data = system_info if success else system_info
+                    TaskCenterTask.objects.filter(pk=tid).update(
+                        status=status, progress=100, finished_at=timezone.now(),
+                        detail=f"系统信息采集{'成功' if success else '失败'}",
+                        result=json.dumps(system_info, ensure_ascii=False) if success else str(result_data),
+                    )
+                except Exception as e:
+                    TaskCenterTask.objects.filter(pk=tid).update(
+                        status="failed", progress=100, finished_at=timezone.now(),
+                        detail=f"执行异常: {str(e)}",
+                    )
+
+            thread = threading.Thread(target=_run, daemon=True)
+            thread.start()
+
+            return JsonResponse(
+                {
+                    "success": True,
+                    "async": True,
+                    "message": "已创建后台系统信息采集任务",
+                    "task_center_id": task.id,
+                }
+            )
         except Node.DoesNotExist:
             return JsonResponse({"success": False, "message": "节点不存在"})
         except Exception as e:
@@ -1119,32 +1155,64 @@ def get_node_nginx_version(request):
                 return JsonResponse({"success": False, "message": "节点关联凭证已禁用"})
             nginx_path = node.nginx_path if node.nginx_path else None
 
-            if credential.auth_type == "password":
-                success, output = get_nginx_version(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    password=credential.get_password(),
-                    nginx_path=nginx_path,
-                )
-            else:
-                success, output = get_nginx_version(
-                    node.ip,
-                    node.port,
-                    credential.username,
-                    private_key=credential.get_private_key(),
-                    nginx_path=nginx_path,
+            task = TaskCenterTask.objects.create(
+                operation_type="node_nginx_version",
+                status="pending",
+                detail="任务已创建，等待执行",
+                target_hostnames=node.hostname,
+                target_ips=node.ip,
+                trigger_user=request.user,
+            )
+
+            def _run():
+                tid = task.id
+                TaskCenterTask.objects.filter(pk=tid).update(
+                    status="running", progress=5, detail="正在检测 Nginx 版本...", started_at=timezone.now()
                 )
 
-            if success:
-                node.nginx_version = output
-                node.status = "online"
-                node.save()
-                return JsonResponse({"success": True, "version": output})
-            else:
-                node.status = "offline"
-                node.save()
-                return JsonResponse({"success": False, "message": output})
+                try:
+                    if credential.auth_type == "password":
+                        success, output = get_nginx_version(
+                            node.ip, node.port, credential.username,
+                            password=credential.get_password(), nginx_path=nginx_path,
+                        )
+                    else:
+                        success, output = get_nginx_version(
+                            node.ip, node.port, credential.username,
+                            private_key=credential.get_private_key(), nginx_path=nginx_path,
+                        )
+
+                    if success:
+                        node.nginx_version = output
+                        node.status = "online"
+                        node.save()
+                    else:
+                        node.status = "offline"
+                        node.save()
+
+                    status = "success" if success else "failed"
+                    TaskCenterTask.objects.filter(pk=tid).update(
+                        status=status, progress=100, finished_at=timezone.now(),
+                        detail=f"Nginx 版本检测{'成功: ' + output if success else '失败'}",
+                        result=output if success else output,
+                    )
+                except Exception as e:
+                    TaskCenterTask.objects.filter(pk=tid).update(
+                        status="failed", progress=100, finished_at=timezone.now(),
+                        detail=f"执行异常: {str(e)}",
+                    )
+
+            thread = threading.Thread(target=_run, daemon=True)
+            thread.start()
+
+            return JsonResponse(
+                {
+                    "success": True,
+                    "async": True,
+                    "message": "已创建后台 Nginx 版本检测任务",
+                    "task_center_id": task.id,
+                }
+            )
         except Node.DoesNotExist:
             return JsonResponse({"success": False, "message": "节点不存在"})
         except Exception as e:
