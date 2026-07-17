@@ -309,6 +309,20 @@
             from { width: 100%; }
             to { width: 0%; }
         }
+
+        /* 异步进度遮罩 */
+        .async-progress-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.45); z-index: 9999;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .async-progress-dialog {
+            background: #fff; border-radius: 12px; padding: 24px 28px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+            width: 500px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+        }
+        .async-progress-dialog .progress { height: 8px; }
+        .async-progress-dialog .progress-bar { transition: width 0.3s ease; }
     </style>
 </head>
 
@@ -530,6 +544,29 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 异步进度遮罩 -->
+    <div id="asyncProgressOverlay" class="async-progress-overlay" style="display: none;">
+        <div class="async-progress-dialog">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0" id="asyncProgressTitle"><i class="bi bi-hourglass-split"></i> 执行中...</h6>
+                <button type="button" class="btn-close" id="btnCloseAsyncProgress" title="关闭"></button>
+            </div>
+            <div class="progress mb-2">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" id="asyncProgressBar" style="width: 0%;"></div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <small id="asyncProgressText" class="text-muted">准备中...</small>
+                <small class="text-muted"><span id="asyncProgressPercent">0</span>%</small>
+            </div>
+            <div id="asyncProgressResult" style="max-height: 250px; overflow-y: auto;"></div>
+            <div class="d-flex justify-content-end gap-2 mt-3">
+                <a href="#" id="asyncProgressLogLink" class="btn btn-sm btn-outline-info" target="_blank" style="display:none;">
+                    <i class="bi bi-journal-text"></i> 完整日志
+                </a>
             </div>
         </div>
     </div>
@@ -804,6 +841,65 @@
             if (storedUrl) { window.location.href = storedUrl; }
             else { window.location.href = '{% url "releases:list" %}'; }
         }
+
+        /* ========== 异步进度遮罩 ========== */
+        var asyncProgressTimer = null;
+
+        function showAsyncProgressOverlay(title) {
+            document.getElementById('asyncProgressOverlay').removeAttribute('data-no-reload');
+            document.getElementById('asyncProgressTitle').innerHTML = '<i class="bi bi-hourglass-split"></i> ' + (title || '执行中...');
+            document.getElementById('asyncProgressBar').style.width = '0%';
+            document.getElementById('asyncProgressBar').className = 'progress-bar progress-bar-striped progress-bar-animated';
+            document.getElementById('asyncProgressPercent').textContent = '0';
+            document.getElementById('asyncProgressText').textContent = '准备中...';
+            document.getElementById('asyncProgressResult').innerHTML = '';
+            document.getElementById('asyncProgressLogLink').style.display = 'none';
+            document.getElementById('asyncProgressOverlay').style.display = 'flex';
+        }
+
+        function closeAsyncProgressOverlay() {
+            if (asyncProgressTimer) { clearInterval(asyncProgressTimer); asyncProgressTimer = null; }
+            document.getElementById('asyncProgressOverlay').style.display = 'none';
+        }
+
+        function startAsyncProgressPolling(taskId, onComplete) {
+            if (asyncProgressTimer) clearInterval(asyncProgressTimer);
+            document.getElementById('asyncProgressLogLink').href = '/releases/tasks/' + taskId + '/';
+            document.getElementById('asyncProgressLogLink').style.display = '';
+            asyncProgressTimer = setInterval(function() {
+                fetch('/releases/tasks/progress/?ids=' + taskId, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.success || !data.tasks || data.tasks.length === 0) return;
+                    var task = data.tasks[0];
+                    var progress = task.progress || 0;
+                    var detail = task.detail || '';
+                    var finished = task.finished;
+                    document.getElementById('asyncProgressBar').style.width = progress + '%';
+                    document.getElementById('asyncProgressPercent').textContent = progress;
+                    document.getElementById('asyncProgressText').textContent = detail || '执行中...';
+                    if (finished) {
+                        clearInterval(asyncProgressTimer);
+                        asyncProgressTimer = null;
+                        document.getElementById('asyncProgressBar').classList.remove('progress-bar-animated');
+                        if (task.status === 'success') {
+                            document.getElementById('asyncProgressBar').classList.add('bg-success');
+                        } else {
+                            document.getElementById('asyncProgressBar').classList.add('bg-warning');
+                        }
+                    }
+                });
+            }, 1500);
+        }
+
+        document.getElementById('btnCloseAsyncProgress').addEventListener('click', function() {
+            closeAsyncProgressOverlay();
+            if (document.getElementById('asyncProgressOverlay').getAttribute('data-no-reload') !== 'true') {
+                location.reload();
+            }
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>

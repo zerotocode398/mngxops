@@ -809,20 +809,7 @@
         var bsModal = bootstrap.Modal.getInstance(modal);
         bsModal.hide();
 
-        var hostnames = {};
-        hostnames[nodeId] = document.getElementById('syncModal' + nodeId).querySelector('.modal-title').textContent.split('：')[1];
-        var progressList = document.getElementById('progressList');
-        progressList.innerHTML = buildProgressHTML([nodeId], hostnames);
-        document.getElementById('progressTimer').textContent = '已用时: 0秒';
-        startProgressTimer();
-        document.getElementById('progressSpinner').style.display = 'inline-block';
-        document.getElementById('progressCloseBtn').disabled = true;
-        document.getElementById('progressCloseBtn').textContent = '同步中...';
-        document.getElementById('progressSummary').style.display = 'none';
-
-        var progressModal = new bootstrap.Modal(document.getElementById('syncProgressModal'), {backdrop: 'static', keyboard: false});
-        document.getElementById('progressModalTitle').innerHTML = '<i class="bi bi-cloud-download me-2"></i>同步进度';
-        progressModal.show();
+        showAsyncProgressOverlay('单节点全量同步');
 
         fetch('{% url "configs:sync_single_api" %}', {
             method: 'POST',
@@ -835,18 +822,14 @@
             return response.json();
         }).then(function(data) {
             if (data.success && data.task_center_id) {
-                pollProgress(data.task_center_id, progressModal, 'single');
+                startAsyncProgressPolling(data.task_center_id);
             } else {
-                updateProgressError(data.message || '同步请求失败');
-                document.getElementById('progressCloseBtn').disabled = false;
-                document.getElementById('progressCloseBtn').textContent = '关闭';
-                document.getElementById('progressSpinner').style.display = 'none';
+                closeAsyncProgressOverlay();
+                showCustomModal('同步失败', '<p class="text-danger">' + (data.message || '同步请求失败') + '</p>', true, 'bi-exclamation-triangle text-danger');
             }
         })['catch'](function(err) {
-            updateProgressError('网络请求失败: ' + err.message);
-            document.getElementById('progressCloseBtn').disabled = false;
-            document.getElementById('progressCloseBtn').textContent = '关闭';
-            document.getElementById('progressSpinner').style.display = 'none';
+            closeAsyncProgressOverlay();
+            showCustomModal('错误', '<p class="text-danger">网络请求失败: ' + err.message + '</p>', true, 'bi-exclamation-triangle text-danger');
         });
     }
 
@@ -873,28 +856,7 @@
         var confirmContent = '<p>确定要对选中的 <strong>' + checked.length + '</strong> 个节点进行配置同步吗？</p>' +
             '<p class="text-muted">同步将从远程节点拉取 nginx 配置文件并更新本地记录。</p>';
         showConfirmModal('批量配置同步', confirmContent, 'bi-cloud-download', function () {
-            showLoading('批量同步提交中');
-            stopBatchSyncTimer();
-            batchSyncSeconds = 10;
-            batchSyncTimer = setInterval(function () {
-                batchSyncSeconds--;
-                if (batchSyncSeconds <= 0) {
-                    stopBatchSyncTimer();
-                    updateLoadingContent(
-                        '<div class="text-center py-3">' +
-                        '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                        '<p class="text-muted mb-0">即将完成...</p>' +
-                        '</div>'
-                    );
-                } else {
-                    updateLoadingContent(
-                        '<div class="text-center py-3">' +
-                        '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-                        '<p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + batchSyncSeconds + '</strong> 秒</p>' +
-                        '</div>'
-                    );
-                }
-            }, 1000);
+            showAsyncProgressOverlay('批量配置同步');
 
             fetch('{% url "configs:sync_batch_api" %}', {
                 method: 'POST',
@@ -905,32 +867,16 @@
                 body: JSON.stringify({ node_ids: nodeIds })
             }).then(function (response) { return response.json(); })
             .then(function (result) {
-                stopBatchSyncTimer();
-                hideLoading();
-
                 if (!result.success) {
-                    showCustomModal('同步失败', '<p class="text-danger">' + result.message + '</p>', true, 'bi-exclamation-triangle text-danger');
+                    closeAsyncProgressOverlay();
+                    showCustomModal('同步失败', '<p class="text-danger">' + (result.message || '创建任务失败') + '</p>', true, 'bi-exclamation-triangle text-danger');
                     return;
                 }
-
-                if (result.async) {
-                    var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
-                    document.getElementById('taskJumpModalBody').textContent = result.message || '已创建后台同步任务';
-                    document.getElementById('taskJumpBtn').setAttribute('href', jumpUrl);
-                    taskJumpCancelled = false;
-                    taskJumpModal.show();
-                    taskJumpTimer = setTimeout(function () {
-                        if (!taskJumpCancelled) {
-                            window.location.href = jumpUrl;
-                        }
-                    }, 3000);
-                    return;
+                if (result.async && result.task_center_id) {
+                    startAsyncProgressPolling(result.task_center_id);
                 }
-
-                showCustomModal('同步完成', '<p class="text-success">' + result.message + '</p>', true, 'bi-check-circle text-success');
             })['catch'](function (err) {
-                stopBatchSyncTimer();
-                hideLoading();
+                closeAsyncProgressOverlay();
                 showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>', true, 'bi-exclamation-triangle text-danger');
             });
         });
@@ -1073,21 +1019,7 @@
         var bsModal = bootstrap.Modal.getInstance(modal);
         bsModal.hide();
 
-        var hostnames = {};
-        hostnames[nodeId] = document.getElementById('syncModal' + nodeId).querySelector('.modal-title').textContent.split('：')[1];
-        var progressList = document.getElementById('progressList');
-        progressList.innerHTML = buildProgressHTML([nodeId], hostnames);
-        document.getElementById('progressTimer').textContent = '已用时: 0秒';
-        startProgressTimer();
-        document.getElementById('progressSpinner').style.display = 'inline-block';
-        document.getElementById('progressCloseBtn').disabled = true;
-        document.getElementById('progressCloseBtn').textContent = '同步中...';
-        document.getElementById('progressSummary').style.display = 'none';
-
-        var progressModal = new bootstrap.Modal(document.getElementById('syncProgressModal'), {backdrop: 'static', keyboard: false});
-        document.getElementById('progressModalTitle').innerHTML = '<i class="bi bi-cloud-download me-2"></i>部分同步进度';
-        progressModal.show();
-
+        showAsyncProgressOverlay('单节点部分同步');
 
         fetch('{% url "configs:sync_single_api" %}', {
             method: 'POST',
@@ -1104,18 +1036,14 @@
             return response.json();
         }).then(function(data) {
             if (data.success && data.task_center_id) {
-                pollProgress(data.task_center_id, progressModal, 'partial');
+                startAsyncProgressPolling(data.task_center_id);
             } else {
-                updateProgressError(data.message || '同步请求失败');
-                document.getElementById('progressCloseBtn').disabled = false;
-                document.getElementById('progressCloseBtn').textContent = '关闭';
-                document.getElementById('progressSpinner').style.display = 'none';
+                closeAsyncProgressOverlay();
+                showCustomModal('同步失败', '<p class="text-danger">' + (data.message || '同步请求失败') + '</p>', true, 'bi-exclamation-triangle text-danger');
             }
         })['catch'](function(err) {
-            updateProgressError('网络请求失败: ' + err.message);
-            document.getElementById('progressCloseBtn').disabled = false;
-            document.getElementById('progressCloseBtn').textContent = '关闭';
-            document.getElementById('progressSpinner').style.display = 'none';
+            closeAsyncProgressOverlay();
+            showCustomModal('错误', '<p class="text-danger">网络请求失败: ' + err.message + '</p>', true, 'bi-exclamation-triangle text-danger');
         });
     }
 

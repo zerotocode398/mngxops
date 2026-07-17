@@ -761,19 +761,7 @@
     }
 
     function doSingleTest(data) {
-        showLoading('测试连接');
-        stopTestTimer();
-        testSeconds = 10;
-        testTimer = setInterval(function () {
-            testSeconds--;
-            if (testSeconds <= 0) {
-                stopTestTimer();
-                updateLoadingContent('<div class="text-center py-3"><div class="spinner-border text-primary mb-2" role="status"></div><p class="text-muted mb-0">即将完成...</p></div>');
-            } else {
-                updateLoadingContent('<div class="text-center py-3"><div class="spinner-border text-primary mb-2" role="status"></div><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>');
-            }
-        }, 1000);
-
+        showAsyncProgressOverlay('SSH连接测试');
         fetch('{% url "nodes:test" %}', {
             method: 'POST',
             headers: {
@@ -784,22 +772,17 @@
         })
         .then(function (resp) { return resp.json(); })
         .then(function (result) {
-            stopTestTimer();
-            hideLoading();
-            if (result.success) {
-                showCustomModal('连接测试结果',
-                    '<div class="alert alert-success"><i class="bi bi-check-circle-fill"></i> <strong>连接成功</strong></div><p>' + result.message + '</p><p class="text-muted">节点状态已更新为"在线"</p>',
-                    true, function () { location.reload(); });
-            } else {
-                var extra = result.status_updated ? '<p class="text-muted">节点状态已更新为"离线"</p>' : '';
-                showCustomModal('连接测试结果',
-                    '<div class="alert alert-danger"><i class="bi bi-x-circle-fill"></i> <strong>连接失败</strong></div><p>' + result.message + '</p>' + extra,
-                    true, function () { location.reload(); });
+            if (!result.success) {
+                closeAsyncProgressOverlay();
+                showCustomModal('测试失败', '<p class="text-danger">' + (result.message || '未返回task_id') + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
+                return;
+            }
+            if (result.async && result.task_center_id) {
+                startAsyncProgressPolling(result.task_center_id);
             }
         })
         .catch(function () {
-            stopTestTimer();
-            hideLoading();
+            closeAsyncProgressOverlay();
             showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
         });
     }
@@ -814,15 +797,7 @@
         showCustomModal('批量测试连接',
             '<p>确定要对选中的 <strong>' + nodeIds.length + '</strong> 个节点进行SSH连接测试吗？</p><p class="text-muted">测试结果将更新节点状态。</p>',
             true, function () {
-                showLoading('批量测试连接中...');
-                stopTestTimer();
-                testSeconds = 10;
-                testTimer = setInterval(function () {
-                    testSeconds--;
-                    if (testSeconds <= 0) { stopTestTimer(); updateLoadingContent('<div class="text-center py-3"><p class="text-muted mb-0">即将完成...</p></div>'); }
-                    else { updateLoadingContent('<div class="text-center py-3"><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>'); }
-                }, 1000);
-
+                showAsyncProgressOverlay('批量测试连接');
                 fetch('{% url "nodes:batch_test" %}', {
                     method: 'POST',
                     headers: {
@@ -833,28 +808,17 @@
                 })
                 .then(function (resp) { return resp.json(); })
                 .then(function (result) {
-                    stopTestTimer();
-                    hideLoading();
                     if (!result.success) {
-                        showCustomModal('测试失败', '<p class="text-danger">' + result.message + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
+                        closeAsyncProgressOverlay();
+                        showCustomModal('测试失败', '<p class="text-danger">' + (result.message || '创建任务失败') + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
                         return;
                     }
-                    if (result.async) {
-                        var jumpUrl = result.task_center_detail_url || result.task_center_home_url || '{% url "releases:history" %}';
-                        document.getElementById('taskJumpModalBody').textContent = result.message || '已创建后台测试任务';
-                        document.getElementById('taskJumpBtn').setAttribute('href', jumpUrl);
-                        taskJumpCancelled = false;
-                        taskJumpModal.show();
-                        taskJumpTimer = setTimeout(function () {
-                            if (!taskJumpCancelled) {
-                                window.location.href = jumpUrl;
-                            }
-                        }, 3000);
+                    if (result.async && result.task_center_id) {
+                        startAsyncProgressPolling(result.task_center_id);
                     }
                 })
                 .catch(function () {
-                    stopTestTimer();
-                    hideLoading();
+                    closeAsyncProgressOverlay();
                     showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
                 });
             }, 'bi-lightning-charge', 'bi-lightning-charge', 'btn-success');
@@ -884,50 +848,45 @@
         var confirmBtnClass = isLock ? 'btn-danger' : 'btn-success';
 
         showCustomModal(title, '<p>' + confirmMsg + '</p>', true, function () {
-            stopTestTimer();
-            testSeconds = isLock ? 0 : 12;
             if (isLock) {
                 showLoading(title + '中...');
-            } else {
-                showLoading('解锁中');
-                testTimer = setInterval(function () {
-                    testSeconds--;
-                    if (testSeconds <= 0) { stopTestTimer(); updateLoadingContent('<div class="text-center py-3"><p class="text-muted mb-0">即将完成...</p></div>'); }
-                    else { updateLoadingContent('<div class="text-center py-3"><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>'); }
-                }, 1000);
-            }
-            var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-            fetch('{% url "nodes:lock" %}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify({ node_id: nodeId, action: action })
-            })
-            .then(function (resp) { return resp.json(); })
-            .then(function (result) {
-                stopTestTimer();
-                hideLoading();
-                if (result.success) {
-                    if (result.action === 'unlock' && result.results) {
-                        var r = result.results[0];
-                        var statusHtml = r.success
-                            ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> 连接成功</span>'
-                            : '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> 连接失败</span>';
-                        var content = '<div class="mb-2">' + statusHtml + '</div>' +
-                            '<p><strong>主机名：</strong>' + r.hostname + '</p>' +
-                            '<p><strong>IP：</strong><code>' + r.ip + '</code></p>' +
-                            '<p><strong>详情：</strong>' + r.message + '</p>';
-                        showCustomModal('解锁完成', content, true, function () { location.reload(); }, 'bi-check-circle text-success');
-                    } else {
+                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                fetch('{% url "nodes:lock" %}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({ node_id: nodeId, action: action })
+                })
+                .then(function (resp) { return resp.json(); })
+                .then(function (result) {
+                    hideLoading();
+                    if (result.success) {
                         showCustomModal('操作完成', '<p class="text-success">' + result.message + '</p>', true, function () { location.reload(); }, 'bi-check-circle text-success');
+                    } else {
+                        showCustomModal('操作失败', '<p class="text-danger">' + result.message + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
                     }
-                } else {
-                    showCustomModal('操作失败', '<p class="text-danger">' + result.message + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
-                }
-            })
-            .catch(function () {
-                stopTestTimer(); hideLoading();
-                showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>');
-            });
+                })
+                .catch(function () { hideLoading(); showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>'); });
+            } else {
+                showAsyncProgressOverlay('解锁并测试连接');
+                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                fetch('{% url "nodes:lock" %}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify({ node_id: nodeId, action: action })
+                })
+                .then(function (resp) { return resp.json(); })
+                .then(function (result) {
+                    if (!result.success) {
+                        closeAsyncProgressOverlay();
+                        showCustomModal('操作失败', '<p class="text-danger">' + (result.message || '操作失败') + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
+                        return;
+                    }
+                    if (result.async && result.task_center_id) {
+                        startAsyncProgressPolling(result.task_center_id);
+                    }
+                })
+                .catch(function () { closeAsyncProgressOverlay(); showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>'); });
+            }
         });
     }
 
@@ -964,13 +923,7 @@
         showCustomModal('批量解锁节点',
             '<p>确定要解锁选中的 <strong>' + nodeIds.length + '</strong> 个节点吗？</p><p class="text-muted">解锁后将自动测试连接并更新状态。</p>',
             true, function () {
-                stopTestTimer(); testSeconds = 12;
-                showLoading('批量解锁中');
-                testTimer = setInterval(function () {
-                    testSeconds--;
-                    if (testSeconds <= 0) { stopTestTimer(); updateLoadingContent('<div class="text-center py-3"><p class="text-muted mb-0">即将完成...</p></div>'); }
-                    else { updateLoadingContent('<div class="text-center py-3"><p class="mb-0">剩余时间 <strong class="text-primary fs-4">' + testSeconds + '</strong> 秒</p></div>'); }
-                }, 1000);
+                showAsyncProgressOverlay('批量解锁并测试连接');
                 var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
                 fetch('{% url "nodes:lock" %}', {
                     method: 'POST',
@@ -979,21 +932,16 @@
                 })
                 .then(function (resp) { return resp.json(); })
                 .then(function (result) {
-                    stopTestTimer(); hideLoading();
-                    if (result.success) {
-                        var resultsHtml = result.results.map(function (r) {
-                            var statusBadge = r.success
-                                ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> 连接成功</span>'
-                                : '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> 连接失败</span>';
-                            return '<tr><td><strong>' + r.hostname + '</strong></td><td><code>' + r.ip + '</code></td><td>' + statusBadge + '</td><td><small>' + (r.message || '') + '</small></td></tr>';
-                        }).join('');
-                        var content = '<div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead class="table-light"><tr><th>主机名</th><th>IP</th><th>状态</th><th>详情</th></tr></thead><tbody>' + resultsHtml + '</tbody></table></div>';
-                        showCustomModal('批量解锁完成', content, true, function () { location.reload(); }, 'bi-check-circle text-success');
-                    } else {
-                        showCustomModal('批量解锁失败', '<p class="text-danger">' + result.message + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
+                    if (!result.success) {
+                        closeAsyncProgressOverlay();
+                        showCustomModal('批量解锁失败', '<p class="text-danger">' + (result.message || '操作失败') + '</p>', true, null, 'bi-exclamation-triangle', 'btn-danger');
+                        return;
+                    }
+                    if (result.async && result.task_center_id) {
+                        startAsyncProgressPolling(result.task_center_id);
                     }
                 })
-                .catch(function () { stopTestTimer(); hideLoading(); showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>'); });
+                .catch(function () { closeAsyncProgressOverlay(); showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>'); });
             }, 'bi-unlock', 'bi-unlock', 'btn-success');
     }
 

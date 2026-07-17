@@ -359,6 +359,7 @@ class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, Vi
                     {
                         "success": True,
                         "message": f"凭证 {credential.name} 已启用，后台测试任务已创建",
+                        "task_center_id": center_task.id,
                         "task_center_detail_url": reverse(
                             "releases:task_center_detail", args=[center_task.id]
                         ),
