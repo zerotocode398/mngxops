@@ -388,15 +388,23 @@ class ReleaseListView(
         )
         search = self.request.GET.get("search", "")
         status_filter = self.request.GET.get("status", "")
+        batch = self.request.GET.get("batch", "")
+        node_ip = self.request.GET.get("node_ip", "")
         if search:
-            queryset = queryset.filter(
-                Q(config__name__icontains=search)
-                | Q(node__hostname__icontains=search)
-                | Q(batch_number__icontains=search)
-                | Q(operator__username__icontains=search)
-            )
+            terms = [t.strip() for t in search.split(",") if t.strip()]
+            for term in terms:
+                queryset = queryset.filter(
+                    Q(config__name__icontains=term)
+                    | Q(node__hostname__icontains=term)
+                    | Q(batch_number__icontains=term)
+                    | Q(operator__username__icontains=term)
+                )
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+        if batch:
+            queryset = queryset.filter(batch_number__icontains=batch)
+        if node_ip:
+            queryset = queryset.filter(node__ip__icontains=node_ip)
         return queryset
 
     def get_context_data(self, **kwargs):
@@ -404,8 +412,12 @@ class ReleaseListView(
         context = super().get_context_data(**kwargs)
         search = self.request.GET.get("search", "")
         status_filter = self.request.GET.get("status", "")
+        batch = self.request.GET.get("batch", "")
+        node_ip = self.request.GET.get("node_ip", "")
         context["search"] = search
         context["status_filter"] = status_filter
+        context["batch_filter"] = batch
+        context["node_ip_filter"] = node_ip
         context["status_choices"] = ReleaseTask.STATUS_CHOICES
 
         # 三级分组：批次 → 节点 → 任务
@@ -437,7 +449,7 @@ class ReleaseListView(
                 batch["failed"] += 1
 
         context["batch_groups"] = batch_groups
-        context["has_any_filter"] = bool(search or status_filter)
+        context["has_any_filter"] = bool(search or status_filter or context["batch_filter"] or context["node_ip_filter"])
         return context
 
 
@@ -563,15 +575,17 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                         "failed": 0,
                     }
                 elif raw.startswith("  [成功]") and current_node is not None:
-                    name = raw[len("  [成功] "):].strip()
-                    name = re.sub(r'\s+v\d+.*', '', name)
-                    current_node["configs"].append({"name": name, "status": "success"})
+                    raw_name = raw[len("  [成功] "):].strip()
+                    name = re.sub(r'\s+v(\d+).*', r' (V\1)', raw_name)
+                    search_name = re.sub(r'\s+v\d+.*', '', raw_name).strip()
+                    current_node["configs"].append({"name": name, "search_name": search_name, "status": "success"})
                     current_node["success"] += 1
                     success_total += 1
                 elif raw.startswith("  [失败]") and current_node is not None:
-                    name = raw[len("  [失败] "):].strip()
-                    name = re.sub(r'\s+v\d+.*', '', name)
-                    current_node["configs"].append({"name": name, "status": "failed"})
+                    raw_name = raw[len("  [失败] "):].strip()
+                    name = re.sub(r'\s+v(\d+).*', r' (V\1)', raw_name)
+                    search_name = re.sub(r'\s+v\d+.*', '', raw_name).strip()
+                    current_node["configs"].append({"name": name, "search_name": search_name, "status": "failed"})
                     current_node["failed"] += 1
                     failed_total += 1
 
@@ -580,6 +594,35 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
 
         # 失败节点排前面
         result_tree.sort(key=lambda n: (n["failed"] == 0, n["name"]))
+
+        # 为每个结果树节点附加 IP（从目标主机列表匹配）
+        host_to_ip = {}
+        if task.target_hostnames and task.target_ips:
+            hostnames = task.target_hostnames.split(",")
+            ips = task.target_ips.split(",")
+            for i in range(min(len(hostnames), len(ips))):
+                hn = hostnames[i].strip()
+                ip = ips[i].strip()
+                if hn and ip:
+                    host_to_ip[hn] = ip
+        for node in result_tree:
+            node_name = node["name"]
+            # 从 "IP (hostname)" 格式提取纯 IP
+            ip_match = re.match(r'^([\d.]+)\s*\(', node_name)
+            if ip_match:
+                node["node_ip"] = ip_match.group(1)
+            elif node_name in host_to_ip:
+                node["node_ip"] = host_to_ip[node_name]
+            else:
+                node["node_ip"] = node_name
+            # 提取主机名（括号内文本）
+            hn_match = re.search(r'\(([^)]+)\)', node_name)
+            if hn_match:
+                node["node_hostname"] = hn_match.group(1)
+            elif node_name in host_to_ip:
+                node["node_hostname"] = node_name
+            else:
+                node["node_hostname"] = node.get("node_ip", node_name)
 
         # 计算执行耗时
         duration = ""

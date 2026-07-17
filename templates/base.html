@@ -802,7 +802,7 @@
             event.preventDefault();
             const storedUrl = sessionStorage.getItem('releases_list_query');
             if (storedUrl) { window.location.href = storedUrl; }
-            else { window.location.href = '{% url "releases:history" %}'; }
+            else { window.location.href = '{% url "releases:list" %}'; }
         }
     </script>
     {% block extra_js %}{% endblock %}

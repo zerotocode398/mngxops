@@ -26,7 +26,7 @@
                         <div class="col-md-3">
                             <span class="text-muted">来源批次</span>
                             {% if task.source_batch and task.operation_type in 'release_publish,release_rollback' %}
-                            <a href="{% url 'releases:list' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none">{{ task.source_batch }}</a>
+                            <a href="{% url 'releases:list' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
                             {% else %}
                             <code>{{ task.source_batch|default:'-' }}</code>
                             {% endif %}
@@ -98,7 +98,7 @@
                                     {% else %}
                                     <span class="text-danger">❌</span>
                                     {% endif %}
-                                    <span>{{ cfg.name }}</span>
+                                    <a href="{% url 'releases:list' %}?search={{ cfg.search_name|urlencode }},{{ node.node_hostname|urlencode }},{{ task.source_batch|urlencode }}&batch={{ task.source_batch|urlencode }}&node_ip={{ node.node_ip|urlencode }}" target="_blank" class="text-decoration-none">{{ cfg.name }}</a>
                                 </div>
                                 {% endfor %}
                             </div>
@@ -107,13 +107,6 @@
                     </div>
                     {% else %}
                     <pre class="bg-dark text-light p-3 rounded small" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">{{ task.result|default:'暂无结果数据' }}</pre>
-                    {% endif %}
-
-                    {% if task.result %}
-                    <details class="mt-3">
-                        <summary class="small text-muted cursor-pointer">查看原始日志</summary>
-                        <pre class="bg-dark text-light p-2 rounded small mt-2" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap;">{{ task.result }}</pre>
-                    </details>
                     {% endif %}
                 </div>
             </div>
@@ -136,7 +129,6 @@
     .result-config-item:first-child { border-top: none; }
     .bg-failed-light { background: #fff5f5; }
     #resultTreeContainer { border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    details summary { font-size: 0.82rem; color: #6c757d; user-select: none; cursor: pointer; }
-    details summary:hover { color: #495057; }
+
 </style>
 {% endblock %}
