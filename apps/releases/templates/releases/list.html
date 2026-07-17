@@ -26,6 +26,8 @@
                                     placeholder="搜索批次号、节点或配置名称">
                             </div>
                             <input type="hidden" name="search" id="releaseHistorySearchHidden" value="{{ search }}">
+                            <input type="hidden" name="batch" value="{{ batch_filter }}">
+                            <input type="hidden" name="node_ip" value="{{ node_ip_filter }}">
                         </div>
                         <div class="col-md-3">
                             <select name="status" class="form-select form-select-sm">
@@ -90,7 +92,7 @@
                             </h2>
                             <div id="collapseBatch{{ forloop.counter }}"
                                 class="accordion-collapse collapse {% if forloop.first %}show{% endif %}"
-                                data-bs-parent="#historyAccordion">
+                                {% if not search and not batch_filter and not node_ip_filter %}data-bs-parent="#historyAccordion"{% endif %}>
                                 <div class="accordion-body p-0">
                                     {% for node_key, node_data in batch.nodes.items %}
                                     <div class="border-bottom">
@@ -99,15 +101,21 @@
                                             data-bs-target="#collapseNode{{ forloop.parentloop.counter }}_{{ forloop.counter }}">
                                             <i class="bi bi-chevron-right toggle-arrow"></i>
                                             <i class="bi bi-server"></i>
-                                            <strong>{{ node_data.node.hostname }}</strong>
-                                            <code class="text-muted small">{{ node_data.node.ip }}</code>
-                                            {% if node_data.node.is_locked %}<i class="bi bi-lock-fill text-warning"></i>{% endif %}
-                                            <span class="ms-auto badge bg-light text-dark">{{ node_data.tasks|length }} 个配置</span>
+                                            <div class="node-info-cell flex-grow-1">
+                                                <span class="node-identity">
+                                                    {{ node_data.node.hostname }}<small class="text-muted">({{ node_data.node.ip }}:{{ node_data.node.port }})</small>
+                                                </span>
+                                                {% if node_data.node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
+                                                {% for grp in node_data.node.groups.all %}
+                                                <span class="badge bg-info text-dark" style="font-size: 0.72rem; font-weight: normal;">{{ grp.name }}</span>
+                                                {% endfor %}
+                                            </div>
+                                            <span class="badge bg-light text-dark flex-shrink-0">{{ node_data.tasks|length }} 个配置</span>
                                             {% with node_data.tasks|first as first_task %}
                                             {% if first_task.status == 'success' %}
-                                            <span class="badge bg-success">✅</span>
+                                            <span class="badge bg-success flex-shrink-0">✅</span>
                                             {% elif first_task.status == 'failed' %}
-                                            <span class="badge bg-danger">❌</span>
+                                            <span class="badge bg-danger flex-shrink-0">❌</span>
                                             {% endif %}
                                             {% endwith %}
                                         </div>
@@ -183,12 +191,12 @@
                         <ul class="pagination justify-content-center">
                             {% if page_obj.has_previous %}
                             <li class="page-item">
-                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}{% if node_ip_filter %}&node_ip={{ node_ip_filter }}{% endif %}">
                                     <i class="bi bi-chevron-double-left"></i> 首页
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}{% if node_ip_filter %}&node_ip={{ node_ip_filter }}{% endif %}">
                                     <i class="bi bi-chevron-left"></i> 上一页
                                 </a>
                             </li>
@@ -198,12 +206,12 @@
                             </li>
                             {% if page_obj.has_next %}
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}{% if node_ip_filter %}&node_ip={{ node_ip_filter }}{% endif %}">
                                     下一页 <i class="bi bi-chevron-right"></i>
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}{% if node_ip_filter %}&node_ip={{ node_ip_filter }}{% endif %}">
                                     末页 <i class="bi bi-chevron-double-right"></i>
                                 </a>
                             </li>
@@ -228,6 +236,8 @@
     .history-table thead th { font-weight: 500; white-space: nowrap; }
     .node-header-cursor { cursor: pointer; user-select: none; transition: background 0.15s; }
     .node-header-cursor:hover { background: #e9ecef !important; }
+    .node-info-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .node-identity { white-space: nowrap; }
 </style>
 <script>
     (function() {
@@ -238,6 +248,13 @@
     })();
     document.addEventListener('DOMContentLoaded', function() {
         initTagSearch('#releaseHistorySearchTagWrapper', '#releaseHistorySearchHidden', '#searchForm');
+
+        {% if search or batch_filter or node_ip_filter %}
+        // 搜索/批次过滤后自动展开所有批次和节点
+        document.querySelectorAll('#historyAccordion .collapse').forEach(function(el) {
+            new bootstrap.Collapse(el, { toggle: false }).show();
+        });
+        {% endif %}
 
         // 批量回滚按钮
         document.querySelectorAll('.btn-batch-rollback').forEach(function(btn) {
