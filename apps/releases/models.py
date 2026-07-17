@@ -116,6 +116,7 @@ class TaskCenterTask(models.Model):
         ("config_batch_sync", "配置批量同步"),
         ("config_discover", "配置发现扫描"),
         ("config_drift_check", "配置漂移检测"),
+        ("config_glob_preview", "配置Glob预览"),
         ("nginx_upgrade", "Nginx 编译升级"),
         ("nginx_rollback", "Nginx 升级回滚"),
         ("other", "其他任务"),

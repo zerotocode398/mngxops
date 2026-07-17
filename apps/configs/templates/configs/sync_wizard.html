@@ -382,7 +382,7 @@
     }
 </style>
 <script>
-    var MAX_BATCH = 3;
+    var MAX_BATCH = {{ batch_max_count|default:3 }};
     var pollTimer = null;
     var syncAlertModalInstance = null;
     var pollStartTime = null;

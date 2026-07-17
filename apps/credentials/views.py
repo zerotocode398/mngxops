@@ -19,6 +19,7 @@ from apps.users.permissions import PermissionRequiredMixin
 from apps.nodes.models import Node
 from utils.ssh import test_ssh_connection
 from utils.pagination import PerPagePaginationMixin
+from utils.setting_service import get_setting
 
 
 def _run_credential_enable_task(task_id, credential_id):
@@ -68,7 +69,7 @@ def _run_credential_enable_task(task_id, credential_id):
                 )
             return
 
-        max_workers = min(10, len(nodes))
+        max_workers = min(int(get_setting("credential.test_max_concurrency", "10")), len(nodes))
 
         def _test_node(node):
             """对单个节点执行SSH连接测试"""
