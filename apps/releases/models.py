@@ -109,6 +109,7 @@ class TaskCenterTask(models.Model):
         ("release_publish", "发布配置"),
         ("release_rollback", "回滚配置"),
         ("credential_enable_test", "凭证启用测试"),
+        ("node_ssh_test", "节点SSH测试"),
         ("node_batch_test", "节点批量测试"),
         ("node_system_info", "节点系统信息采集"),
         ("node_nginx_version", "Nginx 版本检测"),

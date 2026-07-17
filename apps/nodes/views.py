@@ -457,102 +457,95 @@ def node_lock(request):
             )
         elif action == "unlock":
             nodes.update(is_locked=False)
+            node_list = list(nodes)
+            total = len(node_list)
 
-            def _unlock_test(node):
-                try:
-                    credential = _get_node_credential(node)
-                    if not credential:
-                        node.status = "unknown"
-                        node.save()
-                        return {
-                            "node_id": node.id,
-                            "hostname": node.hostname,
-                            "ip": node.ip,
-                            "success": False,
-                            "message": "未配置凭证",
-                        }
-                    if not credential.is_enabled:
-                        node.status = "offline"
-                        node.save()
-                        return {
-                            "node_id": node.id,
-                            "hostname": node.hostname,
-                            "ip": node.ip,
-                            "success": False,
-                            "message": "关联凭证已禁用",
-                        }
+            task = TaskCenterTask.objects.create(
+                operation_type="node_ssh_test",
+                status="pending",
+                detail="任务已创建，等待执行",
+                target_hostnames=",".join(n.hostname for n in node_list),
+                target_ips=",".join(n.ip for n in node_list),
+                trigger_user=request.user,
+            )
 
-                    if credential.auth_type == "password":
-                        success, message = test_ssh_connection(
-                            node.ip,
-                            node.port,
-                            credential.username,
-                            password=credential.get_password(),
-                        )
-                    else:
-                        success, message = test_ssh_connection(
-                            node.ip,
-                            node.port,
-                            credential.username,
-                            private_key=credential.get_private_key(),
-                        )
+            def _run_unlock_test():
+                tid = task.id
+                TaskCenterTask.objects.filter(pk=tid).update(
+                    status="running", progress=5, detail="正在解锁并测试连接...", started_at=timezone.now()
+                )
+                success_count = 0
+                fail_count = 0
+                done = 0
+                detail_lines = []
 
-                    if success:
-                        node.status = "online"
-                        nginx_path = node.nginx_path if node.nginx_path else None
-                        version_success, version_info = get_nginx_version(
-                            node.ip,
-                            node.port,
-                            credential.username,
-                            password=(
-                                credential.get_password()
-                                if credential.auth_type == "password"
-                                else None
-                            ),
-                            private_key=(
-                                credential.get_private_key()
-                                if credential.auth_type == "key"
-                                else None
-                            ),
-                            nginx_path=nginx_path,
-                        )
-                        if version_success:
-                            node.nginx_version = version_info
-                    else:
-                        node.status = "offline"
+                for node in node_list:
+                    try:
+                        credential = _get_node_credential(node)
+                        if not credential:
+                            node.status = "unknown"; node.save()
+                            fail_count += 1
+                            detail_lines.append(f"[失败] {node.hostname}({node.ip}) - 未配置凭证")
+                        elif not credential.is_enabled:
+                            node.status = "offline"; node.save()
+                            fail_count += 1
+                            detail_lines.append(f"[失败] {node.hostname}({node.ip}) - 凭证已禁用")
+                        else:
+                            if credential.auth_type == "password":
+                                success, message = test_ssh_connection(
+                                    node.ip, node.port, credential.username,
+                                    password=credential.get_password(),
+                                )
+                            else:
+                                success, message = test_ssh_connection(
+                                    node.ip, node.port, credential.username,
+                                    private_key=credential.get_private_key(),
+                                )
+                            if success:
+                                node.status = "online"
+                                nginx_path = node.nginx_path if node.nginx_path else None
+                                version_success, version_info = get_nginx_version(
+                                    node.ip, node.port, credential.username,
+                                    password=credential.get_password() if credential.auth_type == "password" else None,
+                                    private_key=credential.get_private_key() if credential.auth_type == "key" else None,
+                                    nginx_path=nginx_path,
+                                )
+                                if version_success:
+                                    node.nginx_version = version_info
+                                success_count += 1
+                                detail_lines.append(f"[成功] {node.hostname}({node.ip}) - {message}")
+                            else:
+                                node.status = "offline"
+                                fail_count += 1
+                                detail_lines.append(f"[失败] {node.hostname}({node.ip}) - {message}")
+                            node.save()
+                    except Exception as e:
+                        fail_count += 1
+                        detail_lines.append(f"[失败] {node.hostname}({node.ip}) - 异常: {str(e)}")
 
-                    node.save()
-                    return {
-                        "node_id": node.id,
-                        "hostname": node.hostname,
-                        "ip": node.ip,
-                        "success": success,
-                        "message": message,
-                    }
-                except Exception as e:
-                    return {
-                        "node_id": node.id,
-                        "hostname": node.hostname,
-                        "ip": node.ip,
-                        "success": False,
-                        "message": str(e),
-                    }
+                    done += 1
+                    TaskCenterTask.objects.filter(pk=tid).update(
+                        progress=int(done * 100 / total) if total else 100,
+                        detail=f"执行中：成功{success_count}，失败{fail_count}，已完成{done}/{total}",
+                        updated_at=timezone.now(),
+                    )
 
-            results = []
-            with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
-                future_to_node = {
-                    executor.submit(_unlock_test, node): node for node in nodes
-                }
-                for future in as_completed(future_to_node):
-                    result = future.result()
-                    results.append(result)
+                status = "success" if fail_count == 0 else "failed"
+                TaskCenterTask.objects.filter(pk=tid).update(
+                    status=status, progress=100, finished_at=timezone.now(),
+                    detail=f"执行完成：成功{success_count}，失败{fail_count}，共{total}",
+                    result="\n".join(detail_lines),
+                )
+
+            thread = threading.Thread(target=_run_unlock_test, daemon=True)
+            thread.start()
 
             return JsonResponse(
                 {
                     "success": True,
-                    "message": "已解锁并完成连接测试",
-                    "action": "unlock",
-                    "results": results,
+                    "async": True,
+                    "message": f"已解锁并创建后台测试任务（{total} 台）",
+                    "task_center_id": task.id,
                 }
             )
         else:
@@ -621,59 +614,81 @@ def test_node_connection(request):
                     )
                 host = ip
                 ssh_port = int(port)
+                node = None
+                node_id = None
             else:
                 return JsonResponse({"success": False, "message": "缺少必要参数"})
 
-            if credential.auth_type == "password":
-                success, message = test_ssh_connection(
-                    host,
-                    ssh_port,
-                    credential.username,
-                    password=credential.get_password(),
-                )
-            else:
-                success, message = test_ssh_connection(
-                    host,
-                    ssh_port,
-                    credential.username,
-                    private_key=credential.get_private_key(),
+            target_hostname = node.hostname if node else host
+            task = TaskCenterTask.objects.create(
+                operation_type="node_ssh_test",
+                status="pending",
+                detail="任务已创建，等待执行",
+                target_hostnames=target_hostname,
+                target_ips=host,
+                trigger_user=request.user,
+            )
+
+            def _run_test():
+                tid = task.id
+                _has_node = node is not None
+                _node_id = node_id
+
+                TaskCenterTask.objects.filter(pk=tid).update(
+                    status="running", progress=5, detail="正在测试SSH连接...", started_at=timezone.now()
                 )
 
-            if success and node_id:
-                node = Node.objects.get(id=node_id)
-                node.status = "online"
+                try:
+                    if credential.auth_type == "password":
+                        success, message = test_ssh_connection(
+                            host, ssh_port, credential.username, password=credential.get_password()
+                        )
+                    else:
+                        success, message = test_ssh_connection(
+                            host, ssh_port, credential.username, private_key=credential.get_private_key()
+                        )
 
-                nginx_path = node.nginx_path if node.nginx_path else None
-                version_success, version_info = get_nginx_version(
-                    host,
-                    ssh_port,
-                    credential.username,
-                    password=(
-                        credential.get_password()
-                        if credential.auth_type == "password"
-                        else None
-                    ),
-                    private_key=(
-                        credential.get_private_key()
-                        if credential.auth_type == "key"
-                        else None
-                    ),
-                    nginx_path=nginx_path,
-                )
-                if version_success:
-                    node.nginx_version = version_info
+                    TaskCenterTask.objects.filter(pk=tid).update(progress=60, detail="正在更新节点状态...")
 
-                node.save()
-            elif not success and node_id:
-                node = Node.objects.get(id=node_id)
-                node.status = "offline"
-                node.save()
+                    if success and _has_node:
+                        _node = Node.objects.get(id=_node_id)
+                        _node.status = "online"
+                        nginx_path = _node.nginx_path if _node.nginx_path else None
+                        version_success, version_info = get_nginx_version(
+                            host, ssh_port, credential.username,
+                            password=credential.get_password() if credential.auth_type == "password" else None,
+                            private_key=credential.get_private_key() if credential.auth_type == "key" else None,
+                            nginx_path=nginx_path,
+                        )
+                        if version_success:
+                            _node.nginx_version = version_info
+                        _node.save()
+                    elif not success and _has_node:
+                        _node = Node.objects.get(id=_node_id)
+                        _node.status = "offline"
+                        _node.save()
+
+                    status = "success" if success else "failed"
+                    TaskCenterTask.objects.filter(pk=tid).update(
+                        status=status, progress=100, finished_at=timezone.now(),
+                        detail=f"连接{'成功' if success else '失败'}",
+                        result=message,
+                    )
+                except Exception as e:
+                    TaskCenterTask.objects.filter(pk=tid).update(
+                        status="failed", progress=100, finished_at=timezone.now(),
+                        detail=f"执行异常: {str(e)}",
+                    )
+
+            thread = threading.Thread(target=_run_test, daemon=True)
+            thread.start()
 
             return JsonResponse(
                 {
-                    "success": success,
-                    "message": message,
-                    "status_updated": bool(node_id),
+                    "success": True,
+                    "async": True,
+                    "message": "已创建后台测试任务",
+                    "task_center_id": task.id,
                 }
             )
         except Node.DoesNotExist:
