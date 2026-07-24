@@ -19,7 +19,7 @@
                     <form method="get" class="row g-2 mb-3" id="compareForm">
                         <div class="col-md-4">
                             <label class="form-label">源配置</label>
-                            <select name="base_version" class="form-select" id="baseVersionSelect" required>
+                            <select name="base_version" class="form-select form-select-sm" id="baseVersionSelect" required>
                                 <option value="">请选择</option>
                                 {% for v in versions %}
                                 <option value="{{ v.id }}" {% if selected_base == v.id|stringformat:"s" %}selected{% endif %}>{{ v.version_label }}</option>
@@ -28,7 +28,7 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">目标配置</label>
-                            <select name="target_version" class="form-select" id="targetVersionSelect" required>
+                            <select name="target_version" class="form-select form-select-sm" id="targetVersionSelect" required>
                                 <option value="">请选择</option>
                                 {% for v in versions %}
                                 <option value="{{ v.id }}" {% if selected_target == v.id|stringformat:"s" %}selected{% endif %}>{{ v.version_label }}</option>
@@ -56,7 +56,7 @@
                     <div class="mb-3">
                         <h6><i class="bi bi-layout-split"></i> 左右对比</h6>
                         <div class="table-responsive border rounded" style="max-height: 420px; overflow-y: auto;">
-                            <table class="table table-sm table-bordered table-hover mb-0">
+                            <table class="table table-sm table-bordered table-hover mb-0 data-table">
                                 <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
                                     <tr>
                                         <th style="width: 7%;">左行号</th>

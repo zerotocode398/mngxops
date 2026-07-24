@@ -9,7 +9,7 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-collection"></i> 节点组列表</h5>
-                    <a href="{% url 'nodes:group_create' %}" class="btn btn-primary">
+                    <a href="{% url 'nodes:group_create' %}" class="btn btn-primary btn-sm">
                         <i class="bi bi-plus-circle"></i> 新增节点组
                     </a>
                 </div>
@@ -17,14 +17,14 @@
                     <form method="get" class="mb-3" id="groupSearchForm">
                         <div class="row g-2">
                             <div class="col-md-8">
-                                <div class="tag-input-wrapper form-control" id="groupCombinedTagWrapper">
+                                <div class="tag-input-wrapper form-control form-control-sm" id="groupCombinedTagWrapper">
                                     <input type="text" class="tag-input-field" id="groupCombinedSearchField"
                                         placeholder="搜索节点组名称">
                                 </div>
                                 <input type="hidden" name="search" id="groupSearchHidden" value="{{ search }}">
                             </div>
                             <div class="col-md-2">
-                                <select name="per_page" class="form-select" onchange="document.getElementById('groupSearchForm').submit()">
+                                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('groupSearchForm').submit()">
                                     {% for size in per_page_options %}
                                     <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
                                     {% endfor %}
@@ -32,16 +32,14 @@
                             </div>
                             <div class="col-md-2 d-grid">
                                 {% if search %}
-                                <a href="{% url 'nodes:group_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
-                                    <i class="bi bi-x-circle"></i>
-                                </a>
+                                <a href="{% url 'nodes:group_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选"><i class="bi bi-x-circle"></i> 清空</a>
                                 {% endif %}
                             </div>
                         </div>
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm mb-0 node-group-table">
+                        <table class="table table-hover table-sm mb-0 data-table node-group-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 18%;">节点组名称</th>
@@ -85,8 +83,9 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted">
-                                        <i class="bi bi-inbox"></i> 暂无节点组数据
+                                    <td colspan="6" class="empty-state">
+                                        <i class="bi bi-inbox"></i>
+                                        <p>暂无节点组数据</p>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -182,28 +181,7 @@
                     </div>
                     {% endfor %}
 
-                    {% if is_paginated %}
-                    <nav>
-                        <ul class="pagination justify-content-center">
-                            {% if page_obj.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}&search={{ search }}">上一页</a>
-                            </li>
-                            {% endif %}
-                            <li class="page-item disabled">
-                                <span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
-                                    页</span>
-                            </li>
-                            {% if page_obj.has_next %}
-                            <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}&search={{ search }}">下一页</a>
-                            </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endif %}
+                    {% include "includes/pagination.html" %}
                 </div>
             </div>
         </div>
@@ -239,47 +217,6 @@
     }
     .group-node-count-link {
         text-decoration: none;
-    }
-    .tag-input-wrapper {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 8px;
-        min-height: 38px;
-        cursor: text;
-        overflow-y: auto;
-    }
-    .tag-input-wrapper .tag-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: #667eea;
-        color: #fff;
-        border: 1px solid #5a6fd6;
-        border-radius: 4px;
-        padding: 2px 8px;
-        font-size: 0.82rem;
-        white-space: nowrap;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove {
-        cursor: pointer;
-        opacity: 0.7;
-        font-size: 1.1rem;
-        line-height: 1;
-        margin-left: 2px;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove:hover {
-        opacity: 1;
-        color: #ffc107;
-    }
-    .tag-input-wrapper .tag-input-field {
-        border: none;
-        outline: none;
-        flex: 1;
-        min-width: 100px;
-        padding: 0;
-        background: transparent;
     }
 </style>
 
@@ -464,28 +401,11 @@
 
 {% block extra_js %}
 <style>
-    .node-group-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .node-group-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .node-group-table td code,
-    .node-group-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .node-group-table td .badge {
         font-size: 0.78rem;
     }
     .node-group-table td .btn {
         font-size: 0.82rem;
     }
-    .node-group-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
+    </style>
 {% endblock %}

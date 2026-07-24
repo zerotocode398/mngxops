@@ -22,7 +22,7 @@
                                     </label>
                                     {{ form.hostname }}
                                     {% if form.hostname.errors %}
-                                    <div class="text-danger mt-1"><small>{{ form.hostname.errors|join:", " }}</small></div>
+                                    <div class="text-danger mt-1 small">{{ form.hostname.errors|join:", " }}</div>
                                     {% endif %}
                                 </div>
 
@@ -33,7 +33,7 @@
                                         </label>
                                         {{ form.ip }}
                                         {% if form.ip.errors %}
-                                        <div class="text-danger mt-1"><small>{{ form.ip.errors|join:", " }}</small></div>
+                                        <div class="text-danger mt-1 small">{{ form.ip.errors|join:", " }}</div>
                                         {% endif %}
                                     </div>
                                     <div class="col-md-4">
@@ -42,7 +42,7 @@
                                         </label>
                                         {{ form.port }}
                                         {% if form.port.errors %}
-                                        <div class="text-danger mt-1"><small>{{ form.port.errors|join:", " }}</small></div>
+                                        <div class="text-danger mt-1 small">{{ form.port.errors|join:", " }}</div>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -58,7 +58,7 @@
                                         {% endfor %}
                                     </div>
                                     {% if form.environment.errors %}
-                                    <div class="text-danger mt-1"><small>{{ form.environment.errors|join:", " }}</small></div>
+                                    <div class="text-danger mt-1 small">{{ form.environment.errors|join:", " }}</div>
                                     {% endif %}
                                 </div>
 
@@ -71,14 +71,14 @@
                                         </button>
                                         <small class="text-muted">最多 3 个</small>
                                     </div>
-                                    <div style="display:none;" id="groupCheckboxContainer">
+                                    <div class="d-none" id="groupCheckboxContainer">
                                         {% for checkbox in form.groups %}
                                         <div>{{ checkbox.tag }}</div>
                                         {% endfor %}
                                     </div>
                                     <div class="d-flex flex-wrap gap-1 mt-2" id="selectedGroupsTags"></div>
                                     {% if form.groups.errors %}
-                                    <div class="text-danger mt-1"><small>{{ form.groups.errors|join:", " }}</small></div>
+                                    <div class="text-danger mt-1 small">{{ form.groups.errors|join:", " }}</div>
                                     {% endif %}
                                 </div>
 
@@ -88,7 +88,7 @@
                                     </label>
                                     {{ form.credential }}
                                     {% if form.credential.errors %}
-                                    <div class="text-danger mt-1"><small>{{ form.credential.errors|join:", " }}</small></div>
+                                    <div class="text-danger mt-1 small">{{ form.credential.errors|join:", " }}</div>
                                     {% endif %}
                                     <small class="text-muted">可选，仅显示已启用的凭证。不设置则无法执行连接测试等远程操作</small>
                                 </div>
@@ -99,13 +99,13 @@
                                     </label>
                                     {{ form.nginx_path }}
                                     {% if form.nginx_path.errors %}
-                                    <div class="text-danger mt-1"><small>{{ form.nginx_path.errors|join:", " }}</small></div>
+                                    <div class="text-danger mt-1 small">{{ form.nginx_path.errors|join:", " }}</div>
                                     {% endif %}
                                     <small class="text-muted">如果nginx是自定义编译的，请填写完整路径，例如: /usr/local/nginx/sbin/nginx</small>
                                 </div>
 
                                 <div class="mb-3">
-                                    <button type="button" class="btn btn-outline-info" onclick="testConnection()">
+                                    <button type="button" class="btn btn-outline-success" onclick="testConnection()">
                                         <i class="bi bi-plug"></i> 测试连接
                                     </button>
                                     <span id="testResult" class="ms-2"></span>
@@ -117,7 +117,7 @@
                                     </label>
                                     {{ form.description }}
                                     {% if form.description.errors %}
-                                    <div class="text-danger mt-1"><small>{{ form.description.errors|join:", " }}</small></div>
+                                    <div class="text-danger mt-1 small">{{ form.description.errors|join:", " }}</div>
                                     {% endif %}
                                 </div>
 
@@ -156,7 +156,7 @@
                 </div>
 
                 <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                    <table class="table table-sm table-bordered table-hover group-modal-table">
+                    <table class="table table-sm table-bordered table-hover data-table group-modal-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 5%;"></th>
@@ -198,11 +198,11 @@
 </div>
 
 <!-- 测试连接弹窗 -->
-<div class="modal fade" id="customModal" tabindex="-1">
+<div class="modal fade" id="nodeEditCustomModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="customModalTitle">提示</h5>
+                <h5 class="modal-title" id="nodeEditCustomModalTitle">提示</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -229,24 +229,15 @@
     }
     .selected-group-badge .remove-group { cursor: pointer; opacity: 0.5; font-size: 1rem; line-height: 1; }
     .selected-group-badge .remove-group:hover { opacity: 1; color: #dc3545; }
-    .tag-input-wrapper { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 8px; min-height: 38px; cursor: text; overflow-y: auto; }
-    .tag-input-wrapper .tag-badge { display: inline-flex; align-items: center; gap: 4px; background: #667eea; color: #fff; border: 1px solid #5a6fd6; border-radius: 4px; padding: 2px 8px; font-size: 0.82rem; white-space: nowrap; }
-    .tag-input-wrapper .tag-badge .tag-remove { cursor: pointer; opacity: 0.7; font-size: 1.1rem; line-height: 1; margin-left: 2px; }
-    .tag-input-wrapper .tag-badge .tag-remove:hover { opacity: 1; color: #ffc107; }
-    .tag-input-wrapper .tag-input-field { border: none; outline: none; flex: 1; min-width: 100px; padding: 0; background: transparent; }
-    .group-modal-table { table-layout: fixed; width: 100%; }
-    .group-modal-table td { font-size: 0.82rem; font-weight: normal; vertical-align: middle; }
-    .group-modal-table td code, .group-modal-table td small { font-size: inherit; color: #212529; }
     .group-modal-table td .badge { font-size: 0.78rem; }
-    .group-modal-table thead th { font-weight: 500; white-space: nowrap; }
-</style>
+    </style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
     var MAX_GROUPS = 3;
     var groupSelectedMap = {};
-    var customModal, editTestTimer, editTestSeconds;
+    var nodeEditCustomModal, editTestTimer, editTestSeconds;
 
     function syncSelectedTagsFromCheckboxes() {
         var container = document.getElementById('selectedGroupsTags');
@@ -345,22 +336,22 @@
 
     /* ========== 测试连接 ========== */
     function showCustomModal(title, content, showConfirm, confirmCallback) {
-        document.getElementById('customModalTitle').textContent = title;
+        document.getElementById('nodeEditCustomModalTitle').textContent = title;
         document.getElementById('modalContent').innerHTML = content;
         document.getElementById('loadingSpinner').style.display = 'none';
         var btn = document.getElementById('modalConfirmBtn');
-        if (showConfirm) { btn.style.display = 'block'; btn.onclick = function() { if (confirmCallback) confirmCallback(); customModal.hide(); }; }
+        if (showConfirm) { btn.style.display = 'block'; btn.onclick = function() { if (confirmCallback) confirmCallback(); nodeEditCustomModal.hide(); }; }
         else btn.style.display = 'none';
-        if (!customModal) customModal = new bootstrap.Modal(document.getElementById('customModal'));
-        customModal.show();
+        if (!nodeEditCustomModal) nodeEditCustomModal = new bootstrap.Modal(document.getElementById('nodeEditCustomModal'));
+        nodeEditCustomModal.show();
     }
 
     function showLoading(title) {
-        document.getElementById('customModalTitle').textContent = title || '处理中';
+        document.getElementById('nodeEditCustomModalTitle').textContent = title || '处理中';
         document.getElementById('modalContent').innerHTML = '';
         document.getElementById('loadingSpinner').style.display = 'block'; document.getElementById('modalConfirmBtn').style.display = 'none';
-        if (!customModal) customModal = new bootstrap.Modal(document.getElementById('customModal'));
-        customModal.show();
+        if (!nodeEditCustomModal) nodeEditCustomModal = new bootstrap.Modal(document.getElementById('nodeEditCustomModal'));
+        nodeEditCustomModal.show();
     }
 
     function hideLoading() { document.getElementById('loadingSpinner').style.display = 'none'; }

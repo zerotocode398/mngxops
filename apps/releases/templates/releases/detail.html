@@ -73,14 +73,14 @@
                     <div class="mb-2">
                         <strong><i class="bi bi-terminal"></i> 执行日志</strong>
                     </div>
-                    <pre class="bg-dark text-light p-3 rounded"
-                        style="max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85rem;">{% if task.result %}{{ task.result }}{% else %}<span class="text-muted">等待执行...</span>{% endif %}</pre>
+                    <pre class="code-font bg-dark text-light p-3 rounded"
+                        style="max-height: 500px; overflow-y: auto; font-size: 0.85rem;">{% if task.result %}{{ task.result }}{% else %}<span class="text-muted">等待执行...</span>{% endif %}</pre>
 
                     {% if histories %}
                     <div class="mt-4">
                         <strong><i class="bi bi-list-ul"></i> 操作记录</strong>
                         <div class="table-responsive mt-2 px-3">
-                            <table class="table table-sm table-hover mb-0 release-detail-table">
+                            <table class="table table-sm table-hover mb-0 data-table release-detail-table">
                                 <thead class="table-light">
                                     <tr>
                                         <th style="width: 22%;">时间</th>
@@ -118,25 +118,8 @@
 
 {% block extra_js %}
 <style>
-    .release-detail-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .release-detail-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .release-detail-table td code,
-    .release-detail-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .release-detail-table td .badge {
         font-size: 0.78rem;
     }
-    .release-detail-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
+    </style>
 {% endblock %}

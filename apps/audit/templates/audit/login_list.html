@@ -21,7 +21,7 @@
                 <div class="card-body">
                     <form method="get" class="row g-2 mb-3" id="searchForm" autocomplete="off">
                         <div class="col-md-4">
-                            <div class="tag-input-wrapper form-control" id="loginLogSearchTagWrapper">
+                            <div class="tag-input-wrapper form-control form-control-sm" id="loginLogSearchTagWrapper">
                                 <input type="text" class="tag-input-field" id="loginLogSearchField"
                                     placeholder="搜索用户名或 IP">
                             </div>
@@ -43,14 +43,12 @@
                             </select>
                         </div>
                         <div class="col-md-2 d-grid">
-                            <a href="{% url 'audit:login_list' %}" class="btn btn-sm btn-outline-secondary" title="清空筛选">
-                                <i class="bi bi-x-circle"></i>
-                            </a>
+                            <a href="{% url 'audit:login_list' %}" class="btn btn-sm btn-outline-secondary" title="清空筛选"><i class="bi bi-x-circle"></i> 清空</a>
                         </div>
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm mb-0 login-log-table">
+                        <table class="table table-hover table-sm mb-0 data-table login-log-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 15%;">用户名</th>
@@ -80,14 +78,14 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <small>{{ log.created_at|date:"Y-m-d H:i:s" }}</small>
+                                        <small>{{ log.created_at|date:"Y-m-d H:i" }}</small>
                                     </td>
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted py-4">
-                                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-                                        <p class="mt-2">暂无登录日志记录</p>
+                                    <td colspan="5" class="empty-state">
+                                        <i class="bi bi-inbox"></i>
+                                        <p>暂无登录日志记录</p>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -95,41 +93,7 @@
                         </table>
                     </div>
 
-                    {% if is_paginated %}
-                    <nav aria-label="Page navigation">
-                        <ul class="pagination justify-content-center">
-                            {% if page_obj.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
-                                    <i class="bi bi-chevron-double-left"></i> 首页
-                                </a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
-                                    <i class="bi bi-chevron-left"></i> 上一页
-                                </a>
-                            </li>
-                            {% endif %}
-
-                            <li class="page-item active">
-                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-                            </li>
-
-                            {% if page_obj.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
-                                    下一页 <i class="bi bi-chevron-right"></i>
-                                </a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
-                                    末页 <i class="bi bi-chevron-double-right"></i>
-                                </a>
-                            </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endif %}
+                    {% include "includes/pagination.html" %}
                 </div>
             </div>
         </div>
@@ -139,27 +103,10 @@
 
 {% block extra_js %}
 <style>
-    .login-log-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .login-log-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .login-log-table td code,
-    .login-log-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .login-log-table td .badge {
         font-size: 0.78rem;
     }
-    .login-log-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
+    </style>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTagSearch('#loginLogSearchTagWrapper', '#loginLogSearchHidden', '#searchForm');

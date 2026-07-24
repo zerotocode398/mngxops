@@ -4,27 +4,10 @@
 
 {% block extra_js %}
 <style>
-    .user-info-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .user-info-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .user-info-table td code,
-    .user-info-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .user-info-table td .badge {
         font-size: 0.78rem;
     }
-    .user-info-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
+    </style>
 <script>
     document.querySelectorAll('.btn-perm-select-all').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
@@ -70,11 +53,7 @@
                                         </label>
                                         {{ form.username }}
                                         {% if form.username.errors %}
-                                        <div class="text-danger mt-1">
-                                            {% for error in form.username.errors %}
-                                            <small>{{ error }}</small>
-                                            {% endfor %}
-                                        </div>
+                                        <div class="text-danger mt-1 small">{% for error in form.username.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                         {% endif %}
                                         <small class="text-muted">用户名不可修改</small>
                                     </div>
@@ -85,11 +64,7 @@
                                         </label>
                                         {{ form.email }}
                                         {% if form.email.errors %}
-                                        <div class="text-danger mt-1">
-                                            {% for error in form.email.errors %}
-                                            <small>{{ error }}</small>
-                                            {% endfor %}
-                                        </div>
+                                        <div class="text-danger mt-1 small">{% for error in form.email.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -100,11 +75,7 @@
                                     </label>
                                     {{ form.first_name }}
                                     {% if form.first_name.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.first_name.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.first_name.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -115,11 +86,7 @@
                                         </label>
                                         {{ form.mobile }}
                                         {% if form.mobile.errors %}
-                                        <div class="text-danger mt-1">
-                                            {% for error in form.mobile.errors %}
-                                            <small>{{ error }}</small>
-                                            {% endfor %}
-                                        </div>
+                                        <div class="text-danger mt-1 small">{% for error in form.mobile.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                         {% endif %}
                                     </div>
 
@@ -129,11 +96,7 @@
                                         </label>
                                         {{ form.remark }}
                                         {% if form.remark.errors %}
-                                        <div class="text-danger mt-1">
-                                            {% for error in form.remark.errors %}
-                                            <small>{{ error }}</small>
-                                            {% endfor %}
-                                        </div>
+                                        <div class="text-danger mt-1 small">{% for error in form.remark.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -160,7 +123,7 @@
 
                                 <div class="mb-3">
                                     <label class="form-label">用户信息</label>
-                                    <table class="table table-sm table-bordered table-hover mb-0 user-info-table">
+                                    <table class="table table-sm table-bordered table-hover mb-0 data-table user-info-table">
                                         <tr>
                                             <th>加入时间</th>
                                             <td>{{ object.date_joined|date:"Y-m-d H:i:s" }}</td>
@@ -178,11 +141,7 @@
                                     </label>
                                     {{ form.groups }}
                                     {% if form.groups.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.groups.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.groups.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                     <small class="text-muted">可勾选多个角色，最多 3 个</small>
                                 </div>
@@ -230,11 +189,7 @@
                                         {% endfor %}
                                     </div>
                                     {% if form.direct_permissions.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.direct_permissions.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.direct_permissions.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                     <small class="text-muted">用户可继承角色权限，也可额外授予个人权限</small>
                                 </div>

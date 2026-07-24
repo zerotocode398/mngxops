@@ -12,7 +12,7 @@
                     <h5 class="mb-0"><i class="bi bi-clock-history"></i> 发布历史</h5>
                     <div class="btn-group btn-group-sm">
                         {% if user|has_perm_code:"releases.create" %}
-                        <a href="{% url 'releases:center' %}" class="btn btn-primary">
+                        <a href="{% url 'releases:center' %}" class="btn btn-primary btn-sm">
                             <i class="bi bi-rocket-takeoff"></i> 发布中心
                         </a>
                         {% endif %}
@@ -21,7 +21,7 @@
                 <div class="card-body">
                     <form method="get" class="row g-2 mb-3" id="searchForm" autocomplete="off">
                         <div class="col-md-5">
-                            <div class="tag-input-wrapper form-control" id="releaseHistorySearchTagWrapper">
+                            <div class="tag-input-wrapper form-control form-control-sm" id="releaseHistorySearchTagWrapper">
                                 <input type="text" class="tag-input-field" id="releaseHistorySearchField"
                                     placeholder="搜索批次号、节点或配置名称">
                             </div>
@@ -46,9 +46,7 @@
                         </div>
                         <div class="col-md-1 d-grid">
                             {% if has_any_filter %}
-                            <a href="{% url 'releases:list' %}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
-                                <i class="bi bi-x-circle"></i>
-                            </a>
+                            <a href="{% url 'releases:list' %}" class="btn btn-outline-secondary btn-sm" title="清空筛选"><i class="bi bi-x-circle"></i> 清空</a>
                             {% endif %}
                         </div>
                     </form>
@@ -74,11 +72,11 @@
                                             </small>
                                             <span class="badge bg-secondary ms-2">{{ batch.total }} 任务</span>
                                             {% if batch.failed == 0 and batch.success > 0 %}
-                                            <span class="badge bg-success">✅ 全部成功</span>
+                                            <span class="badge bg-success"><i class="bi bi-check-circle-fill text-success"></i> 全部成功</span>
                                             {% elif batch.success > 0 %}
-                                            <span class="badge bg-warning text-dark">⚠️ 部分失败</span>
+                                            <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle-fill"></i> 部分失败</span>
                                             {% elif batch.failed > 0 %}
-                                            <span class="badge bg-danger">❌ 全部失败</span>
+                                            <span class="badge bg-danger"><i class="bi bi-x-circle-fill text-danger"></i> 全部失败</span>
                                             {% endif %}
                                         </div>
                                     </button>
@@ -113,15 +111,15 @@
                                             <span class="badge bg-light text-dark flex-shrink-0">{{ node_data.tasks|length }} 个配置</span>
                                             {% with node_data.tasks|first as first_task %}
                                             {% if first_task.status == 'success' %}
-                                            <span class="badge bg-success flex-shrink-0">✅</span>
+                                            <span class="badge bg-success flex-shrink-0"><i class="bi bi-check-circle-fill text-success"></i></span>
                                             {% elif first_task.status == 'failed' %}
-                                            <span class="badge bg-danger flex-shrink-0">❌</span>
+                                            <span class="badge bg-danger flex-shrink-0"><i class="bi bi-x-circle-fill text-danger"></i></span>
                                             {% endif %}
                                             {% endwith %}
                                         </div>
                                         <div class="collapse" id="collapseNode{{ forloop.parentloop.counter }}_{{ forloop.counter }}">
                                             <div class="table-responsive px-3">
-                                                <table class="table table-sm table-hover mb-0 history-table">
+                                                <table class="table table-sm table-hover mb-0 data-table history-table">
                                                     <thead class="table-light">
                                                         <tr>
                                                             <th style="width: 12%;">时间</th>
@@ -180,45 +178,13 @@
                         {% endfor %}
                     </div>
                     {% else %}
-                    <div class="text-center text-muted py-5">
-                        <i class="bi bi-inbox" style="font-size: 4rem;"></i>
-                        <p class="mt-3 fs-5">暂无发布记录</p>
+                    <div class="empty-state">
+                        <i class="bi bi-inbox"></i>
+                        <p>暂无发布记录</p>
                     </div>
                     {% endif %}
 
-                    {% if is_paginated %}
-                    <nav class="mt-3">
-                        <ul class="pagination justify-content-center">
-                            {% if page_obj.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}{% if node_ip_filter %}&node_ip={{ node_ip_filter }}{% endif %}">
-                                    <i class="bi bi-chevron-double-left"></i> 首页
-                                </a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}{% if node_ip_filter %}&node_ip={{ node_ip_filter }}{% endif %}">
-                                    <i class="bi bi-chevron-left"></i> 上一页
-                                </a>
-                            </li>
-                            {% endif %}
-                            <li class="page-item active">
-                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-                            </li>
-                            {% if page_obj.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}{% if node_ip_filter %}&node_ip={{ node_ip_filter }}{% endif %}">
-                                    下一页 <i class="bi bi-chevron-right"></i>
-                                </a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if batch_filter %}&batch={{ batch_filter }}{% endif %}{% if node_ip_filter %}&node_ip={{ node_ip_filter }}{% endif %}">
-                                    末页 <i class="bi bi-chevron-double-right"></i>
-                                </a>
-                            </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endif %}
+                    {% include "includes/pagination.html" with nav_class="mt-3" %}
                 </div>
             </div>
         </div>
@@ -228,12 +194,7 @@
 
 {% block extra_js %}
 <style>
-    .history-table { table-layout: fixed; width: 100%; }
-    .history-table td { font-size: 0.82rem; vertical-align: middle; }
-    .history-table td code,
-    .history-table td small { font-size: inherit; color: #212529; }
     .history-table td .badge { font-size: 0.78rem; }
-    .history-table thead th { font-weight: 500; white-space: nowrap; }
     .node-header-cursor { cursor: pointer; user-select: none; transition: background 0.15s; }
     .node-header-cursor:hover { background: #e9ecef !important; }
     .node-info-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }

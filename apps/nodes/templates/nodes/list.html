@@ -24,14 +24,14 @@
                     <form method="get" class="mb-3" id="searchForm" autocomplete="off">
                         <div class="row g-2">
                             <div class="col-md-4">
-                                <div class="tag-input-wrapper form-control" id="nodeSearchTagWrapper">
+                                <div class="tag-input-wrapper form-control form-control-sm" id="nodeSearchTagWrapper">
                                     <input type="text" class="tag-input-field" id="nodeSearchField"
-                                        placeholder="搜索主机名或 IP" autocomplete="off">
+                                        placeholder="搜索主机名、IP 或节点组" autocomplete="off">
                                 </div>
                                 <input type="hidden" name="search" id="nodeSearchHidden" value="{{ search }}">
                             </div>
                             <div class="col-md-3">
-                                <select name="group_search" id="groupSearch" class="form-select" onchange="document.getElementById('searchForm').submit()">
+                                <select name="group_search" id="groupSearch" class="form-select form-select-sm" onchange="document.getElementById('searchForm').submit()">
                                     <option value="">所有节点组</option>
                                     {% for g in node_groups_list %}
                                     <option value="{{ g.name }}" {% if group_search == g.name %}selected{% endif %}>{{ g.name }}</option>
@@ -39,7 +39,7 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <select name="environment" id="envFilter" class="form-select" onchange="document.getElementById('searchForm').submit()">
+                                <select name="environment" id="envFilter" class="form-select form-select-sm" onchange="document.getElementById('searchForm').submit()">
                                     <option value="">全部环境</option>
                                     {% for key, label in env_choices.items %}
                                     <option value="{{ key }}" {% if env_filter == key %}selected{% endif %}>{{ label }}</option>
@@ -47,7 +47,7 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <select name="status" id="statusFilter" class="form-select" onchange="document.getElementById('searchForm').submit()">
+                                <select name="status" id="statusFilter" class="form-select form-select-sm" onchange="document.getElementById('searchForm').submit()">
                                     <option value="">全部状态</option>
                                     {% for key, label in status_choices.items %}
                                     <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
@@ -56,9 +56,7 @@
                             </div>
                             <div class="col-md-1 d-grid">
                                 {% if search or group_search or env_filter or status_filter %}
-                                <a href="{% url 'nodes:list' %}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
-                                    <i class="bi bi-x-circle"></i>
-                                </a>
+                                <a href="{% url 'nodes:list' %}" class="btn btn-outline-secondary btn-sm" title="清空筛选"><i class="bi bi-x-circle"></i> 清空</a>
                                 {% endif %}
                             </div>
                         </div>
@@ -82,7 +80,7 @@
 
                     <!-- 数据表格 -->
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm align-middle mb-0 node-list-table">
+                        <table class="table table-hover table-sm align-middle mb-0 data-table node-list-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 4%;">
@@ -134,7 +132,7 @@
                                             <i class="bi bi-key-fill"></i>
                                         </span>
                                         {% else %}
-                                        <span class="text-muted">➖</span>
+                                        <span class="text-muted"><i class="bi bi-dash"></i></span>
                                         {% endif %}
                                     </td>
                                     <td>{% include "nodes/_status_badge.html" with status=node.status %}</td>
@@ -189,9 +187,9 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="9" class="text-center text-muted py-4">
-                                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-                                        <p class="mt-2">暂无节点数据</p>
+                                    <td colspan="9" class="empty-state">
+                                        <i class="bi bi-inbox"></i>
+                                        <p>暂无节点数据</p>
                                         {% if user|has_perm_code:"nodes.create" %}
                                         <a href="{% url 'nodes:create' %}" class="btn btn-primary btn-sm">
                                             <i class="bi bi-plus-circle"></i> 新增节点
@@ -205,43 +203,20 @@
                     </div>
 
                     <!-- 分页 -->
-                    {% if is_paginated %}
-                    {% with qp=search|default:'' ep=env_filter|default:'' sp=status_filter|default:'' gp=group_search|default:'' %}
-                    <nav aria-label="Page navigation">
-                        <ul class="pagination justify-content-center">
-                            {% if page_obj.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page=1&search={{ qp }}&environment={{ ep }}&status={{ sp }}&group_search={{ gp }}">
-                                    <i class="bi bi-chevron-double-left"></i> 首页
-                                </a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&search={{ qp }}&environment={{ ep }}&status={{ sp }}&group_search={{ gp }}">
-                                    <i class="bi bi-chevron-left"></i> 上一页
-                                </a>
-                            </li>
-                            {% endif %}
+                    {% include "includes/pagination.html" %}
 
-                            <li class="page-item active">
-                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-                            </li>
-
-                            {% if page_obj.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&search={{ qp }}&environment={{ ep }}&status={{ sp }}&group_search={{ gp }}">
-                                    下一页 <i class="bi bi-chevron-right"></i>
-                                </a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&search={{ qp }}&environment={{ ep }}&status={{ sp }}&group_search={{ gp }}">
-                                    末页 <i class="bi bi-chevron-double-right"></i>
-                                </a>
-                            </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endwith %}
-                    {% endif %}
+                    <!-- 每页条数 -->
+                    <div class="d-flex justify-content-end mt-2">
+                        <form method="get" class="d-flex align-items-center gap-1" id="perPageForm">
+                            <label class="form-label mb-0 small text-muted">每页</label>
+                            <select name="per_page" class="form-select form-select-sm" style="width:auto;" onchange="document.getElementById('perPageForm').submit()">
+                                {% for size in per_page_options %}
+                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                {% endfor %}
+                            </select>
+                            {% for key, val in request.GET.items %}{% if key != 'per_page' and key != 'page' %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endif %}{% endfor %}
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -250,7 +225,7 @@
 
 <!-- 节点详情弹窗 -->
 <div class="modal fade" id="nodeDetailModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg node-detail-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-server"></i> <span id="detailHostname">-</span> 详情</h5>
@@ -320,44 +295,25 @@
     </div>
 </div>
 
-<!-- 删除确认弹窗 -->
-<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">确认删除</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                确定要删除节点 <strong id="deleteNodeDisplay">-</strong> 吗？
-                <br><br>
-                <small class="text-muted">此操作不可恢复！</small>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <form method="post" id="deleteNodeForm" action="#">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-danger">确认删除</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- 删除提交表单（隐藏，由 showConfirm 触发） -->
+<form method="post" id="deleteNodeForm" action="#" class="d-none">
+    {% csrf_token %}
+</form>
 
 <!-- 通用弹窗 -->
-<div class="modal fade" id="customModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="nodeListCustomModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="customModalTitle"><i class="bi bi-info-circle"></i> 提示</h5>
+                <h5 class="modal-title" id="nodeListCustomModalTitle"><i class="bi bi-info-circle"></i> 提示</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body" id="customModalBody">
+            <div class="modal-body" id="nodeListCustomModalBody">
                 <div id="loadingSpinner" class="text-center" style="display: none;">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">加载中...</span>
                     </div>
-                    <p class="mt-2">处理中，请稍候...</p>
+                    <p>处理中，请稍候...</p>
                 </div>
                 <div id="modalContent"></div>
             </div>
@@ -369,43 +325,9 @@
     </div>
 </div>
 
-<!-- 任务跳转弹窗 -->
-<div class="modal fade" id="taskJumpModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-info-circle"></i> 任务已创建</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="taskJumpModalBody">后台任务已创建</div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">留在当前页</button>
-                <a href="#" class="btn btn-primary" id="taskJumpBtn">查看任务详情</a>
-            </div>
-        </div>
-    </div>
-</div>
-
 <style>
-    .node-list-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .node-list-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .node-list-table td code,
-    .node-list-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .node-list-table td .badge {
         font-size: 0.78rem;
-    }
-    .node-list-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
     }
     .node-list-header {
         display: flex;
@@ -445,10 +367,7 @@
         background-color: #e9ecef;
     }
     .node-list-batch-btn:disabled {
-        opacity: 0.6;
-    }
-    .node-list-create-btn {
-        box-shadow: 0 0.125rem 0.25rem rgba(13, 110, 253, 0.2);
+        opacity: 0.65;
     }
     .node-group-tags {
         display: flex;
@@ -461,9 +380,6 @@
         }
     }
     /* 节点详情弹窗 */
-    .node-detail-dialog {
-        max-width: 800px;
-    }
     .node-detail-left, .node-detail-right {
         min-height: 200px;
     }
@@ -482,20 +398,6 @@
             padding-top: 1rem;
         }
     }
-    /* 环境徽标 */
-    .badge-env-prod, .badge-env-test, .badge-env-dev {
-        border: 1px solid transparent;
-        padding: 3px 8px;
-        border-radius: 4px;
-        font-size: 0.75rem;
-    }
-    .badge-env-prod { background: #f8d7da; color: #dc3545; }
-    .badge-env-test { background: #d1ecf1; color: #0c5460; }
-    .badge-env-dev  { background: #e2e3e5; color: #6c757d; }
-    /* 状态徽标 */
-    .badge-status-online  { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
-    .badge-status-offline { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
-    .badge-status-unknown { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
     /* 骨架屏 */
     .skeleton-placeholder {
         transition: opacity 0.3s;
@@ -504,31 +406,17 @@
 
 <script>
     /* ========== 全局变量 ========== */
-    var customModal;
-    var deleteConfirmModal;
+    var nodeListCustomModal;
     var nodeDetailModal;
     var currentDetailNodeId = null;
     var testTimer = null;
     var testSeconds = 0;
     var MAX_SELECT = 3;
-    var taskJumpModal;
-    var taskJumpTimer = null;
-    var taskJumpCancelled = false;
 
     document.addEventListener('DOMContentLoaded', function () {
         /* 初始化 Bootstrap 模态框 */
-        customModal = new bootstrap.Modal(document.getElementById('customModal'));
-        deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+        nodeListCustomModal = new bootstrap.Modal(document.getElementById('nodeListCustomModal'));
         nodeDetailModal = new bootstrap.Modal(document.getElementById('nodeDetailModal'));
-        taskJumpModal = new bootstrap.Modal(document.getElementById('taskJumpModal'));
-
-        document.getElementById('taskJumpModal').addEventListener('hidden.bs.modal', function () {
-            taskJumpCancelled = true;
-            if (taskJumpTimer) {
-                clearTimeout(taskJumpTimer);
-                taskJumpTimer = null;
-            }
-        });
 
         /* 初始化标签搜索 */
         initTagSearch('#nodeSearchTagWrapper', '#nodeSearchHidden', '#searchForm');
@@ -589,7 +477,7 @@
     /* ========== 通用弹窗工具 ========== */
     function showCustomModal(title, content, showConfirm, confirmCallback, iconClass, confirmIconClass, confirmBtnClass) {
         var iconHtml = iconClass ? '<i class="' + iconClass + '"></i> ' : '<i class="bi bi-info-circle"></i> ';
-        document.getElementById('customModalTitle').innerHTML = iconHtml + title;
+        document.getElementById('nodeListCustomModalTitle').innerHTML = iconHtml + title;
         document.getElementById('modalContent').innerHTML = content;
         document.getElementById('loadingSpinner').style.display = 'none';
         var confirmBtn = document.getElementById('modalConfirmBtn');
@@ -604,18 +492,18 @@
         } else {
             confirmBtn.style.display = 'none';
         }
-        if (!customModal) customModal = new bootstrap.Modal(document.getElementById('customModal'));
-        customModal.show();
+        if (!nodeListCustomModal) nodeListCustomModal = new bootstrap.Modal(document.getElementById('nodeListCustomModal'));
+        nodeListCustomModal.show();
     }
 
     function showLoading(title) {
         title = title || '处理中';
-        document.getElementById('customModalTitle').innerHTML = '<i class="bi bi-hourglass-split text-primary me-2"></i>' + title;
+        document.getElementById('nodeListCustomModalTitle').innerHTML = '<i class="bi bi-hourglass-split text-primary me-2"></i>' + title;
         document.getElementById('modalContent').innerHTML = '';
         document.getElementById('loadingSpinner').style.display = 'block';
         document.getElementById('modalConfirmBtn').style.display = 'none';
-        if (!customModal) customModal = new bootstrap.Modal(document.getElementById('customModal'));
-        customModal.show();
+        if (!nodeListCustomModal) nodeListCustomModal = new bootstrap.Modal(document.getElementById('nodeListCustomModal'));
+        nodeListCustomModal.show();
     }
 
     function updateLoadingContent(html) {
@@ -636,10 +524,12 @@
         var deleteUrl = el.getAttribute('data-delete-url') || '#';
         var hostname = el.getAttribute('data-node-hostname') || '';
         var ip = el.getAttribute('data-node-ip') || '';
-        document.getElementById('deleteNodeDisplay').textContent = hostname + ' (' + ip + ')';
-        document.getElementById('deleteNodeForm').setAttribute('action', deleteUrl);
-        if (!deleteConfirmModal) deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-        deleteConfirmModal.show();
+        var msg = '确定要删除节点 ' + hostname + ' (' + ip + ') 吗？此操作不可恢复！';
+        showConfirm('确认删除', msg, function () {
+            var form = document.getElementById('deleteNodeForm');
+            form.setAttribute('action', deleteUrl);
+            form.submit();
+        });
     }
 
     /* ========== 复选框批量选择 ========== */
@@ -979,7 +869,7 @@
             document.getElementById('detailPort').textContent = info.port;
             document.getElementById('detailEnvironment').textContent = info.environment;
             document.getElementById('detailStatus').textContent = info.status;
-            document.getElementById('detailLocked').textContent = (info.is_locked !== undefined ? (info.is_locked ? '🔒 是' : '🔓 否') : '-');
+            document.getElementById('detailLocked').innerHTML = (info.is_locked !== undefined ? (info.is_locked ? '<i class="bi bi-lock-fill"></i> 是' : '<i class="bi bi-unlock-fill"></i> 否') : '-');
             document.getElementById('detailCredential').textContent = info.credential_name + ' (' + info.credential_username + ')';
             document.getElementById('detailGroups').textContent = info.groups || '-';
             document.getElementById('detailDescription').textContent = info.description;
@@ -1030,7 +920,7 @@
         .then(function (result) {
             if (!result.success) {
                 closeAsyncProgressOverlay();
-                document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">' + (result.message || '获取失败') + '</p>';
+                document.getElementById('detailSystemInfo').innerHTML = '<div class="text-danger mt-1 small">' + (result.message || '获取失败') + '</div>';
                 return;
             }
             if (result.async && result.task_center_id) {
@@ -1046,10 +936,10 @@
                                     var sysInfo = JSON.parse(d.tasks[0].result);
                                     renderSystemInfo(sysInfo);
                                 } catch(e) {
-                                    document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">结果解析失败</p>';
+                                    document.getElementById('detailSystemInfo').innerHTML = '<div class="text-danger mt-1 small">结果解析失败</div>';
                                 }
                             } else {
-                                document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">' + (d.tasks[0].detail || '获取失败') + '</p>';
+                                document.getElementById('detailSystemInfo').innerHTML = '<div class="text-danger mt-1 small">' + (d.tasks[0].detail || '获取失败') + '</div>';
                             }
                         }
                     });
@@ -1058,7 +948,7 @@
         })
         .catch(function () {
             closeAsyncProgressOverlay();
-            document.getElementById('detailSystemInfo').innerHTML = '<p class="text-danger small">网络错误</p>';
+            document.getElementById('detailSystemInfo').innerHTML = '<div class="text-danger mt-1 small">网络错误</div>';
         });
     }
 

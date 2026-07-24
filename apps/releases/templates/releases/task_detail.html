@@ -5,7 +5,7 @@
 {% block content %}
 <div class="container-fluid">
     <div class="row">
-        <div class="col-lg-10">
+        <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-card-text"></i> 任务详情 #{{ task.id }}</h5>
@@ -49,7 +49,7 @@
                         <div class="small fw-semibold mb-1"><i class="bi bi-server"></i> 目标节点（{{ target_nodes|length }} 台）</div>
                         <div class="d-flex flex-wrap gap-1">
                             {% for node in target_nodes %}
-                            <span class="badge bg-light text-dark border">{{ node }}</span>
+                            <span class="badge badge-outline">{{ node }}</span>
                             {% endfor %}
                         </div>
                     </div>
@@ -60,7 +60,7 @@
                         <div class="small fw-semibold mb-1"><i class="bi bi-file-earmark-code"></i> 目标配置（{{ target_configs_count }} 个）</div>
                         <div class="d-flex flex-wrap gap-1">
                             {% for cfg in target_configs %}
-                            <span class="badge bg-light text-dark border">{{ cfg }}</span>
+                            <span class="badge badge-outline">{{ cfg }}</span>
                             {% endfor %}
                         </div>
                     </div>
@@ -76,8 +76,8 @@
 
                     {% if result_tree %}
                     <div class="d-flex gap-2 mb-3">
-                        <span class="badge bg-success">✅ 成功 {{ result_summary.success }}</span>
-                        <span class="badge bg-danger">❌ 失败 {{ result_summary.failed }}</span>
+                        <span class="badge bg-success"><i class="bi bi-check-circle-fill text-success"></i> 成功 {{ result_summary.success }}</span>
+                        <span class="badge bg-danger"><i class="bi bi-x-circle-fill text-danger"></i> 失败 {{ result_summary.failed }}</span>
                     </div>
                     <div class="border rounded shadow-sm" id="resultTreeContainer">
                         {% for node in result_tree %}
@@ -86,7 +86,7 @@
                                  style="background: {% if node.failed > 0 %}#f8d7da{% else %}#d4edda{% endif %};"
                                  onclick="var b=this.nextElementSibling;b.classList.toggle('d-none');var i=this.querySelector('.toggle-icon');i.textContent=i.textContent==='▶'?'▼':'▶';">
                                 <span class="toggle-icon">{% if node.failed > 0 %}▼{% else %}▶{% endif %}</span>
-                                {% if node.failed > 0 %}❌{% else %}✅{% endif %}
+                                {% if node.failed > 0 %}<i class="bi bi-x-circle-fill text-danger"></i>{% else %}<i class="bi bi-check-circle-fill text-success"></i>{% endif %}
                                 {{ node.name }}
                                 <span class="ms-2 small text-muted">{{ node.success }} 成功{% if node.failed > 0 %} / {{ node.failed }} 失败{% endif %}</span>
                             </div>
@@ -94,9 +94,9 @@
                                 {% for cfg in node.configs %}
                                 <div class="result-config-item d-flex align-items-center gap-2 py-1 small{% if cfg.status == 'failed' %} bg-failed-light{% endif %}">
                                     {% if cfg.status == 'success' %}
-                                    <span class="text-success">✅</span>
+                                    <span class="text-success"><i class="bi bi-check-circle-fill text-success"></i></span>
                                     {% else %}
-                                    <span class="text-danger">❌</span>
+                                    <span class="text-danger"><i class="bi bi-x-circle-fill text-danger"></i></span>
                                     {% endif %}
                                     <a href="{% url 'releases:list' %}?search={{ cfg.search_name|urlencode }},{{ node.node_hostname|urlencode }},{{ task.source_batch|urlencode }}&batch={{ task.source_batch|urlencode }}&node_ip={{ node.node_ip|urlencode }}" target="_blank" class="text-decoration-none">{{ cfg.name }}</a>
                                 </div>

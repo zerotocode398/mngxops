@@ -3,83 +3,6 @@
 {% block title %}新增角色 - MngxOps{% endblock %}
 
 {% block extra_js %}
-<style>
-    .perm-matrix {
-        display: grid;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-    .perm-matrix-corner {
-        grid-column: 1;
-        grid-row: 1;
-        background-color: #f8f9fa;
-        font-weight: 600;
-        padding: 5px 8px;
-        border-bottom: 2px solid #dee2e6;
-        border-right: 1px solid #dee2e6;
-        font-size: 0.8rem;
-        line-height: 1.25;
-        display: flex;
-        align-items: center;
-    }
-    .perm-matrix-header {
-        background-color: #f8f9fa;
-        font-weight: 600;
-        padding: 5px 6px;
-        border-bottom: 2px solid #dee2e6;
-        font-size: 0.8rem;
-        line-height: 1.25;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-    }
-    .perm-matrix-header .perm-btn-col {
-        font-size: 0.7rem;
-        padding: 0 5px;
-        line-height: 1.4;
-    }
-    .perm-matrix-row-header {
-        background-color: #fafbfc;
-        font-weight: 600;
-        padding: 4px 8px;
-        border-bottom: 1px solid #f0f0f0;
-        font-size: 0.8rem;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        line-height: 1.25;
-    }
-    .perm-matrix-cell {
-        padding: 4px 4px;
-        border-bottom: 1px solid #f0f0f0;
-        text-align: center;
-        transition: background-color 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        line-height: 1.25;
-    }
-    .perm-matrix-cell:hover {
-        background-color: #f0f3ff;
-    }
-    .perm-btn-col {
-        white-space: nowrap;
-    }
-    .perm-btn-row {
-        font-size: 0.7rem;
-        padding: 0 5px;
-        line-height: 1.4;
-        white-space: nowrap;
-    }
-    .perm-btn-global {
-        font-size: 0.7rem;
-        padding: 0 5px;
-        line-height: 1.4;
-        white-space: nowrap;
-    }
-</style>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         var matrix = document.getElementById('permMatrix');
@@ -192,11 +115,7 @@
                                     </label>
                                     {{ form.name }}
                                     {% if form.name.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.name.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.name.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -206,11 +125,7 @@
                                     </label>
                                     {{ form.description }}
                                     {% if form.description.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.description.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.description.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -232,16 +147,16 @@
                                         </div>
                                         {% for resource in permission_matrix.resources %}
                                         <div class="perm-matrix-row-header" data-resource="{{ resource.key }}">
-                                            {% if resource.key == "nodes" %}🖥
-                                            {% elif resource.key == "credentials" %}🔑
-                                            {% elif resource.key == "configs" %}📝
-                                            {% elif resource.key == "releases" %}🚀
-                                            {% elif resource.key == "users" %}👥
-                                            {% elif resource.key == "roles" %}👤
-                                            {% elif resource.key == "teams" %}📦
-                                            {% elif resource.key == "audit" %}📜
-                                            {% elif resource.key == "upgrade" %}⬆
-                                            {% elif resource.key == "settings" %}⚙{% endif %}
+                                            {% if resource.key == "nodes" %}<i class="bi bi-hdd-network"></i>
+                                            {% elif resource.key == "credentials" %}<i class="bi bi-key"></i>
+                                            {% elif resource.key == "configs" %}<i class="bi bi-file-earmark-code"></i>
+                                            {% elif resource.key == "releases" %}<i class="bi bi-rocket-takeoff"></i>
+                                            {% elif resource.key == "users" %}<i class="bi bi-people"></i>
+                                            {% elif resource.key == "roles" %}<i class="bi bi-person-badge"></i>
+                                            {% elif resource.key == "teams" %}<i class="bi bi-people-fill"></i>
+                                            {% elif resource.key == "audit" %}<i class="bi bi-journal-text"></i>
+                                            {% elif resource.key == "upgrade" %}<i class="bi bi-arrow-up-circle"></i>
+                                            {% elif resource.key == "settings" %}<i class="bi bi-gear"></i>{% endif %}
                                             {{ resource.label }}
                                         </div>
                                         {% for action in resource.actions %}
@@ -266,11 +181,7 @@
                                         {% endfor %}
                                     </div>
                                     {% if form.permissions.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.permissions.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.permissions.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 

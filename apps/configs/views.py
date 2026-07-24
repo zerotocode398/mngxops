@@ -759,7 +759,7 @@ class ConfigGlobPreviewView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "message": "未配置SSH凭证"}, status=400)
 
         setting = get_or_create_sync_setting(node)
-        main_conf_path = data.get("main_conf_path") or setting.main_conf_path
+        main_conf_path = request.POST.get("main_conf_path") or setting.main_conf_path
         if main_conf_path and main_conf_path != setting.main_conf_path:
             setting.main_conf_path = main_conf_path
             setting.save(update_fields=["main_conf_path"])

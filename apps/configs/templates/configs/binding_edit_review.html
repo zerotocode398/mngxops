@@ -93,19 +93,6 @@
     </div>
 </div>
 
-<div class="modal fade" id="saveLoadingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content">
-            <div class="modal-body text-center py-4">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">保存中...</span>
-                </div>
-                <p class="mb-0 text-muted">正在保存，请稍候...</p>
-            </div>
-        </div>
-    </div>
-</div>
-
 <div class="modal fade" id="saveResultModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -132,8 +119,8 @@
         var openBtn = document.getElementById('openConfirmModalBtn');
         var confirmBtn = document.getElementById('confirmSaveBtn');
         var confirmModal = new bootstrap.Modal(document.getElementById('confirmSaveModal'));
-        var loadingModal = new bootstrap.Modal(document.getElementById('saveLoadingModal'));
         var resultModal = new bootstrap.Modal(document.getElementById('saveResultModal'));
+        var confirmBtnOriginalHtml = confirmBtn.innerHTML;
         var resultTitle = document.getElementById('saveResultTitle');
         var resultBody = document.getElementById('saveResultBody');
         var resultOkBtn = document.getElementById('saveResultOkBtn');
@@ -145,7 +132,8 @@
 
         confirmBtn.addEventListener('click', function () {
             confirmModal.hide();
-            loadingModal.show();
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 保存中...';
 
             var formData = new FormData(form);
 
@@ -159,7 +147,8 @@
             })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                loadingModal.hide();
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = confirmBtnOriginalHtml;
                 if (data.success) {
                     resultTitle.innerHTML = '<i class="bi bi-check-circle text-success"></i> 保存成功';
                     resultBody.innerHTML = '<p>' + (data.message || '保存成功') + '</p>';
@@ -177,7 +166,8 @@
                 resultModal.show();
             })
             .catch(function () {
-                loadingModal.hide();
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = confirmBtnOriginalHtml;
                 resultTitle.innerHTML = '<i class="bi bi-exclamation-triangle text-danger"></i> 网络异常';
                 resultBody.innerHTML = '<p class="text-danger">网络请求失败或服务器异常，请重试</p>';
                 resultCloseBtn.style.display = 'inline-block';

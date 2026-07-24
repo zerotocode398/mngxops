@@ -51,11 +51,7 @@
                                     </label>
                                     {{ form.remote_path }}
                                     {% if form.remote_path.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.remote_path.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.remote_path.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -65,11 +61,7 @@
                                     </label>
                                     {{ form.content }}
                                     {% if form.content.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.content.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.content.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -79,11 +71,7 @@
                                     </label>
                                     {{ form.remark }}
                                     {% if form.remark.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.remark.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.remark.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                     {% if form.remark.help_text %}
                                     <small class="form-text text-muted">{{ form.remark.help_text }}</small>

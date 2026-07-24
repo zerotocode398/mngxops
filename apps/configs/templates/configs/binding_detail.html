@@ -46,19 +46,19 @@
                             <div class="text-muted small">同步状态</div>
                             <div>
                                 {% if object.sync_status == "synced" %}
-                                <span class="badge bg-success">✅ 已同步</span>
+                                <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> 已同步</span>
                                 {% elif object.sync_status == "syncing" %}
-                                <span class="badge bg-info">🔄 同步中</span>
+                                <span class="badge bg-info"><i class="bi bi-arrow-repeat"></i> 同步中</span>
                                 {% elif object.sync_status == "not_synced" or object.sync_status == "modified" %}
-                                <span class="badge bg-primary">📝 待推送</span>
+                                <span class="badge bg-primary"><i class="bi bi-pencil"></i> 待推送</span>
                                 {% elif object.sync_status == "conflict" %}
-                                <span class="badge bg-warning text-dark">⚠️ 冲突</span>
+                                <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle-fill"></i> 冲突</span>
                                 {% elif object.sync_status == "orphaned" %}
-                                <span class="badge bg-secondary">📭 远程已删除</span>
+                                <span class="badge bg-secondary"><i class="bi bi-inbox"></i> 远程已删除</span>
                                 {% elif object.sync_status == "failed" %}
-                                <span class="badge bg-danger">❌ 失败</span>
+                                <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> 失败</span>
                                 {% elif object.sync_status == "marked_deleted" %}
-                                <span class="badge bg-danger">🗑️ 已标记删除</span>
+                                <span class="badge bg-danger"><i class="bi bi-trash"></i> 已标记删除</span>
                                 {% endif %}
                             </div>
                         </div>
@@ -99,7 +99,8 @@
                         <strong><i class="bi bi-code-slash"></i> 配置内容</strong>
                     </div>
                     <pre class="bg-light p-3 rounded border"
-                        style="max-height: 600px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; white-space: pre-wrap; word-wrap: break-word;">{{ object.content }}</pre>
+                        class="code-font"
+                        style="max-height: 600px; overflow-y: auto; font-size: 0.9rem; white-space: pre-wrap; word-wrap: break-word;">{{ object.content }}</pre>
                 </div>
             </div>
         </div>

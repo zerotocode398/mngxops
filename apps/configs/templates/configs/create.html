@@ -30,11 +30,7 @@
                                     </label>
                                     {{ form.name }}
                                     {% if form.name.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.name.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.name.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -44,11 +40,7 @@
                                     </label>
                                     {{ form.default_remote_path }}
                                     {% if form.default_remote_path.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.default_remote_path.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.default_remote_path.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                     <small class="form-text text-muted">创建绑定时自动填入此路径，可修改</small>
                                 </div>
@@ -59,13 +51,8 @@
                                     </label>
                                     {{ form.template_content }}
                                     {% if form.template_content.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.template_content.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.template_content.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
-                                    <small class="form-text text-muted">可选：创建绑定时若远程无此文件，可基于此模板生成初始内容</small>
                                 </div>
 
                                 <div class="mb-3">
@@ -74,11 +61,7 @@
                                     </label>
                                     {{ form.description }}
                                     {% if form.description.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.description.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.description.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 

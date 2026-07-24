@@ -25,7 +25,7 @@
                         <!-- 筛选行 -->
                         <div class="row g-2 mb-3 align-items-center">
                             <div class="col-md-5">
-                                <div class="tag-input-wrapper" id="nodeSearchTagWrapper">
+                                <div class="tag-input-wrapper form-control" id="nodeSearchTagWrapper">
                                     <input type="text" class="tag-input-field" id="nodeSearchField"
                                         placeholder="搜索主机名、IP、节点组或配置名称" autocomplete="off">
                                 </div>
@@ -57,18 +57,18 @@
                         <div class="d-flex flex-wrap gap-2 align-items-center mb-2" id="bindingStatusFilter">
                             <small class="text-muted">状态:</small>
                             <span class="badge status-filter-tag status-filter-active" data-status="">全部 <span class="ms-1 status-count">0</span></span>
-                            <span class="badge status-filter-tag" data-status="pending">📝待推送 <span class="ms-1 status-count">0</span></span>
-                            <span class="badge status-filter-tag" data-status="synced">✅已同步 <span class="ms-1 status-count">0</span></span>
-                            <span class="badge status-filter-tag" data-status="conflict">⚠️冲突 <span class="ms-1 status-count">0</span></span>
-                            <span class="badge status-filter-tag" data-status="failed">❌失败 <span class="ms-1 status-count">0</span></span>
-                            <span class="badge status-filter-tag" data-status="syncing">🔄同步中 <span class="ms-1 status-count">0</span></span>
-                            <span class="badge status-filter-tag" data-status="orphaned">📭远程删除 <span class="ms-1 status-count">0</span></span>
-                            <span class="badge status-filter-tag" data-status="marked_deleted">🗑️标记删除 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="pending"><i class="bi bi-pencil"></i>待推送 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="synced"><i class="bi bi-check-circle-fill text-success"></i>已同步 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="conflict"><i class="bi bi-exclamation-triangle-fill"></i>冲突 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="failed"><i class="bi bi-x-circle-fill"></i>失败 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="syncing"><i class="bi bi-arrow-repeat"></i>同步中 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="orphaned"><i class="bi bi-inbox"></i>远程删除 <span class="ms-1 status-count">0</span></span>
+                            <span class="badge status-filter-tag" data-status="marked_deleted"><i class="bi bi-trash"></i>标记删除 <span class="ms-1 status-count">0</span></span>
                         </div>
 
                         <!-- 节点表格 -->
                         <div class="table-responsive border rounded" style="max-height: 480px; overflow-y: auto;">
-                            <table class="table table-sm table-hover mb-0 release-table">
+                            <table class="table table-sm table-hover mb-0 data-table release-table">
                                 <thead class="sticky-top" style="background: #f1f3f5;">
                                     <tr>
                                         <th style="width: 40px;" class="text-center">
@@ -119,7 +119,7 @@
 
                         <!-- 搜索框 -->
                         <div class="mb-2">
-                            <div class="tag-input-wrapper" id="previewSearchTagWrapper">
+                            <div class="tag-input-wrapper form-control" id="previewSearchTagWrapper">
                                 <input type="text" class="tag-input-field" id="previewSearchField"
                                     placeholder="搜索主机名、配置名、远程路径" autocomplete="off">
                             </div>
@@ -128,7 +128,7 @@
 
                         <!-- 发布清单（节点分组折叠） -->
                         <div class="border rounded" style="max-height: 360px; overflow-y: auto;" id="previewContainer">
-                            <table class="table table-sm table-hover mb-0 release-table" id="previewTable">
+                            <table class="table table-sm table-hover mb-0 data-table release-table" id="previewTable">
                                 <thead class="table-light sticky-top">
                                     <tr>
                                         <th style="width: 28px;"></th>
@@ -180,7 +180,7 @@
                     <span class="badge bg-info" id="cpVersionBadge"></span>
                     <small class="text-muted" id="cpPathLabel"></small>
                 </div>
-                <pre id="cpContent" class="bg-dark text-light rounded p-3" style="max-height: 55vh; overflow: auto; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;">加载中...</pre>
+                <pre id="cpContent" class="code-font bg-light border rounded p-3" style="max-height: 55vh; overflow: auto; font-size: var(--fs-base); line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;">加载中...</pre>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
@@ -228,14 +228,8 @@
     .step-badge {
         display: inline-flex; align-items: center; justify-content: center;
         width: 26px; height: 26px; border-radius: 50%;
-        background: #667eea; color: #fff;
-        font-size: 13px; font-weight: 700; margin-right: 6px; vertical-align: middle;
-    }
-    .release-table { table-layout: fixed; width: 100%; }
-    .release-table td { font-size: 0.84rem; vertical-align: middle; padding: 10px 12px; }
-    .release-table thead th {
-        font-weight: 600; white-space: nowrap; font-size: 0.85rem;
-        color: #495057; border-bottom: 2px solid #dee2e6; padding: 10px 12px;
+        background: var(--primary); color: #fff;
+        font-size: var(--fs-base); font-weight: 500; margin-right: 6px; vertical-align: middle;
     }
     .node-row { cursor: pointer; transition: background 0.12s; }
     .node-row:hover { background: #f0f6ff; }
@@ -260,7 +254,7 @@
     .sync-badge-failed { background: #f8d7da; color: #721c24; }
     .sync-badge-syncing { background: #d1ecf1; color: #0c5460; }
 
-    .path-link { cursor: pointer; color: #667eea; }
+    .path-link { cursor: pointer; color: var(--primary); }
     .path-link:hover { text-decoration: underline; }
 
     /* 节点信息单元格 */
@@ -285,7 +279,7 @@
     .status-filter-active[data-status="synced"] { background-color: #28a745; }
     .status-filter-active[data-status="conflict"] { background-color: #fd7e14; }
     .status-filter-active[data-status="failed"] { background-color: #dc3545; }
-    .status-filter-active[data-status="syncing"] { background-color: #17a2b8; }
+    .status-filter-active[data-status="syncing"] { background-color: var(--info); }
     .status-filter-active[data-status="orphaned"] { background-color: #6c757d; }
     .status-filter-active[data-status="marked_deleted"] { background-color: #e83e8c; }
 
@@ -327,26 +321,6 @@
         cursor: pointer; color: #dc3545;
     }
     .config-item .retry-btn:hover { text-decoration: underline; }
-    .tag-input-wrapper {
-        display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
-        padding: 4px 10px; min-height: 35px; cursor: text;
-        overflow-y: auto; border: 1px solid #dee2e6; border-radius: 6px;
-        background: #fff; font-size: 0.88rem;
-    }
-    .tag-input-wrapper .tag-badge {
-        display: inline-flex; align-items: center; gap: 4px;
-        background: #667eea; color: #fff; border: 1px solid #5a6fd6;
-        border-radius: 4px; padding: 2px 8px; font-size: 0.82rem; white-space: nowrap;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove {
-        cursor: pointer; opacity: 0.7; font-size: 1.1rem; line-height: 1; margin-left: 2px;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove:hover { opacity: 1; color: #ffc107; }
-    .tag-input-wrapper .tag-input-field {
-        border: none; outline: none; flex: 1; min-width: 120px;
-        padding: 3px 4px; background: transparent; font-size: 0.88rem;
-    }
-    .tag-input-wrapper .tag-input-field::placeholder { color: #adb5bd; }
 </style>
 <script>
 (function() {
@@ -461,7 +435,7 @@
                 var rowClass = canSelect ? 'node-row' : 'node-row disabled';
                 var envLabel = n.environment === 'prod' ? '生产' : (n.environment === 'test' ? '测试' : '开发');
                 var envCls = 'env-badge env-badge-' + n.environment;
-                var statusIcon = n.status === 'online' ? '🟢' : '🔴';
+                var statusIcon = n.status === 'online' ? '<i class="bi bi-circle-fill text-success"></i>' : '<i class="bi bi-circle-fill text-danger"></i>';
                 var statusCls = 'status-badge-' + n.status;
                 var isChecked = selectedNodes[n.id] !== undefined ? 'checked' : '';
                 var disabledAttr = canSelect ? '' : 'disabled';
@@ -634,11 +608,11 @@
             var isFailed = b.sync_status === 'failed';
             var syncLabel = '';
             var syncCls = '';
-            if (isModified) { syncLabel = '📝 待推送'; syncCls = 'sync-badge-modified'; }
-            else if (isConflict) { syncLabel = '⚠️ 冲突'; syncCls = 'sync-badge-conflict'; }
-            else if (isFailed) { syncLabel = '❌ 失败'; syncCls = 'sync-badge-failed'; }
-            else if (b.sync_status === 'synced') { syncLabel = '✅ 已同步'; syncCls = 'sync-badge-synced'; }
-            else if (b.sync_status === 'syncing') { syncLabel = '🔄 同步中'; syncCls = 'sync-badge-syncing'; }
+            if (isModified) { syncLabel = '<i class="bi bi-pencil"></i> 待推送'; syncCls = 'sync-badge-modified'; }
+            else if (isConflict) { syncLabel = '<i class="bi bi-exclamation-triangle-fill"></i> 冲突'; syncCls = 'sync-badge-conflict'; }
+            else if (isFailed) { syncLabel = '<i class="bi bi-x-circle-fill"></i> 失败'; syncCls = 'sync-badge-failed'; }
+            else if (b.sync_status === 'synced') { syncLabel = '<i class="bi bi-check-circle-fill text-success"></i> 已同步'; syncCls = 'sync-badge-synced'; }
+            else if (b.sync_status === 'syncing') { syncLabel = '<i class="bi bi-arrow-repeat"></i> 同步中'; syncCls = 'sync-badge-syncing'; }
             else { syncLabel = b.sync_status; }
 
             // 节点被勾选后 → 展开时自动勾选所有绑定
@@ -986,7 +960,7 @@
                 (g.groupNames && g.groupNames.length > 0 ? g.groupNames.map(function(gn) { return '<span class="badge bg-info text-dark" style="font-size: 0.72rem; font-weight: normal;">' + gn + '</span>'; }).join(' ') : '') +
                 '</div></td>';
             html += '<td></td><td></td>';
-            html += '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary btn-publish-node" data-node-id="' + nodeId + '">📤 发布此节点</button></td>';
+            html += '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary btn-publish-node" data-node-id="' + nodeId + '"><i class="bi bi-send"></i> 发布此节点</button></td>';
             html += '</tr>';
             g.bindings.forEach(function(b) {
                 html += '<tr class="preview-binding" data-node-id="' + nodeId + '" data-binding-id="' + b.id + '">';
@@ -995,7 +969,7 @@
                 html += '<td><span class="badge bg-info">V' + b.version + '</span></td>';
                 html += '<td><small class="text-muted">' + (b.remote_path || '-') + '</small></td>';
                 html += '<td class="text-end">';
-                html += '<button type="button" class="btn btn-sm btn-outline-success btn-publish-binding me-1" data-node-id="' + nodeId + '" data-binding-id="' + b.id + '" title="发布此配置">📤</button>';
+                html += '<button type="button" class="btn btn-sm btn-outline-success btn-publish-binding me-1" data-node-id="' + nodeId + '" data-binding-id="' + b.id + '" title="发布此配置"><i class="bi bi-send"></i></button>';
                 html += '<button type="button" class="btn btn-sm btn-outline-danger btn-remove-preview" data-node-id="' + nodeId + '" data-binding-id="' + b.id + '"><i class="bi bi-x"></i></button>';
                 html += '</td>';
                 html += '</tr>';
@@ -1298,14 +1272,14 @@
 
     function buildNodeGroup(nodeName, nodeStatus, configs) {
         var statusCls = nodeStatus === 'running' ? 'running' : (configs.every(function(c) { return c.status === 'success'; }) ? 'success' : 'failed');
-        var statusIcon = statusCls === 'success' ? '✅' : (statusCls === 'failed' ? '❌' : '⏳');
+        var statusIcon = statusCls === 'success' ? '<i class="bi bi-check-circle-fill text-success"></i>' : (statusCls === 'failed' ? '<i class="bi bi-x-circle-fill text-danger"></i>' : '<i class="bi bi-hourglass-split"></i>');
         var html = '<div class="node-group">';
         html += '<div class="node-group-header ' + statusCls + '">';
         html += '<span class="toggle-icon">▶</span> ' + statusIcon + ' <strong>' + nodeName + '</strong>';
         html += '</div>';
         html += '<div class="node-group-body">';
         configs.forEach(function(c) {
-            var icon = c.status === 'success' ? '✅' : (c.status === 'running' ? '🔄' : '❌');
+            var icon = c.status === 'success' ? '<i class="bi bi-check-circle-fill text-success"></i>' : (c.status === 'running' ? '<i class="bi bi-arrow-repeat"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>');
             html += '<div class="config-item">' + icon + ' ' + c.name + '</div>';
         });
         html += '</div></div>';

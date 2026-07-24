@@ -56,7 +56,7 @@
                         {% csrf_token %}
                         <input type="hidden" name="version_id" id="selectedVersionId" value="">
                         <div class="table-responsive px-3">
-                            <table class="table table-hover table-sm mb-0 rollback-table">
+                            <table class="table table-hover table-sm mb-0 data-table rollback-table">
                                 <thead class="table-light">
                                     <tr>
                                         <th style="width: 5%;">选择</th>
@@ -107,9 +107,9 @@
                                     </tr>
                                     {% empty %}
                                     <tr>
-                                        <td colspan="6" class="text-center text-muted py-4">
-                                            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-                                            <p class="mt-2">暂无版本记录</p>
+                                        <td colspan="6" class="empty-state">
+                                            <i class="bi bi-inbox"></i>
+                                            <p>暂无版本记录</p>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -156,7 +156,7 @@
 <div class="modal fade" id="rollbackConfirmModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
+            <div class="modal-header">
                 <h5 class="modal-title">
                     <i class="bi bi-arrow-counterclockwise"></i> 确认回滚
                 </h5>
@@ -180,14 +180,14 @@
 <div class="modal fade" id="versionPreviewModal" tabindex="-1" aria-labelledby="versionPreviewModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header bg-dark text-white">
+            <div class="modal-header">
                 <div>
                     <h5 class="modal-title mb-0" id="versionPreviewModalLabel">
                         <i class="bi bi-file-code"></i> <span id="vpConfigName">-</span>
                     </h5>
-                    <small class="text-white-50" id="vpVersionLabel">v-</small>
+                    <small class="text-muted" id="vpVersionLabel">v-</small>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="关闭"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
             </div>
             <div class="modal-body p-0">
                 <div class="d-flex flex-wrap align-items-center gap-3 px-3 py-2 bg-light border-bottom small text-muted">
@@ -198,13 +198,13 @@
                     <span id="vpRemark" class="text-warning"></span>
                 </div>
                 <div id="vpContentWrapper" class="position-relative">
-                    <div class="d-flex justify-content-between align-items-center px-3 py-1 bg-dark border-bottom">
-                        <small class="text-white-50">配置内容</small>
-                        <button type="button" class="btn btn-sm btn-outline-light" id="vpCopyBtn" onclick="copyVersionContent()">
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+                        <small class="text-muted">配置内容</small>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="vpCopyBtn" onclick="copyVersionContent()">
                             <i class="bi bi-clipboard"></i> 复制
                         </button>
                     </div>
-                    <pre class="m-0 p-3 bg-dark text-light" style="max-height: 60vh; overflow: auto; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 13px; line-height: 1.5;"><code id="vpContent" style="white-space: pre;">加载中...</code></pre>
+                    <pre class="code-font m-0 p-3 bg-light border-0" style="max-height: 60vh; overflow: auto; font-size: 0.82rem; line-height: 1.5;"><code id="vpContent" style="white-space: pre;">加载中...</code></pre>
                 </div>
                 <div id="vpLoading" class="text-center py-5 d-none">
                     <div class="spinner-border text-primary" role="status">
@@ -224,27 +224,10 @@
 
 {% block extra_js %}
 <style>
-    .rollback-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .rollback-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .rollback-table td code,
-    .rollback-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .rollback-table td .badge {
         font-size: 0.78rem;
     }
-    .rollback-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
+    </style>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         var rollbackConfirmModal = new bootstrap.Modal(document.getElementById('rollbackConfirmModal'));
@@ -373,12 +356,12 @@
             var originalHTML = vpCopyBtn.innerHTML;
             vpCopyBtn.innerHTML = '<i class="bi bi-check-lg"></i> 已复制';
             vpCopyBtn.classList.add('btn-success');
-            vpCopyBtn.classList.remove('btn-outline-light');
+            vpCopyBtn.classList.remove('btn-outline-secondary');
             vpCopyBtn.disabled = true;
             setTimeout(function() {
                 vpCopyBtn.innerHTML = originalHTML;
                 vpCopyBtn.classList.remove('btn-success');
-                vpCopyBtn.classList.add('btn-outline-light');
+                vpCopyBtn.classList.add('btn-outline-secondary');
                 vpCopyBtn.disabled = false;
             }, 2000);
         }

@@ -21,14 +21,14 @@
                     <form method="get" class="mb-3" id="searchForm" autocomplete="off">
                         <div class="row g-2">
                             <div class="col-md-8">
-                                <div class="tag-input-wrapper form-control" id="roleSearchTagWrapper">
+                                <div class="tag-input-wrapper form-control form-control-sm" id="roleSearchTagWrapper">
                                     <input type="text" class="tag-input-field" id="roleSearchField"
                                         placeholder="搜索角色名称">
                                 </div>
                                 <input type="hidden" name="search" id="roleSearchHidden" value="{{ search }}">
                             </div>
                             <div class="col-md-2">
-                                <select name="per_page" class="form-select" onchange="document.getElementById('searchForm').submit()">
+                                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('searchForm').submit()">
                                     {% for size in per_page_options %}
                                     <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
                                     {% endfor %}
@@ -36,16 +36,14 @@
                             </div>
                             <div class="col-md-2 d-grid">
                                 {% if search %}
-                                <a href="{% url 'users:role_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
-                                    <i class="bi bi-x-circle"></i>
-                                </a>
+                                <a href="{% url 'users:role_list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选"><i class="bi bi-x-circle"></i> 清空</a>
                                 {% endif %}
                             </div>
                         </div>
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm mb-0 role-table">
+                        <table class="table table-hover table-sm mb-0 data-table role-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 18%;">角色名称</th>
@@ -82,8 +80,8 @@
                                             </a>
                                             {% endif %}
                                             {% if user|has_perm_code:"roles.delete" %}
-                                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
-                                                data-bs-target="#deleteModal{{ group.id }}" title="删除">
+                                            <button type="button" class="btn btn-outline-danger" title="删除"
+                                                onclick="submitPostConfirm('确认删除', '确定要删除角色 {{ group.name }} 吗？此操作不可恢复！', '{% url 'users:role_delete' group.id %}')">
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                             {% endif %}
@@ -92,8 +90,9 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted">
-                                        <i class="bi bi-inbox"></i> 暂无角色数据
+                                    <td colspan="5" class="empty-state">
+                                        <i class="bi bi-inbox"></i>
+                                        <p>暂无角色数据</p>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -102,31 +101,6 @@
                     </div>
 
                     {% for group in user_groups %}
-                    {% if user|has_perm_code:"roles.delete" %}
-                    <div class="modal fade" id="deleteModal{{ group.id }}" tabindex="-1">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">确认删除</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <div class="modal-body">
-                                    确定要删除角色 <strong>{{ group.name }}</strong> 吗？
-                                    <br><br>
-                                    <small class="text-muted">此操作不可恢复！</small>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                                    <form method="post" action="{% url 'users:role_delete' group.id %}">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn btn-danger">确认删除</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-
                     {% if user|has_perm_code:"roles.update" %}
                     <div class="modal fade" id="manageUsersModal{{ group.id }}" tabindex="-1">
                         <div class="modal-dialog modal-lg">
@@ -140,7 +114,7 @@
                                 <form method="post" action="{% url 'users:role_manage_users' group.id %}">
                                     {% csrf_token %}
                                     <div class="modal-body">
-                                        <table class="table table-sm table-bordered table-hover modal-mgmt-table">
+                                        <table class="table table-sm table-bordered table-hover data-table modal-mgmt-table">
                                             <thead class="table-light">
                                                 <tr>
                                                     <th style="width: 5%;">
@@ -261,28 +235,7 @@
                     </div>
                     {% endfor %}
 
-                    {% if is_paginated %}
-                    <nav>
-                        <ul class="pagination justify-content-center">
-                            {% if page_obj.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}&search={{ search }}">上一页</a>
-                            </li>
-                            {% endif %}
-                            <li class="page-item disabled">
-                                <span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
-                                    页</span>
-                            </li>
-                            {% if page_obj.has_next %}
-                            <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}&search={{ search }}">下一页</a>
-                            </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endif %}
+                    {% include "includes/pagination.html" %}
                 </div>
             </div>
         </div>
@@ -292,47 +245,13 @@
 
 {% block extra_js %}
 <style>
-    .role-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .role-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .role-table td code,
-    .role-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .role-table td .badge {
         font-size: 0.78rem;
-    }
-    .role-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-    .modal-mgmt-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .modal-mgmt-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .modal-mgmt-table td code,
-    .modal-mgmt-table td small {
-        font-size: inherit;
-        color: #212529;
     }
     .modal-mgmt-table td .badge {
         font-size: 0.78rem;
     }
-    .modal-mgmt-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
+    </style>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTagSearch('#roleSearchTagWrapper', '#roleSearchHidden', '#searchForm');

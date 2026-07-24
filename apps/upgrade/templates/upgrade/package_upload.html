@@ -5,6 +5,7 @@
 {% block page_title %}<i class="bi bi-upload"></i> 上传 Nginx 源码包{% endblock %}
 
 {% block content %}
+<div class="container-fluid">
 <div class="row">
     <div class="col-md-8 mx-auto">
         <a href="{% url 'upgrade:package_list' %}" class="btn btn-sm btn-outline-secondary mb-3">
@@ -13,16 +14,15 @@
 
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">📤 上传 Nginx 源码包</h5>
+                <h5 class="mb-0"><i class="bi bi-upload"></i> 上传 Nginx 源码包</h5>
             </div>
             <div class="card-body">
                 <form method="post" enctype="multipart/form-data" id="uploadForm">
                     {% csrf_token %}
 
                     <!-- 拖拽上传区域 -->
-                    <div class="upload-dropzone mb-4" id="dropZone"
-                         style="border: 2px dashed #667eea; border-radius: 12px; padding: 40px; text-align: center; background: #f0f3ff; transition: all 0.3s; cursor: pointer;">
-                        <i class="bi bi-cloud-upload" style="font-size: 3rem; color: #667eea;"></i>
+                    <div class="upload-dropzone mb-4" id="dropZone">
+                        <i class="bi bi-cloud-upload upload-dropzone-icon"></i>
                         <p class="mt-2 mb-1 fw-bold">点击或拖拽文件到此处上传</p>
                         <p class="text-muted small mb-0">支持 .tar.gz / .tgz 格式，最大 500MB</p>
                         <input type="file" name="package_file" id="id_package_file"
@@ -71,14 +71,15 @@
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary" id="btnSubmit"
                                 onclick="return checkBeforeSubmit();">
-                            <i class="bi bi-upload"></i> 📤 上传并校验
+                            <i class="bi bi-upload"></i> 上传并校验
                         </button>
-                        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary">❌ 取消</a>
+                        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary"><i class="bi bi-x-circle"></i> 取消</a>
                     </div>
                 </form>
             </div>
         </div>
     </div>
+</div>
 </div>
 {% endblock %}
 
@@ -100,20 +101,17 @@
     // 拖拽事件
     dropZone.addEventListener('dragover', function(e) {
         e.preventDefault();
-        dropZone.style.background = '#e8ecff';
-        dropZone.style.borderColor = '#4a5fd7';
+        dropZone.classList.add('dragover');
     });
 
     dropZone.addEventListener('dragleave', function(e) {
         e.preventDefault();
-        dropZone.style.background = '#f0f3ff';
-        dropZone.style.borderColor = '#667eea';
+        dropZone.classList.remove('dragover');
     });
 
     dropZone.addEventListener('drop', function(e) {
         e.preventDefault();
-        dropZone.style.background = '#f0f3ff';
-        dropZone.style.borderColor = '#667eea';
+        dropZone.classList.remove('dragover');
 
         if (e.dataTransfer.files.length) {
             fileInput.files = e.dataTransfer.files;
