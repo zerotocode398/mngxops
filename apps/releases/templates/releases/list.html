@@ -10,7 +10,13 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-clock-history"></i> 发布历史</h5>
-                    <div class="btn-group btn-group-sm">
+                    <div class="d-flex align-items-center gap-2">
+                        {% if user|has_perm_code:"releases.update" %}
+                        <span class="text-muted small">已选 <span id="selectedRollbackNodeCount" class="text-primary">0</span> 个节点，<span id="selectedRollbackCount" class="text-primary">0</span> 个配置</span>
+                        <button type="button" class="btn btn-outline-warning btn-sm" id="btnSelectedRollback" disabled>
+                            <i class="bi bi-arrow-counterclockwise"></i> 批量回滚
+                        </button>
+                        {% endif %}
                         {% if user|has_perm_code:"releases.create" %}
                         <a href="{% url 'releases:center' %}" class="btn btn-primary btn-sm">
                             <i class="bi bi-rocket-takeoff"></i> 发布中心
@@ -19,8 +25,9 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    {% csrf_token %}
                     <form method="get" class="row g-2 mb-3" id="searchForm" autocomplete="off">
-                        <div class="col-md-5">
+                        <div class="col-md-6">
                             <div class="tag-input-wrapper form-control form-control-sm" id="releaseHistorySearchTagWrapper">
                                 <input type="text" class="tag-input-field" id="releaseHistorySearchField"
                                     placeholder="搜索批次号、节点或配置名称">
@@ -28,23 +35,17 @@
                             <input type="hidden" name="search" id="releaseHistorySearchHidden" value="{{ search }}">
                             <input type="hidden" name="batch" value="{{ batch_filter }}">
                             <input type="hidden" name="node_ip" value="{{ node_ip_filter }}">
+                            <input type="hidden" name="per_page" value="{{ per_page }}">
                         </div>
                         <div class="col-md-3">
-                            <select name="status" class="form-select form-select-sm">
+                            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
                                 <option value="">全部状态</option>
                                 {% for value, label in status_choices %}
                                 <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-2">
-                            <select name="per_page" class="form-select form-select-sm">
-                                {% for size in per_page_options %}
-                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-1 d-grid">
+                        <div class="col-md-2 d-grid">
                             {% if has_any_filter %}
                             <a href="{% url 'releases:list' %}" class="btn btn-outline-secondary btn-sm" title="清空筛选"><i class="bi bi-x-circle"></i> 清空</a>
                             {% endif %}
@@ -52,130 +53,143 @@
                     </form>
 
                     {% if batch_groups %}
-                    <div class="accordion" id="historyAccordion">
-                        {% for batch_key, batch in batch_groups.items %}
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="heading{{ forloop.counter }}">
-                                <div class="d-flex align-items-center">
-                                    <button class="accordion-button {% if not forloop.first %}collapsed{% endif %} py-2 flex-grow-1"
-                                        type="button" data-bs-toggle="collapse"
-                                        data-bs-target="#collapseBatch{{ forloop.counter }}"
-                                        aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}">
-                                        <div class="d-flex align-items-center gap-3 w-100 me-3">
-                                            <i class="bi bi-tag fs-5"></i>
-                                            <code class="fw-bold text-primary">{{ batch_key }}</code>
-                                            <small class="text-muted">
-                                                <i class="bi bi-person"></i> {{ batch.operator }}
-                                            </small>
-                                            <small class="text-muted">
-                                                <i class="bi bi-clock"></i> {{ batch.created_at|date:"Y-m-d H:i" }}
-                                            </small>
-                                            <span class="badge bg-secondary ms-2">{{ batch.total }} 任务</span>
-                                            {% if batch.failed == 0 and batch.success > 0 %}
-                                            <span class="badge bg-success"><i class="bi bi-check-circle-fill text-success"></i> 全部成功</span>
-                                            {% elif batch.success > 0 %}
-                                            <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle-fill"></i> 部分失败</span>
-                                            {% elif batch.failed > 0 %}
-                                            <span class="badge bg-danger"><i class="bi bi-x-circle-fill text-danger"></i> 全部失败</span>
-                                            {% endif %}
-                                        </div>
-                                    </button>
-                                    {% if user|has_perm_code:"releases.update" and batch.success %}
-                                    <button type="button" class="btn btn-sm btn-outline-warning me-2 btn-batch-rollback flex-shrink-0"
-                                        data-batch="{{ batch_key }}" title="回滚此批次所有已发布的配置">
-                                        <i class="bi bi-arrow-counterclockwise"></i> 批量回滚
-                                    </button>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 data-table history-table">
+                            <thead class="table-light">
+                                <tr>
+                                    {% if user|has_perm_code:"releases.update" %}
+                                    <th style="width: 4%;" class="text-center">
+                                        <input type="checkbox" id="selectAllRollback" title="全选本页可回滚配置"
+                                            aria-label="全选本页可回滚配置">
+                                    </th>
                                     {% endif %}
-                                </div>
-                            </h2>
-                            <div id="collapseBatch{{ forloop.counter }}"
-                                class="accordion-collapse collapse {% if forloop.first %}show{% endif %}"
-                                {% if not search and not batch_filter and not node_ip_filter %}data-bs-parent="#historyAccordion"{% endif %}>
-                                <div class="accordion-body p-0">
-                                    {% for node_key, node_data in batch.nodes.items %}
-                                    <div class="border-bottom">
-                                        <div class="d-flex align-items-center gap-2 px-3 py-2 bg-light node-header-cursor"
-                                            data-bs-toggle="collapse"
-                                            data-bs-target="#collapseNode{{ forloop.parentloop.counter }}_{{ forloop.counter }}">
-                                            <i class="bi bi-chevron-right toggle-arrow"></i>
-                                            <i class="bi bi-server"></i>
-                                            <div class="node-info-cell flex-grow-1">
-                                                <span class="node-identity">
-                                                    {{ node_data.node.hostname }}<small class="text-muted">({{ node_data.node.ip }}:{{ node_data.node.port }})</small>
-                                                </span>
+                                    <th style="width: 30%;">节点 / 配置</th>
+                                    <th style="width: 8%;">版本</th>
+                                    <th style="width: 24%;">路径</th>
+                                    <th style="width: 14%;" class="history-status-col">状态</th>
+                                    <th style="width: 10%;">时间</th>
+                                    <th style="width: 10%;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for batch_key, batch in batch_groups.items %}
+                                <tr class="history-batch-row">
+                                    {% if user|has_perm_code:"releases.update" %}
+                                    <td></td>
+                                    {% endif %}
+                                    <td>
+                                        <div class="d-flex align-items-center gap-3 flex-wrap">
+                                            <i class="bi bi-tag"></i>
+                                            <code class="text-primary">{{ batch_key }}</code>
+                                            <small class="text-muted"><i class="bi bi-person"></i> {{ batch.operator }}</small>
+                                            <small class="text-muted"><i class="bi bi-clock"></i> {{ batch.created_at|date:"Y-m-d H:i" }}</small>
+                                        </div>
+                                    </td>
+                                    <td></td>
+                                    <td></td>
+                                    <td class="history-status-col">
+                                        {% if batch.failed == 0 and batch.success > 0 %}
+                                        <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> 全部成功（{{ batch.success }}）</span>
+                                        {% elif batch.success > 0 and batch.failed > 0 %}
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle-fill"></i> 部分失败（成功 {{ batch.success }} / 失败 {{ batch.failed }}）</span>
+                                        {% elif batch.failed > 0 %}
+                                        <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> 全部失败（{{ batch.failed }}）</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">其他（{{ batch.other }}）</span>
+                                        {% endif %}
+                                    </td>
+                                    <td></td>
+                                    <td></td>
+                                </tr>
+                                {% for node_key, node_data in batch.nodes.items %}
+                                <tr class="history-node-row" data-node-uid="{{ batch_key }}-{{ node_key }}"
+                                    data-hostname="{{ node_data.node.hostname }}"
+                                    data-expanded="{% if expand_all_nodes or forloop.parentloop.first and forloop.first %}1{% else %}0{% endif %}">
+                                    {% if user|has_perm_code:"releases.update" %}
+                                    <td class="text-center">
+                                        {% if not node_data.node.is_locked %}
+                                        <input type="checkbox" class="rollback-node-cb"
+                                            data-node-uid="{{ batch_key }}-{{ node_key }}"
+                                            data-hostname="{{ node_data.node.hostname }}"
+                                            title="全选/取消本节点可回滚配置"
+                                            aria-label="勾选节点 {{ node_data.node.hostname }}"
+                                            onclick="event.stopPropagation();">
+                                        {% endif %}
+                                    </td>
+                                    {% endif %}
+                                    <td>
+                                        <div class="node-info-cell">
+                                            <i class="bi bi-chevron-{% if expand_all_nodes or forloop.parentloop.first and forloop.first %}down{% else %}right{% endif %} history-toggle-icon"></i>
+                                            <span class="node-identity">
                                                 {% if node_data.node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
-                                                {% for grp in node_data.node.groups.all %}
-                                                <span class="badge bg-info text-dark" style="font-size: 0.72rem; font-weight: normal;">{{ grp.name }}</span>
-                                                {% endfor %}
-                                            </div>
-                                            <span class="badge bg-light text-dark flex-shrink-0">{{ node_data.tasks|length }} 个配置</span>
-                                            {% with node_data.tasks|first as first_task %}
-                                            {% if first_task.status == 'success' %}
-                                            <span class="badge bg-success flex-shrink-0"><i class="bi bi-check-circle-fill text-success"></i></span>
-                                            {% elif first_task.status == 'failed' %}
-                                            <span class="badge bg-danger flex-shrink-0"><i class="bi bi-x-circle-fill text-danger"></i></span>
+                                                {{ node_data.node.hostname }}<small class="text-muted">({{ node_data.node.ip }}:{{ node_data.node.port }})</small>
+                                            </span>
+                                            {% for grp in node_data.node.groups.all %}
+                                            <span class="badge bg-info text-dark">{{ grp.name }}</span>
+                                            {% endfor %}
+                                            <span class="badge bg-light text-dark border">{{ node_data.tasks|length }} 配置</span>
+                                        </div>
+                                    </td>
+                                    <td></td>
+                                    <td></td>
+                                    <td class="history-status-col"></td>
+                                    <td></td>
+                                    <td></td>
+                                </tr>
+                                {% for task in node_data.tasks %}
+                                <tr class="history-config-row{% if not expand_all_nodes %}{% if not forloop.parentloop.parentloop.first or not forloop.parentloop.first %} d-none{% endif %}{% endif %}"
+                                    data-node-uid="{{ batch_key }}-{{ node_key }}"
+                                    data-task-status="{{ task.status }}">
+                                    {% if user|has_perm_code:"releases.update" %}
+                                    <td class="text-center">
+                                        {% if task.status == 'success' or task.status == 'failed' %}
+                                        {% if not task.node.is_locked %}
+                                        <input type="checkbox" class="rollback-task-cb"
+                                            value="{{ task.id }}"
+                                            data-node-uid="{{ batch_key }}-{{ node_key }}"
+                                            data-config="{{ task.config.name }}"
+                                            aria-label="勾选配置 {{ task.config.name }}">
+                                        {% endif %}
+                                        {% endif %}
+                                    </td>
+                                    {% endif %}
+                                    <td class="history-config-name"><code>{{ task.config.name }}</code></td>
+                                    <td><span class="badge bg-info">V{{ task.publish_version|default:'-' }}</span></td>
+                                    <td><small class="text-muted">{{ task.remote_path|default:'-'|truncatechars:48 }}</small></td>
+                                    <td class="history-status-col">
+                                        {% if task.status == 'success' %}
+                                        <span class="badge bg-success">成功</span>
+                                        {% elif task.status == 'failed' %}
+                                        <span class="badge bg-danger">失败</span>
+                                        {% elif task.status == 'rollback' %}
+                                        <span class="badge bg-warning text-dark">已回滚</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ task.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><small>{{ task.created_at|date:"m-d H:i" }}</small></td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'releases:detail' task.id %}"
+                                                class="btn btn-outline-info" title="查看详情">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            {% if user|has_perm_code:"releases.update" %}
+                                            {% if task.status == 'success' or task.status == 'failed' %}
+                                            <a href="{% url 'releases:rollback' task.id %}"
+                                                class="btn btn-outline-warning" title="回滚">
+                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                            </a>
                                             {% endif %}
-                                            {% endwith %}
+                                            {% endif %}
                                         </div>
-                                        <div class="collapse" id="collapseNode{{ forloop.parentloop.counter }}_{{ forloop.counter }}">
-                                            <div class="table-responsive px-3">
-                                                <table class="table table-sm table-hover mb-0 data-table history-table">
-                                                    <thead class="table-light">
-                                                        <tr>
-                                                            <th style="width: 12%;">时间</th>
-                                                            <th style="width: 22%;">配置</th>
-                                                            <th style="width: 8%;">版本</th>
-                                                            <th style="width: 30%;">路径</th>
-                                                            <th style="width: 8%;">状态</th>
-                                                            <th style="width: 20%;">操作</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {% for task in node_data.tasks %}
-                                                        <tr>
-                                                            <td><small>{{ task.created_at|date:"m-d H:i" }}</small></td>
-                                                            <td><code>{{ task.config.name }}</code></td>
-                                                            <td><span class="badge bg-info">V{{ task.publish_version|default:'-' }}</span></td>
-                                                            <td><small class="text-muted">{{ task.remote_path|default:'-'|truncatechars:40 }}</small></td>
-                                                            <td>
-                                                                {% if task.status == 'success' %}
-                                                                <span class="badge bg-success">成功</span>
-                                                                {% elif task.status == 'failed' %}
-                                                                <span class="badge bg-danger">失败</span>
-                                                                {% elif task.status == 'rollback' %}
-                                                                <span class="badge bg-warning">已回滚</span>
-                                                                {% else %}
-                                                                <span class="badge bg-secondary">{{ task.status }}</span>
-                                                                {% endif %}
-                                                            </td>
-                                                            <td>
-                                                                <div class="btn-group btn-group-sm">
-                                                                    <a href="{% url 'releases:detail' task.id %}"
-                                                                        class="btn btn-outline-info" title="查看详情">
-                                                                        <i class="bi bi-eye"></i>
-                                                                    </a>
-                                                                    {% if user|has_perm_code:"releases.update" %}
-                                                                    {% if task.status == 'failed' %}
-                                                                    <a href="{% url 'releases:rollback' task.id %}"
-                                                                        class="btn btn-outline-warning" title="回滚">
-                                                                        <i class="bi bi-arrow-counterclockwise"></i>
-                                                                    </a>
-                                                                    {% endif %}
-                                                                    {% endif %}
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                        {% endfor %}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% endfor %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                     {% else %}
                     <div class="empty-state">
@@ -184,7 +198,19 @@
                     </div>
                     {% endif %}
 
-                    {% include "includes/pagination.html" with nav_class="mt-3" %}
+                    {% include "includes/pagination.html" %}
+                    <div class="d-flex justify-content-end mt-2">
+                        <form method="get" class="d-flex align-items-center gap-1" id="perPageForm">
+                            <label class="form-label mb-0 small text-muted">每页</label>
+                            <select name="per_page" class="form-select form-select-sm" style="width:auto;"
+                                onchange="document.getElementById('perPageForm').submit()">
+                                {% for size in per_page_options %}
+                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 个批次/页</option>
+                                {% endfor %}
+                            </select>
+                            {% for key, val in request.GET.items %}{% if key != 'per_page' and key != 'page' %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endif %}{% endfor %}
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -194,11 +220,25 @@
 
 {% block extra_js %}
 <style>
-    .history-table td .badge { font-size: 0.78rem; }
-    .node-header-cursor { cursor: pointer; user-select: none; transition: background 0.15s; }
-    .node-header-cursor:hover { background: #e9ecef !important; }
+    .history-table .history-batch-row td {
+        background: #f1f3f5;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .history-table .history-node-row { cursor: pointer; }
+    .history-table .history-node-row:hover { background: #f0f6ff; }
+    .history-table .history-config-row { background: #fafbfc; }
+    .history-table .history-config-row td { border-top: 1px dashed #e0e0e0; }
+    .history-table .history-config-name { padding-left: 2rem; }
+    .history-table .history-toggle-icon { color: var(--gray-600); margin-right: 2px; }
+    .history-table .history-status-col {
+        white-space: nowrap;
+        vertical-align: middle;
+    }
+    .history-table td, .history-table th { vertical-align: middle; }
     .node-info-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
     .node-identity { white-space: nowrap; }
+    .node-info-cell .badge { font-size: 0.72rem; font-weight: normal; }
+    .history-table td .badge { font-size: 0.78rem; }
 </style>
 <script>
     (function() {
@@ -207,50 +247,172 @@
             sessionStorage.setItem('releases_list_query', currentUrl);
         }
     })();
+
     document.addEventListener('DOMContentLoaded', function() {
         initTagSearch('#releaseHistorySearchTagWrapper', '#releaseHistorySearchHidden', '#searchForm');
 
-        {% if search or batch_filter or node_ip_filter %}
-        // 搜索/批次过滤后自动展开所有批次和节点
-        document.querySelectorAll('#historyAccordion .collapse').forEach(function(el) {
-            new bootstrap.Collapse(el, { toggle: false }).show();
-        });
-        {% endif %}
+        var countEl = document.getElementById('selectedRollbackCount');
+        var nodeCountEl = document.getElementById('selectedRollbackNodeCount');
+        var btnRollback = document.getElementById('btnSelectedRollback');
+        var selectAll = document.getElementById('selectAllRollback');
+        var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
 
-        // 批量回滚按钮
-        document.querySelectorAll('.btn-batch-rollback').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                var batch = this.dataset.batch;
-                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-                showConfirm('批量回滚',
-                    '确认回滚批次 <strong>' + batch + '</strong> 的所有已发布配置吗？<br><small class="text-muted">将生成新的回滚任务并使用上一同步版本重新发布。</small>',
+        /** 获取某节点下全部可回滚配置勾选框 */
+        function getTaskCbsByNode(uid) {
+            return document.querySelectorAll('.rollback-task-cb[data-node-uid="' + uid + '"]');
+        }
+
+        /** 同步单个节点勾选状态（全选/半选/未选） */
+        function syncNodeCheckbox(uid) {
+            var nodeCb = document.querySelector('.rollback-node-cb[data-node-uid="' + uid + '"]');
+            if (!nodeCb) return;
+            var cbs = getTaskCbsByNode(uid);
+            if (!cbs.length) {
+                nodeCb.disabled = true;
+                nodeCb.checked = false;
+                nodeCb.indeterminate = false;
+                return;
+            }
+            var checked = 0;
+            cbs.forEach(function(cb) { if (cb.checked) checked++; });
+            nodeCb.disabled = false;
+            nodeCb.checked = checked === cbs.length;
+            nodeCb.indeterminate = checked > 0 && checked < cbs.length;
+        }
+
+        /** 同步本页所有节点勾选状态 */
+        function syncAllNodeCheckboxes() {
+            document.querySelectorAll('.rollback-node-cb').forEach(function(nodeCb) {
+                syncNodeCheckbox(nodeCb.dataset.nodeUid);
+            });
+        }
+
+        /** 切换节点配置明细展开/折叠 */
+        function toggleNodeRow(row) {
+            var uid = row.dataset.nodeUid;
+            var next = row.dataset.expanded !== '1';
+            row.dataset.expanded = next ? '1' : '0';
+            var icon = row.querySelector('.history-toggle-icon');
+            if (icon) {
+                icon.className = 'bi history-toggle-icon ' + (next ? 'bi-chevron-down' : 'bi-chevron-right');
+            }
+            document.querySelectorAll('.history-config-row[data-node-uid="' + uid + '"]').forEach(function(r) {
+                r.classList.toggle('d-none', !next);
+            });
+        }
+
+        document.querySelectorAll('.history-node-row').forEach(function(row) {
+            row.addEventListener('click', function(e) {
+                if (e.target && (e.target.closest('input[type="checkbox"]'))) return;
+                toggleNodeRow(row);
+            });
+        });
+
+        /** 刷新已选计数、节点半选与表头全选 */
+        function refreshSelectionUI() {
+            var cbs = document.querySelectorAll('.rollback-task-cb');
+            var checkedCbs = document.querySelectorAll('.rollback-task-cb:checked');
+            var m = checkedCbs.length;
+            var nodeSet = {};
+            checkedCbs.forEach(function(cb) {
+                if (cb.dataset.nodeUid) nodeSet[cb.dataset.nodeUid] = true;
+            });
+            var n = Object.keys(nodeSet).length;
+            if (countEl) countEl.textContent = m;
+            if (nodeCountEl) nodeCountEl.textContent = n;
+            if (btnRollback) btnRollback.disabled = m === 0;
+            if (selectAll) {
+                selectAll.checked = cbs.length > 0 && m === cbs.length;
+                selectAll.indeterminate = m > 0 && m < cbs.length;
+            }
+            syncAllNodeCheckboxes();
+        }
+
+        document.querySelectorAll('.rollback-task-cb').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                syncNodeCheckbox(this.dataset.nodeUid);
+                refreshSelectionUI();
+            });
+            cb.addEventListener('click', function(e) { e.stopPropagation(); });
+        });
+
+        document.querySelectorAll('.rollback-node-cb').forEach(function(nodeCb) {
+            nodeCb.addEventListener('change', function() {
+                var checked = this.checked;
+                getTaskCbsByNode(this.dataset.nodeUid).forEach(function(cb) {
+                    cb.checked = checked;
+                });
+                this.indeterminate = false;
+                refreshSelectionUI();
+            });
+        });
+
+        if (selectAll) {
+            selectAll.addEventListener('change', function() {
+                var checked = this.checked;
+                document.querySelectorAll('.rollback-task-cb').forEach(function(cb) {
+                    cb.checked = checked;
+                });
+                this.indeterminate = false;
+                refreshSelectionUI();
+            });
+        }
+
+        if (btnRollback) {
+            btnRollback.addEventListener('click', function() {
+                var checked = Array.from(document.querySelectorAll('.rollback-task-cb:checked'));
+                if (!checked.length) return;
+                var ids = checked.map(function(c) { return parseInt(c.value, 10); });
+                var names = checked.map(function(c) { return c.dataset.config || c.value; });
+                var nodeSet = {};
+                checked.forEach(function(c) {
+                    if (c.dataset.nodeUid) nodeSet[c.dataset.nodeUid] = true;
+                });
+                var nodeCount = Object.keys(nodeSet).length;
+                var preview = names.slice(0, 5).join('、') + (names.length > 5 ? ' 等' : '');
+                showConfirm(
+                    '批量回滚',
+                    '确认回滚已选的 <strong>' + ids.length + '</strong> 个配置（涉及 <strong>' + nodeCount + '</strong> 个节点）吗？<br>' +
+                    '<small class="text-muted">' + preview + '</small><br>' +
+                    '<small class="text-muted">将使用上一同步版本重新发布。</small>',
                     function() {
-                        btn.disabled = true;
-                        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 回滚中...';
-                        fetch('/releases/batch-rollback/' + encodeURIComponent(batch) + '/', {
+                        btnRollback.disabled = true;
+                        btnRollback.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 回滚中...';
+                        fetch('{% url "releases:api_selected_rollback" %}', {
                             method: 'POST',
-                            headers: { 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' }
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({ task_ids: ids })
                         })
-                        .then(r => r.json())
+                        .then(function(r) { return r.json(); })
                         .then(function(data) {
                             if (data.success) {
                                 showToast(data.message, 'success');
-                                setTimeout(function() { location.reload(); }, 1500);
+                                setTimeout(function() {
+                                    window.location.href = '/releases/history/?search=' + encodeURIComponent(data.batch_number || '');
+                                }, 800);
                             } else {
                                 showToast(data.message || '回滚失败', 'danger');
-                                btn.disabled = false;
-                                btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 批量回滚';
+                                btnRollback.disabled = false;
+                                btnRollback.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 批量回滚';
+                                refreshSelectionUI();
                             }
                         })
                         .catch(function() {
                             showToast('网络错误', 'danger');
-                            btn.disabled = false;
-                            btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 批量回滚';
+                            btnRollback.disabled = false;
+                            btnRollback.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 批量回滚';
+                            refreshSelectionUI();
                         });
-                    });
+                    }
+                );
             });
-        });
+        }
+
+        refreshSelectionUI();
     });
 </script>
 {% endblock %}
