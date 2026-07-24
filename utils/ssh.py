@@ -437,9 +437,15 @@ def backup_remote_file(
     file_path=None,
     backup_dir="/opt/app/mascloud/ansible/mngxops",
 ):
-    """备份远程节点上的文件"""
+    """备份远程节点上的文件；源文件不存在时跳过备份并返回成功"""
     try:
         client = _build_ssh_client(host, port, username, password, private_key)
+
+        # 首次发布时远程尚无目标文件，跳过备份
+        _, stdout, stderr = client.exec_command(f"test -f {file_path}")
+        if stdout.channel.recv_exit_status() != 0:
+            client.close()
+            return True, ""
 
         timestamp = time.strftime("%Y%m%d%H%M%S")
         filename = file_path.split("/")[-1]
@@ -463,6 +469,28 @@ def backup_remote_file(
         else:
             err = stderr.read().decode("utf-8").strip()
             return False, f"备份失败: {err}"
+    except Exception as e:
+        return False, str(e)
+
+
+def remove_remote_file(
+    host,
+    port,
+    username,
+    password=None,
+    private_key=None,
+    file_path=None,
+):
+    """删除远程节点上的文件（首次发布失败回滚用）"""
+    try:
+        client = _build_ssh_client(host, port, username, password, private_key)
+        _, stdout, stderr = client.exec_command(f"rm -f {file_path}")
+        exit_code = stdout.channel.recv_exit_status()
+        client.close()
+        if exit_code == 0:
+            return True, "已删除"
+        err = stderr.read().decode("utf-8").strip()
+        return False, err or "删除失败"
     except Exception as e:
         return False, str(e)
 

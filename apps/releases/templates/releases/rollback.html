@@ -251,6 +251,9 @@
             document.getElementById('selectedVersionId').value = document.querySelector('input[name="version_radio"]:checked').value;
         }
 
+        var previewConfigName = '{{ config.name|escapejs }}';
+        var previewRemotePath = '{% if task.remote_path %}{{ task.remote_path|escapejs }}{% elif task.binding %}{{ task.binding.remote_path|escapejs }}{% endif %}';
+
         var vpContent = document.getElementById('vpContent');
         var vpLoading = document.getElementById('vpLoading');
         var vpError = document.getElementById('vpError');
@@ -294,19 +297,18 @@
                 })
                 .then(function(data) {
                     vpLoading.classList.add('d-none');
-                    if (data.success) {
-                        var d = data.data;
-                        vpConfigName.textContent = d.config_name;
-                        vpVersionLabel.textContent = 'v' + d.version_number + (d.version_label ? ' - ' + d.version_label : '');
-                        vpConfigPath.textContent = d.config_path;
-                        vpConfigSize.textContent = d.content_bytes + ' 字节';
-                        vpCreatedBy.textContent = d.created_by;
-                        vpCreatedAt.textContent = d.created_at;
-                        if (d.remark) {
-                            vpRemark.textContent = '备注: ' + d.remark;
-                        }
-                        vpContent.textContent = d.content;
-                        currentVersionContent = d.content;
+                    // 适配 VersionContentAPIView 扁平 JSON（与发布中心预览一致）
+                    if (data.content !== undefined) {
+                        var content = data.content || '';
+                        vpConfigName.textContent = previewConfigName || '-';
+                        vpVersionLabel.textContent = 'v' + (data.version != null ? data.version : '-');
+                        vpConfigPath.textContent = previewRemotePath || '-';
+                        vpConfigSize.textContent = content.length + ' 字节';
+                        vpCreatedBy.textContent = data.created_by || '-';
+                        vpCreatedAt.textContent = data.created_at || '-';
+                        vpRemark.textContent = data.remark ? ('备注: ' + data.remark) : '';
+                        vpContent.textContent = content || '(空文件)';
+                        currentVersionContent = content;
                         vpContentWrapper.classList.remove('d-none');
                     } else {
                         showVpError('加载失败');
