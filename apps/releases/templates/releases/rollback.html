@@ -42,13 +42,12 @@
                     </div>
 
                     <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        <strong>回滚说明：</strong>
+                        <i class="bi bi-exclamation-triangle text-warning"></i>
+                        回滚说明：
                         <ul class="mb-0 mt-1">
-                            <li>选择历史版本后将创建回滚任务到<strong>发布中心</strong>，状态为"等待发布"</li>
-                            <li>请前往发布中心手动确认执行</li>
-                            <li>执行时自动：备份当前配置 → 上传历史版本 → nginx -t → reload</li>
-                            <li>任何步骤失败将自动回滚到备份版本</li>
+                            <li>确认后将<strong>立即执行</strong>回滚（无需再到发布中心）</li>
+                            <li>执行流程：备份当前配置 → 上传所选版本 → nginx -t → reload</li>
+                            <li>失败时自动按备份恢复；进度可在任务中心查看</li>
                         </ul>
                     </div>
 
@@ -163,15 +162,47 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
             </div>
             <div class="modal-body">
-                <p>回滚任务将创建到<strong>发布中心</strong>，初始状态为<strong>等待发布</strong>。</p>
-                <p class="mb-0">请前往发布中心手动确认后执行，是否继续？</p>
+                <p>将把配置 <code id="confirmConfigName">{{ config.name }}</code> 回滚到
+                    <span class="badge bg-secondary" id="confirmVersionBadge">V-</span>，
+                    并立即在节点 <code>{{ task.node.hostname }}</code> 上执行。</p>
+                <p class="mb-0 text-muted small">执行过程：备份 → 上传 → nginx -t → reload。失败时自动按备份恢复。</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                 <button type="button" class="btn btn-warning" id="rollbackSubmitBtn">
-                    <i class="bi bi-arrow-counterclockwise"></i> 确认回滚
+                    <i class="bi bi-arrow-counterclockwise"></i> 确认并执行
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- 回滚进度弹窗（对齐发布中心 #progressOverlay） -->
+<div id="progressOverlay" class="publish-overlay" style="display: none;">
+    <div class="publish-progress-dialog" id="progressDialog">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0"><i class="bi bi-arrow-counterclockwise"></i> 回滚执行中</h6>
+            <button type="button" class="btn-close d-none" id="btnCloseProgress" title="关闭"></button>
+        </div>
+        <div class="mb-2">
+            <small class="text-muted">批次号: <span id="progressBatchNumber">-</span></small>
+        </div>
+        <div class="progress mb-2" style="height: 8px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%;"></div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <small id="progressText" class="text-muted">准备中...</small>
+            <small class="text-muted"><span id="progressPercent">0</span>%</small>
+        </div>
+        <div id="progressTree" class="progress-tree" style="max-height: 350px; overflow-y: auto;">
+            <div class="text-center text-muted py-3">
+                <div class="spinner-border spinner-border-sm"></div> 初始化中...
+            </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <a href="#" id="progressLogLink" class="btn btn-sm btn-outline-info" target="_blank">
+                <i class="bi bi-journal-text"></i> 完整日志
+            </a>
         </div>
     </div>
 </div>
@@ -227,11 +258,40 @@
     .rollback-table td .badge {
         font-size: 0.78rem;
     }
-    </style>
+    /* 进度弹窗（对齐发布中心） */
+    .publish-overlay {
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.45); z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .publish-progress-dialog {
+        background: #fff; border-radius: 12px; padding: 24px 28px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+        width: 600px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+    }
+    .progress-tree .node-group { margin-bottom: 8px; }
+    .progress-tree .node-group-header {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 8px; border-radius: 6px; cursor: pointer;
+        background: #f8f9fa; font-size: 0.85rem;
+    }
+    .progress-tree .node-group-header.success { background: #d4edda; }
+    .progress-tree .node-group-header.failed { background: #f8d7da; }
+    .progress-tree .node-group-header.running { background: #fff3cd; }
+    .progress-tree .node-group-body { padding-left: 20px; }
+    .progress-tree .config-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 3px 0; font-size: 0.8rem;
+    }
+</style>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         var rollbackConfirmModal = new bootstrap.Modal(document.getElementById('rollbackConfirmModal'));
         var versionPreviewModal = new bootstrap.Modal(document.getElementById('versionPreviewModal'));
+        var rollbackInterval = null;
+        var csrfToken = document.querySelector('#rollbackForm [name=csrfmiddlewaretoken]').value;
+        var rollbackUrl = '{% url "releases:rollback" task.id %}';
+        var listUrl = '{% url "releases:list" %}';
 
         document.getElementById('rollbackConfirmBtn').addEventListener('click', function() {
             var selectedRadio = document.querySelector('input[name="version_radio"]:checked');
@@ -240,16 +300,152 @@
                 return;
             }
             document.getElementById('selectedVersionId').value = selectedRadio.value;
+            var row = selectedRadio.closest('tr');
+            var badge = row ? row.querySelector('.badge') : null;
+            document.getElementById('confirmVersionBadge').textContent = badge ? badge.textContent.trim() : 'V-';
             rollbackConfirmModal.show();
         });
 
         document.getElementById('rollbackSubmitBtn').addEventListener('click', function() {
-            document.getElementById('rollbackForm').submit();
+            var versionId = document.getElementById('selectedVersionId').value;
+            if (!versionId) {
+                alert('请先选择一个版本');
+                return;
+            }
+            var btn = this;
+            btn.disabled = true;
+            var formData = new FormData();
+            formData.append('csrfmiddlewaretoken', csrfToken);
+            formData.append('version_id', versionId);
+
+            fetch(rollbackUrl, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: formData
+            })
+            .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+            .then(function(res) {
+                btn.disabled = false;
+                if (!res.data.success) {
+                    alert(res.data.message || '回滚启动失败');
+                    return;
+                }
+                rollbackConfirmModal.hide();
+                showProgressOverlay(res.data.batch_number, res.data.task_center_id);
+            })
+            .catch(function() {
+                btn.disabled = false;
+                alert('网络错误，请重试');
+            });
         });
 
         if (document.querySelector('input[name="version_radio"]:checked')) {
             document.getElementById('selectedVersionId').value = document.querySelector('input[name="version_radio"]:checked').value;
         }
+
+        /** 显示回滚进度遮罩（对齐发布中心） */
+        function showProgressOverlay(batchNumber, taskCenterId) {
+            document.getElementById('progressBatchNumber').textContent = batchNumber;
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressBar').className = 'progress-bar progress-bar-striped progress-bar-animated';
+            document.getElementById('progressPercent').textContent = '0';
+            document.getElementById('progressText').textContent = '初始化中...';
+            document.getElementById('progressTree').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 等待任务启动...</div>';
+            document.getElementById('progressLogLink').href =
+                '/releases/history/?search=' + encodeURIComponent(batchNumber);
+            document.getElementById('btnCloseProgress').classList.add('d-none');
+            document.getElementById('progressOverlay').style.display = 'flex';
+            startProgressPolling(taskCenterId);
+        }
+
+        /** 轮询 TaskCenterTask 进度 */
+        function startProgressPolling(taskCenterId) {
+            if (rollbackInterval) clearInterval(rollbackInterval);
+            rollbackInterval = setInterval(function() {
+                fetch('/releases/tasks/progress/?ids=' + taskCenterId, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.success || !data.tasks || data.tasks.length === 0) return;
+                    var task = data.tasks[0];
+                    var progress = task.progress || 0;
+                    document.getElementById('progressBar').style.width = progress + '%';
+                    document.getElementById('progressPercent').textContent = progress;
+                    document.getElementById('progressText').textContent = task.detail || '执行中...';
+                    if (task.result) renderProgressTree(task.result);
+                    if (task.finished) {
+                        clearInterval(rollbackInterval);
+                        rollbackInterval = null;
+                        document.getElementById('progressBar').classList.remove('progress-bar-animated');
+                        if (task.status === 'success') {
+                            document.getElementById('progressBar').classList.add('bg-success');
+                            document.getElementById('progressText').textContent = '回滚成功';
+                        } else {
+                            document.getElementById('progressBar').classList.add('bg-warning');
+                            document.getElementById('progressText').textContent = '回滚失败，请查看详情';
+                        }
+                        document.getElementById('btnCloseProgress').classList.remove('d-none');
+                    }
+                });
+            }, 1500);
+        }
+
+        /** 渲染进度结果树 */
+        function renderProgressTree(resultText) {
+            var container = document.getElementById('progressTree');
+            var lines = (resultText || '').split('\n');
+            var html = '';
+            var currentNode = null;
+            lines.forEach(function(line) {
+                var trimmed = line.trim();
+                if (!trimmed) return;
+                if (trimmed.startsWith('[节点] ')) {
+                    if (currentNode) html += buildNodeGroup(currentNode.name, currentNode.configs);
+                    currentNode = { name: trimmed.replace('[节点] ', ''), configs: [] };
+                } else if (currentNode && trimmed.startsWith('[成功]')) {
+                    currentNode.configs.push({
+                        name: trimmed.replace('[成功] ', '').replace(/ v\d+.*$/, '').trim(),
+                        status: 'success'
+                    });
+                } else if (currentNode && trimmed.startsWith('[失败]')) {
+                    currentNode.configs.push({
+                        name: trimmed.replace('[失败] ', '').replace(/ v\d+.*$/, '').replace(/\s*-.*$/, '').trim(),
+                        status: 'failed'
+                    });
+                }
+            });
+            if (currentNode) html += buildNodeGroup(currentNode.name, currentNode.configs);
+            container.innerHTML = html || '<div class="text-center text-muted py-2">等待进度更新...</div>';
+        }
+
+        /** 构建节点进度分组 HTML */
+        function buildNodeGroup(nodeName, configs) {
+            var statusCls = configs.every(function(c) { return c.status === 'success'; }) ? 'success'
+                : (configs.some(function(c) { return c.status === 'failed'; }) ? 'failed' : 'running');
+            var statusIcon = statusCls === 'success'
+                ? '<i class="bi bi-check-circle-fill text-success"></i>'
+                : (statusCls === 'failed'
+                    ? '<i class="bi bi-x-circle-fill text-danger"></i>'
+                    : '<i class="bi bi-hourglass-split"></i>');
+            var html = '<div class="node-group">';
+            html += '<div class="node-group-header ' + statusCls + '">' + statusIcon + ' ' + nodeName + '</div>';
+            html += '<div class="node-group-body">';
+            configs.forEach(function(c) {
+                var icon = c.status === 'success'
+                    ? '<i class="bi bi-check-circle-fill text-success"></i>'
+                    : '<i class="bi bi-x-circle-fill text-danger"></i>';
+                html += '<div class="config-item">' + icon + ' ' + c.name + '</div>';
+            });
+            html += '</div></div>';
+            return html;
+        }
+
+        document.getElementById('btnCloseProgress').addEventListener('click', function() {
+            document.getElementById('progressOverlay').style.display = 'none';
+            if (rollbackInterval) { clearInterval(rollbackInterval); rollbackInterval = null; }
+            window.location.href = listUrl;
+        });
 
         var previewConfigName = '{{ config.name|escapejs }}';
         var previewRemotePath = '{% if task.remote_path %}{{ task.remote_path|escapejs }}{% elif task.binding %}{{ task.binding.remote_path|escapejs }}{% endif %}';
