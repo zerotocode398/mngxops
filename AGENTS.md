@@ -842,3 +842,62 @@ Q42
 125. upgrade/history.html 进度条硬编码 width:60px → % 或 rem 响应式 ✅ 阶段 D：.table-inline-progress
 126. nodes/list.html 节点详情弹窗 modal-lg + 自定义 800px max-width → 统一为标准 modal-lg（无自定义宽度） ✅ 阶段 D 已完成
 ```
+
+Q43
+```text
+节点管理
+    节点列表，点击主机名会有2个弹窗
+        其一是“系统信息采集”弹窗
+        其二是“xxx 详情”弹窗
+        我认为“系统信息采集”可以删除，你觉得是否可以？
+ ✅ 已修复：打开详情时系统信息/Nginx 检测改为详情弹窗内静默加载，去掉全屏进度遮罩
+```
+
+Q44
+```text
+配置管理
+    配置版本差异对比，点击“返回版本历史”报错
+    Page not found (404)
+No ConfigNodeBinding matches the given query.
+Request Method:	GET
+Request URL:	http://127.0.0.1:8000/configs/2/versions/
+Raised by:	apps.configs.views.BindingVersionListView
+Using the URLconf defined in ngxops.urls, Django tried these URL patterns, in this order:
+
+admin/
+[name='index']
+api/stats/ [name='stats_api']
+login/ [name='login']
+logout/ [name='logout']
+profile/ [name='profile']
+password/change/ [name='password_change']
+users/
+credentials/
+nodes/
+configs/ [name='list']
+configs/ create/ [name='create']
+configs/ <int:pk>/ [name='detail']
+configs/ <int:pk>/edit/ [name='edit']
+configs/ <int:pk>/delete/ [name='delete']
+configs/ bindings/create/ [name='binding_create']
+configs/ bindings/<int:pk>/ [name='binding_detail']
+configs/ bindings/<int:pk>/edit/ [name='binding_edit']
+configs/ bindings/<int:pk>/delete/ [name='binding_delete']
+configs/ bindings/<int:pk>/restore/ [name='binding_restore']
+configs/ bindings/<int:pk>/versions/ [name='binding_versions']
+configs/ bindings/<int:pk>/versions/<int:version_id>/ [name='binding_version_detail']
+configs/ bindings/<int:pk>/versions/<int:version_id>/restore/ [name='binding_version_restore']
+configs/ bindings/<int:pk>/compare/ [name='binding_compare']
+configs/ bindings/<int:pk>/compare/apply/ [name='binding_compare_apply']
+configs/ api/by-nodes/ [name='api_by_nodes']
+configs/ api/preview-glob/ [name='api_preview_glob']
+configs/ api/update-preview/ [name='api_update_preview']
+configs/ sync/ [name='sync_wizard']
+configs/ sync/api/batch/ [name='sync_batch_api']
+configs/ sync/api/single/ [name='sync_single_api']
+configs/ sync/api/progress/ [name='sync_progress']
+configs/ <int:pk>/update/ [name='update']
+configs/ node/<int:pk>/delete/ [name='node_delete']
+configs/ <int:pk>/versions/ [name='versions']
+ ✅ 已修复：返回链接改为 configs:binding_versions + binding.id；配置标签详情页删除误用 config.id 的「版本历史」按钮
+```

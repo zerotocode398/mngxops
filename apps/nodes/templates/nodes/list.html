@@ -905,11 +905,11 @@
         });
     }
 
+    /** 在详情弹窗内静默采集系统信息（不弹全屏进度遮罩） */
     function refreshSystemInfo() {
         if (!currentDetailNodeId) return;
         document.getElementById('detailSystemInfo').innerHTML =
             '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div><p class="mt-1 small">加载中...</p></div>';
-        showAsyncProgressOverlay('系统信息采集');
         var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
         fetch('{% url "nodes:system-info" %}', {
             method: 'POST',
@@ -919,12 +919,10 @@
         .then(function (resp) { return resp.json(); })
         .then(function (result) {
             if (!result.success) {
-                closeAsyncProgressOverlay();
                 document.getElementById('detailSystemInfo').innerHTML = '<div class="text-danger mt-1 small">' + (result.message || '获取失败') + '</div>';
                 return;
             }
             if (result.async && result.task_center_id) {
-                startAsyncProgressPolling(result.task_center_id);
                 var pollTimer = setInterval(function() {
                     fetch('/releases/tasks/progress/?ids=' + result.task_center_id, {headers:{'X-Requested-With':'XMLHttpRequest'}})
                     .then(function(r){return r.json();})
@@ -947,15 +945,14 @@
             }
         })
         .catch(function () {
-            closeAsyncProgressOverlay();
             document.getElementById('detailSystemInfo').innerHTML = '<div class="text-danger mt-1 small">网络错误</div>';
         });
     }
 
+    /** 在详情弹窗内静默检测 Nginx 版本（不弹全屏进度遮罩） */
     function detectNginxVersion() {
         if (!currentDetailNodeId) return;
         document.getElementById('detailNginxVersion').textContent = '检测中...';
-        showAsyncProgressOverlay('Nginx版本检测');
         var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
         fetch('{% url "nodes:nginx-version" %}', {
             method: 'POST',
@@ -965,12 +962,10 @@
         .then(function (resp) { return resp.json(); })
         .then(function (result) {
             if (!result.success) {
-                closeAsyncProgressOverlay();
                 document.getElementById('detailNginxVersion').textContent = result.message || '获取失败';
                 return;
             }
             if (result.async && result.task_center_id) {
-                startAsyncProgressPolling(result.task_center_id);
                 var pollTimer = setInterval(function() {
                     fetch('/releases/tasks/progress/?ids=' + result.task_center_id, {headers:{'X-Requested-With':'XMLHttpRequest'}})
                     .then(function(r){return r.json();})
@@ -988,7 +983,6 @@
             }
         })
         .catch(function () {
-            closeAsyncProgressOverlay();
             document.getElementById('detailNginxVersion').textContent = '网络错误';
         });
     }
