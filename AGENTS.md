@@ -901,3 +901,26 @@ configs/ node/<int:pk>/delete/ [name='node_delete']
 configs/ <int:pk>/versions/ [name='versions']
  ✅ 已修复：返回链接改为 configs:binding_versions + binding.id；配置标签详情页删除误用 config.id 的「版本历史」按钮
 ```
+
+Q45
+```text
+发布中心
+    点击发布，发布执行中弹窗点击完整日志，会自动跳转到任务中心。
+    任务中心默认展示所有，能否展示当前批次详情？
+ ✅ 已修复：progressOverlay「完整日志」跳转 /releases/history/?search=<批次号>，任务中心仅展示当前批次记录
+```
+
+Q46
+```text
+发布中心
+    查询框输入查询标签搜索后，未展示配置详情，而是“加载绑定...”。
+    当重新刷新浏览器后可正常展示。
+ ✅ 已修复：loadNodes 恢复展开节点时，有 bindingCache 则 renderBindingRow，无缓存才 loadBindings（避免搜索重绘后卡在加载占位）
+```
+
+Q47
+```
+发布中心
+    查询框输入配置名称条件标签后搜索，无反应
+ ✅ 已修复：API 增加 remote_path 搜索；有搜索词时自动展开本页节点，renderBindingRow 按配置名/路径过滤展示
+```

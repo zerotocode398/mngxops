@@ -215,7 +215,7 @@
             <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSkipFailed">
                 <i class="bi bi-skip-forward"></i> 跳过失败继续
             </button>
-            <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-info" target="_blank">
+            <a href="#" id="progressLogLink" class="btn btn-sm btn-outline-info" target="_blank">
                 <i class="bi bi-journal-text"></i> 完整日志
             </a>
         </div>
@@ -389,6 +389,31 @@
         });
     }
 
+    /** 解析当前搜索标签（小写） */
+    function getSearchTerms() {
+        if (!currentFilters.search) return [];
+        return currentFilters.search.replace(/，/g, ',').split(',').map(function(t) {
+            return t.trim().toLowerCase();
+        }).filter(Boolean);
+    }
+
+    /**
+     * 按搜索词过滤绑定展示层；若无一命中配置名/路径则返回全部
+     * （说明节点是靠主机名/IP/组匹配的）
+     */
+    function filterBindingsBySearch(bindings) {
+        var terms = getSearchTerms();
+        if (!terms.length || !bindings || bindings.length === 0) return bindings || [];
+        var matched = bindings.filter(function(b) {
+            var name = (b.config_name || '').toLowerCase();
+            var path = (b.remote_path || '').toLowerCase();
+            return terms.some(function(term) {
+                return name.indexOf(term) !== -1 || path.indexOf(term) !== -1;
+            });
+        });
+        return matched.length > 0 ? matched : bindings;
+    }
+
     function loadNodes(page) {
         var tbody = document.getElementById('nodeTableBody');
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm"></div> 加载中...</td></tr>';
@@ -409,11 +434,21 @@
         .then(res => {
             if (!res.success) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">加载失败</td></tr>'; return; }
             updateStatusCounts(res.status_counts);
+            // 有搜索条件时自动展开本页节点，便于直接看到匹配的配置明细
+            var searchActive = !!(currentFilters.search && currentFilters.search.trim());
+            if (searchActive) {
+                res.nodes.forEach(function(n) { expandedNodes[n.id] = true; });
+            }
             renderNodeTable(res.nodes, res.total, res.page, res.total_pages);
-            // 恢复展开节点的绑定数据（刷新页面后 sessionStorage 恢复的展开状态需要主动加载）
+            // 恢复展开节点的绑定：有缓存直接渲染，无缓存再请求（搜索重绘后避免卡在「加载绑定...」）
             res.nodes.forEach(function(n) {
-                if (expandedNodes[n.id] && (!bindingCache[n.id] || bindingCache[n.id].length === 0)) {
+                if (!expandedNodes[n.id]) return;
+                if (bindingCache[n.id] && bindingCache[n.id].length > 0) {
+                    renderBindingRow(n.id, bindingCache[n.id]);
+                    updateExpandIcon(n.id, true);
+                } else {
                     loadBindings(n.id);
+                    updateExpandIcon(n.id, true);
                 }
             });
         })
@@ -592,6 +627,9 @@
         var bindingRow = document.getElementById('bindingRow-' + nodeId);
         if (!bindingRow) return;
         if (!expandedNodes[nodeId]) return;
+
+        // 展示层按搜索词过滤（缓存仍保留完整列表）
+        bindings = filterBindingsBySearch(bindings);
 
         if (bindings.length === 0) {
             bindingRow.innerHTML = '<td colspan="6" class="text-center text-muted py-2">当前节点无配置绑定</td>';
@@ -1201,6 +1239,9 @@
         document.getElementById('progressPercent').textContent = '0';
         document.getElementById('progressText').textContent = '初始化中...';
         document.getElementById('progressTree').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 等待任务启动...</div>';
+        // 完整日志跳转任务中心，按当前批次号筛选
+        document.getElementById('progressLogLink').href =
+            '/releases/history/?search=' + encodeURIComponent(batchNumber);
         document.getElementById('progressOverlay').style.display = 'flex';
 
         startProgressPolling([taskCenterId], batchNumber);
