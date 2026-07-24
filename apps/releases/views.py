@@ -1088,6 +1088,7 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
                     | Q(ip__icontains=term)
                     | Q(groups__name__icontains=term)
                     | Q(config_bindings__config__name__icontains=term)
+                    | Q(config_bindings__remote_path__icontains=term)
                 ).distinct()
         if environment:
             queryset = queryset.filter(environment=environment)
