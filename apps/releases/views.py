@@ -688,19 +688,28 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
         })
 
     def post(self, request, pk):
+        """创建回滚任务并立即异步执行（与批量回滚一致）"""
+        is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
         task = get_object_or_404(
             ReleaseTask.objects.select_related("node", "config", "binding", "operator"), pk=pk,
         )
         if task.node.is_locked:
-            messages.error(request, f"节点 {task.node.hostname} 已锁定，无法回滚")
-            return redirect("releases:center")
+            msg = f"节点 {task.node.hostname} 已锁定，无法回滚"
+            if is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=400)
+            messages.error(request, msg)
+            return redirect("releases:rollback", pk=task.pk)
 
         version_id = request.POST.get("version_id")
         if not version_id:
-            messages.error(request, "请选择要回滚的版本")
+            msg = "请选择要回滚的版本"
+            if is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=400)
+            messages.error(request, msg)
             return redirect("releases:rollback", pk=task.pk)
 
         version = get_object_or_404(BindingVersion, pk=version_id, binding=task.binding)
+        batch_number = generate_batch_number()
         new_task = ReleaseTask.objects.create(
             binding=task.binding,
             node=task.node,
@@ -710,11 +719,35 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
             remote_path=task.remote_path or (task.binding.remote_path if task.binding else ""),
             operator=request.user,
             status="pending",
-            batch_number=generate_batch_number(),
+            batch_number=batch_number,
         )
-        messages.success(request, f"回滚任务已创建，批次号: {new_task.batch_number}")
-        return redirect("releases:center")
 
+        task_center = TaskCenterTask.objects.create(
+            operation_type="release_rollback",
+            status="running",
+            source_batch=batch_number,
+            detail=f"回滚：{task.config.name} → {task.node.hostname} v{version.version}",
+            progress=0,
+            started_at=timezone.now(),
+            trigger_user=request.user,
+        )
+        thread = threading.Thread(
+            target=_run_release_tasks,
+            args=([new_task.id], task_center.id),
+            daemon=True,
+        )
+        thread.start()
+
+        if is_ajax:
+            return JsonResponse({
+                "success": True,
+                "batch_number": batch_number,
+                "task_center_id": task_center.id,
+                "message": f"回滚已开始，批次号: {batch_number}",
+            })
+
+        messages.success(request, f"回滚已开始，批次号: {batch_number}")
+        return redirect("releases:task_center_detail", pk=task_center.id)
 
 class ReleaseCenterView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
