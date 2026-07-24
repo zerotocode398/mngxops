@@ -20,7 +20,7 @@
                         <div class="col-md-10">
                             <div class="row mb-3">
                                 <div class="col-md-6">
-                                    <label class="form-label text-muted small">绑定节点</label>
+                                    <label class="form-label text-muted small"><i class="bi bi-server"></i> 绑定节点</label>
                                     <div>
                                         {% for binding in config.bindings.all %}
                                         <span class="badge bg-light text-dark me-1">{{ binding.node.hostname }}</span>
@@ -30,7 +30,7 @@
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label text-muted small">创建人</label>
+                                    <label class="form-label text-muted small"><i class="bi bi-person"></i> 创建人</label>
                                     <div>{{ config.created_by.username }}</div>
                                 </div>
                             </div>
@@ -44,11 +44,7 @@
                                     </label>
                                     {{ form.name }}
                                     {% if form.name.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.name.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.name.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -58,11 +54,7 @@
                                     </label>
                                     {{ form.default_remote_path }}
                                     {% if form.default_remote_path.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.default_remote_path.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.default_remote_path.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -72,11 +64,7 @@
                                     </label>
                                     {{ form.template_content }}
                                     {% if form.template_content.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.template_content.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.template_content.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -86,11 +74,7 @@
                                     </label>
                                     {{ form.description }}
                                     {% if form.description.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.description.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.description.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 

@@ -9,13 +9,42 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
+        :root {
+            --primary: #667eea;
+            --primary-gradient: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --info: #0dcaf0;
+            --dark: #212529;
+            --gray-100: #f8f9fa;
+            --gray-200: #e9ecef;
+            --gray-300: #dee2e6;
+            --gray-400: #ced4da;
+            --gray-500: #adb5bd;
+            --gray-600: #6c757d;
+            --gray-700: #495057;
+            --font-mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+            --br-sm: 4px;
+            --br-md: 6px;
+            --br-lg: 12px;
+            --fs-xs: 0.72rem;
+            --fs-sm: 0.78rem;
+            --fs-base: 0.82rem;
+            --fs-md: 0.88rem;
+            --fs-lg: 1rem;
+            --fs-xl: 1.1rem;
+            --transition-fast: 0.15s ease;
+            --transition-normal: 0.3s ease;
+        }
+
         body {
-            background-color: #f8f9fa;
+            background-color: var(--gray-100);
         }
 
         .sidebar {
             min-height: 100vh;
-            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            background: var(--primary-gradient);
             color: white;
         }
 
@@ -33,8 +62,8 @@
             color: rgba(255, 255, 255, 0.8);
             padding: 10px 20px;
             margin: 2px 10px;
-            border-radius: 8px;
-            transition: all 0.3s;
+            border-radius: var(--br-md);
+            transition: all var(--transition-normal);
             display: flex;
             align-items: center;
         }
@@ -54,7 +83,7 @@
         .sidebar .nav-link .submenu-toggle {
             margin-left: auto;
             font-size: 0.7rem;
-            transition: transform 0.25s;
+            transition: transform var(--transition-normal);
             opacity: 0.65;
         }
 
@@ -66,7 +95,7 @@
         .sidebar .submenu {
             overflow: hidden;
             max-height: 0;
-            transition: max-height 0.3s ease;
+            transition: max-height var(--transition-normal) ease;
         }
 
         .sidebar .submenu.show {
@@ -104,12 +133,11 @@
 
         .card-header {
             background: white;
-            border-bottom: 2px solid #f0f0f0;
-            font-weight: 600;
+            border-bottom: 2px solid var(--gray-200);
         }
 
         .btn {
-            border-radius: 6px;
+            border-radius: var(--br-md);
             padding: 8px 16px;
         }
 
@@ -118,12 +146,16 @@
         }
 
         .table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
+            background-color: var(--gray-100);
+            font-weight: 500;
         }
 
+        /* 全局表格数据行颜色（统一各模板 td code/small 的 #212529 覆盖） */
+        .table td code,
+        .table td small { color: var(--dark); }
+
         .action-card {
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform var(--transition-normal), box-shadow var(--transition-normal);
             cursor: pointer;
         }
 
@@ -134,12 +166,12 @@
 
         /* ========== 仪表盘统计卡片样式 ========== */
         .dashboard-stat-card {
-            border-radius: 10px;
+            border-radius: var(--br-md);
             padding: 20px;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform var(--transition-normal), box-shadow var(--transition-normal);
             cursor: pointer;
             background: #fff;
-            border: 1px solid #e9ecef;
+            border: 1px solid var(--gray-200);
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
         }
 
@@ -150,27 +182,27 @@
 
         /* 左边框颜色变体 */
         .stat-card-online {
-            border-left: 4px solid #28a745;
+            border-left: 4px solid var(--success);
         }
 
         .stat-card-offline {
-            border-left: 4px solid #dc3545;
+            border-left: 4px solid var(--danger);
         }
 
         .stat-card-warning {
-            border-left: 4px solid #ffc107;
+            border-left: 4px solid var(--warning);
         }
 
         .stat-card-info {
-            border-left: 4px solid #17a2b8;
+            border-left: 4px solid var(--info);
         }
 
         .stat-card-primary {
-            border-left: 4px solid #667eea;
+            border-left: 4px solid var(--primary);
         }
 
         .stat-card-default {
-            border-left: 4px solid #6c757d;
+            border-left: 4px solid var(--gray-600);
         }
 
         /* 统计数字 */
@@ -182,8 +214,80 @@
 
         .stat-label {
             font-size: 0.85rem;
-            color: #6c757d;
+            color: var(--gray-600);
             margin-top: 4px;
+        }
+
+        .stat-icon i {
+            font-size: 2rem;
+        }
+
+        .stat-card-primary .stat-icon i { color: var(--primary); }
+        .stat-card-online .stat-icon i { color: var(--success); }
+        .stat-card-offline .stat-icon i { color: var(--danger); }
+        .stat-card-info .stat-icon i { color: var(--info); }
+        .stat-card-warning .stat-icon i { color: var(--warning); }
+        .stat-card-default .stat-icon i { color: var(--gray-600); }
+
+        .icon-avatar {
+            font-size: 6.25rem;
+            color: var(--primary);
+        }
+
+        /* 终端/编译输出主题（升级中心等复用） */
+        .terminal-theme,
+        .nginx-v-output {
+            background: #1a1a2e;
+            color: #00ff88;
+            font-family: var(--font-mono);
+            font-size: var(--fs-base);
+            line-height: 1.6;
+            padding: 0.875rem 1.125rem;
+            border-radius: var(--br-md);
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .terminal-theme .param-highlight,
+        .nginx-v-output .param-highlight {
+            color: #ffd166;
+            background: rgba(255, 209, 102, 0.1);
+            padding: 1px 4px;
+            border-radius: var(--br-sm);
+        }
+
+        .nginx-v-output-alt {
+            background: #16213e;
+            color: #e9ecef;
+        }
+
+        /* 源码包拖拽上传区 */
+        .upload-dropzone {
+            border: 2px dashed var(--primary);
+            border-radius: var(--br-lg);
+            padding: 2.5rem;
+            text-align: center;
+            background: rgba(102, 126, 234, 0.08);
+            transition: all var(--transition-normal);
+            cursor: pointer;
+        }
+
+        .upload-dropzone:hover,
+        .upload-dropzone.dragover {
+            border-color: var(--primary);
+            background: rgba(102, 126, 234, 0.15);
+        }
+
+        .upload-dropzone-icon {
+            font-size: 3rem;
+            color: var(--primary);
+        }
+
+        .table-inline-progress {
+            height: 6px;
+            width: 4rem;
         }
 
         /* ========== 统一标签搜索组件 ========== */
@@ -202,12 +306,12 @@
             display: inline-flex;
             align-items: center;
             gap: 4px;
-            background: #667eea;
+            background: var(--primary);
             color: #fff;
-            border: 1px solid #5a6fd6;
-            border-radius: 4px;
+            border: 1px solid var(--primary);
+            border-radius: var(--br-sm);
             padding: 2px 8px;
-            font-size: 0.82rem;
+            font-size: var(--fs-base);
             white-space: nowrap;
             animation: tagFadeIn 0.2s ease;
         }
@@ -221,11 +325,11 @@
             font-size: 1.1rem;
             line-height: 1;
             margin-left: 2px;
-            transition: opacity 0.15s;
+            transition: opacity var(--transition-fast);
         }
         .tag-input-wrapper .tag-badge .tag-remove:hover {
             opacity: 1;
-            color: #ffc107;
+            color: var(--warning);
         }
         .tag-input-wrapper .tag-input-field {
             border: none;
@@ -237,7 +341,11 @@
             font-size: 0.9rem;
         }
         .tag-input-wrapper .tag-input-field::placeholder {
-            color: #adb5bd;
+            color: var(--gray-500);
+        }
+        .tag-input-wrapper .tag-badge.tag-badge-focus {
+            background: #fff3cd;
+            border-color: #ffe69c;
         }
 
         /* ========== Toast 消息提示 ========== */
@@ -255,7 +363,7 @@
             pointer-events: auto;
             min-width: 300px;
             max-width: 450px;
-            border-radius: 10px;
+            border-radius: var(--br-md);
             padding: 14px 20px;
             color: #fff;
             font-size: 0.9rem;
@@ -267,10 +375,10 @@
             position: relative;
             overflow: hidden;
         }
-        .toast-container-global .toast-item.toast-success { background: linear-gradient(135deg, #28a745, #20c997); }
-        .toast-container-global .toast-item.toast-danger { background: linear-gradient(135deg, #dc3545, #e4606d); }
-        .toast-container-global .toast-item.toast-warning { background: linear-gradient(135deg, #ffc107, #fd7e14); color: #212529; }
-        .toast-container-global .toast-item.toast-info { background: linear-gradient(135deg, #17a2b8, #0dcaf0); }
+        .toast-container-global .toast-item.toast-success { background: var(--success); }
+        .toast-container-global .toast-item.toast-danger { background: var(--danger); }
+        .toast-container-global .toast-item.toast-warning { background: var(--warning); color: var(--dark); }
+        .toast-container-global .toast-item.toast-info { background: var(--info); }
         .toast-container-global .toast-item.toast-removing {
             animation: toastSlideOut 0.3s ease forwards;
         }
@@ -289,7 +397,7 @@
             cursor: pointer;
             opacity: 0.6;
             font-size: 1rem;
-            transition: opacity 0.15s;
+            transition: opacity var(--transition-fast);
             background: none;
             border: none;
             color: inherit;
@@ -317,12 +425,136 @@
             display: flex; align-items: center; justify-content: center;
         }
         .async-progress-dialog {
-            background: #fff; border-radius: 12px; padding: 24px 28px;
+            background: #fff; border-radius: var(--br-lg); padding: 24px 28px;
             box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
             width: 500px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
         }
         .async-progress-dialog .progress { height: 8px; }
-        .async-progress-dialog .progress-bar { transition: width 0.3s ease; }
+        .async-progress-dialog .progress-bar { transition: width var(--transition-normal) ease; }
+
+        /* ========== 全局工具类 ========== */
+        .code-font { font-family: var(--font-mono); }
+        .fs-xs { font-size: var(--fs-xs); }
+        .fs-sm { font-size: var(--fs-sm); }
+        .fs-base { font-size: var(--fs-base); }
+        .fs-md { font-size: var(--fs-md); }
+        .fs-lg { font-size: var(--fs-lg); }
+
+        /* 按钮图标间距 */
+        .btn i, .btn-group i { margin-right: 4px; }
+
+        /* :active 点击反馈 */
+        .btn:active { transform: scale(0.97); transition: transform var(--transition-fast); }
+        .btn:disabled, .btn.disabled { opacity: 0.65; }
+
+        .badge-outline {
+            background: var(--gray-100);
+            color: var(--dark);
+            border: 1px solid var(--gray-300);
+        }
+        .btn:not(.btn-close):active { filter: brightness(0.9); }
+
+        /* 全局去粗体（特殊标题如 stat-number/step-badge 可自行覆盖） */
+        strong, b, .fw-bold { font-weight: 500; }
+
+        /* 全局数据表格 */
+        .data-table { table-layout: fixed; width: 100%; }
+        .data-table td { font-size: var(--fs-base); vertical-align: middle; }
+        .data-table thead th { font-weight: 500; white-space: nowrap; }
+
+        /* 空状态统一 */
+        .empty-state { text-align: center; padding: 2rem 1rem; }
+        .empty-state .bi { font-size: 3rem; color: var(--gray-400); }
+        .empty-state p { margin-top: 0.5rem; color: var(--gray-600); }
+
+        /* 表单规范 */
+        .form-text { color: var(--gray-600); font-size: var(--fs-sm); }
+        label .required, .form-label .required { color: var(--danger); margin-left: 2px; }
+
+        /* ========== 权限矩阵（角色创建/编辑） ========== */
+        .perm-matrix {
+            display: grid;
+            border: 1px solid var(--gray-300);
+            border-radius: var(--br-md);
+            overflow: hidden;
+        }
+        .perm-matrix-corner {
+            grid-column: 1;
+            grid-row: 1;
+            background-color: var(--gray-100);
+            font-weight: 500;
+            padding: 5px 8px;
+            border-bottom: 2px solid var(--gray-300);
+            border-right: 1px solid var(--gray-300);
+            font-size: var(--fs-sm);
+            line-height: 1.25;
+            display: flex;
+            align-items: center;
+        }
+        .perm-matrix-header {
+            background-color: var(--gray-100);
+            font-weight: 500;
+            padding: 5px 6px;
+            border-bottom: 2px solid var(--gray-300);
+            font-size: var(--fs-sm);
+            line-height: 1.25;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .perm-matrix-header .perm-btn-col {
+            font-size: 0.7rem;
+            padding: 0 5px;
+            line-height: 1.4;
+        }
+        .perm-matrix-row-header {
+            background-color: #fafbfc;
+            font-weight: 500;
+            padding: 4px 8px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: var(--fs-sm);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            line-height: 1.25;
+        }
+        .perm-matrix-cell {
+            padding: 4px 4px;
+            border-bottom: 1px solid #f0f0f0;
+            text-align: center;
+            transition: background-color var(--transition-fast);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.25;
+        }
+        .perm-matrix-cell:hover {
+            background-color: #f0f3ff;
+        }
+        .perm-btn-col { white-space: nowrap; }
+        .perm-btn-row {
+            font-size: 0.7rem;
+            padding: 0 5px;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+        .perm-btn-global {
+            font-size: 0.7rem;
+            padding: 0 5px;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+
+        /* 状态徽标统一（替代 .badge-status-* 自定义类） */
+        .badge-status-success { background: var(--success); color: #fff; }
+        .badge-status-danger { background: var(--danger); color: #fff; }
+        .badge-status-warning { background: var(--warning); color: var(--dark); }
+        .badge-status-info { background: var(--info); color: #fff; }
+        .badge-status-secondary { background: var(--gray-600); color: #fff; }
+
+        /* 弹窗规范 */
+        .modal-content { border: none; border-radius: var(--br-lg); box-shadow: 0 16px 48px rgba(0,0,0,0.15); }
     </style>
 </head>
 
@@ -347,7 +579,7 @@
                     {% if user|has_perm_code:"nodes.read" %}
                     <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-nodes">
                         <i class="bi bi-server"></i> 节点管理
-                        <span class="submenu-toggle">▶</span>
+                        <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-nodes">
                         <a class="nav-link" href="{% url 'nodes:list' %}" data-nav="nodes:list">
@@ -377,7 +609,7 @@
                     {% if user|has_perm_code:"releases.read" or user|has_perm_code:"releases.create" %}
                     <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-releases">
                         <i class="bi bi-rocket-takeoff"></i> 发布管理
-                        <span class="submenu-toggle">▶</span>
+                        <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-releases">
                         {% if user|has_perm_code:"releases.create" %}
@@ -405,7 +637,7 @@
                     {% if user|has_perm_code:"nodes.read" %}
                     <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-ops">
                         <i class="bi bi-tools"></i> 运维工具
-                        <span class="submenu-toggle">▶</span>
+                        <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-ops">
                         <a class="nav-link" href="{% url 'upgrade:list' %}" data-nav="upgrade">
@@ -421,7 +653,7 @@
                     {% if user|has_perm_code:"users.read" or user|has_perm_code:"roles.read" or user|has_perm_code:"teams.read" %}
                     <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-users">
                         <i class="bi bi-people"></i> 用户管理
-                        <span class="submenu-toggle">▶</span>
+                        <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-users">
                         {% if user|has_perm_code:"users.read" %}
@@ -446,7 +678,7 @@
                     {% if user|has_perm_code:"audit.read" %}
                     <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-audit">
                         <i class="bi bi-journal-text"></i> 审计日志
-                        <span class="submenu-toggle">▶</span>
+                        <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-audit">
                         <a class="nav-link" href="{% url 'audit:list' %}" data-nav="audit:list">
@@ -626,6 +858,25 @@
                 confirmModal.show();
             };
 
+            /** 确认后 POST 提交表单（删除等操作） */
+            window.submitPostConfirm = function(title, message, actionUrl) {
+                showConfirm(title, message, function() {
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = actionUrl;
+                    var csrf = document.querySelector('input[name=csrfmiddlewaretoken]');
+                    if (csrf) {
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'csrfmiddlewaretoken';
+                        input.value = csrf.value;
+                        form.appendChild(input);
+                    }
+                    document.body.appendChild(form);
+                    form.submit();
+                });
+            };
+
             window.showAlert = function(title, message) {
                 document.getElementById('mngxopsAlertTitle').textContent = title || '提示';
                 document.getElementById('mngxopsAlertBody').innerHTML = message || '';
@@ -771,7 +1022,51 @@
                 const allLinks = document.querySelectorAll('.sidebar .nav-link[data-nav]');
                 allLinks.forEach(function (link) { link.classList.remove('active'); });
                 const exactKey = currentAppName + ':' + currentUrlName;
-                let matchedLink = document.querySelector('.sidebar .nav-link[data-nav="' + exactKey + '"]');
+                const navFallbackMap = {
+                    'upgrade:center': 'upgrade',
+                    'upgrade:package_list': 'upgrade',
+                    'upgrade:package_upload': 'upgrade',
+                    'upgrade:history': 'upgrade',
+                    'upgrade:task_log': 'upgrade',
+                    'configs:sync_wizard': 'configs',
+                    'configs:binding_create': 'configs',
+                    'configs:binding_edit': 'configs',
+                    'configs:binding_edit_review': 'configs',
+                    'configs:binding_detail': 'configs',
+                    'configs:version_detail': 'configs',
+                    'configs:version_compare': 'configs',
+                    'configs:versions': 'configs',
+                    'configs:create': 'configs',
+                    'configs:edit': 'configs',
+                    'configs:detail': 'configs',
+                    'releases:task_center': 'releases:history',
+                    'releases:task_detail': 'releases:history',
+                    'releases:detail': 'releases:list',
+                    'releases:rollback': 'releases:list',
+                    'nodes:create': 'nodes:list',
+                    'nodes:edit': 'nodes:list',
+                    'nodes:delete': 'nodes:list',
+                    'nodes:group_create': 'nodes:group_list',
+                    'nodes:group_edit': 'nodes:group_list',
+                    'nodes:group_delete': 'nodes:group_list',
+                    'credentials:create': 'credentials',
+                    'credentials:edit': 'credentials',
+                    'credentials:delete': 'credentials',
+                    'users:create': 'users:list',
+                    'users:edit': 'users:list',
+                    'users:delete': 'users:list',
+                    'users:role_create': 'users:role_list',
+                    'users:role_edit': 'users:role_list',
+                    'users:role_delete': 'users:role_list',
+                    'users:team_create': 'users:team_list',
+                    'users:team_edit': 'users:team_list',
+                    'users:team_delete': 'users:team_list',
+                };
+                let navKey = exactKey;
+                if (navFallbackMap[exactKey]) {
+                    navKey = navFallbackMap[exactKey];
+                }
+                let matchedLink = document.querySelector('.sidebar .nav-link[data-nav="' + navKey + '"]');
                 if (!matchedLink) {
                     matchedLink = document.querySelector('.sidebar .nav-link[data-nav="' + currentAppName + '"]');
                 }

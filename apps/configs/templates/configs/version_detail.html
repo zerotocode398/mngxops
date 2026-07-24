@@ -57,7 +57,8 @@
                         <small class="text-muted ms-2">（{{ version.content_bytes }} 字节）</small>
                     </div>
                     <pre class="bg-light p-3 rounded border"
-                        style="max-height: 600px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; white-space: pre-wrap; word-wrap: break-word;">{{ version.content }}</pre>
+                        class="code-font"
+                        style="max-height: 600px; overflow-y: auto; font-size: 0.9rem; white-space: pre-wrap; word-wrap: break-word;">{{ version.content }}</pre>
 
                     {% if user|has_perm_code:"configs.update" and version.version != binding.current_version %}
                     <div class="d-flex justify-content-end mt-3">

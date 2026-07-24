@@ -7,69 +7,69 @@
     .settings-tabs {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 24px;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
     }
     .settings-tab-btn {
-        padding: 8px 18px;
-        border-radius: 10px;
-        border: 1px solid #e9ecef;
+        padding: 0.5rem 1.125rem;
+        border-radius: var(--br-md);
+        border: 1px solid var(--gray-200);
         background: #fff;
-        color: #6c757d;
+        color: var(--gray-600);
         font-weight: 500;
-        font-size: 0.85rem;
+        font-size: var(--fs-md);
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all var(--transition-fast);
         white-space: nowrap;
     }
     .settings-tab-btn:hover {
-        background: #f8f9fa;
-        border-color: #dee2e6;
-        color: #495057;
+        background: var(--gray-100);
+        border-color: var(--gray-300);
+        color: var(--gray-700);
     }
     .settings-tab-btn.active {
-        background: #667eea;
-        border-color: #667eea;
+        background: var(--primary);
+        border-color: var(--primary);
         color: #fff;
     }
 
     .setting-group {
-        margin-bottom: 28px;
+        margin-bottom: 1.75rem;
     }
     .setting-group-title {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 0 0 12px 0;
-        border-bottom: 2px solid #e9ecef;
-        margin-bottom: 16px;
-        font-size: 1rem;
-        font-weight: 600;
-        color: #212529;
+        gap: 0.625rem;
+        padding: 0 0 0.75rem 0;
+        border-bottom: 2px solid var(--gray-200);
+        margin-bottom: 1rem;
+        font-size: var(--fs-lg);
+        font-weight: 500;
+        color: var(--dark);
     }
     .setting-group-title .badge {
-        font-size: 0.78rem;
+        font-size: var(--fs-sm);
         font-weight: 500;
     }
     .setting-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 12px 16px;
-        border-radius: 8px;
-        transition: background-color 0.15s;
+        padding: 0.75rem 1rem;
+        border-radius: var(--br-md);
+        transition: background-color var(--transition-fast);
     }
     .setting-row:hover {
-        background-color: #f8f9fa;
+        background-color: var(--gray-100);
     }
     .setting-info {
         flex: 0 0 280px;
         display: flex;
         align-items: flex-start;
-        gap: 10px;
+        gap: 0.625rem;
     }
     .setting-info-icon {
-        font-size: 1.1rem;
+        font-size: var(--fs-lg);
         margin-top: 1px;
         opacity: 0.5;
     }
@@ -77,20 +77,20 @@
         line-height: 1.4;
     }
     .setting-info-text .label {
-        font-size: 0.88rem;
+        font-size: var(--fs-md);
         font-weight: 500;
-        color: #212529;
+        color: var(--dark);
     }
     .setting-info-text .desc {
-        font-size: 0.78rem;
-        color: #868e96;
+        font-size: var(--fs-sm);
+        color: var(--gray-600);
         display: block;
         margin-top: 2px;
     }
     .setting-control {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 0.625rem;
         flex: 1;
         max-width: 340px;
     }
@@ -99,10 +99,10 @@
         flex: 1;
     }
     .setting-unit {
-        font-size: 0.8rem;
-        color: #868e96;
+        font-size: var(--fs-base);
+        color: var(--gray-600);
         white-space: nowrap;
-        min-width: 32px;
+        min-width: 2rem;
     }
     .setting-control .form-switch {
         padding-left: 2.5em;
@@ -113,138 +113,139 @@
         display: flex;
         justify-content: flex-end;
         align-items: center;
-        gap: 12px;
-        padding-top: 16px;
-        border-top: 1px solid #f0f0f0;
-        margin-top: 8px;
+        gap: 0.75rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--gray-200);
+        margin-top: 0.5rem;
     }
     .setting-save-bar .btn {
-        padding: 6px 24px;
+        padding: 0.375rem 1.5rem;
         font-weight: 500;
     }
 
     .settings-empty {
         text-align: center;
-        padding: 80px 20px;
-        color: #adb5bd;
+        padding: 5rem 1.25rem;
+        color: var(--gray-500);
     }
     .settings-empty .empty-icon {
         font-size: 3.5rem;
-        margin-bottom: 16px;
+        margin-bottom: 1rem;
         display: block;
     }
     .settings-empty code {
-        background: #f0f3ff;
-        color: #667eea;
+        background: rgba(102, 126, 234, 0.1);
+        color: var(--primary);
         padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.82rem;
+        border-radius: var(--br-sm);
+        font-size: var(--fs-base);
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0"><i class="bi bi-sliders2"></i> 系统设置</h5>
-        {% if groups %}
-        <span class="badge bg-light text-dark border">{{ total_count }} 项配置</span>
-        {% endif %}
-    </div>
-
-    {% if groups %}
-    <!-- 分组标签 -->
-    <div class="settings-tabs" id="settingsTabs" role="tablist">
-        {% for group_name, items in groups.items %}
-        <button class="settings-tab-btn {% if group_name == active_group %}active{% endif %}"
-                id="tab-{{ forloop.counter }}"
-                data-bs-toggle="tab"
-                data-bs-target="#group-{{ forloop.counter }}"
-                type="button" role="tab"
-                data-group="{{ group_name }}">
-            {% if group_name == "仪表盘" %}📊
-            {% elif group_name == "节点管理" %}🔌
-            {% elif group_name == "凭证管理" %}🔑
-            {% elif group_name == "配置管理" %}📝
-            {% elif group_name == "发布管理" %}🚀
-            {% elif group_name == "审计日志" %}📜
-            {% elif group_name == "系统" %}🖥
-            {% else %}⚙{% endif %}
-            {{ group_name }}
-        </button>
-        {% endfor %}
-    </div>
-
-    <!-- 分组内容 -->
-    <div class="tab-content" id="settingsTabContent">
-        {% for group_name, items in groups.items %}
-        <div class="tab-pane fade {% if group_name == active_group %}show active{% endif %}"
-             id="group-{{ forloop.counter }}" role="tabpanel">
-            <div class="card">
-                <div class="card-body p-0">
-                    <form method="post" action="{% url 'settings:save' %}" class="settings-form">
-                        {% csrf_token %}
-                        <input type="hidden" name="group" value="{{ group_name }}">
-                        {% for setting in items %}
-                        <div class="setting-row {% if forloop.last %}border-bottom-0{% endif %}" style="border-bottom:1px solid #f0f0f0">
-                            <div class="setting-info">
-                                <span class="setting-info-icon">
-                                    {% if setting.type == "boolean" %}🔘
-                                    {% elif setting.type == "integer" %}#️⃣
-                                    {% else %}📄{% endif %}
-                                </span>
-                                <div class="setting-info-text">
-                                    <span class="label">{{ setting.label }}</span>
-                                    <span class="desc">{{ setting.description }}</span>
-                                </div>
-                            </div>
-                            <div class="setting-control">
-                                {% if setting.type == "integer" %}
-                                <input type="number" class="form-control form-control-sm"
-                                       name="{{ setting.key }}" value="{{ setting.value }}"
-                                       placeholder="{{ setting.placeholder }}">
-                                {% if setting.help_unit %}
-                                <span class="setting-unit">{{ setting.help_unit }}</span>
-                                {% endif %}
-                                {% elif setting.type == "boolean" %}
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox"
-                                           name="{{ setting.key }}" value="true"
-                                           {% if setting.value == "true" %}checked{% endif %}>
-                                </div>
-                                {% else %}
-                                <input type="text" class="form-control form-control-sm"
-                                       name="{{ setting.key }}" value="{{ setting.value }}"
-                                       placeholder="{{ setting.placeholder }}">
-                                {% if setting.help_unit %}
-                                <span class="setting-unit">{{ setting.help_unit }}</span>
-                                {% endif %}
-                                {% endif %}
-                            </div>
-                        </div>
-                        {% endfor %}
-                        <div class="setting-save-bar px-3">
-                            {% if can_update %}
-                            <button type="submit" class="btn btn-primary">
-                                <i class="bi bi-check-lg"></i> 保存{{ group_name }}设置
-                            </button>
-                            {% else %}
-                            <span class="text-muted"><i class="bi bi-lock"></i> 仅可查看，无修改权限</span>
-                            {% endif %}
-                        </div>
-                    </form>
-                </div>
-            </div>
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-sliders2"></i> 系统设置</h5>
+            {% if groups %}
+            <span class="badge badge-outline">{{ total_count }} 项配置</span>
+            {% endif %}
         </div>
-        {% endfor %}
+        <div class="card-body">
+            {% if groups %}
+            <div class="settings-tabs" id="settingsTabs" role="tablist">
+                {% for group_name, items in groups.items %}
+                <button class="settings-tab-btn {% if group_name == active_group %}active{% endif %}"
+                        id="tab-{{ forloop.counter }}"
+                        data-bs-toggle="tab"
+                        data-bs-target="#group-{{ forloop.counter }}"
+                        type="button" role="tab"
+                        data-group="{{ group_name }}">
+                    {% if group_name == "仪表盘" %}<i class="bi bi-bar-chart"></i>
+                    {% elif group_name == "节点管理" %}<i class="bi bi-plug"></i>
+                    {% elif group_name == "凭证管理" %}<i class="bi bi-key"></i>
+                    {% elif group_name == "配置管理" %}<i class="bi bi-pencil"></i>
+                    {% elif group_name == "发布管理" %}<i class="bi bi-rocket-takeoff"></i>
+                    {% elif group_name == "审计日志" %}<i class="bi bi-file-text"></i>
+                    {% elif group_name == "系统" %}<i class="bi bi-display"></i>
+                    {% else %}<i class="bi bi-gear"></i>{% endif %}
+                    {{ group_name }}
+                </button>
+                {% endfor %}
+            </div>
+
+            <div class="tab-content" id="settingsTabContent">
+                {% for group_name, items in groups.items %}
+                <div class="tab-pane fade {% if group_name == active_group %}show active{% endif %}"
+                     id="group-{{ forloop.counter }}" role="tabpanel">
+                    <div class="card border">
+                        <div class="card-body p-0">
+                            <form method="post" action="{% url 'settings:save' %}" class="settings-form">
+                                {% csrf_token %}
+                                <input type="hidden" name="group" value="{{ group_name }}">
+                                {% for setting in items %}
+                                <div class="setting-row {% if forloop.last %}border-bottom-0{% endif %}" style="border-bottom:1px solid var(--gray-200)">
+                                    <div class="setting-info">
+                                        <span class="setting-info-icon">
+                                            {% if setting.type == "boolean" %}<i class="bi bi-record-circle"></i>
+                                            {% elif setting.type == "integer" %}<i class="bi bi-hash"></i>
+                                            {% else %}<i class="bi bi-file-text"></i>{% endif %}
+                                        </span>
+                                        <div class="setting-info-text">
+                                            <span class="label">{{ setting.label }}</span>
+                                            <span class="desc">{{ setting.description }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="setting-control">
+                                        {% if setting.type == "integer" %}
+                                        <input type="number" class="form-control form-control-sm"
+                                               name="{{ setting.key }}" value="{{ setting.value }}"
+                                               placeholder="{{ setting.placeholder }}">
+                                        {% if setting.help_unit %}
+                                        <span class="setting-unit">{{ setting.help_unit }}</span>
+                                        {% endif %}
+                                        {% elif setting.type == "boolean" %}
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox"
+                                                   name="{{ setting.key }}" value="true"
+                                                   {% if setting.value == "true" %}checked{% endif %}>
+                                        </div>
+                                        {% else %}
+                                        <input type="text" class="form-control form-control-sm"
+                                               name="{{ setting.key }}" value="{{ setting.value }}"
+                                               placeholder="{{ setting.placeholder }}">
+                                        {% if setting.help_unit %}
+                                        <span class="setting-unit">{{ setting.help_unit }}</span>
+                                        {% endif %}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                <div class="setting-save-bar px-3">
+                                    {% if can_update %}
+                                    <button type="submit" class="btn btn-primary btn-sm">
+                                        <i class="bi bi-check-lg"></i> 保存{{ group_name }}设置
+                                    </button>
+                                    {% else %}
+                                    <span class="text-muted"><i class="bi bi-lock"></i> 仅可查看，无修改权限</span>
+                                    {% endif %}
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="settings-empty">
+                <span class="empty-icon"><i class="bi bi-gear"></i></span>
+                <p>暂无可配置项</p>
+                <p class="small">请运行 <code>seed_default_settings()</code> 初始化预设配置。</p>
+            </div>
+            {% endif %}
+        </div>
     </div>
-    {% else %}
-    <div class="settings-empty">
-        <span class="empty-icon">⚙️</span>
-        <p>暂无可配置项</p>
-        <p class="small">请运行 <code>seed_default_settings()</code> 初始化预设配置。</p>
-    </div>
-    {% endif %}
 </div>
 {% endblock %}
 
@@ -285,15 +286,14 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(function(resp) { return resp.json(); })
             .then(function(data) {
-                var ok = data.success || data.message;
                 if (data.success) {
-                    showToast('✅ 保存成功', 'success');
+                    showToast('<i class="bi bi-check-circle-fill"></i> 保存成功', 'success');
                 } else {
-                    showToast('❌ ' + (data.message || '保存失败'), 'danger');
+                    showToast('<i class="bi bi-x-circle-fill"></i> ' + (data.message || '保存失败'), 'danger');
                 }
             })
-            .catch(function(err) {
-                showToast('❌ 请求失败', 'danger');
+            .catch(function() {
+                showToast('<i class="bi bi-x-circle-fill"></i> 请求失败', 'danger');
             })
             .finally(function() {
                 btn.disabled = false;
@@ -301,20 +301,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
-
-    function showToast(message, type) {
-        var existing = document.querySelector('.settings-toast');
-        if (existing) existing.remove();
-        var toast = document.createElement('div');
-        toast.className = 'alert alert-' + type + ' alert-dismissible fade show position-fixed top-0 end-0 m-3 settings-toast shadow-sm';
-        toast.style.zIndex = '9999';
-        toast.style.minWidth = '260px';
-        toast.style.borderRadius = '10px';
-        toast.style.fontSize = '0.9rem';
-        toast.innerHTML = message + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-        document.body.appendChild(toast);
-        setTimeout(function() { toast.remove(); }, 3000);
-    }
 });
 </script>
 {% endblock %}

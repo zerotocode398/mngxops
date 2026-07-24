@@ -20,14 +20,14 @@
                     <form method="get" class="mb-3" id="searchForm" autocomplete="off">
                         <div class="row g-2">
                             <div class="col-md-8">
-                                <div class="tag-input-wrapper form-control" id="userSearchTagWrapper">
+                                <div class="tag-input-wrapper form-control form-control-sm" id="userSearchTagWrapper">
                                     <input type="text" class="tag-input-field" id="userSearchField"
                                         placeholder="搜索用户名或邮箱或姓名">
                                 </div>
                                 <input type="hidden" name="search" id="userSearchHidden" value="{{ search }}">
                             </div>
                             <div class="col-md-2">
-                                <select name="per_page" class="form-select" onchange="document.getElementById('searchForm').submit()">
+                                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('searchForm').submit()">
                                     {% for size in per_page_options %}
                                     <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
                                     {% endfor %}
@@ -35,16 +35,14 @@
                             </div>
                             <div class="col-md-2 d-grid">
                                 {% if search %}
-                                <a href="{% url 'users:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选">
-                                    <i class="bi bi-x-circle"></i>
-                                </a>
+                                <a href="{% url 'users:list' %}?per_page={{ per_page }}" class="btn btn-outline-secondary btn-sm" title="清空筛选"><i class="bi bi-x-circle"></i> 清空</a>
                                 {% endif %}
                             </div>
                         </div>
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm mb-0 user-table">
+                        <table class="table table-hover table-sm mb-0 data-table user-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 15%;">用户名</th>
@@ -112,42 +110,18 @@
                                         {% endif %}
                                         {% endif %}
                                         {% if request.user|has_perm_code:"users.delete" and u.username != request.user.username %}
-                                        <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal"
-                                            data-bs-target="#deleteModal{{ u.id }}">
+                                        <button type="button" class="btn btn-sm btn-danger"
+                                            onclick="submitPostConfirm('确认删除', '确定要删除用户 {{ u.username }} 吗？此操作不可恢复！', '{% url 'users:delete' u.username %}')">
                                             <i class="bi bi-trash"></i> 删除
                                         </button>
                                         {% endif %}
                                     </td>
                                 </tr>
-
-                                <div class="modal fade" id="deleteModal{{ u.id }}" tabindex="-1">
-                                    <div class="modal-dialog">
-                                        <div class="modal-content">
-                                            <div class="modal-header">
-                                                <h5 class="modal-title">确认删除</h5>
-                                                <button type="button" class="btn-close"
-                                                    data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                确定要删除用户 <strong>{{ u.username }}</strong> 吗？
-                                                <br><br>
-                                                <small class="text-muted">此操作不可恢复！</small>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary"
-                                                    data-bs-dismiss="modal">取消</button>
-                                                <form method="post" action="{% url 'users:delete' u.username %}">
-                                                    {% csrf_token %}
-                                                    <button type="submit" class="btn btn-danger">确认删除</button>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted">
-                                        <i class="bi bi-inbox"></i> 暂无用户数据
+                                    <td colspan="7" class="empty-state">
+                                        <i class="bi bi-inbox"></i>
+                                        <p>暂无用户数据</p>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -155,37 +129,7 @@
                         </table>
                     </div>
 
-                    {% if is_paginated %}
-                    <nav aria-label="Page navigation">
-                        <ul class="pagination justify-content-center">
-                            {% if page_obj.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">首页</a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">上一页</a>
-                            </li>
-                            {% endif %}
-
-                            <li class="page-item active">
-                                <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages
-                                    }}</span>
-                            </li>
-
-                            {% if page_obj.has_next %}
-                            <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">下一页</a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link"
-                                    href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">末页</a>
-                            </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endif %}
+                    {% include "includes/pagination.html" %}
                 </div>
             </div>
         </div>
@@ -195,27 +139,10 @@
 
 {% block extra_js %}
 <style>
-    .user-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .user-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .user-table td code,
-    .user-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .user-table td .badge {
         font-size: 0.78rem;
     }
-    .user-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
+    </style>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTagSearch('#userSearchTagWrapper', '#userSearchHidden', '#searchForm');

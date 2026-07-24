@@ -5,21 +5,7 @@
 {% block page_title %}<i class="bi bi-file-text"></i> 升级任务详情 - {{ task.node.hostname }}{% endblock %}
 
 {% block content %}
-<style>
-    .nginx-v-output {
-        background: #1a1a2e;
-        color: #00ff88;
-        font-family: 'Cascadia Code', 'Courier New', monospace;
-        font-size: 12px;
-        line-height: 1.5;
-        padding: 14px 18px;
-        border-radius: 8px;
-        max-height: 600px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        word-break: break-all;
-    }
-</style>
+<div class="container-fluid">
 
 <div class="mb-3">
     <a href="{% url 'upgrade:history' %}" class="btn btn-sm btn-outline-secondary">
@@ -34,7 +20,7 @@
     <div class="col-md-8">
         <div class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">📋 任务信息</h6>
+                <h5 class="mb-0"><i class="bi bi-list-task"></i> 任务信息</h5>
                 <span class="badge
                     {% if task.status == 'success' %}bg-success
                     {% elif task.status == 'failed' %}bg-danger
@@ -71,7 +57,7 @@
 
         <div class="card mb-3">
             <div class="card-header">
-                <h6 class="mb-0">⚙️ 编译参数</h6>
+                <h5 class="mb-0"><i class="bi bi-gear"></i> 编译参数</h5>
             </div>
             <div class="card-body">
                 {% if task.current_configure_opts %}
@@ -83,7 +69,7 @@
 
                 {% if task.target_configure_opts %}
                 <p class="fw-bold text-success small mb-1">调整后的编译参数:</p>
-                <div class="nginx-v-output" style="background: #16213e; color: #e9ecef; max-height: 200px;">
+                <div class="nginx-v-output nginx-v-output-alt" style="max-height: 200px;">
                     ./configure {{ task.target_configure_opts }}
                 </div>
                 {% endif %}
@@ -92,10 +78,10 @@
 
         <div class="card">
             <div class="card-header">
-                <h6 class="mb-0">📝 完整执行日志</h6>
+                <h5 class="mb-0"><i class="bi bi-file-text"></i> 完整执行日志</h5>
             </div>
             <div class="card-body p-0">
-                <div class="nginx-v-output" style="background: #0d1117; color: #c9d1d9; border-radius: 0; max-height: 500px; font-size: 11px;">
+                <div class="nginx-v-output code-font" style="border-radius: 0; max-height: 500px; font-size: var(--fs-xs);">
                     {{ task.log_output|default:"暂无日志" }}
                 </div>
             </div>
@@ -105,7 +91,7 @@
     <div class="col-md-4">
         <div class="card mb-3">
             <div class="card-header">
-                <h6 class="mb-0">📊 进度信息</h6>
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> 进度信息</h5>
             </div>
             <div class="card-body">
                 <div class="text-center">
@@ -124,15 +110,15 @@
         {% if task.status == 'success' or task.status == 'failed' %}
         <div class="card">
             <div class="card-header">
-                <h6 class="mb-0">🔧 操作</h6>
+                <h5 class="mb-0"><i class="bi bi-tools"></i> 操作</h5>
             </div>
             <div class="card-body">
                 {% if task.status == 'success' and user|has_perm_code:"upgrade.update" %}
-                <form method="post" action="{% url 'upgrade:task_rollback' task.id %}"
-                      onsubmit="return confirm('确定回滚 Nginx 到旧版本？回滚将恢复备份的二进制文件。');">
+                <form method="post" action="{% url 'upgrade:task_rollback' task.id %}" id="rollbackForm">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-warning w-100">
-                        <i class="bi bi-arrow-counterclockwise"></i> ↩ 回滚到旧版本
+                    <button type="button" class="btn btn-warning w-100"
+                        onclick="submitPostConfirm('确认回滚', '确定回滚 Nginx 到旧版本？回滚将恢复备份的二进制文件。', '{% url 'upgrade:task_rollback' task.id %}')">
+                        <i class="bi bi-arrow-counterclockwise"></i> 回滚到旧版本
                     </button>
                 </form>
                 <p class="text-muted small mt-2">
@@ -143,5 +129,6 @@
         </div>
         {% endif %}
     </div>
+</div>
 </div>
 {% endblock %}

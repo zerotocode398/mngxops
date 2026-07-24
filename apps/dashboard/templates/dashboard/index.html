@@ -6,27 +6,10 @@
 
 {% block extra_js %}
 <style>
-    .dashboard-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .dashboard-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .dashboard-table td code,
-    .dashboard-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .dashboard-table td .badge {
         font-size: 0.78rem;
     }
-    .dashboard-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
+    </style>
 <script>
     /** 统计卡片 30 秒自动轮询间隔（毫秒） */
     const POLL_INTERVAL_MS = 30000;
@@ -96,7 +79,7 @@
                     <div class="dashboard-stat-card stat-card-primary" onclick="window.location.href='{% url 'nodes:list' %}'">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3">
-                                <i class="bi bi-server" style="font-size: 2rem; color: #667eea;"></i>
+                                <i class="bi bi-server"></i>
                             </div>
                             <div>
                                 <div class="stat-number" id="stat-node-count">{{ node_count }}</div>
@@ -110,7 +93,7 @@
                     <div class="dashboard-stat-card stat-card-online" onclick="window.location.href='{% url 'nodes:list' %}?status=online'">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3">
-                                <i class="bi bi-wifi" style="font-size: 2rem; color: #28a745;"></i>
+                                <i class="bi bi-wifi"></i>
                             </div>
                             <div>
                                 <div class="stat-number text-success" id="stat-online-count">{{ online_count }}</div>
@@ -124,7 +107,7 @@
                     <div class="dashboard-stat-card {% if offline_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}" onclick="window.location.href='{% url 'nodes:list' %}?status=offline'">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3">
-                                <i class="bi bi-exclamation-triangle" style="font-size: 2rem; color: #dc3545;"></i>
+                                <i class="bi bi-exclamation-triangle"></i>
                             </div>
                             <div>
                                 <div class="stat-number text-danger" id="stat-offline-count">{{ offline_count }}</div>
@@ -138,7 +121,7 @@
                     <div class="dashboard-stat-card stat-card-primary" onclick="window.location.href='{% url 'nodes:group_list' %}'">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3">
-                                <i class="bi bi-collection" style="font-size: 2rem; color: #667eea;"></i>
+                                <i class="bi bi-collection"></i>
                             </div>
                             <div>
                                 <div class="stat-number">{{ node_group_count }}</div>
@@ -152,7 +135,7 @@
                     <div class="dashboard-stat-card stat-card-info" onclick="window.location.href='{% url 'releases:history' %}'">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3">
-                                <i class="bi bi-rocket-takeoff" style="font-size: 2rem; color: #17a2b8;"></i>
+                                <i class="bi bi-rocket-takeoff"></i>
                             </div>
                             <div>
                                 <div class="stat-number">{{ release_task_count }}</div>
@@ -166,7 +149,7 @@
                     <div class="dashboard-stat-card stat-card-info" onclick="window.location.href='{% url 'configs:list' %}?sync_status=modified'">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3">
-                                <i class="bi bi-send" style="font-size: 2rem; color: #17a2b8;"></i>
+                                <i class="bi bi-send"></i>
                             </div>
                             <div>
                                 <div class="stat-number text-info" id="stat-pending-push">{{ pending_push_count }}</div>
@@ -180,7 +163,7 @@
                     <div class="dashboard-stat-card {% if conflict_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}" onclick="window.location.href='{% url 'configs:list' %}'">
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3">
-                                <i class="bi bi-exclamation-diamond" style="font-size: 2rem; color: #ffc107;"></i>
+                                <i class="bi bi-exclamation-diamond"></i>
                             </div>
                             <div>
                                 <div class="stat-number text-warning" id="stat-conflict">{{ conflict_count }}</div>
@@ -265,7 +248,7 @@
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm mb-0 dashboard-table">
+                        <table class="table table-hover table-sm mb-0 data-table dashboard-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 12%;">批次号</th>
@@ -335,7 +318,7 @@
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm mb-0 dashboard-table">
+                        <table class="table table-hover table-sm mb-0 data-table dashboard-table">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 22%;">绑定</th>

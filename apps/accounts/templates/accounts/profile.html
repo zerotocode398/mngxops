@@ -3,7 +3,6 @@
 {% block title %}个人中心 - MngxOps{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -24,7 +23,7 @@
                         <div class="col-md-4">
                             <div class="text-center mb-4">
                                 <div class="avatar-placeholder">
-                                    <i class="bi bi-person-fill" style="font-size: 100px; color: #667eea;"></i>
+                                    <i class="bi bi-person-fill icon-avatar"></i>
                                 </div>
                                 <h4 class="mt-3">{{ user.username }}</h4>
                                 <p class="text-muted">{{ user.email }}</p>
@@ -98,5 +97,4 @@
             </div>
         </div>
     </div>
-</div>
 {% endblock %}

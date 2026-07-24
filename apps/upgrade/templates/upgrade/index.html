@@ -5,6 +5,7 @@
 {% block page_title %}<i class="bi bi-box-seam"></i> Nginx 编译升级{% endblock %}
 
 {% block content %}
+<div class="container-fluid">
 <div class="row mb-4">
     <div class="col-md-3">
         <div class="card dashboard-stat-card stat-card-primary">
@@ -99,7 +100,7 @@
             <div class="card-body p-0">
                 {% if packages %}
                 <div class="table-responsive">
-                    <table class="table table-hover table-sm mb-0 upgrade-table">
+                    <table class="table table-hover table-sm mb-0 data-table upgrade-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 45%;">包名称</th>
@@ -125,47 +126,22 @@
                     <a href="{% url 'upgrade:package_list' %}" class="text-decoration-none">查看全部 »</a>
                 </div>
                 {% else %}
-                <div class="text-center py-4 text-muted">
-                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
-                    <p class="mt-2">暂无源码包，请先上传</p>
+                <div class="empty-state">
+                    <i class="bi bi-inbox"></i>
+                    <p>暂无源码包，请先上传</p>
                 </div>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <style>
-    .upgrade-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .upgrade-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .upgrade-table td code,
-    .upgrade-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .upgrade-table td .badge {
         font-size: 0.78rem;
     }
-    .upgrade-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
-<script>
-// 初始化导航活跃状态
-document.addEventListener('DOMContentLoaded', function () {
-    const navLink = document.querySelector('.sidebar .nav-link[data-nav="upgrade"]');
-    if (navLink) {
-        navLink.classList.add('active');
-    }
-});
-</script>
+    </style>
 {% endblock %}

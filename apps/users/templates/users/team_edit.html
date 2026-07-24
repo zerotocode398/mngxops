@@ -22,11 +22,7 @@
                                     </label>
                                     {{ form.name }}
                                     {% if form.name.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.name.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.name.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -36,11 +32,7 @@
                                     </label>
                                     {{ form.description }}
                                     {% if form.description.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.description.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.description.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -75,11 +67,7 @@
                                         </div>
                                     </div>
                                     {% if form.roles.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.roles.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.roles.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                     <small class="text-muted">{{ form.roles.help_text }}</small>
                                 </div>

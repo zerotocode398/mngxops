@@ -27,11 +27,7 @@
                                     </label>
                                     {{ form.config }}
                                     {% if form.config.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.config.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.config.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -44,7 +40,7 @@
                                             <span id="noSelectedNodes" class="text-muted small">请选择目标节点</span>
                                         </div>
                                     </div>
-                                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#bindingSelectNodeModal">
                                         <i class="bi bi-search"></i> 选择节点
                                     </button>
                                     <small class="form-text text-muted ms-2">支持同时选择多个节点，将为每个节点创建独立绑定</small>
@@ -56,11 +52,7 @@
                                     </label>
                                     {{ form.remote_path }}
                                     {% if form.remote_path.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.remote_path.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.remote_path.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -70,11 +62,7 @@
                                     </label>
                                     {{ form.content }}
                                     {% if form.content.errors %}
-                                    <div class="text-danger mt-1">
-                                        {% for error in form.content.errors %}
-                                        <small>{{ error }}</small>
-                                        {% endfor %}
-                                    </div>
+                                    <div class="text-danger mt-1 small">{% for error in form.content.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                     {% endif %}
                                 </div>
 
@@ -96,11 +84,11 @@
 </div>
 
 <!-- 选择节点弹窗 -->
-<div class="modal fade" id="selectNodeModal" tabindex="-1" aria-labelledby="selectNodeModalLabel" aria-hidden="true">
+<div class="modal fade" id="bindingSelectNodeModal" tabindex="-1" aria-labelledby="bindingSelectNodeModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="selectNodeModalLabel">
+                <h5 class="modal-title" id="bindingSelectNodeModalLabel">
                     <i class="bi bi-search"></i> 选择节点
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -115,7 +103,7 @@
                 </div>
 
                 <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                    <table class="table table-sm table-bordered table-hover modal-node-table">
+                    <table class="table table-sm table-bordered table-hover data-table modal-node-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 5%;">
@@ -160,26 +148,8 @@
 
 {% block extra_js %}
 <style>
-    .modal-node-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .modal-node-table td {
-        font-size: 0.82rem;
-        font-weight: normal;
-        vertical-align: middle;
-    }
-    .modal-node-table td code,
-    .modal-node-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .modal-node-table td .badge {
         font-size: 0.78rem;
-    }
-    .modal-node-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
     }
     .modal-node-table tbody tr {
         cursor: pointer;
@@ -208,34 +178,19 @@
     }
 
     /* 标签搜索样式复用 base.html 定义 */
-    .badge-status-online {
-        background: #d4edda; color: #155724;
-        border: 1px solid #c3e6cb; padding: 3px 8px;
-        border-radius: 4px; font-size: 0.75rem;
-    }
-    .badge-status-offline {
-        background: #f8d7da; color: #721c24;
-        border: 1px solid #f5c6cb; padding: 3px 8px;
-        border-radius: 4px; font-size: 0.75rem;
-    }
-    .badge-status-unknown {
-        background: #e2e3e5; color: #383d41;
-        border: 1px solid #d6d8db; padding: 3px 8px;
-        border-radius: 4px; font-size: 0.75rem;
-    }
 </style>
 <script>
     var selectedNodeMap = {};
-    var selectNodeModal = null;
+    var bindingSelectNodeModal = null;
 
     document.addEventListener('DOMContentLoaded', function () {
         initSelectNodeTagInput();
-        selectNodeModal = new bootstrap.Modal(document.getElementById('selectNodeModal'));
+        bindingSelectNodeModal = new bootstrap.Modal(document.getElementById('bindingSelectNodeModal'));
 
         document.getElementById('selectAllInModal').addEventListener('change', toggleSelectAllInModal);
 
         // 弹窗打开时初始化
-        document.getElementById('selectNodeModal').addEventListener('shown.bs.modal', function () {
+        document.getElementById('bindingSelectNodeModal').addEventListener('shown.bs.modal', function () {
             var field = document.getElementById('selectNodeSearchField');
             var wrapper = document.getElementById('selectNodeTagWrapper');
             var hidden = document.getElementById('selectNodeSearchHidden');
@@ -368,11 +323,11 @@
                     var checked = selectedNodeMap[node.id] ? ' checked' : '';
                     var statusBadge = '';
                     if (node.status === 'online') {
-                        statusBadge = '<span class="badge-status-online"><i class="bi bi-check-circle-fill"></i> 在线</span>';
+                        statusBadge = '<span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> 在线</span>';
                     } else if (node.status === 'offline') {
-                        statusBadge = '<span class="badge-status-offline"><i class="bi bi-x-circle-fill"></i> 离线</span>';
+                        statusBadge = '<span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> 离线</span>';
                     } else {
-                        statusBadge = '<span class="badge-status-unknown"><i class="bi bi-question-circle-fill"></i> 未知</span>';
+                        statusBadge = '<span class="badge bg-secondary"><i class="bi bi-question-circle-fill"></i> 未知</span>';
                     }
 
                     var groupBadges = '';
@@ -510,7 +465,7 @@
             selectedNodeMap[nodeId] = true;
         });
         renderSelectedNodes();
-        if (selectNodeModal) { selectNodeModal.hide(); }
+        if (bindingSelectNodeModal) { bindingSelectNodeModal.hide(); }
     }
 </script>
 {% endblock %}

@@ -39,7 +39,7 @@
                     </div>
 
                     <form method="get" class="mb-3 d-flex justify-content-between align-items-center" id="perPageForm">
-                        <div class="tag-input-wrapper form-control" id="combinedTagSync" style="max-width: 360px;">
+                        <div class="tag-input-wrapper form-control form-control-sm" id="combinedTagSync" style="max-width: 360px;">
                             <input type="text" class="tag-input-field" id="combinedSearchSync"
                                 placeholder="搜索主机名或 IP 或节点组名称">
                         </div>
@@ -47,7 +47,7 @@
                         <input type="hidden" name="group_search" id="groupSearchHiddenSync" value="{{ group_search }}">
                         <div class="input-group" style="max-width: 220px;">
                             <label class="input-group-text" for="perPageSelect">每页</label>
-                            <select id="perPageSelect" name="per_page" class="form-select"
+                            <select id="perPageSelect" name="per_page" class="form-select form-select-sm"
                                 onchange="document.getElementById('perPageForm').submit()">
                                 {% for size in per_page_options %}
                                 <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条</option>
@@ -57,7 +57,7 @@
                     </form>
 
                     <div class="table-responsive">
-                        <table class="table table-hover table-sm sync-wizard-table">
+                        <table class="table table-hover table-sm data-table sync-wizard-table">
                             <thead>
                                 <tr class="sync-node-row">
                                     <th style="width: 4%;">
@@ -250,9 +250,9 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">
-                                        <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-                                        <p class="mt-2">暂无节点数据</p>
+                                    <td colspan="7" class="empty-state">
+                                        <i class="bi bi-inbox"></i>
+                                        <p>暂无节点数据</p>
                                         <a href="{% url 'nodes:create' %}" class="btn btn-primary btn-sm">
                                             <i class="bi bi-plus-circle"></i> 新增节点
                                         </a>
@@ -263,63 +263,7 @@
                         </table>
                     </div>
 
-                    {% if is_paginated %}
-                    <nav aria-label="Page navigation" class="mt-3">
-                        <ul class="pagination justify-content-center">
-                            {% if page_obj.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page=1&per_page={{ per_page }}">
-                                    <i class="bi bi-chevron-double-left"></i>
-                                </a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&per_page={{ per_page }}">
-                                    <i class="bi bi-chevron-left"></i>
-                                </a>
-                            </li>
-                            {% else %}
-                            <li class="page-item disabled">
-                                <span class="page-link"><i class="bi bi-chevron-double-left"></i></span>
-                            </li>
-                            <li class="page-item disabled">
-                                <span class="page-link"><i class="bi bi-chevron-left"></i></span>
-                            </li>
-                            {% endif %}
-
-                            {% for num in page_obj.paginator.page_range %}
-                            {% if page_obj.number == num %}
-                            <li class="page-item active">
-                                <span class="page-link">{{ num }}</span>
-                            </li>
-                            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ num }}&per_page={{ per_page }}">{{ num }}</a>
-                            </li>
-                            {% endif %}
-                            {% endfor %}
-
-                            {% if page_obj.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&per_page={{ per_page }}">
-                                    <i class="bi bi-chevron-right"></i>
-                                </a>
-                            </li>
-                            <li class="page-item">
-                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&per_page={{ per_page }}">
-                                    <i class="bi bi-chevron-double-right"></i>
-                                </a>
-                            </li>
-                            {% else %}
-                            <li class="page-item disabled">
-                                <span class="page-link"><i class="bi bi-chevron-right"></i></span>
-                            </li>
-                            <li class="page-item disabled">
-                                <span class="page-link"><i class="bi bi-chevron-double-right"></i></span>
-                            </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endif %}
+                    {% include "includes/pagination.html" with nav_class="mt-3" %}
                 </div>
             </div>
         </div>
@@ -327,47 +271,6 @@
 </div>
 
 <style>
-    .tag-input-wrapper {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 8px;
-        min-height: 38px;
-    }
-
-    .tag-input-field {
-        border: none;
-        outline: none;
-        flex: 1;
-        min-width: 100px;
-        background: transparent;
-    }
-
-    .tag-input-wrapper .tag-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        background: #667eea;
-        color: #fff;
-        border: 1px solid #5a6fd6;
-        border-radius: 4px;
-        padding: 2px 8px;
-        font-size: 0.82rem;
-        white-space: nowrap;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove {
-        cursor: pointer;
-        opacity: 0.7;
-        font-size: 1.1rem;
-        line-height: 1;
-        margin-left: 2px;
-    }
-    .tag-input-wrapper .tag-badge .tag-remove:hover {
-        opacity: 1;
-        color: #ffc107;
-    }
-
     .spin {
         animation: spin 1s linear infinite;
     }
@@ -383,15 +286,7 @@
 </style>
 <script>
     var MAX_BATCH = {{ batch_max_count|default:3 }};
-    var pollTimer = null;
     var syncAlertModalInstance = null;
-    var pollStartTime = null;
-    var POLL_TIMEOUT = 120000;
-    var MAX_POLL_FAILURES = 10;
-    var pollFailureCount = 0;
-    var taskJumpModal = null;
-    var taskJumpTimer = null;
-    var taskJumpCancelled = false;
 
     function initTagInput(wrapperId, fieldId, searchHiddenId, groupHiddenId) {
         var wrapper = document.getElementById(wrapperId);
@@ -467,16 +362,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-        taskJumpModal = new bootstrap.Modal(document.getElementById('taskJumpModal'));
-
-        document.getElementById('taskJumpModal').addEventListener('hidden.bs.modal', function () {
-            taskJumpCancelled = true;
-            if (taskJumpTimer) {
-                clearTimeout(taskJumpTimer);
-                taskJumpTimer = null;
-            }
-        });
-
         initTagInput('combinedTagSync', 'combinedSearchSync', 'searchHiddenSync', 'groupSearchHiddenSync');
 
         document.querySelectorAll('.sync-node-row').forEach(function (row) {
@@ -536,35 +421,6 @@
 
     function updateLoadingContent(html) {
         document.getElementById('syncAlertBody').innerHTML = html;
-    }
-
-    var batchSyncTimer = null;
-    var batchSyncSeconds = 0;
-
-    function stopBatchSyncTimer() {
-        if (batchSyncTimer) {
-            clearInterval(batchSyncTimer);
-            batchSyncTimer = null;
-        }
-    }
-
-    var progressTimerInterval = null;
-
-    function startProgressTimer() {
-        var startTime = Date.now();
-        stopProgressTimer();
-        document.getElementById('progressTimer').textContent = '已用时: 0秒';
-        progressTimerInterval = setInterval(function () {
-            var sec = Math.floor((Date.now() - startTime) / 1000);
-            document.getElementById('progressTimer').textContent = '已用时: ' + sec + '秒';
-        }, 1000);
-    }
-
-    function stopProgressTimer() {
-        if (progressTimerInterval) {
-            clearInterval(progressTimerInterval);
-            progressTimerInterval = null;
-        }
     }
 
     function hideLoading() {
@@ -640,137 +496,6 @@
             }
         });
         updateBatchCount();
-    }
-
-    function buildProgressHTML(nodeIds, hostnames) {
-        hostnames = hostnames || {};
-        var html = '';
-        var statusIcons = {
-            'waiting': '<i class="bi bi-clock text-muted"></i>',
-            'syncing': '<i class="bi bi-arrow-repeat spin text-primary"></i>',
-            'success': '<i class="bi bi-check-circle text-success"></i>',
-            'failed': '<i class="bi bi-x-circle text-danger"></i>'
-        };
-        var statusTexts = {
-            'waiting': '等待中',
-            'syncing': '同步中',
-            'success': '已完成',
-            'failed': '同步失败'
-        };
-        nodeIds.forEach(function(id) {
-            var displayName = hostnames[id] || ('节点 #' + id);
-            html += '<div class="d-flex align-items-center justify-content-between mb-2 p-2 border rounded" id="prog-node-' + id + '">';
-            html += '<div class="d-flex align-items-center">';
-            html += '<span class="me-2" id="prog-icon-' + id + '">' + statusIcons['waiting'] + '</span>';
-            html += '<span id="prog-name-' + id + '">' + displayName + '</span>';
-            html += '</div>';
-            html += '<div class="d-flex align-items-center">';
-            html += '<span class="badge bg-secondary me-2" id="prog-status-' + id + '">' + statusTexts['waiting'] + '</span>';
-            html += '<small class="text-muted" id="prog-time-' + id + '"></small>';
-            html += '</div>';
-            html += '</div>';
-            html += '<div id="prog-files-' + id + '" class="ms-4 mb-2" style="display:none;"></div>';
-        });
-        return html;
-    }
-
-    function updateProgressUI(progress) {
-        var statusIcons = {
-            'waiting': '<i class="bi bi-clock text-muted"></i>',
-            'syncing': '<i class="bi bi-arrow-repeat spin text-primary"></i>',
-            'success': '<i class="bi bi-check-circle text-success"></i>',
-            'failed': '<i class="bi bi-x-circle text-danger"></i>'
-        };
-        var statusTexts = {
-            'waiting': '等待中',
-            'syncing': '同步中',
-            'success': '已完成',
-            'failed': '同步失败'
-        };
-        var statusBadges = {
-            'waiting': 'bg-secondary',
-            'syncing': 'bg-primary',
-            'success': 'bg-success',
-            'failed': 'bg-danger'
-        };
-        var fileStatusIcons = {
-            'created': '<i class="bi bi-plus-circle text-success small"></i>',
-            'updated': '<i class="bi bi-pencil text-warning small"></i>',
-            'skipped': '<i class="bi bi-dash-circle text-muted small"></i>',
-            'orphaned': '<i class="bi bi-exclamation-triangle text-warning small"></i>',
-            'failed': '<i class="bi bi-exclamation-circle text-danger small"></i>'
-        };
-        var fileStatusTexts = {
-            'created': '新增',
-            'updated': '更新',
-            'skipped': '未变化',
-            'orphaned': '远程已删除',
-            'failed': '失败'
-        };
-
-        var allDone = progress.completed >= progress.total;
-
-        var detailEl = document.getElementById('progressDetail');
-        if (progress.detail) {
-            detailEl.textContent = progress.detail;
-            detailEl.style.display = 'block';
-        }
-
-        for (var nodeId in progress.nodes) {
-            var node = progress.nodes[nodeId];
-            var iconEl = document.getElementById('prog-icon-' + nodeId);
-            var nameEl = document.getElementById('prog-name-' + nodeId);
-            var statusEl = document.getElementById('prog-status-' + nodeId);
-            var timeEl = document.getElementById('prog-time-' + nodeId);
-            var filesEl = document.getElementById('prog-files-' + nodeId);
-
-            if (iconEl) iconEl.innerHTML = statusIcons[node.status] || statusIcons['waiting'];
-            if (nameEl) {
-                var nameText = node.hostname || ('节点 #' + nodeId);
-                if (node.total_files > 0 && node.status === 'syncing') {
-                    nameText += ' <small class="text-muted">(' + node.completed_files + '/' + node.total_files + ' 个文件)</small>';
-                } else if (node.total_files > 0) {
-                    nameText += ' <small class="text-muted">(' + node.total_files + ' 个文件)</small>';
-                }
-                nameEl.innerHTML = nameText;
-            }
-            if (statusEl) {
-                statusEl.textContent = statusTexts[node.status] || node.status;
-                statusEl.className = 'badge me-2 ' + (statusBadges[node.status] || 'bg-secondary');
-            }
-            if (timeEl && node.time > 0) {
-                timeEl.textContent = node.time + 's';
-            }
-            if (node.files && node.files.length > 0 && filesEl) {
-                var fileHtml = '<div class="border rounded p-2 mt-1" style="background:#f8f9fa; max-height:240px; overflow-y:auto;">';
-                fileHtml += '<div class="small fw-bold mb-1 text-muted">配置文件详情：</div>';
-                node.files.forEach(function(f) {
-                    var icon = fileStatusIcons[f.status] || fileStatusIcons['skipped'];
-                    var text = fileStatusTexts[f.status] || f.status;
-                    var rowClass = f.status === 'failed' ? 'text-danger' : '';
-                    fileHtml += '<div class="small ' + rowClass + ' mb-1">';
-                    fileHtml += '<span class="me-1">' + icon + '</span>';
-                    fileHtml += '<span class="me-1 badge bg-light text-dark border" style="font-size:0.65rem;">' + text + '</span>';
-                    fileHtml += '<code class="text-break" style="font-size:0.75rem;" title="' + f.path + '">' + f.path + '</code>';
-                    if (f.error) {
-                        fileHtml += '<div class="text-danger ps-4" style="font-size:0.7rem; word-break:break-all;">' + f.error + '</div>';
-                    }
-                    fileHtml += '</div>';
-                });
-                fileHtml += '</div>';
-                filesEl.innerHTML = fileHtml;
-                filesEl.style.display = 'block';
-            }
-        }
-
-        if (allDone) {
-            document.getElementById('progressSpinner').style.display = 'none';
-            document.getElementById('progressCloseBtn').disabled = false;
-            if (pollTimer) {
-                clearInterval(pollTimer);
-                pollTimer = null;
-            }
-        }
     }
 
     function submitFullSync(nodeId) {
@@ -882,117 +607,6 @@
         });
     }
 
-    function pollProgress(taskId, progressModal, syncType) {
-        syncType = syncType || 'batch';
-        pollStartTime = Date.now();
-        pollFailureCount = 0;
-        
-        pollTimer = setInterval(function() {
-            var elapsed = Date.now() - pollStartTime;
-            
-            if (elapsed > POLL_TIMEOUT) {
-                clearInterval(pollTimer);
-                pollTimer = null;
-                updateProgressError('同步超时（超过 ' + (POLL_TIMEOUT / 1000) + ' 秒），请检查网络连接或节点状态');
-                document.getElementById('progressCloseBtn').disabled = false;
-                document.getElementById('progressCloseBtn').textContent = '关闭';
-                document.getElementById('progressSpinner').style.display = 'none';
-                return;
-            }
-
-            fetch('{% url "configs:sync_progress" %}?task_id=' + encodeURIComponent(taskId))
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    pollFailureCount = 0;
-                    
-                    if (data.success && data.progress) {
-                        updateProgressUI(data.progress);
-                        if (data.progress.completed >= data.progress.total) {
-                            var totalCreated = 0, totalUpdated = 0, totalSkipped = 0, totalOrphaned = 0, totalFailed = 0;
-                            var summaryParts = [];
-                            var nodeName = '';
-                            for (var nid in data.progress.nodes) {
-                                var n = data.progress.nodes[nid];
-                                totalCreated += n.created || 0;
-                                totalUpdated += n.updated || 0;
-                                totalSkipped += n.skipped || 0;
-                                totalOrphaned += n.orphaned || 0;
-                                nodeName = n.hostname || ('节点 #' + nid);
-                                if (n.status === 'failed') totalFailed++;
-                            }
-                            if (totalCreated) summaryParts.push('新增 ' + totalCreated + ' 个');
-                            if (totalUpdated) summaryParts.push('更新 ' + totalUpdated + ' 个');
-                            if (totalOrphaned) summaryParts.push('远程已删除 ' + totalOrphaned + ' 个');
-                            if (totalSkipped) summaryParts.push(totalSkipped + ' 个未变化');
-                            if (totalFailed && syncType === 'batch') summaryParts.push(totalFailed + ' 个节点失败');
-
-                            if (syncType === 'single') {
-                                progressModal.hide();
-                                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-                                stopProgressTimer();
-
-                                var isFailed = (data.progress.status === 'failed');
-                                var statusIcon = isFailed ? 'bi-exclamation-triangle text-warning' : 'bi-check-circle text-success';
-                                var statusTitle = isFailed ? '同步失败' : '同步完成';
-                                var statusBg = isFailed ? 'alert-warning' : 'alert-success';
-                                var msg = data.progress.detail || (isFailed ? '同步失败' : '同步完成');
-
-                                showCustomModal(statusTitle,
-                                    '<div class="text-center mb-2"><i class="bi ' + statusIcon + ' fs-1"></i></div>' +
-                                    '<div class="alert ' + statusBg + ' mb-0 text-center">' +
-                                    msg +
-                                    '</div>',
-                                    true);
-                                document.getElementById('syncAlertClose').onclick = function() {
-                                    location.reload();
-                                };
-                            } else {
-                                var summaryHtml = summaryParts.length ? summaryParts.join('，') : '同步完成';
-                                document.getElementById('progressSummaryText').textContent = summaryHtml;
-                                document.getElementById('progressSummary').style.display = 'block';
-                                document.getElementById('progressCloseBtn').textContent = '完成';
-                                document.getElementById('progressCloseBtn').onclick = function() {
-                                    progressModal.hide();
-                                    location.reload();
-                                };
-                            }
-                            stopProgressTimer();
-                            document.getElementById('progressCloseBtn').disabled = false;
-                            document.getElementById('progressSpinner').style.display = 'none';
-                        }
-                    } else if (!data.success) {
-                        pollFailureCount++;
-                        if (pollFailureCount >= MAX_POLL_FAILURES) {
-                            clearInterval(pollTimer);
-                            pollTimer = null;
-                            updateProgressError('同步状态获取失败，请刷新页面重试');
-                            document.getElementById('progressCloseBtn').disabled = false;
-                            document.getElementById('progressCloseBtn').textContent = '关闭';
-                            document.getElementById('progressSpinner').style.display = 'none';
-                        }
-                    }
-                })
-                ['catch'](function(err) {
-                    pollFailureCount++;
-                    if (pollFailureCount >= MAX_POLL_FAILURES) {
-                        clearInterval(pollTimer);
-                        pollTimer = null;
-                        updateProgressError('网络错误：' + err.message + '，请刷新页面重试');
-                        document.getElementById('progressCloseBtn').disabled = false;
-                        document.getElementById('progressCloseBtn').textContent = '关闭';
-                        document.getElementById('progressSpinner').style.display = 'none';
-                    }
-                });
-        }, 800);
-    }
-
-    function updateProgressError(msg) {
-        stopProgressTimer();
-        document.getElementById('progressSummaryText').textContent = msg;
-        document.getElementById('progressSummary').className = 'alert alert-danger mt-3 mb-0';
-        document.getElementById('progressSummary').style.display = 'block';
-    }
-
     function submitPartialSync(nodeId) {
         var modal = document.getElementById('syncModal' + nodeId);
         var sourceChecks = modal.querySelectorAll('input[name="selected_paths"]');
@@ -1058,33 +672,6 @@
     });
 </script>
 
-<div class="modal fade" id="syncProgressModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="progressModalTitle"><i class="bi bi-cloud-upload me-2"></i>批量同步进度</h5>
-                <div class="d-flex align-items-center gap-2">
-                    <span id="progressSpinner" style="display:none;">
-                        <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
-                    </span>
-                    <span class="fw-bold text-muted" id="progressTimer">已用时: 0秒</span>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-2 small text-muted" id="progressDetail" style="display:none;"></div>
-                <div id="progressList"></div>
-                <div id="progressSummary" class="alert alert-info mt-3 mb-0" style="display:none;">
-                    <i class="bi bi-info-circle"></i> <span id="progressSummaryText"></span>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary" id="progressCloseBtn" disabled data-bs-dismiss="modal">同步中...</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <div class="modal fade" id="syncAlertModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -1115,45 +702,12 @@
         </div>
     </div>
 </div>
-
-<div class="modal fade" id="taskJumpModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-info-circle"></i> 任务已创建</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="taskJumpModalBody">后台任务已创建</div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">留在当前页</button>
-                <a href="#" class="btn btn-primary" id="taskJumpBtn">查看任务详情</a>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
 <style>
-    .sync-wizard-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .sync-wizard-table td {
-        font-size: 0.82rem;
-        vertical-align: middle;
-    }
-    .sync-wizard-table td code,
-    .sync-wizard-table td small {
-        font-size: inherit;
-        color: #212529;
-    }
     .sync-wizard-table td .badge {
         font-size: 0.78rem;
     }
-    .sync-wizard-table thead th {
-        font-weight: 500;
-        white-space: nowrap;
-    }
-</style>
+    </style>
 {% endblock %}

@@ -5,41 +5,22 @@
 {% block page_title %}<i class="bi bi-rocket-takeoff"></i> Nginx 升级中心{% endblock %}
 
 {% block content %}
-<!-- CSRF Token -->
+<div class="container-fluid">
 {% csrf_token %}
 
 <style>
-    .nginx-v-output {
-        background: #1a1a2e;
-        color: #00ff88;
-        font-family: 'Cascadia Code', 'Courier New', monospace;
-        font-size: 13px;
-        line-height: 1.6;
-        padding: 14px 18px;
-        border-radius: 8px;
-        max-height: 300px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        word-break: break-all;
-    }
-    .nginx-v-output .param-highlight {
-        color: #ffd166;
-        background: rgba(255, 209, 102, 0.1);
-        padding: 1px 4px;
-        border-radius: 3px;
-    }
-    .config-diff-preview .param-kept { background: #f8f9fa; color: #495057; padding: 3px 8px; border-radius: 3px; font-size: 0.85rem; margin: 1px 0; display: inline-block; }
-    .config-diff-preview .param-added { background: #e6ffed; color: #155724; padding: 3px 8px; border-radius: 3px; font-size: 0.85rem; margin: 1px 0; display: inline-block; }
-    .config-diff-preview .param-removed { background: #ffeef0; color: #721c24; text-decoration: line-through; padding: 3px 8px; border-radius: 3px; font-size: 0.85rem; margin: 1px 0; display: inline-block; }
-    .upgrade-step { display: flex; align-items: center; padding: 8px 12px; border-radius: 6px; margin-bottom: 4px; font-family: 'Courier New', monospace; font-size: 13px; }
+    .config-diff-preview .param-kept { background: var(--gray-100); color: var(--gray-700); padding: 3px 8px; border-radius: var(--br-sm); font-size: var(--fs-md); margin: 1px 0; display: inline-block; }
+    .config-diff-preview .param-added { background: #e6ffed; color: #155724; padding: 3px 8px; border-radius: var(--br-sm); font-size: var(--fs-md); margin: 1px 0; display: inline-block; }
+    .config-diff-preview .param-removed { background: #ffeef0; color: #721c24; text-decoration: line-through; padding: 3px 8px; border-radius: var(--br-sm); font-size: var(--fs-md); margin: 1px 0; display: inline-block; }
+    .upgrade-step { display: flex; align-items: center; padding: 8px 12px; border-radius: var(--br-md); margin-bottom: 4px; font-family: var(--font-mono); font-size: var(--fs-base); }
     .upgrade-step.success { background: #f0fff4; color: #155724; }
     .upgrade-step.running { background: #fff8e1; color: #856404; animation: pulse 1.5s infinite; }
     .upgrade-step.failed { background: #fff5f5; color: #721c24; }
-    .upgrade-step.pending { background: #f8f9fa; color: #6c757d; }
+    .upgrade-step.pending { background: var(--gray-100); color: var(--gray-600); }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-    .module-checkbox-group { max-height: 250px; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 6px; padding: 10px; }
+    .module-checkbox-group { max-height: 250px; overflow-y: auto; border: 1px solid var(--gray-200); border-radius: var(--br-md); padding: 10px; }
     .module-checkbox-group label { display: block; padding: 3px 0; cursor: pointer; }
-    .progress-bar { transition: width 0.3s ease; }
+    .progress-bar { transition: width var(--transition-normal); }
 </style>
 
 <div class="row">
@@ -48,13 +29,13 @@
         <!-- 第1步：选择节点和源码包 -->
         <div class="card mb-3" id="step1">
             <div class="card-header">
-                <h6 class="mb-0"><span class="badge bg-primary me-2">1</span> 选择目标节点 & 源码包</h6>
+                <h5 class="mb-0"><span class="badge bg-primary me-2">1</span> 选择目标节点 & 源码包</h5>
             </div>
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">目标节点</label>
-                        <select class="form-select" id="selectNode">
+                        <select class="form-select form-select-sm" id="selectNode">
                             <option value="">-- 选择在线节点 --</option>
                             {% for node in nodes %}
                             <option value="{{ node.id }}"
@@ -62,7 +43,7 @@
                                     data-ip="{{ node.ip }}"
                                     data-env="{{ node.get_environment_display }}"
                                     data-nginx-version="{{ node.nginx_version }}">
-                                {{ node.hostname }} ({{ node.ip }}) 🟢{{ node.get_environment_display }}
+                                {{ node.hostname }} ({{ node.ip }}) <i class="bi bi-circle-fill text-success small"></i> {{ node.get_environment_display }}
                                 {% if node.nginx_version %} | {{ node.nginx_version }}{% endif %}
                             </option>
                             {% endfor %}
@@ -70,7 +51,7 @@
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">源码包</label>
-                        <select class="form-select" id="selectPackage">
+                        <select class="form-select form-select-sm" id="selectPackage">
                             <option value="">-- 选择源码包 --</option>
                             {% for pkg in packages %}
                             <option value="{{ pkg.id }}"
@@ -93,7 +74,7 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">升级模式</label>
-                        <select class="form-select" id="upgradeMode">
+                        <select class="form-select form-select-sm" id="upgradeMode">
                             <option value="upgrade">平滑升级（同路径）</option>
                             <option value="install">全新安装（无旧版本）</option>
                             <option value="switch_path">切换路径升级</option>
@@ -110,7 +91,7 @@
         <!-- 第2步：当前编译参数展示 -->
         <div class="card mb-3 d-none" id="step2">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0"><span class="badge bg-primary me-2">2</span> 当前编译参数（nginx -V）</h6>
+                <h5 class="mb-0"><span class="badge bg-primary me-2">2</span> 当前编译参数（nginx -V）</h5>
                 <button class="btn btn-sm btn-outline-secondary" onclick="fetchNginxV()">
                     <i class="bi bi-arrow-repeat"></i> 重新获取
                 </button>
@@ -124,7 +105,7 @@
         <!-- 第3步：模块增减 -->
         <div class="card mb-3 d-none" id="step3">
             <div class="card-header">
-                <h6 class="mb-0"><span class="badge bg-primary me-2">3</span> 增量调整编译参数</h6>
+                <h5 class="mb-0"><span class="badge bg-primary me-2">3</span> 增量调整编译参数</h5>
             </div>
             <div class="card-body">
                 <div class="row">
@@ -149,7 +130,7 @@
                         </div>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">➖ 移除现有参数</label>
+                        <label class="form-label fw-bold"><i class="bi bi-dash-circle"></i> 移除现有参数</label>
                         <div class="module-checkbox-group" id="removeModulesGroup">
                             <p class="text-muted small">勾选将从编译参数中移除</p>
                         </div>
@@ -180,7 +161,7 @@
         <!-- 第4步：编译参数预览 -->
         <div class="card mb-3 d-none" id="step4">
             <div class="card-header">
-                <h6 class="mb-0"><span class="badge bg-primary me-2">4</span> 最终编译命令预览</h6>
+                <h5 class="mb-0"><span class="badge bg-primary me-2">4</span> 最终编译命令预览</h5>
             </div>
             <div class="card-body">
                 <div class="nginx-v-output" id="finalConfigPreview" style="background: #16213e; color: #e9ecef; max-height: 400px;">
@@ -193,7 +174,7 @@
         <!-- 第5步：确认升级 -->
         <div class="card mb-3 d-none" id="step5">
             <div class="card-header">
-                <h6 class="mb-0"><span class="badge bg-success me-2">5</span> 确认并开始升级</h6>
+                <h5 class="mb-0"><span class="badge bg-success me-2">5</span> 确认并开始升级</h5>
             </div>
             <div class="card-body">
                 <div id="upgradeSummary" class="mb-3 p-3 bg-light rounded"></div>
@@ -203,7 +184,7 @@
                     </label>
                 </div>
                 <button class="btn btn-success btn-lg" id="btnStartUpgrade" disabled onclick="startUpgrade()">
-                    <i class="bi bi-rocket-takeoff"></i> 🚀 开始升级
+                    <i class="bi bi-rocket-takeoff"></i> 开始升级
                 </button>
             </div>
         </div>
@@ -213,7 +194,7 @@
     <div class="col-md-5">
         <div class="card sticky-top" style="top: 20px;">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0"><i class="bi bi-speedometer2"></i> 升级执行进度</h6>
+                <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 升级执行进度</h5>
                 <span id="progressPercent" class="badge bg-primary">0%</span>
             </div>
             <div class="card-body">
@@ -221,23 +202,24 @@
                     <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%"></div>
                 </div>
                 <div id="upgradeSteps">
-                    <div class="upgrade-step pending">⏳ 等待开始...</div>
+                    <div class="upgrade-step pending"><i class="bi bi-hourglass-split"></i> 等待开始...</div>
                 </div>
                 <div id="upgradeError" class="alert alert-danger d-none mt-3"></div>
                 <div class="mt-3 d-flex gap-2">
                     <button class="btn btn-sm btn-outline-danger d-none" id="btnCancel" onclick="cancelUpgrade()">
-                        ⏹ 取消升级
+                        <i class="bi bi-stop-circle"></i> 取消升级
                     </button>
                     <button class="btn btn-sm btn-outline-warning d-none" id="btnRollback" onclick="rollbackUpgrade()">
-                        ↩ 回滚升级
+                        <i class="bi bi-rocket-takeoff"></i> 回滚升级
                     </button>
                 </div>
-                <div class="nginx-v-output mt-3" id="logOutput" style="background: #0d1117; color: #c9d1d9; max-height: 350px; font-size: 11px; display: none;">
+                <div class="nginx-v-output mt-3 d-none" id="logOutput" style="max-height: 350px;">
                     暂无日志...
                 </div>
             </div>
         </div>
     </div>
+</div>
 </div>
 {% endblock %}
 
@@ -269,10 +251,10 @@ function fetchNginxV() {
     .then(data => {
         document.getElementById('btnFetchConfig').disabled = false;
         if (!data.success) {
-            document.getElementById('fetchStatus').innerHTML = `<span class="text-danger">❌ ${data.message}</span>`;
+            document.getElementById('fetchStatus').innerHTML = `<span class="text-danger"><i class="bi bi-x-circle-fill text-danger"></i>${data.message}</span>`;
             return;
         }
-        document.getElementById('fetchStatus').innerHTML = '<span class="text-success">✅ 获取成功</span>';
+        document.getElementById('fetchStatus').innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill text-success"></i> 获取成功</span>';
         nginxVData = data.data;
 
         // 显示当前配置
@@ -303,7 +285,7 @@ function fetchNginxV() {
     })
     .catch(err => {
         document.getElementById('btnFetchConfig').disabled = false;
-        document.getElementById('fetchStatus').innerHTML = `<span class="text-danger">❌ 网络错误: ${err.message}</span>`;
+        document.getElementById('fetchStatus').innerHTML = `<span class="text-danger"><i class="bi bi-x-circle-fill"></i> 网络错误: ${err.message}</span>`;
     });
 }
 
@@ -391,7 +373,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ========== 第5步：开始升级 ==========
 function startUpgrade() {
-    if (!confirm('确认开始 Nginx 编译升级？升级将在后台执行。')) return;
+    showConfirm('确认升级', '确认开始 Nginx 编译升级？升级将在后台执行。', function () {
+        doStartUpgrade();
+    });
+}
+
+function doStartUpgrade() {
 
     const nodeId = document.getElementById('selectNode').value;
     const pkgId = document.getElementById('selectPackage').value;
@@ -435,7 +422,7 @@ function startUpgrade() {
     .then(data => {
         if (!data.success) { alert('创建失败: ' + data.message); return; }
         currentTaskId = data.task_id;
-        document.getElementById('logOutput').style.display = 'block';
+        document.getElementById('logOutput').classList.remove('d-none');
         startPolling(data.progress_url);
         document.getElementById('btnCancel').classList.remove('d-none');
         document.getElementById('btnStartUpgrade').disabled = true;
@@ -504,33 +491,33 @@ function updateStepDisplay(data) {
     const isCancelled = data.status === 'cancelled';
 
     steps.forEach(s => {
-        let cls = 'pending', icon = '⏳';
+        let cls = 'pending', icon = '<i class="bi bi-hourglass-split"></i>';
         // 根据进度百分比判断步骤状态
         const stepProgress = s.step * 11;
         if (isSuccess || stepProgress <= data.progress) {
-            cls = 'success'; icon = '✅';
+            cls = 'success'; icon = '<i class="bi bi-check-circle-fill"></i>';
         } else if (s.key === data.status) {
-            cls = 'running'; icon = '🔄';
+            cls = 'running'; icon = '<i class="bi bi-arrow-repeat"></i>';
         }
 
         if (isFailed && data.progress < stepProgress) {
-            cls = 'pending'; icon = '⏳';
+            cls = 'pending'; icon = '<i class="bi bi-hourglass-split"></i>';
         }
         if (isFailed && s.key === data.status) {
-            cls = 'failed'; icon = '❌';
+            cls = 'failed'; icon = '<i class="bi bi-x-circle-fill"></i>';
         }
         if (isCancelled && data.progress < stepProgress) {
-            cls = 'pending'; icon = '⏳';
+            cls = 'pending'; icon = '<i class="bi bi-hourglass-split"></i>';
         }
 
         html += `<div class="upgrade-step ${cls}">${icon} ${s.step}. ${s.label}</div>`;
     });
 
     if (isSuccess) {
-        html += '<div class="upgrade-step success">✅ 🎉 Nginx 编译升级成功完成!</div>';
+        html += '<div class="upgrade-step success"><i class="bi bi-check-circle-fill"></i> <i class="bi bi-emoji-smile"></i> Nginx 编译升级成功完成!</div>';
     }
     if (isFailed) {
-        html += `<div class="upgrade-step failed">❌ 升级失败: ${data.error_message || '未知错误'}</div>`;
+        html += `<div class="upgrade-step failed"><i class="bi bi-x-circle-fill"></i> 升级失败: ${data.error_message || '未知错误'}</div>`;
     }
 
     document.getElementById('upgradeSteps').innerHTML = html;
@@ -539,22 +526,23 @@ function updateStepDisplay(data) {
 // ========== 取消回滚 ==========
 function cancelUpgrade() {
     if (!currentTaskId) return;
-    if (!confirm('确定取消升级任务？')) return;
-    fetch(`{% url 'upgrade:task_cancel' 0 %}`.replace('0', currentTaskId), {
-        method: 'POST',
-        headers: { 'X-CSRFToken': getCSRFToken(), 'X-Requested-With': 'XMLHttpRequest' }
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) { document.getElementById('btnCancel').classList.add('d-none'); }
-        else { alert(data.message); }
+    showConfirm('确认取消', '确定取消升级任务？', function () {
+        fetch(`{% url 'upgrade:task_cancel' 0 %}`.replace('0', currentTaskId), {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCSRFToken(), 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) { document.getElementById('btnCancel').classList.add('d-none'); }
+            else { alert(data.message); }
+        });
     });
 }
 
 function rollbackUpgrade() {
     if (!currentTaskId) return;
-    if (!confirm('确定回滚 Nginx 到旧版本？')) return;
-    fetch(`{% url 'upgrade:task_rollback' 0 %}`.replace('0', currentTaskId), {
+    showConfirm('确认回滚', '确定回滚 Nginx 到旧版本？', function () {
+        fetch(`{% url 'upgrade:task_rollback' 0 %}`.replace('0', currentTaskId), {
         method: 'POST',
         headers: { 'X-CSRFToken': getCSRFToken(), 'X-Requested-With': 'XMLHttpRequest' }
     })
@@ -562,6 +550,7 @@ function rollbackUpgrade() {
     .then(data => {
         if (data.success) { alert('回滚成功'); location.reload(); }
         else { alert(data.message); }
+    });
     });
 }
 

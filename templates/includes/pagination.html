@@ -1,0 +1,34 @@
+{% comment %}
+统一分页组件 — 仅页码导航（不含每页条数选择器）
+参数: page_obj, nav_class(可选), extra_class(可选，如 pagination-sm)
+{% endcomment %}
+{% load config_filters %}
+{% if page_obj and page_obj.paginator.num_pages > 1 %}
+<nav aria-label="分页导航"{% if nav_class %} class="{{ nav_class }}"{% endif %}>
+    <ul class="pagination justify-content-center{% if extra_class %} {{ extra_class }}{% endif %}">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="{% pagination_url 1 %}" title="首页"><i class="bi bi-chevron-double-left"></i> 首页</a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="{% pagination_url page_obj.previous_page_number %}" title="上一页"><i class="bi bi-chevron-left"></i> 上一页</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-double-left"></i> 首页</span></li>
+        <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left"></i> 上一页</span></li>
+        {% endif %}
+        <li class="page-item disabled"><span class="page-link px-3">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="{% pagination_url page_obj.next_page_number %}" title="下一页">下一页 <i class="bi bi-chevron-right"></i></a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="{% pagination_url page_obj.paginator.num_pages %}" title="末页">末页 <i class="bi bi-chevron-double-right"></i></a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">下一页 <i class="bi bi-chevron-right"></i></span></li>
+        <li class="page-item disabled"><span class="page-link">末页 <i class="bi bi-chevron-double-right"></i></span></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}

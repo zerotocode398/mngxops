@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}500 - 服务器错误{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-exclamation-triangle text-warning" style="font-size: 4rem;"></i>
+                <h3 class="mt-4">500</h3>
+                <p class="text-muted">服务器内部错误</p>
+                <p class="small text-muted">抱歉，服务器遇到问题，请稍后重试</p>
+                <a href="{% url 'dashboard:index' %}" class="btn btn-primary mt-3">返回首页</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
