@@ -26,6 +26,7 @@ from utils.ssh import (
     backup_remote_file,
     upload_file_via_sftp,
     restore_backup_file,
+    remove_remote_file,
     check_remote_file_size,
     check_remote_file_md5,
     copy_remote_file,
@@ -121,15 +122,18 @@ class ReleaseExecutorMixin:
             self._record_history(task, action, task.result)
             return False, f"配置 {config.name} {version_label} 内容为空，无法发布"
 
-        # 备份
+        # 备份（远程文件不存在时跳过，支持首次发布）
         add_log("正在备份原配置...")
         success, backup_result = backup_remote_file(file_path=remote_path, **kwargs)
         if success:
-            add_log(f"备份成功: {backup_result}")
-            backup_size_ok, backup_size_msg = check_remote_file_size(file_path=backup_result, **kwargs)
-            add_log(f"备份文件大小: {backup_size_msg}")
-            if not backup_size_ok:
-                add_log("警告: 备份文件为空，回滚将无法恢复原配置")
+            if backup_result:
+                add_log(f"备份成功: {backup_result}")
+                backup_size_ok, backup_size_msg = check_remote_file_size(file_path=backup_result, **kwargs)
+                add_log(f"备份文件大小: {backup_size_msg}")
+                if not backup_size_ok:
+                    add_log("警告: 备份文件为空，回滚将无法恢复原配置")
+            else:
+                add_log("远程文件不存在，跳过备份（首次发布）")
         else:
             add_log(f"备份失败: {backup_result}")
             task.status = "failed"
@@ -264,6 +268,14 @@ class ReleaseExecutorMixin:
         )
 
     def _rollback_backup(self, backup_result, config_file_path, kwargs, log_lines):
+        """发布失败回滚：有备份则还原，无备份（首次发布）则删除新文件"""
+        if not backup_result:
+            ok, msg = remove_remote_file(file_path=config_file_path, **kwargs)
+            if ok:
+                log_lines.append("无原备份，已清理新上传文件")
+            else:
+                log_lines.append(f"无原备份，清理新文件失败: {msg}")
+            return
         backup_size_ok, backup_size_msg = check_remote_file_size(file_path=backup_result, **kwargs)
         if not backup_size_ok:
             log_lines.append("警告: 备份文件为空，跳过回滚")

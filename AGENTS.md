@@ -924,3 +924,41 @@ Q47
     查询框输入配置名称条件标签后搜索，无反应
  ✅ 已修复：API 增加 remote_path 搜索；有搜索词时自动展开本页节点，renderBindingRow 按配置名/路径过滤展示
 ```
+
+Q48
+```text
+发布中心
+    新建配置标签绑定节点后发布。会提示
+    [14:48:47] 正在测试 SSH 连接...
+[14:48:47] SSH 连接测试通过 ✓
+[14:48:47] 开始发布: baidu v3 → lsj
+[14:48:47] 目标路径: /etc/nginx/conf.d/baidu.com
+[14:48:47] 正在备份原配置...
+[14:48:48] 备份失败: 备份失败: cp: cannot stat '/etc/nginx/conf.d/baidu.com': No such file or directory
+    因为是新增，远程没有此配置
+ ✅ 已修复：backup_remote_file 对不存在的远程文件跳过备份；首次发布失败回滚改为 rm 清理新文件
+```
+
+Q49
+```text
+发布历史
+    回滚配置点击版本号自定义弹窗显示的“加载失败”
+ ✅ 已修复：rollback.html 版本预览适配 VersionContentAPIView 扁平 JSON（与 Q17/发布中心一致）
+```
+
+Q50
+```text
+发布回滚配置
+    发布历史配置回滚后，其对应的状态变成了 pending。
+    但是我在发布中心里面看不到任务。
+```
+
+Qxx
+```text
+配置备份
+    能否以节点为粒度
+    现在所有配置都在 /opt/app/mascloud/ansible/mngxops/ 下面
+    当配置重名是会覆盖
+    /opt/app/mascloud/ansible/mngxops/< hostname >
+    这样是否可以？
+``
