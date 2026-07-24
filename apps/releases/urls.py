@@ -47,6 +47,11 @@ urlpatterns = [
         views.ReleaseBatchRollbackView.as_view(),
         name="batch_rollback",
     ),
+    path(
+        "api/selected-rollback/",
+        views.ReleaseSelectedRollbackView.as_view(),
+        name="api_selected_rollback",
+    ),
     # 版本内容
     path(
         "version/<int:version_id>/content/",

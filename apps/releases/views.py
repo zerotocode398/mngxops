@@ -7,7 +7,8 @@ from datetime import datetime
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.db import OperationalError
-from django.db.models import Q
+from django.core.paginator import Paginator
+from django.db.models import Max, Q
 from django.utils import timezone
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, get_object_or_404, render
@@ -383,7 +384,7 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseE
 class ReleaseListView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
-    """发布历史 - 按批次→节点→配置三级折叠展示"""
+    """发布历史 - 按批次内节点分页，批次→节点→配置树形展示"""
     model = ReleaseTask
     template_name = "releases/list.html"
     context_object_name = "tasks"
@@ -393,10 +394,12 @@ class ReleaseListView(
     permission_action = "read"
 
     def get_queryset(self):
+        """按搜索条件过滤发布任务"""
         queryset = (
             super()
             .get_queryset()
             .select_related("node", "config", "binding", "operator")
+            .prefetch_related("node__groups")
         )
         search = self.request.GET.get("search", "")
         status_filter = self.request.GET.get("status", "")
@@ -419,8 +422,33 @@ class ReleaseListView(
             queryset = queryset.filter(node__ip__icontains=node_ip)
         return queryset
 
+    def paginate_queryset(self, queryset, page_size):
+        """按 batch_number 批次分页，再加载本页全部配置任务"""
+        batches = list(
+            queryset.values("batch_number")
+            .annotate(latest=Max("created_at"))
+            .order_by("-latest")
+        )
+        paginator = Paginator(batches, page_size)
+        page_number = self.request.GET.get("page") or 1
+        page = paginator.get_page(page_number)
+        self._page_batches = [str(b["batch_number"] or "") for b in page.object_list]
+
+        if not self._page_batches:
+            return (paginator, page, [], page.has_other_pages())
+
+        tasks = list(
+            queryset.filter(batch_number__in=self._page_batches)
+            .select_related("node", "config", "binding", "operator")
+            .prefetch_related("node__groups")
+            .order_by("-created_at")
+        )
+        return (paginator, page, tasks, page.has_other_pages())
+
     def get_context_data(self, **kwargs):
+        """组装本页批次→节点→任务树，供统一表格渲染"""
         from collections import OrderedDict
+
         context = super().get_context_data(**kwargs)
         search = self.request.GET.get("search", "")
         status_filter = self.request.GET.get("status", "")
@@ -432,36 +460,53 @@ class ReleaseListView(
         context["node_ip_filter"] = node_ip
         context["status_choices"] = ReleaseTask.STATUS_CHOICES
 
-        # 三级分组：批次 → 节点 → 任务
+        # 先按本页批次顺序建空组，再填入任务，保证分页顺序
         batch_groups = OrderedDict()
+        for batch_key in getattr(self, "_page_batches", []):
+            batch_groups[batch_key] = {
+                "batch_number": batch_key,
+                "created_at": None,
+                "operator": "-",
+                "total": 0,
+                "success": 0,
+                "failed": 0,
+                "other": 0,
+                "nodes": OrderedDict(),
+            }
+
         for task in context["tasks"]:
-            batch_key = task.batch_number or f"task-{task.id}"
+            batch_key = str(task.batch_number or "")
             if batch_key not in batch_groups:
-                batch_groups[batch_key] = {
-                    "batch_number": task.batch_number,
-                    "created_at": task.created_at,
-                    "operator": task.operator.username,
-                    "total": 0,
-                    "success": 0,
-                    "failed": 0,
-                    "nodes": OrderedDict(),
-                }
-            batch = batch_groups[batch_key]
-            node_key = task.node_id
-            if node_key not in batch["nodes"]:
-                batch["nodes"][node_key] = {
+                continue
+            batch_data = batch_groups[batch_key]
+            if batch_data["created_at"] is None:
+                batch_data["created_at"] = task.created_at
+                batch_data["operator"] = (
+                    task.operator.username if task.operator else "-"
+                )
+            node_id = int(task.node_id)
+            if node_id not in batch_data["nodes"]:
+                batch_data["nodes"][node_id] = {
                     "node": task.node,
                     "tasks": [],
                 }
-            batch["nodes"][node_key]["tasks"].append(task)
-            batch["total"] += 1
+            batch_data["nodes"][node_id]["tasks"].append(task)
+            batch_data["total"] += 1
             if task.status == "success":
-                batch["success"] += 1
+                batch_data["success"] += 1
             elif task.status == "failed":
-                batch["failed"] += 1
+                batch_data["failed"] += 1
+            else:
+                batch_data["other"] += 1
 
-        context["batch_groups"] = batch_groups
-        context["has_any_filter"] = bool(search or status_filter or context["batch_filter"] or context["node_ip_filter"])
+        # 去掉本页无任务的空批次（异常兜底）
+        context["batch_groups"] = OrderedDict(
+            (k, v) for k, v in batch_groups.items() if v["total"] > 0
+        )
+        context["expand_all_nodes"] = bool(search or status_filter or batch or node_ip)
+        context["has_any_filter"] = bool(
+            search or status_filter or context["batch_filter"] or context["node_ip_filter"]
+        )
         return context
 
 
@@ -670,12 +715,17 @@ class ReleaseDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView)
 class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "releases"
     permission_action = "update"
+    # 仅成功或失败的发布允许人工回滚
+    ROLLBACK_ALLOWED_STATUSES = ("success", "failed")
 
     def get(self, request, pk):
         from django.core.paginator import Paginator
         task = get_object_or_404(
             ReleaseTask.objects.select_related("node", "config", "binding", "operator"), pk=pk,
         )
+        if task.status not in self.ROLLBACK_ALLOWED_STATUSES:
+            messages.error(request, "仅成功或失败的发布可回滚")
+            return redirect("releases:detail", pk=task.pk)
         binding = task.binding
         versions = []
         if binding:
@@ -693,6 +743,12 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
         task = get_object_or_404(
             ReleaseTask.objects.select_related("node", "config", "binding", "operator"), pk=pk,
         )
+        if task.status not in self.ROLLBACK_ALLOWED_STATUSES:
+            msg = "仅成功或失败的发布可回滚"
+            if is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=400)
+            messages.error(request, msg)
+            return redirect("releases:detail", pk=task.pk)
         if task.node.is_locked:
             msg = f"节点 {task.node.hostname} 已锁定，无法回滚"
             if is_ajax:
@@ -1287,9 +1343,70 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
             "task_center_id": task_center.id,
         })
 
+def _start_rollback_for_release_tasks(tasks, user):
+    """
+    根据已筛选的发布任务启动批量回滚。
+    返回 (True, response_dict) 或 (False, error_message)。
+    """
+    rollback_batch = generate_batch_number()
+    rollback_task_ids = []
+
+    for task in tasks:
+        if task.node.is_locked:
+            continue
+        if not task.binding:
+            continue
+        # 回滚使用 synced_version（发布前的版本）
+        rollback_version = task.binding.synced_version
+        if rollback_version is None:
+            continue
+
+        binding = task.binding
+        version_obj = binding.versions.filter(version=rollback_version).first()
+
+        new_task = ReleaseTask.objects.create(
+            batch_number=rollback_batch,
+            binding=binding,
+            config=task.config,
+            node=task.node,
+            version=version_obj,
+            publish_version=rollback_version,
+            remote_path=task.remote_path or (binding.remote_path if binding else ""),
+            operator=user,
+            status="pending",
+        )
+        rollback_task_ids.append(new_task.id)
+
+    if not rollback_task_ids:
+        return False, "未生成任何回滚任务"
+
+    task_center = TaskCenterTask.objects.create(
+        operation_type="release_rollback",
+        status="running",
+        source_batch=rollback_batch,
+        detail=f"批量回滚：{len(rollback_task_ids)} 个任务",
+        progress=0,
+        started_at=timezone.now(),
+        trigger_user=user,
+    )
+
+    thread = threading.Thread(
+        target=_run_release_tasks,
+        args=(rollback_task_ids, task_center.id),
+        daemon=True,
+    )
+    thread.start()
+
+    return True, {
+        "success": True,
+        "message": f"批量回滚已开始，批次号: {rollback_batch}，共 {len(rollback_task_ids)} 个任务",
+        "task_center_id": task_center.id,
+        "batch_number": rollback_batch,
+    }
+
 
 class ReleaseBatchRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """按批次号批量回滚"""
+    """按批次号批量回滚（兼容保留）"""
     permission_resource = "releases"
     permission_action = "update"
 
@@ -1302,57 +1419,43 @@ class ReleaseBatchRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View
         if not tasks.exists():
             return JsonResponse({"success": False, "message": "未找到可回滚的任务"}, status=400)
 
-        rollback_batch = generate_batch_number()
-        rollback_task_ids = []
+        ok, result = _start_rollback_for_release_tasks(tasks, request.user)
+        if not ok:
+            return JsonResponse({"success": False, "message": result}, status=400)
+        return JsonResponse(result)
 
-        for task in tasks:
-            if task.node.is_locked:
+
+class ReleaseSelectedRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """按勾选的发布任务 ID 批量回滚"""
+    permission_resource = "releases"
+    permission_action = "update"
+
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"success": False, "message": "请求数据格式错误"}, status=400)
+
+        raw_ids = data.get("task_ids") or []
+        task_ids = []
+        for item in raw_ids:
+            try:
+                task_ids.append(int(item))
+            except (TypeError, ValueError):
                 continue
 
-            # 回滚使用 synced_version（发布前的版本）
-            rollback_version = task.binding.synced_version if task.binding else None
-            if rollback_version is None:
-                continue
+        if not task_ids:
+            return JsonResponse({"success": False, "message": "请至少勾选一个任务"}, status=400)
 
-            binding = task.binding
-            version_obj = binding.versions.filter(version=rollback_version).first()
+        tasks = ReleaseTask.objects.filter(
+            id__in=task_ids,
+            status__in=["success", "failed"],
+        ).select_related("node", "config", "binding")
 
-            new_task = ReleaseTask.objects.create(
-                batch_number=rollback_batch,
-                binding=binding,
-                config=task.config,
-                node=task.node,
-                version=version_obj,
-                publish_version=rollback_version,
-                remote_path=task.remote_path or (binding.remote_path if binding else ""),
-                operator=request.user,
-                status="pending",
-            )
-            rollback_task_ids.append(new_task.id)
+        if not tasks.exists():
+            return JsonResponse({"success": False, "message": "未找到可回滚的任务"}, status=400)
 
-        if not rollback_task_ids:
-            return JsonResponse({"success": False, "message": "未生成任何回滚任务"}, status=400)
-
-        task_center = TaskCenterTask.objects.create(
-            operation_type="release_rollback",
-            status="running",
-            source_batch=rollback_batch,
-            detail=f"批量回滚：{len(rollback_task_ids)} 个任务",
-            progress=0,
-            started_at=timezone.now(),
-            trigger_user=request.user,
-        )
-
-        thread = threading.Thread(
-            target=_run_release_tasks,
-            args=(rollback_task_ids, task_center.id),
-            daemon=True,
-        )
-        thread.start()
-
-        return JsonResponse({
-            "success": True,
-            "message": f"批量回滚已开始，批次号: {rollback_batch}，共 {len(rollback_task_ids)} 个任务",
-            "task_center_id": task_center.id,
-            "batch_number": rollback_batch,
-        })
+        ok, result = _start_rollback_for_release_tasks(tasks, request.user)
+        if not ok:
+            return JsonResponse({"success": False, "message": result}, status=400)
+        return JsonResponse(result)
