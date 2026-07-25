@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load permission_tags %}
+{% load permission_tags upgrade_filters %}
 
 {% block title %}升级日志 - {{ task.node.hostname }}{% endblock %}
 {% block page_title %}<i class="bi bi-file-text"></i> 升级任务详情 - {{ task.node.hostname }}{% endblock %}
@@ -34,8 +34,8 @@
                 <div class="row mb-2">
                     <div class="col-6"><strong>目标节点:</strong> {{ task.node.hostname }} ({{ task.node.ip }})</div>
                     <div class="col-6"><strong>操作人:</strong> {{ task.operator.username }}</div>
-                    <div class="col-6"><strong>当前版本:</strong> {{ task.current_version|default:"未知" }}</div>
-                    <div class="col-6"><strong>目标版本:</strong> nginx/{{ task.target_version }}</div>
+                    <div class="col-6"><strong>当前版本:</strong> {{ task.current_version|default:"未知"|nginx_ver }}</div>
+                    <div class="col-6"><strong>目标版本:</strong> {{ task.target_version|nginx_ver }}</div>
                     <div class="col-6"><strong>升级模式:</strong> {{ task.get_upgrade_mode_display }}</div>
                     <div class="col-6"><strong>--prefix:</strong> {{ task.target_prefix|default:task.current_configure_path }}</div>
                     <div class="col-6"><strong>远程工作目录:</strong> {{ task.remote_work_dir }}</div>

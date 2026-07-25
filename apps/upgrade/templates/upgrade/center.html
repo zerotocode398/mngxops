@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load permission_tags %}
+{% load permission_tags upgrade_filters %}
 
 {% block title %}升级中心 - Nginx 编译升级{% endblock %}
 {% block page_title %}<i class="bi bi-rocket-takeoff"></i> Nginx 升级中心{% endblock %}
@@ -59,7 +59,7 @@
                                     data-env="{{ node.get_environment_display }}"
                                     data-nginx-version="{{ node.nginx_version }}">
                                 {{ node.hostname }} ({{ node.ip }}) <i class="bi bi-circle-fill text-success small"></i> {{ node.get_environment_display }}
-                                {% if node.nginx_version %} | {{ node.nginx_version }}{% endif %}
+                                {% if node.nginx_version %} | {{ node.nginx_version|nginx_ver }}{% endif %}
                             </option>
                             {% endfor %}
                         </select>
@@ -72,7 +72,7 @@
                             <option value="{{ pkg.id }}"
                                     data-version="{{ pkg.version }}"
                                     data-name="{{ pkg.name }}">
-                                {{ pkg.name }} - nginx/{{ pkg.version }}
+                                {{ pkg.name }} - {{ pkg.version|nginx_ver }}
                             </option>
                             {% endfor %}
                         </select>
@@ -276,7 +276,7 @@ function fetchNginxV() {
         const info = data.data;
         document.getElementById('currentConfigInfo').innerHTML = `
             <div class="row small">
-                <div class="col-4"><strong>当前版本:</strong> ${escapeHtml(info.version)}</div>
+                <div class="col-4"><strong>当前版本:</strong> ${escapeHtml(formatNginxVer(info.version))}</div>
                 <div class="col-4"><strong>--prefix:</strong> ${escapeHtml(info.prefix)}</div>
                 <div class="col-4"><strong>二进制:</strong> ${escapeHtml(info.binary_path)}</div>
             </div>`;
@@ -368,8 +368,8 @@ function previewConfig() {
         document.getElementById('upgradeSummary').innerHTML = `
             <div class="row">
                 <div class="col-6"><strong>目标节点:</strong> ${escapeHtml(nodeOpt.dataset.hostname)} (${escapeHtml(nodeOpt.dataset.ip)})</div>
-                <div class="col-6"><strong>当前版本:</strong> ${escapeHtml(nginxVData.version)}</div>
-                <div class="col-6"><strong>目标版本:</strong> nginx/${escapeHtml(pkgOpt.dataset.version)}</div>
+                <div class="col-6"><strong>当前版本:</strong> ${escapeHtml(formatNginxVer(nginxVData.version))}</div>
+                <div class="col-6"><strong>目标版本:</strong> ${escapeHtml(formatNginxVer(pkgOpt.dataset.version))}</div>
                 <div class="col-6"><strong>安装路径:</strong> ${escapeHtml(prefix)}</div>
                 <div class="col-6"><strong>新增模块:</strong> ${addedModules.length ? addedModules.join(', ') : '无'}</div>
                 <div class="col-6"><strong>移除参数:</strong> ${removedModules.length ? removedModules.join(', ') : '无'}</div>
@@ -419,6 +419,7 @@ function doStartUpgrade() {
     formData.append('node', nodeId);
     formData.append('source_package', pkgId);
     formData.append('upgrade_mode', upgradeMode);
+    formData.append('current_version', (typeof nginxVData !== 'undefined' && nginxVData.version) ? nginxVData.version : '');
     formData.append('target_version', document.getElementById('selectPackage').selectedOptions[0].dataset.version);
     formData.append('target_prefix', prefix);
     formData.append('target_configure_opts', finalConfig);
@@ -584,6 +585,12 @@ function addTpModule() {
 
 function removeTpModule(btn) {
     btn.closest('.tp-module-row').remove();
+}
+
+function formatNginxVer(str) {
+    /** 展示用：去掉 nginx/ 或 nginx- 前缀 */
+    if (!str) return '';
+    return String(str).trim().replace(/^nginx[/\\-]/i, '');
 }
 
 function escapeHtml(str) {

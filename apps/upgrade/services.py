@@ -174,6 +174,16 @@ def compute_target_configure_opts(current_params, added_modules, removed_modules
     return " \\\n    ".join(remaining)
 
 
+def _tail_output(text, max_lines=80):
+    """截取输出末尾若干行，便于弹窗展示真实编译错误"""
+    if not text:
+        return ""
+    lines = text.strip().splitlines()
+    if len(lines) <= max_lines:
+        return "\n".join(lines)
+    return "\n".join(lines[-max_lines:])
+
+
 def run_upgrade_task(task_id):
     """执行升级任务（在线程中调用）
 
@@ -221,28 +231,15 @@ def run_upgrade_task(task_id):
         else:
             auth_kwargs_copy = {"private_key": auth_kwargs["private_key"]}
 
-        # ---- Step 1: 环境检查 ----
+        # ---- Step 1: 获取 nginx -V（优先写入当前版本，便于失败任务列表展示）----
         update_status("fetching_config", 5)
-        log("开始环境检查...")
+        log("获取当前 Nginx 编译参数...")
         _ensure_remote_dir(node.ip, node.port, credential.username, **auth_kwargs_copy)
 
-        # 检查编译依赖
-        check_cmd = "which gcc && which make && (dpkg -l | grep -q libpcre3-dev || rpm -q pcre-devel) && echo 'DEPS_OK'"
-        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
-            success, output = ssh.execute_command(check_cmd)
-        if not success or "DEPS_OK" not in output:
-            log(f"编译环境依赖检查失败: {output}")
-            update_status("failed", 5, error_message=f"编译环境依赖缺失: {output}\n请安装 gcc, make, pcre-devel, zlib-devel, openssl-devel")
-            return
-        log("编译环境依赖检查通过")
-
-        # ---- Step 2: 获取 nginx -V ----
-        update_status("fetching_config", 10)
-        log("获取当前 Nginx 编译参数...")
         success, parsed = fetch_nginx_v_from_node(node)
         if not success:
             log(f"获取编译参数失败: {parsed}")
-            update_status("failed", 10, error_message=str(parsed))
+            update_status("failed", 5, error_message=str(parsed))
             return
         log(f"当前版本: {parsed['version']}")
         log(f"当前 prefix: {parsed['prefix']}")
@@ -254,6 +251,21 @@ def run_upgrade_task(task_id):
             current_configure_path=parsed["prefix"],
             current_binary_path=parsed["binary_path"],
         )
+
+        # ---- Step 2: 编译工具预检（仅 gcc/make；缺库由 configure/make 回报）----
+        update_status("fetching_config", 10)
+        log("检查编译工具 gcc / make ...")
+        check_cmd = "command -v gcc >/dev/null && command -v make >/dev/null && echo 'DEPS_OK'"
+        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
+            success, output = ssh.execute_command(check_cmd)
+        if not success or "DEPS_OK" not in (output or ""):
+            log(f"编译工具检查失败: {output}")
+            update_status(
+                "failed", 10,
+                error_message=f"编译工具缺失: {output}\n请安装 gcc 与 make；其余依赖（如 pcre/zlib/openssl/libxslt）由 ./configure 检测",
+            )
+            return
+        log("编译工具检查通过")
 
         # ---- Step 3: 上传源码包 ----
         source_package = task.source_package
@@ -366,7 +378,7 @@ def run_upgrade_task(task_id):
             success, output = ssh.execute_command(configure_cmd)
         if not success:
             log(f"configure 失败: {output}")
-            update_status("failed", 55, error_message=f"configure 失败:\n{output}")
+            update_status("failed", 55, error_message=f"configure 失败:\n{_tail_output(output)}")
             return
         log("configure 成功")
 
@@ -380,7 +392,7 @@ def run_upgrade_task(task_id):
             )
         if not success:
             log(f"make 失败: {output}")
-            update_status("failed", 65, error_message=f"make 失败:\n{output}")
+            update_status("failed", 65, error_message=f"make 失败:\n{_tail_output(output)}")
             return
         log("make 编译成功")
 

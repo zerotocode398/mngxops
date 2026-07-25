@@ -275,6 +275,14 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         task.operator = request.user
         task.status = "pending"
         task.current_step = "任务已创建，等待执行"
+        # 创建时写入当前版本：优先表单（前端 nginx -V），否则回退节点缓存
+        if not task.current_version and task.node_id:
+            task.current_version = task.node.nginx_version or ""
+        # 解析模块增减 JSON 写入任务字段
+        cleaned = form.cleaned_data
+        task.added_modules = cleaned.get("added_modules", "[]")
+        task.removed_modules = cleaned.get("removed_modules", "[]")
+        task.added_third_party = cleaned.get("added_third_party", "[]")
         task.save()
 
         # 创建关联的任务中心记录

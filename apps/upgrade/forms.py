@@ -104,13 +104,14 @@ class NginxUpgradeTaskForm(forms.ModelForm):
         model = NginxUpgradeTask
         fields = [
             "node", "source_package", "upgrade_mode",
-            "target_version", "target_prefix", "target_configure_opts",
+            "current_version", "target_version", "target_prefix", "target_configure_opts",
             "remote_work_dir", "make_jobs",
         ]
         widgets = {
             "node": forms.Select(attrs={"class": "form-select"}),
             "source_package": forms.Select(attrs={"class": "form-select"}),
             "upgrade_mode": forms.Select(attrs={"class": "form-select"}),
+            "current_version": forms.HiddenInput(),
             "target_version": forms.TextInput(attrs={"class": "form-control", "readonly": "readonly"}),
             "target_prefix": forms.TextInput(
                 attrs={"class": "form-control", "placeholder": "如 /usr/local/nginx"}
@@ -132,6 +133,7 @@ class NginxUpgradeTaskForm(forms.ModelForm):
             "node": "目标节点",
             "source_package": "源码包",
             "upgrade_mode": "升级模式",
+            "current_version": "当前版本",
             "target_version": "目标版本",
             "target_prefix": "目标 --prefix",
             "target_configure_opts": "调整后的编译参数",
@@ -149,6 +151,8 @@ class NginxUpgradeTaskForm(forms.ModelForm):
         self.fields["source_package"].queryset = (
             NginxSourcePackage.objects.order_by("-created_at")
         )
+        # 当前版本由前端 nginx -V 提交，允许为空（后台再拉取覆盖）
+        self.fields["current_version"].required = False
 
     def clean(self):
         cleaned_data = super().clean()

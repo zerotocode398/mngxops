@@ -1070,24 +1070,35 @@ UNIQUE constraint failed: upgrade_nginxsourcepackage.version, upgrade_nginxsourc
 Q63
 ```text
 nginx 升级
-    1. 升级结果信息能否返回目标机器编译结果的信息？
-    我在目标机器尝试编译异常是
-    checking for libxslt in /usr/pkg/ ... not found
+ 1. 升级结果信息能否返回目标机器编译结果的信息？
+ 我在目标机器尝试编译异常是
+ checking for libxslt in /usr/pkg/ ... not found
 checking for libxslt in /opt/local/ ... not found
 
 ./configure: error: the HTTP XSLT module requires the libxml2/libxslt
 libraries. You can either do not enable the module or install the libraries.
 
 
-    但页面展示错误为
-    错误信息:
+ 但页面展示错误为
+ 错误信息:
 编译环境依赖缺失: bash: dpkg: command not found
 
 请安装 gcc, make, pcre-devel, zlib-devel, openssl-devel
 
-    2. 当前版本 → 目标版本表行只展示了目标版本，没有展示当前版本。
+ 2. 当前版本 → 目标版本表行只展示了目标版本，没有展示当前版本。
+ ✅ 已修复：
+ - SSHClient.execute_command 改为按 exit code 判定并合并 stdout/stderr（修复 dpkg stderr 误杀 + 2>&1 失败误判成功）
+ - 预检仅检查 gcc/make；缺库由 ./configure/make 回报真实远程输出（error_message 取末尾 80 行，完整日志在 log_output）
+ - 升级流程先拉取 nginx -V 写入 current_version，再做工具预检
+ - 创建任务提交/回退写入 current_version；首页与历史始终展示 当前版本 → 目标版本
+ - 版本列统一纯版本号展示（nginx_ver 过滤器去掉 nginx/ 前缀），如 1.14.1 → 1.31.2
 ```
 
 Q64
 ```text
+nginx 升级 -> 升级中心
+    1. 页面样式、排版、功能应该怎样重构设计一下？符合运维人员操作习惯
+    2. 目标节点选择能够以自定义弹窗形式勾选，其查询条件标签支持主机名、IP、节点组。
+    3. 源码包选择应该以什么样的方式展示？
+    4. 同理，远程编译工作目录、并行编译 (-j)4 升级模式、获取 nginx -V 编译参数也是如此，柔和在一起有点臃肿。应该如何设计
 ```

@@ -64,7 +64,7 @@ class SSHClient:
             return False, str(e)
 
     def execute_command(self, command):
-        """执行远程Shell命令"""
+        """执行远程Shell命令，按退出码判定成败并合并 stdout/stderr"""
         if not self.client:
             return False, "SSH连接未建立"
 
@@ -73,12 +73,17 @@ class SSHClient:
             stdin, stdout, stderr = self.client.exec_command(command)
             output = stdout.read().decode("utf-8")
             error = stderr.read().decode("utf-8")
+            exit_status = stdout.channel.recv_exit_status()
+            # 合并输出：nginx -V 等工具写 stderr；带 2>&1 时 stderr 通常为空
+            combined = (output + error).strip() if (output or error) else ""
 
-            if error:
-                logger.warning(f"[SSH] {self.host}:{self.port} 命令错误: {error.strip()}")
-                return False, error
-            logger.debug(f"[SSH] {self.host}:{self.port} 输出: {output.strip()[:200]}")
-            return True, output
+            if exit_status != 0:
+                logger.warning(
+                    f"[SSH] {self.host}:{self.port} 退出码 {exit_status}: {combined[:200]}"
+                )
+                return False, combined or f"命令退出码 {exit_status}"
+            logger.debug(f"[SSH] {self.host}:{self.port} 输出: {combined[:200]}")
+            return True, combined
         except Exception as e:
             logger.error(f"[SSH] {self.host}:{self.port} 执行异常: {str(e)}")
             return False, str(e)
