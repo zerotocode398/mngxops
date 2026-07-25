@@ -2,6 +2,7 @@
 import json
 import re
 import os
+import shlex
 import time
 import threading
 from datetime import datetime, timezone as dt_timezone
@@ -83,15 +84,93 @@ def parse_nginx_v_output(raw_output):
 
 
 def _tokenize_configure_args(opts_str):
-    """将 configure 参数字符串拆分为 token 列表
+    """将 configure 参数字符串拆分为 token 列表（支持引号内空格）
 
-    每个形如 --xxx 或 --xxx=yyy 为一组
+    每个形如 --xxx 或 --xxx=yyy 为一组；--with-cc-opt='-O2 -g' 计为单个 token。
+    shlex 会去掉外壳引号，token 内保留等号后的原始值。
     """
+    if not opts_str or not str(opts_str).strip():
+        return []
+    # 多行续行符压成空格，便于 shlex 解析
+    flat = re.sub(r"\\\s*\n\s*", " ", str(opts_str))
+    flat = re.sub(r"\s+", " ", flat).strip()
+    try:
+        tokens = shlex.split(flat, posix=True)
+    except ValueError:
+        tokens = []
+    # 仅保留 configure 风格参数；异常时回退为引号感知扫描
+    tokens = [t for t in tokens if t.startswith("--")]
+    if tokens:
+        return tokens
+    return _tokenize_configure_args_fallback(flat)
+
+
+def _tokenize_configure_args_fallback(opts_str):
+    """在 shlex 失败时按引号边界扫描 -- 参数"""
     tokens = []
-    # 使用正则匹配 -- 开头的参数（值可能包含等号后的内容，但不能含空格分隔的下一个 -- 参数）
-    for match in re.finditer(r"--[\w\-]+(?:=[^\s]*)?", opts_str):
-        tokens.append(match.group(0))
+    i = 0
+    s = opts_str or ""
+    n = len(s)
+    while i < n:
+        while i < n and s[i].isspace():
+            i += 1
+        if i >= n:
+            break
+        if not (s[i:i + 2] == "--"):
+            i += 1
+            continue
+        start = i
+        i += 2
+        while i < n and (s[i].isalnum() or s[i] in "-_"):
+            i += 1
+        if i < n and s[i] == "=":
+            i += 1
+            if i < n and s[i] in ("'", '"'):
+                quote = s[i]
+                i += 1
+                while i < n and s[i] != quote:
+                    if s[i] == "\\" and i + 1 < n:
+                        i += 2
+                        continue
+                    i += 1
+                if i < n and s[i] == quote:
+                    i += 1
+            else:
+                while i < n and not s[i].isspace():
+                    i += 1
+        raw = s[start:i]
+        # 去掉 = 后外壳引号，与 shlex 行为一致
+        if "=" in raw:
+            key, val = raw.split("=", 1)
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+                val = val[1:-1]
+            tokens.append(f"{key}={val}")
+        else:
+            tokens.append(raw)
     return tokens
+
+
+def _format_configure_token(token):
+    """将单个 token 格式化为可安全写入 shell 的 configure 参数"""
+    if not token:
+        return ""
+    if "=" not in token:
+        return token
+    key, val = token.split("=", 1)
+    # 含空格或特殊字符时对值重新加引号
+    if any(c in val for c in " \t\"'\\$`|&;<>()"):
+        return f"{key}={shlex.quote(val)}"
+    return token
+
+
+def _join_configure_opts(tokens, multiline=True):
+    """将 token 列表安全拼接为 configure 参数字符串"""
+    formatted = [_format_configure_token(t) for t in tokens if t]
+    if not formatted:
+        return ""
+    if multiline:
+        return " \\\n    ".join(formatted)
+    return " ".join(formatted)
 
 
 def fetch_nginx_v_from_node(node):
@@ -171,7 +250,7 @@ def compute_target_configure_opts(current_params, added_modules, removed_modules
             remaining.append(tp)
             existing_set.add(tp)
 
-    return " \\\n    ".join(remaining)
+    return _join_configure_opts(remaining, multiline=True)
 
 
 def _tail_output(text, max_lines=80):
@@ -369,9 +448,16 @@ def run_upgrade_task(task_id):
         # ---- Step 7: 执行 configure ----
         update_status("configuring", 55)
         log("执行 ./configure ...")
-        target_opts = task.target_configure_opts
-        # 将 \n    (多行格式) 转为单行
-        target_opts_single = " ".join(line.strip().rstrip("\\") for line in target_opts.split("\n") if line.strip())
+        target_opts = task.target_configure_opts or ""
+        # 先分词再安全拼装，避免引号内空格被拆碎
+        opt_tokens = _tokenize_configure_args(target_opts)
+        if not opt_tokens:
+            opt_tokens = [
+                line.strip().rstrip("\\").strip()
+                for line in target_opts.split("\n")
+                if line.strip()
+            ]
+        target_opts_single = _join_configure_opts(opt_tokens, multiline=False)
         configure_cmd = f"cd {work_dir}/{extract_dir} && ./configure {target_opts_single} 2>&1"
         log(f"configure 命令: {configure_cmd[:200]}...")
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:

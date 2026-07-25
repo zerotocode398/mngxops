@@ -1101,4 +1101,208 @@ nginx 升级 -> 升级中心
     2. 目标节点选择能够以自定义弹窗形式勾选，其查询条件标签支持主机名、IP、节点组。
     3. 源码包选择应该以什么样的方式展示？
     4. 同理，远程编译工作目录、并行编译 (-j)4 升级模式、获取 nginx -V 编译参数也是如此，柔和在一起有点臃肿。应该如何设计
+ ✅ 已修复：
+ - 升级中心改为 3 阶段：选目标 → 编译参数 → 确认执行
+ - 节点：binding 同款弹窗单选 + tag 搜主机名/IP/组；仅在线且有凭证可选；确认后自动读 nginx -V
+ - 源码包：data-table 单选（名称/版本/大小/上传信息），支持跳转上传
+ - 工作目录/-j/升级模式收入默认折叠的「高级选项」，默认值取自系统设置
+ - 右栏进度未开跑时占位，开始后再展示步骤与日志
+ - NodeSearchAPIView 补充 port/environment/nginx_version/has_credential
+
+    5. nginx 升级中心，选择目标节点不能选择多个。
+    6. nginx 升级中心，选择目标节点的主机名后面不需要展示 nginx 版本信息。
+    7. nginx 升级中心，编译参数获取结果能否格式化美化输出。
+    8. 选择目标、远程编译工作目录、编译参数 这 3 个功能都柔和在一个页面了，可以拆分吗，再将样式调美化一点？
+ ✅ 已修复：
+ - 弹窗改为多选 checkbox + 行点击/全选；已选 chips 仅显示 hostname(ip:port)+组，去掉 nginx 版本
+ - NginxUpgradeTask 新增 batch_number；批量 JSON 创建按节点基线 + 统一增量算 target_opts；ThreadPool 并行 run_upgrade_task
+ - 新增 api/batch-progress/；进度区按节点折叠展示步骤
+ - nginx -V / ./configure 用 .param-highlight 分行高亮渲染
+ - 页面改为互斥四步向导：1 选节点+源码包 → 2 编译环境 → 3 编译参数（参考节点编辑）→ 4 确认清单 Accordion
+```
+
+Q65
+```text
+nginx 升级中心
+  1. 源码包能否新增查询功能，支持名称、版本号条件标签查询。
+  2. 编译参数，我觉得没必要各个节点展示都展示编译参数，若用户选择多节点同时升级按理来说用户是认为多个节点的编译参数是一样的。我觉得若是勾选了多台且编译参数存在不一致的情况下（预期是多节点编译参数必须一致）再编译参数这个环节可以自定义弹窗提示，让用户认识到这个风险，供用户选择继续或者修改选择节点。
+  3. 编译参数，“目标 --prefix” 与实际编译路径不一致。
+  4. 编译参数“当前版本: 1.14.1 --prefix: /usr/share/nginx 二进制: /usr/sbin/nginx” 如果内容过长会导致自动换行，能否重新设计以下曾排版？
+  5. 编译参数，新增内置模块、移除现有模块能否改成左右侧选择对比的形式？这样不用来回切换可全视角查看到编译参数。
+ ✅ 已修复：
+ - Step1 源码包增加 tag-input，名称/版本 AND 前端过滤
+ - 多节点 params 排序签名不一致时弹出风险弹窗（返回改选 / 仍要继续）；一致时隐藏参考节点下拉
+ - 目标 --prefix 仅 switch_path 显示并重写 configure；平滑/全新保留各节点自身 prefix（前后端对齐）
+ - 当前版本/prefix/二进制改为可截断定义列表 + title 悬停全文
+ - 新增/移除模块改为左右双栏对比，第三方模块下沉
+
+  6. 编译参数不一致，“批量升级假定各节点编译参数一致。当前已选节点参数存在差异，请确认风险后再继续。”，这个“批量升级假定各节点编译参数一致。” 啥意思，是不是可以删了
+  7. 编译参数不一致，我看是只展示了	--prefix ，是只校验了这个参数吗，能不能全量校验。但是如果全量参数校验，若涉及到多个就很麻烦了，如何有效展示就成了一个问题
+  8. 新增内置模块、移除现有模块能否改成自定义弹窗左右侧选择对比的形式，支持查询功能，支持模块名称标签查询条件？这样不用来回切换可全视角查看到编译参数。
+ ✅ 已修复：
+ - 不一致弹窗删除「批量升级假定…」前半句
+ - 全量 params 签名校验不变；弹窗改为节点摘要（含参数数）+ 仅差异参数（有/无主机）+ 行点击展开完整 params
+ - 模块增减改为 modal-xl 左右对比弹窗，两侧支持模块名 tag 搜索；Step3 仅显示摘要与「调整模块」入口
+
+ 9. 确认并开始升级，参考节点最终编译参数滚动窗口可以拉长点，下面的纯文本编译参数就必要展示了。
+ 10. 确认并开始升级，滚动窗口里的编译参数可以新增备注吗，比如新增了什么参数、删除了什么参数，不能影响实际的编译效果，其目的是让人查看变动了哪些模块，需要醒目
+ ✅ 已修复：
+ - #finalConfigPreview max-height 300→480px；删除下方 #configDiff 纯文本区
+ - 滚动区内用「已移除/新增」醒目标注展示变动（仅展示，不改提交 opts）
+ - 补充：模块调整确认后同步刷新 Step3 上方 #currentConfigOutput 醒目标注
+
+ 11. 确认并开始升级，编译参数展示了 2 次，我理解没必要，把下面的编译参数删掉是不是会好些？
+ ✅ 已修复：各节点确认清单去掉展开 configure 预览，改为单行（主机/组/版本/prefix）；仅保留上方带批注的参考节点最终参数
+
+ 12. 升级执行进度
+    12.1 我理解保留“查看完整日志”就可以，下发的完整日志是不是可以删了？
+    12.2 异常信息偏多时，能否默认展示前几行？因为有“查看完整日志”可以跳转到”  升级任务详情
+ 13. 升级任务详情
+    13.1 进度信息是否可以不展示？
+    13.2 错误新是否可以不展示？
+    13.3 “当前编译参数 (nginx -V):” 没有格式化输出，而且第一行是空行，第二行前面有很多空格
+    13.4 “调整后的编译参数:” 没有格式化输出，而且而且第一行是空行，第二行前面有很多空格
+    13.5 “完整执行日志” 我理解可以代替错误信息，继续保留“完整执行日志”的样式。
+    13.6 “当前编译参数”、“调整后的编译参数:” 是否需要新增一个对比的功能？类似配置管理的配置 diff。
+    13.7 任务信息去掉 --prefix，优化排版布局、样式。
+ ✅ 已修复：
+ - center.html：删除 #upgradeError 整段错误堆叠；失败步骤 truncateErrorLines 默认前 5 行；保留「查看完整日志」/「完整日志」
+ - task_log.html：删除进度信息卡与错误 alert；任务信息去掉 --prefix，改为两列 label/value 排版
+ - 编译参数经 _tokenize_configure_args 分行高亮；有增减时展示「已移除/新增」对比视图
+ - 完整执行日志样式保留；param-anno 样式提升到 base.html 全局复用
+
+   14. 升级执行进度，“查看完整日志”、“完整地址” 2 个按钮功能是一样的，我理解可以删掉一个
+   15. 升级任务详情
+      15.1 右上角的 “ 操作” 你觉得有必要保留吗？
+      15.2 “ 编译参数” 我想到可以将“当前编译参数”、“调整后编译参数”删掉，只保留“参数对比（相对当前）”的编译参数就可以了，但是“参数对比（相对当前）”这个文案可以不要。
+      15.3 “完整执行日志” 第一行是空行、第二行的开头有很多空格。
+      15.3 “完整执行日志” 标题没有和下面编译输出框对齐，这个需要美化调整一下。
+ ✅ 已修复：
+ - center.html：删除顶部「完整日志」#btnFullLog，仅保留节点级「查看完整日志」+取消升级
+ - task_log：去掉右侧操作列；成功任务回滚按钮迁入任务信息 card-header
+ - 编译参数只保留一份增减批注展示（无差异时高亮列出）；去掉「参数对比」文案
+ - log_output_display=.strip()；日志标题与正文共用 1.125rem 左右内边距对齐
+
+    16. 升级任务详情
+      16.1 完整执行日志是实时刷新的吗，因为执行后用户很有可能点击升级执行进度里的“查看完整日志”核查编译进度。
+    17. Nginx 升级中心
+      17.1 “我确认以上配置无误，可以开始升级”第一次勾选后“开始升级”按钮是可点击的，但是升级后，“开始升级”的按钮就是灰色的了，我理解应该还是绿色可点击状态。
+      17.2 如果已经点击了“开始升级” 且 “升级执行进度”有任务，再次点击“开始升级”时，应该会有自定义弹窗警告。
+ ✅ 已修复：
+ - task_log：非终端任务每 2s 轮询 upgrade:task_progress，刷新日志/状态/进度%，完成后停止；成功时可动态出现回滚按钮
+ - center：开跑后 btnStartUpgrade 跟随 confirmCheck，勾选仍在则保持可点
+ - center：currentTaskIds 非空时再次开始先 showConfirm 警告将创建新批次
+    18. 整编译模块
+        18.1 左侧能不能展示 nginx 的现有参数（全量参数），右侧展示 nginx 编译已选的参数。我看右侧有一个 “-with-http_v3_module” 且是未勾选状态，我理解这个应该在左侧。
+        18.2 左侧的文案需调整“可新增内置模块（勾选添加）” 改为“已编译参数”
+    19. Nginx 升级中心，只要刷新一次浏览器，就默认回到了步骤1，能否保持当前页面。
+ ✅ 已修复：
+ - 模块弹窗：左「已编译参数」（勾选移除）；右「目标已选参数」仅展示已选；添加区只列未编译内置模块
+ - sessionStorage(mngxops_upgrade_center_v1) 保存/恢复步骤、节点、源码包、模块增减、表单与进度任务
+
+    20. 升级任务详情
+        编译参数是
+./configure \
+--prefix=/usr/share/nginx
+--sbin-path=/usr/sbin/nginx
+--modules-path=/usr/lib64/nginx/modules
+--conf-path=/etc/nginx/nginx.conf
+--error-log-path=/var/log/nginx/error.log
+--http-log-path=/var/log/nginx/access.log
+--http-client-body-temp-path=/var/lib/nginx/tmp/client_body
+--http-proxy-temp-path=/var/lib/nginx/tmp/proxy
+--http-fastcgi-temp-path=/var/lib/nginx/tmp/fastcgi
+--http-uwsgi-temp-path=/var/lib/nginx/tmp/uwsgi
+--http-scgi-temp-path=/var/lib/nginx/tmp/scgi
+--pid-path=/run/nginx.pid
+--lock-path=/run/lock/subsys/nginx
+--user=nginx
+--group=nginx
+- --with-file-aio 已移除
+--with-ipv6
+--with-http_ssl_module
+--with-http_v2_module
+--with-http_realip_module
+--with-http_addition_module
+--with-http_xslt_module=dynamic
+--with-http_image_filter_module=dynamic
+--with-http_sub_module
+--with-http_dav_module
+--with-http_flv_module
+--with-http_mp4_module
+--with-http_gunzip_module
+--with-http_gzip_static_module
+--with-http_random_index_module
+--with-http_secure_link_module
+--with-http_degradation_module
+--with-http_slice_module
+- --with-http_stub_status_module 已移除
+--with-http_perl_module=dynamic
+--with-http_auth_request_module
+--with-mail=dynamic
+--with-mail_ssl_module
+--with-pcre
+--with-pcre-jit
+--with-stream=dynamic
+--with-stream_ssl_module
+--with-debug
+--with-cc-opt='-O2
+--with-ld-opt='-Wl,-z,relro
++ --with-stream_realip_module 新增
+
+        通过页面升级，抛出的异常是
+        checking for TCP_DEFER_ACCEPT ... not found
+checking for TCP_KEEPIDLE ... not found
+checking for TCP_FASTOPEN ... not found
+checking for TCP_INFO ... not found
+checking for accept4() ... not found
+checking for int size ...
+./configure: error: can not detect int size
+
+        但是我那编译参数去服务器上手动尝试，报错却是
+        [root@localhost nginx-1.30.3]# --with-stream=dynamic
+-bash: --with-stream=dynamic: command not found
+...
+ ✅ 已修复：根因是 `_tokenize_configure_args` / 前端 `tokenizeOpts` 按空格截断引号参数（如 `--with-cc-opt='-O2 -g ...'`）；改为 shlex/引号感知分词 + `_join_configure_opts`/`joinConfigureOpts` 安全拼装；configure 命令与任务详情对比均基于完整 token
+
+    21. Nginx 升级中心
+        当第一次升级失败去服务器修复，然后页面第二次点击“再次升级”无响应
+ ✅ 已修复：startUpgrade 去掉嵌套 showConfirm，改为单次合并确认；全局 showConfirm 改为 hidden 后再执行回调并支持排队，避免第二次确认回调被清空
+
+    22. 确认并开始升级
+        22.1 “目标节点: 1 台 ... 新增模块 / 移除参数” 排版样式、布局太丑了，能否优化？
+        22.2 新增模块默认展示第一个，点击详情后在展示详情，可以参考移除参数
+ ✅ 已修复：upgradeSummary 改为两列 label/value 定义列表；新增/移除统一首项截断 +「详情/收起」折叠
+
+    23. 完整执行日志
+        23.1 需要显示完整的编译过程，不要省略
+        23.2 当日志动态刷新时，我需要滑动浏览器的滚动条才能看到，能不能自动滑动滚动条看最新执行日志
+        23.3 编译完成后不需要 cp 二进制文件，因为进程可能正在启动，此时需要进行 nginx -t，若成功则重启反之编译失败。
+```
+
+
+
+Qxx
+```text
+nginx 升级
+    1. 最近升级记录，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
+    2. 升级历史记录，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
+    这 2 个页面的样式、排版能否参考任务中心。
+```
+
+
+Qxx
+```text
+项目字体
+    我发现不同表行的字体大小、类型不一致，比如配置管理的主机名 和 发布中心的主机名 字体大小不一样。
+    能否将项目里所有字体样式、大小保持一致，该粗体就粗体（比如表头）、该非粗体就非粗体（比如表行）。
+    这是我例举的，需要你对全项目字体做优化。
+```
+Q66
+```text
+nginx 升级
+  调整编译模块左侧默认的编译参数太少了
+  https://nginx.org/en/docs/
+  可以将 nginx 官方默认的编译参数加上去
+ ✅ 已修复：BUILTIN_ADD_MODULES 按官方 configure/auto/options 补全全部模块参数（--with 含 dynamic + 默认模块 --without + Mail/Stream/事件等）；静态与 dynamic 互斥过滤
 ```

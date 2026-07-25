@@ -258,6 +258,26 @@
             border-radius: var(--br-sm);
         }
 
+        .nginx-v-params { display: flex; flex-direction: column; gap: 4px; }
+        .nginx-v-params .param-highlight { display: inline-block; word-break: break-all; }
+
+        .nginx-v-output .param-anno-removed {
+            color: #ff8a8a; text-decoration: line-through;
+            background: rgba(255, 138, 138, 0.12); padding: 1px 4px; border-radius: var(--br-sm);
+            display: inline-block; word-break: break-all;
+        }
+        .nginx-v-output .param-anno-added {
+            color: #7CFC9A; background: rgba(124, 252, 154, 0.15);
+            padding: 1px 4px; border-radius: var(--br-sm);
+            display: inline-block; word-break: break-all;
+        }
+        .nginx-v-output .param-anno-tag {
+            font-size: var(--fs-xs); margin-left: 6px; opacity: 0.9;
+            padding: 0 4px; border-radius: var(--br-sm); white-space: nowrap;
+        }
+        .nginx-v-output .param-anno-tag.tag-removed { background: rgba(255, 138, 138, 0.25); color: #ffb4b4; }
+        .nginx-v-output .param-anno-tag.tag-added { background: rgba(124, 252, 154, 0.25); color: #b8ffd0; }
+
         .nginx-v-output-alt {
             background: #16213e;
             color: #e9ecef;
@@ -281,7 +301,7 @@
         }
 
         .upload-dropzone-icon {
-            font-size: 3rem;
+            font-size: 1.75rem;
             color: var(--primary);
         }
 
@@ -464,7 +484,7 @@
 
         /* 空状态统一 */
         .empty-state { text-align: center; padding: 2rem 1rem; }
-        .empty-state .bi { font-size: 3rem; color: var(--gray-400); }
+        .empty-state > .bi { font-size: 3rem; color: var(--gray-400); }
         .empty-state p { margin-top: 0.5rem; color: var(--gray-600); }
 
         /* 表单规范 */
@@ -836,22 +856,61 @@
 
         /* ========== 全局确认弹窗（替代浏览器 confirm） ========== */
         (function() {
-            var confirmModal = new bootstrap.Modal(document.getElementById('mngxopsConfirmModal'));
+            var confirmModalEl = document.getElementById('mngxopsConfirmModal');
+            var confirmModal = new bootstrap.Modal(confirmModalEl);
             var alertModal = new bootstrap.Modal(document.getElementById('mngxopsAlertModal'));
             var confirmCallback = null;
+            /** 用户点确认后，待 modal 完全关闭再执行的回调 */
+            var pendingAcceptedCallback = null;
+            /** modal 关闭过程中排队的下一次 showConfirm */
+            var queuedConfirm = null;
 
             document.getElementById('mngxopsConfirmBtn').addEventListener('click', function() {
-                if (confirmCallback) { confirmCallback(); confirmCallback = null; }
+                // 先收下回调，等 hidden 后再执行，避免嵌套 showConfirm 被清空
+                pendingAcceptedCallback = confirmCallback;
+                confirmCallback = null;
                 confirmModal.hide();
             });
 
-            document.getElementById('mngxopsConfirmModal').addEventListener('hidden.bs.modal', function() {
-                confirmCallback = null;
+            confirmModalEl.addEventListener('hidden.bs.modal', function() {
                 document.getElementById('mngxopsConfirmBtn').disabled = false;
                 document.getElementById('mngxopsConfirmBtn').innerHTML = '确认';
+
+                var accepted = pendingAcceptedCallback;
+                pendingAcceptedCallback = null;
+                // 未点确认直接关闭：丢弃当前 callback
+                if (!accepted) {
+                    confirmCallback = null;
+                }
+
+                if (accepted) {
+                    try { accepted(); } catch (e) { console.error(e); }
+                }
+
+                // 关闭完成后弹出排队的下一次确认
+                if (queuedConfirm) {
+                    var next = queuedConfirm;
+                    queuedConfirm = null;
+                    document.getElementById('mngxopsConfirmTitle').textContent = next.title || '确认操作';
+                    document.getElementById('mngxopsConfirmBody').textContent = next.message || '';
+                    confirmCallback = next.onConfirm;
+                    confirmModal.show();
+                }
             });
 
             window.showConfirm = function(title, message, onConfirm) {
+                var isShown = confirmModalEl.classList.contains('show');
+                var isTransitioning = confirmModalEl.classList.contains('showing')
+                    || confirmModalEl.classList.contains('hiding')
+                    || !!pendingAcceptedCallback;
+                if (isShown || isTransitioning) {
+                    // 正在显示/关闭时排队，等 hidden 后再弹出
+                    queuedConfirm = { title: title, message: message, onConfirm: onConfirm };
+                    if (isShown && !pendingAcceptedCallback) {
+                        confirmModal.hide();
+                    }
+                    return;
+                }
                 document.getElementById('mngxopsConfirmTitle').textContent = title || '确认操作';
                 document.getElementById('mngxopsConfirmBody').textContent = message || '';
                 confirmCallback = onConfirm;

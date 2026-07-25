@@ -111,7 +111,7 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 queryset = queryset.filter(groups__name__icontains=term)
             queryset = queryset.distinct()
 
-        nodes = queryset.order_by("hostname")[:50]
+        nodes = queryset.select_related("credential").distinct().order_by("hostname")[:50]
         data = []
         for node in nodes:
             data.append(
@@ -119,7 +119,11 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "id": node.id,
                     "hostname": node.hostname,
                     "ip": node.ip,
+                    "port": node.port,
                     "status": node.status,
+                    "environment": node.environment,
+                    "nginx_version": node.nginx_version or "",
+                    "has_credential": bool(node.credential_id),
                     "groups": [{"id": g.id, "name": g.name} for g in node.groups.all()],
                     "groups_count": node.groups.count(),
                 }

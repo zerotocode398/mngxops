@@ -19,6 +19,7 @@ urlpatterns = [
     path("api/nginx-v/<int:node_id>/", views.NginxVApiView.as_view(), name="api_nginx_v"),
     path("api/parse-config/", views.ParseConfigApiView.as_view(), name="api_parse_config"),
     path("api/compute-config/", views.ComputeConfigApiView.as_view(), name="api_compute_config"),
+    path("api/batch-progress/", views.UpgradeBatchProgressView.as_view(), name="api_batch_progress"),
 
     # 升级任务
     path("task/create/", views.UpgradeTaskCreateView.as_view(), name="task_create"),

@@ -1,10 +1,29 @@
 """Nginx 编译升级模块 - 数据模型"""
 import hashlib
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from apps.nodes.models import Node
 
 User = get_user_model()
+
+
+def generate_upgrade_batch_number():
+    """生成升级批次号，格式 UG-YYMMDD-XXXX"""
+    today = timezone.now().strftime("%y%m%d")
+    prefix = f"UG-{today}-"
+    with transaction.atomic():
+        last = (
+            NginxUpgradeTask.objects.select_for_update()
+            .filter(batch_number__startswith=prefix)
+            .order_by("-batch_number")
+            .first()
+        )
+        if last and last.batch_number:
+            seq = int(last.batch_number[-4:]) + 1
+        else:
+            seq = 1
+        return f"{prefix}{seq:04d}"
 
 
 def nginx_package_upload_path(instance, filename):
@@ -89,6 +108,10 @@ class NginxUpgradeTask(models.Model):
     )
 
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
+    batch_number = models.CharField(
+        max_length=32, blank=True, db_index=True, verbose_name="批次号",
+        help_text="多节点同批升级共用同一批次号",
+    )
     node = models.ForeignKey(Node, on_delete=models.CASCADE, verbose_name="目标节点")
     source_package = models.ForeignKey(
         NginxSourcePackage,

@@ -5,6 +5,37 @@
 {% block page_title %}<i class="bi bi-file-text"></i> 升级任务详情 - {{ task.node.hostname }}{% endblock %}
 
 {% block content %}
+<style>
+    .task-detail-body { font-size: var(--fs-base); line-height: 1.5; }
+    .task-detail-body .text-muted { font-size: var(--fs-sm); }
+    .task-info-row {
+        display: flex; align-items: baseline; gap: 8px; min-width: 0;
+        padding: 6px 0; border-bottom: 1px solid var(--gray-100);
+    }
+    .task-info-row:last-child { border-bottom: none; }
+    .task-info-label { flex: 0 0 96px; color: var(--gray-600); white-space: nowrap; font-size: var(--fs-sm); }
+    .task-info-value { flex: 1; min-width: 0; word-break: break-all; font-size: var(--fs-base); }
+    /* 日志标题与正文共用左右内边距，避免与 card-header 错位 */
+    .upgrade-log-panel { border-radius: var(--br-md); overflow: hidden; background: #1a1a2e; }
+    .upgrade-log-title {
+        padding: 0.875rem 1.125rem 0.5rem;
+        color: #e9ecef;
+        font-size: var(--fs-md);
+        margin: 0;
+    }
+    .upgrade-log-body {
+        padding: 0 1.125rem 0.875rem;
+        max-height: 500px;
+        overflow-y: auto;
+        color: #00ff88;
+        font-family: var(--font-mono);
+        font-size: var(--fs-xs);
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin: 0;
+    }
+</style>
 <div class="container-fluid">
 
 <div class="mb-3">
@@ -17,118 +48,234 @@
 </div>
 
 <div class="row">
-    <div class="col-md-8">
+    <div class="col-12">
         <div class="card mb-3">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0"><i class="bi bi-list-task"></i> 任务信息</h5>
-                <span class="badge
-                    {% if task.status == 'success' %}bg-success
-                    {% elif task.status == 'failed' %}bg-danger
-                    {% elif task.status == 'rollback' %}bg-warning text-dark
-                    {% elif task.status == 'cancelled' %}bg-secondary
-                    {% else %}bg-info{% endif %}">
-                    {{ task.get_status_display }}
-                </span>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="taskStatusBadge" class="badge
+                        {% if task.status == 'success' %}bg-success
+                        {% elif task.status == 'failed' %}bg-danger
+                        {% elif task.status == 'rollback' %}bg-warning text-dark
+                        {% elif task.status == 'cancelled' %}bg-secondary
+                        {% else %}bg-info{% endif %}">
+                        {{ task.get_status_display }}
+                    </span>
+                    <span id="taskProgressBadge" class="badge bg-primary {% if task.status == 'success' or task.status == 'failed' or task.status == 'rollback' or task.status == 'cancelled' %}d-none{% endif %}">
+                        {{ task.progress }}%
+                    </span>
+                    {% if task.status == 'success' and user|has_perm_code:"upgrade.update" %}
+                    <button type="button" class="btn btn-sm btn-warning" id="btnRollback"
+                        onclick="submitPostConfirm('确认回滚', '确定回滚 Nginx 到旧版本？回滚将恢复备份的二进制文件。', '{% url 'upgrade:task_rollback' task.id %}')">
+                        <i class="bi bi-arrow-counterclockwise"></i> 回滚到旧版本
+                    </button>
+                    {% endif %}
+                </div>
             </div>
-            <div class="card-body">
-                <div class="row mb-2">
-                    <div class="col-6"><strong>目标节点:</strong> {{ task.node.hostname }} ({{ task.node.ip }})</div>
-                    <div class="col-6"><strong>操作人:</strong> {{ task.operator.username }}</div>
-                    <div class="col-6"><strong>当前版本:</strong> {{ task.current_version|default:"未知"|nginx_ver }}</div>
-                    <div class="col-6"><strong>目标版本:</strong> {{ task.target_version|nginx_ver }}</div>
-                    <div class="col-6"><strong>升级模式:</strong> {{ task.get_upgrade_mode_display }}</div>
-                    <div class="col-6"><strong>--prefix:</strong> {{ task.target_prefix|default:task.current_configure_path }}</div>
-                    <div class="col-6"><strong>远程工作目录:</strong> {{ task.remote_work_dir }}</div>
-                    <div class="col-6"><strong>并行编译 (-j):</strong> {{ task.make_jobs }}</div>
-                    <div class="col-6"><strong>源码包:</strong> {{ task.source_package.name|default:"-" }}</div>
-                    <div class="col-6"><strong>备份路径:</strong> <code>{{ task.old_binary_backup|default:"-" }}</code></div>
-                    <div class="col-6"><strong>创建时间:</strong> {{ task.created_at|date:"Y-m-d H:i:s" }}</div>
-                    <div class="col-6"><strong>完成时间:</strong> {{ task.finished_at|date:"Y-m-d H:i:s"|default:"-" }}</div>
+            <div class="card-body task-detail-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="task-info-row">
+                            <span class="task-info-label">目标节点</span>
+                            <span class="task-info-value">{{ task.node.hostname }} ({{ task.node.ip }})</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">当前版本</span>
+                            <span class="task-info-value">{{ task.current_version|default:"未知"|nginx_ver }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">升级模式</span>
+                            <span class="task-info-value">{{ task.get_upgrade_mode_display }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">远程工作目录</span>
+                            <span class="task-info-value code-font">{{ task.remote_work_dir }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">源码包</span>
+                            <span class="task-info-value">{{ task.source_package.name|default:"-" }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">创建时间</span>
+                            <span class="task-info-value">{{ task.created_at|date:"Y-m-d H:i:s" }}</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="task-info-row">
+                            <span class="task-info-label">操作人</span>
+                            <span class="task-info-value">{{ task.operator.username }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">目标版本</span>
+                            <span class="task-info-value">{{ task.target_version|nginx_ver }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">并行编译 (-j)</span>
+                            <span class="task-info-value">{{ task.make_jobs }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">备份路径</span>
+                            <span class="task-info-value"><code>{{ task.old_binary_backup|default:"-" }}</code></span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">完成时间</span>
+                            <span class="task-info-value">{{ task.finished_at|date:"Y-m-d H:i:s"|default:"-" }}</span>
+                        </div>
+                    </div>
                 </div>
-
-                {% if task.error_message %}
-                <div class="alert alert-danger mb-0">
-                    <strong>错误信息:</strong><br>
-                    {{ task.error_message|linebreaks }}
-                </div>
-                {% endif %}
             </div>
         </div>
 
+        {% if current_params or target_params %}
         <div class="card mb-3">
             <div class="card-header">
                 <h5 class="mb-0"><i class="bi bi-gear"></i> 编译参数</h5>
             </div>
             <div class="card-body">
-                {% if task.current_configure_opts %}
-                <p class="fw-bold text-primary small mb-1">当前编译参数 (nginx -V):</p>
-                <div class="nginx-v-output mb-3" style="max-height: 200px;">
-                    {{ task.current_configure_opts }}
-                </div>
-                {% endif %}
-
-                {% if task.target_configure_opts %}
-                <p class="fw-bold text-success small mb-1">调整后的编译参数:</p>
-                <div class="nginx-v-output nginx-v-output-alt" style="max-height: 200px;">
-                    ./configure {{ task.target_configure_opts }}
-                </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-file-text"></i> 完整执行日志</h5>
-            </div>
-            <div class="card-body p-0">
-                <div class="nginx-v-output code-font" style="border-radius: 0; max-height: 500px; font-size: var(--fs-xs);">
-                    {{ task.log_output|default:"暂无日志" }}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4">
-        <div class="card mb-3">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> 进度信息</h5>
-            </div>
-            <div class="card-body">
-                <div class="text-center">
-                    <h2 class="mb-0 {% if task.status == 'success' %}text-success{% elif task.status == 'failed' %}text-danger{% elif task.status == 'rollback' %}text-warning{% else %}text-primary{% endif %}">
-                        {{ task.progress }}%
-                    </h2>
-                    <div class="progress mt-2 mb-3" style="height: 10px;">
-                        <div class="progress-bar {% if task.status == 'success' %}bg-success{% elif task.status == 'failed' %}bg-danger{% elif task.status == 'rollback' %}bg-warning{% endif %}"
-                             style="width: {{ task.progress }}%"></div>
+                <div class="nginx-v-output" style="max-height: 360px; white-space: normal;">
+                    <div class="nginx-v-params">
+                        <div>./configure \</div>
+                        {% if has_param_diff %}
+                            {% for p in current_params %}
+                                {% if p in param_removed %}
+                                <div>
+                                    <span class="param-anno-removed">- {{ p }}</span>
+                                    <span class="param-anno-tag tag-removed">已移除</span>
+                                </div>
+                                {% else %}
+                                <div><span class="param-highlight">{{ p }}</span></div>
+                                {% endif %}
+                            {% endfor %}
+                            {% for p in param_added %}
+                            <div>
+                                <span class="param-anno-added">+ {{ p }}</span>
+                                <span class="param-anno-tag tag-added">新增</span>
+                            </div>
+                            {% endfor %}
+                        {% elif target_params %}
+                            {% for p in target_params %}
+                            <div><span class="param-highlight">{{ p }}</span></div>
+                            {% endfor %}
+                        {% else %}
+                            {% for p in current_params %}
+                            <div><span class="param-highlight">{{ p }}</span></div>
+                            {% endfor %}
+                        {% endif %}
                     </div>
-                    <p class="text-muted small">{{ task.current_step|default:"-" }}</p>
                 </div>
-            </div>
-        </div>
-
-        {% if task.status == 'success' or task.status == 'failed' %}
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-tools"></i> 操作</h5>
-            </div>
-            <div class="card-body">
-                {% if task.status == 'success' and user|has_perm_code:"upgrade.update" %}
-                <form method="post" action="{% url 'upgrade:task_rollback' task.id %}" id="rollbackForm">
-                    {% csrf_token %}
-                    <button type="button" class="btn btn-warning w-100"
-                        onclick="submitPostConfirm('确认回滚', '确定回滚 Nginx 到旧版本？回滚将恢复备份的二进制文件。', '{% url 'upgrade:task_rollback' task.id %}')">
-                        <i class="bi bi-arrow-counterclockwise"></i> 回滚到旧版本
-                    </button>
-                </form>
-                <p class="text-muted small mt-2">
-                    <strong>备份路径:</strong> <code>{{ task.old_binary_backup|default:"无备份" }}</code>
-                </p>
-                {% endif %}
             </div>
         </div>
         {% endif %}
+
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="upgrade-log-panel">
+                    <h5 class="upgrade-log-title"><i class="bi bi-file-text"></i> 完整执行日志</h5>
+                    <pre id="upgradeLogBody" class="upgrade-log-body code-font">{{ log_output_display|default:"暂无日志" }}</pre>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    /** 将完整执行日志滚动到最底部 */
+    function scrollLogToBottom() {
+        var logEl = document.getElementById('upgradeLogBody');
+        if (!logEl) return;
+        // 双 rAF：等 DOM/布局完成后再滚，避免首屏高度未算准
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                logEl.scrollTop = logEl.scrollHeight;
+            });
+        });
+    }
+
+    // 有日志输出时默认滚到底，无需手动拖滚动条
+    scrollLogToBottom();
+
+    /** 升级任务详情：进行中任务轮询刷新日志与状态 */
+    var TERMINAL = { success: 1, failed: 1, rollback: 1, cancelled: 1 };
+    var initialStatus = '{{ task.status|escapejs }}';
+    if (TERMINAL[initialStatus]) return;
+
+    var progressUrl = '{% url "upgrade:task_progress" task.id %}';
+    var canRollback = {{ user|has_perm_code:"upgrade.update"|yesno:"true,false" }};
+    var rollbackUrl = '{% url "upgrade:task_rollback" task.id %}';
+    var pollTimer = null;
+    var lastLogLen = -1;
+
+    function statusBadgeClass(status) {
+        if (status === 'success') return 'badge bg-success';
+        if (status === 'failed') return 'badge bg-danger';
+        if (status === 'rollback') return 'badge bg-warning text-dark';
+        if (status === 'cancelled') return 'badge bg-secondary';
+        return 'badge bg-info';
+    }
+
+    function ensureRollbackBtn() {
+        if (!canRollback) return;
+        var wrap = document.getElementById('taskStatusBadge');
+        if (!wrap || document.getElementById('btnRollback')) return;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'btnRollback';
+        btn.className = 'btn btn-sm btn-warning';
+        btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 回滚到旧版本';
+        btn.onclick = function () {
+            submitPostConfirm('确认回滚', '确定回滚 Nginx 到旧版本？回滚将恢复备份的二进制文件。', rollbackUrl);
+        };
+        wrap.parentElement.appendChild(btn);
+    }
+
+    function applyProgress(data) {
+        var badge = document.getElementById('taskStatusBadge');
+        if (badge) {
+            badge.className = statusBadgeClass(data.status);
+            badge.textContent = data.status_display || data.status || '';
+        }
+        var pct = document.getElementById('taskProgressBadge');
+        if (pct) {
+            pct.textContent = (data.progress != null ? data.progress : 0) + '%';
+            if (TERMINAL[data.status]) {
+                pct.classList.add('d-none');
+            } else {
+                pct.classList.remove('d-none');
+            }
+        }
+        var logEl = document.getElementById('upgradeLogBody');
+        if (logEl) {
+            var text = String(data.log_output || '').replace(/^\s+|\s+$/g, '');
+            if (!text) text = '暂无日志';
+            if (text.length !== lastLogLen || logEl.textContent !== text) {
+                logEl.textContent = text;
+                lastLogLen = text.length;
+                scrollLogToBottom();
+            }
+        }
+        if (data.status === 'success') ensureRollbackBtn();
+        if (TERMINAL[data.status] && pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            scrollLogToBottom();
+        }
+    }
+
+    function pollOnce() {
+        fetch(progressUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data && data.success !== false) applyProgress(data);
+            })
+            .catch(function () { /* 轮询失败静默重试 */ });
+    }
+
+    pollOnce();
+    pollTimer = setInterval(pollOnce, 2000);
+})();
+</script>
 {% endblock %}
