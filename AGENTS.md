@@ -1015,6 +1015,33 @@ Q57
  ✅ 已修复：节点勾选 + 配置勾选 + 表头全选三级联动；半选 indeterminate；已选显示节点数与配置数；仍按 task_ids 调用批量回滚 API
 ```
 
+Q58
+```text
+发布历史
+    批量回滚你觉得是否有缺陷？
+    单配置回滚时可以选择对应版本历史，但是批量回滚时无法选择。
+    你觉得批量回滚是否有必要删除？
+ ✅ 已修复：保留批量回滚；版本改为各任务 publish_version 的上一版（不再用 synced_version）；确认文案说明；跳过无上一版/锁定节点并反馈数量；精细选版仍走单配置回滚
+ ✅ 补充：跨批次同节点按 node_id 合并勾选/全选/计数；同 binding 多版本仅保留最新任务再回滚其上一版
+```
+
+Q59
+```text
+发布历史批量回滚
+    1、 点击批量回滚后信息显示异常
+
+确认回滚已选的 <strong>21</strong> 个配置（涉及 <strong>2</strong> 个节点）吗？<br><small class="text-muted">nginx.conf、baidu、gitlab.conf、nginx.conf、pushgateway.conf 等</small><br><small class="text-muted">将回滚到各任务发布版本的上一版；同一配置若跨多批次仅回滚最近一次发布的上一版；需指定其他版本请使用单配置回滚。</small>
+    2. 点击批量回滚能否自定义弹窗显示回滚的明细？这个需要你设计下，无任何提示不知道回滚的什么内容、版本是什么。
+ ✅ 已修复：弃用 showConfirm(textContent 导致 HTML 原文)；改为 modal-lg 明细弹窗（对齐 rollback/contentPreview）；按节点分组展示当前版本→回滚至；前端 binding 去重与后端一致
+```
+
+
+Qxx
+```text
+Ngixn 升级
+    首页的信息、布局有点冗余，应该怎样重构设计一下？
+    符合运维人员操作习惯
+```
 Qxx
 ```text
 配置备份

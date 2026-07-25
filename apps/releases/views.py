@@ -399,7 +399,7 @@ class ReleaseListView(
             super()
             .get_queryset()
             .select_related("node", "config", "binding", "operator")
-            .prefetch_related("node__groups")
+            .prefetch_related("node__groups", "binding__versions")
         )
         search = self.request.GET.get("search", "")
         status_filter = self.request.GET.get("status", "")
@@ -507,6 +507,15 @@ class ReleaseListView(
         context["has_any_filter"] = bool(
             search or status_filter or context["batch_filter"] or context["node_ip_filter"]
         )
+        # 本页各任务可回滚目标版本（publish_version 的上一版），供明细弹窗展示
+        for task in context["tasks"]:
+            prev_ver = None
+            if task.binding_id and task.publish_version is not None:
+                for ver in task.binding.versions.all():
+                    if ver.version < task.publish_version:
+                        if prev_ver is None or ver.version > prev_ver:
+                            prev_ver = ver.version
+            task.rollback_target_version = prev_ver
         return context
 
 
@@ -1347,30 +1356,62 @@ def _start_rollback_for_release_tasks(tasks, user):
     """
     根据已筛选的发布任务启动批量回滚。
     返回 (True, response_dict) 或 (False, error_message)。
+    回滚目标为各任务 publish_version 的上一版（非 synced_version）。
+    同一 binding 跨多批次时仅保留最新任务，再回滚到其上一版。
     """
     rollback_batch = generate_batch_number()
     rollback_task_ids = []
+    skipped = 0
 
-    for task in tasks:
+    # 同 binding 只保留最新任务（created_at、id 更大者优先）
+    task_list = list(tasks)
+    by_binding = {}
+    no_binding = []
+    for task in task_list:
+        bid = task.binding_id
+        if bid is None:
+            no_binding.append(task)
+            continue
+        prev = by_binding.get(bid)
+        if prev is None:
+            by_binding[bid] = task
+            continue
+        if (task.created_at, task.id) > (prev.created_at, prev.id):
+            by_binding[bid] = task
+
+    # 被同绑定更新的旧任务计入跳过
+    kept_ids = {t.id for t in by_binding.values()}
+    for task in task_list:
+        if task.binding_id is not None and task.id not in kept_ids:
+            skipped += 1
+
+    candidates = list(by_binding.values()) + no_binding
+
+    for task in candidates:
         if task.node.is_locked:
+            skipped += 1
             continue
         if not task.binding:
+            skipped += 1
             continue
-        # 回滚使用 synced_version（发布前的版本）
-        rollback_version = task.binding.synced_version
-        if rollback_version is None:
-            continue
-
+        # 回滚目标 = 该次发布版本的上一版（成功发布后 synced_version 已是刚发布版，不能用）
         binding = task.binding
-        version_obj = binding.versions.filter(version=rollback_version).first()
+        publish_ver = task.publish_version
+        if publish_ver is None:
+            skipped += 1
+            continue
+        prev = binding.versions.filter(version__lt=publish_ver).order_by("-version").first()
+        if not prev:
+            skipped += 1
+            continue
 
         new_task = ReleaseTask.objects.create(
             batch_number=rollback_batch,
             binding=binding,
             config=task.config,
             node=task.node,
-            version=version_obj,
-            publish_version=rollback_version,
+            version=prev,
+            publish_version=prev.version,
             remote_path=task.remote_path or (binding.remote_path if binding else ""),
             operator=user,
             status="pending",
@@ -1378,13 +1419,18 @@ def _start_rollback_for_release_tasks(tasks, user):
         rollback_task_ids.append(new_task.id)
 
     if not rollback_task_ids:
-        return False, "未生成任何回滚任务"
+        return False, "未生成任何回滚任务（所选任务均无上一版本、同绑定已去重或节点已锁定）"
+
+    started = len(rollback_task_ids)
+    detail = f"批量回滚：{started} 个任务"
+    if skipped:
+        detail += f"（跳过 {skipped} 个）"
 
     task_center = TaskCenterTask.objects.create(
         operation_type="release_rollback",
         status="running",
         source_batch=rollback_batch,
-        detail=f"批量回滚：{len(rollback_task_ids)} 个任务",
+        detail=detail,
         progress=0,
         started_at=timezone.now(),
         trigger_user=user,
@@ -1397,9 +1443,13 @@ def _start_rollback_for_release_tasks(tasks, user):
     )
     thread.start()
 
+    message = f"批量回滚已开始，批次号: {rollback_batch}，已启动 {started} 个"
+    if skipped:
+        message += f"，跳过 {skipped} 个"
+
     return True, {
         "success": True,
-        "message": f"批量回滚已开始，批次号: {rollback_batch}，共 {len(rollback_task_ids)} 个任务",
+        "message": message,
         "task_center_id": task_center.id,
         "batch_number": rollback_batch,
     }
