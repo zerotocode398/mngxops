@@ -269,7 +269,7 @@
                     <label class="upgrade-mode-option mb-0">
                         <input type="radio" name="upgradeMode" value="upgrade" class="form-check-input me-2" checked>
                         <span>平滑升级（同路径）</span>
-                        <div class="form-text mb-0">替换同路径二进制，USR2 平滑切换</div>
+                        <div class="form-text mb-0">替换同路径二进制，按启动方式 reload</div>
                     </label>
                     <label class="upgrade-mode-option mb-0">
                         <input type="radio" name="upgradeMode" value="install" class="form-check-input me-2">
@@ -2244,8 +2244,8 @@ function buildStepHtml(data) {
         { key: 'configuring', label: '执行 ./configure', step: 4 },
         { key: 'compiling', label: '执行 make -j', step: 5 },
         { key: 'backing_up', label: '备份旧版本', step: 6 },
-        { key: 'replacing_binary', label: '替换二进制文件', step: 7 },
-        { key: 'upgrading', label: '平滑升级 (USR2+WINCH+QUIT)', step: 8 },
+        { key: 'replacing_binary', label: '安装新版本 (make install)', step: 7 },
+        { key: 'upgrading', label: '按启动方式 reload Nginx', step: 8 },
         { key: 'verifying', label: '验证版本 & 运行状态', step: 9 },
     ];
     var html = '';

@@ -672,21 +672,14 @@ def execute_nginx_reload(
     private_key=None,
     nginx_path=None,
 ):
-    """在远程节点执行nginx -s reload"""
-    try:
-        client = _build_ssh_client(host, port, username, password, private_key)
+    """在远程节点按启动方式 reload（委托 utils.nginx_ops.reload_nginx）"""
+    from utils.nginx_ops import reload_nginx
 
-        nginx_bin = nginx_path or "nginx"
-        command = f"{nginx_bin} -s reload"
-
-        _, stdout, stderr = client.exec_command(command)
-        out = stdout.read().decode("utf-8")
-        err = stderr.read().decode("utf-8")
-        exit_code = stdout.channel.recv_exit_status()
-
-        client.close()
-
-        combined = out + err
-        return exit_code == 0, combined.strip() or "reload 成功"
-    except Exception as e:
-        return False, str(e)
+    return reload_nginx(
+        host,
+        port,
+        username,
+        password=password,
+        private_key=private_key,
+        nginx_path=nginx_path,
+    )

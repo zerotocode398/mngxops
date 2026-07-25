@@ -1278,6 +1278,33 @@ checking for int size ...
         23.1 需要显示完整的编译过程，不要省略
         23.2 当日志动态刷新时，我需要滑动浏览器的滚动条才能看到，能不能自动滑动滚动条看最新执行日志
         23.3 编译完成后不需要 cp 二进制文件，因为进程可能正在启动，此时需要进行 nginx -t，若成功则重启反之编译失败。
+ ✅ 已修复：
+ - configure/make/make install 全量输出写入 log_output（整块原文 + 摘要行）；单任务 progress 取消截断
+ - task_log 轮询刷新时日志容器与视口自动跟到底
+ - 手写 cp objs/nginx 改为 make install → nginx -t → 平滑升级；失败回滚旧二进制
+
+    24. 升级过程
+        24.1 make[1]: Leaving directory '/tmp/nginx-upgrade/nginx-1.30.3'
+[2026-07-25 05:41:20] make install 完成，二进制已覆盖安装
+[2026-07-25 05:41:20] 执行 nginx -t 语法检查...
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+[2026-07-25 05:41:20] nginx -t 语法检查通过
+[2026-07-25 05:41:20] 执行平滑升级 (USR2+WINCH+QUIT)...
+[2026-07-25 05:41:21] 平滑升级失败: 无法读取 PID 文件: 命令退出码 1
+[2026-07-25 05:41:21] 已回滚二进制: /usr/sbin/nginx.old.20260725054106 → /usr/sbin/nginx
+
+        nginx 可能是直接二进制，比如 /path/to/nginx -s reload 
+        也有可能是 systemctl 托管
+        在reload 前需要先检查一下nginx启动方式，在基于确认后的启动方式 reload
+
+        这个最好写成一个公共方法，运维工具后续还会新增 nginx 启停类似功能。
+
+        24.2 当 nginx 升级成功后，节点列表里面的版本会更新吗？
+ ✅ 已修复：
+ - 根因：_smooth_upgrade 写死 {prefix}/logs/nginx.pid，未使用 --pid-path=/run/nginx.pid
+ - 新增 utils/nginx_ops.py（detect/reload/restart/start/stop）；升级与回滚改 detect+reload
+ - execute_nginx_reload 委托公共 reload；成功后 get_nginx_version 回写节点列表版本
 ```
 
 

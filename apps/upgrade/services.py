@@ -282,15 +282,30 @@ def run_upgrade_task(task_id):
     node = task.node
     log_lines = []
 
-    def log(msg):
-        timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
-        line = f"[{timestamp}] {msg}"
-        log_lines.append(line)
+    def _persist_log(current_step=None):
+        """将内存日志刷入数据库"""
         task.log_output = "\n".join(log_lines)
-        task.current_step = msg
+        if current_step is not None:
+            task.current_step = current_step
         NginxUpgradeTask.objects.filter(pk=task_id).update(
-            log_output=task.log_output, current_step=task.current_step, updated_at=timezone.now()
+            log_output=task.log_output,
+            current_step=task.current_step,
+            updated_at=timezone.now(),
         )
+
+    def log(msg):
+        """追加一条带时间戳的摘要日志"""
+        timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_lines.append(f"[{timestamp}] {msg}")
+        _persist_log(current_step=msg)
+
+    def log_raw(output):
+        """追加命令原始输出整块（不逐行打时间戳，避免刷爆日志）"""
+        text = (output or "").rstrip("\n")
+        if not text:
+            return
+        log_lines.append(text)
+        _persist_log()
 
     def update_status(status, progress, **kwargs):
         updates = {"status": status, "progress": progress, "updated_at": timezone.now()}
@@ -459,11 +474,12 @@ def run_upgrade_task(task_id):
             ]
         target_opts_single = _join_configure_opts(opt_tokens, multiline=False)
         configure_cmd = f"cd {work_dir}/{extract_dir} && ./configure {target_opts_single} 2>&1"
-        log(f"configure 命令: {configure_cmd[:200]}...")
+        log(f"configure 命令: {configure_cmd}")
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
             success, output = ssh.execute_command(configure_cmd)
+        log_raw(output)
         if not success:
-            log(f"configure 失败: {output}")
+            log("configure 失败")
             update_status("failed", 55, error_message=f"configure 失败:\n{_tail_output(output)}")
             return
         log("configure 成功")
@@ -471,28 +487,29 @@ def run_upgrade_task(task_id):
         # ---- Step 8: 执行 make ----
         update_status("compiling", 65)
         make_jobs = task.make_jobs or 4
+        make_cmd = f"cd {work_dir}/{extract_dir} && make -j{make_jobs} 2>&1"
         log(f"执行 make -j{make_jobs} ...")
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
-            success, output = ssh.execute_command(
-                f"cd {work_dir}/{extract_dir} && make -j{make_jobs} 2>&1"
-            )
+            success, output = ssh.execute_command(make_cmd)
+        log_raw(output)
         if not success:
-            log(f"make 失败: {output}")
+            log("make 失败")
             update_status("failed", 65, error_message=f"make 失败:\n{_tail_output(output)}")
             return
         log("make 编译成功")
 
-        # ---- Step 9: 替换二进制 ----
+        # ---- Step 9: make install 覆盖安装（替代手写 cp objs/nginx）----
         update_status("replacing_binary", 80)
-        log("替换二进制文件...")
-        new_binary = f"{work_dir}/{extract_dir}/objs/nginx"
+        install_cmd = f"cd {work_dir}/{extract_dir} && make install 2>&1"
+        log("执行 make install 安装新版本...")
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
-            success, output = ssh.execute_command(f"cp {new_binary} {binary_path} 2>&1")
+            success, output = ssh.execute_command(install_cmd)
+        log_raw(output)
         if not success:
-            log(f"替换二进制失败: {output}")
-            update_status("failed", 80, error_message=f"替换二进制失败: {output}")
+            log("make install 失败")
+            update_status("failed", 80, error_message=f"make install 失败:\n{_tail_output(output)}")
             return
-        log("二进制文件替换完成")
+        log("make install 完成，二进制已覆盖安装")
 
         # ---- Step 10: nginx -t 语法检查 ----
         update_status("verifying", 85)
@@ -503,43 +520,58 @@ def run_upgrade_task(task_id):
             node.ip, node.port, credential.username,
             nginx_path=nginx_bin, **auth_kwargs_copy,
         )
+        log_raw(output)
         if not success:
-            log(f"语法检查失败: {output}")
-            # 尝试回滚
+            log("语法检查失败，准备回滚旧二进制")
             _rollback_binary(node, credential, binary_path, backup_path, auth_kwargs_copy, log)
             update_status("failed", 85, error_message=f"nginx -t 语法检查失败，已自动回滚:\n{output}")
             return
         log("nginx -t 语法检查通过")
 
-        # ---- Step 11: 平滑升级 ----
+        # ---- Step 11: 按启动方式 reload（替代硬编码 PID 的 USR2 平滑升级）----
         update_status("upgrading", 90)
-        log("执行平滑升级 (USR2+WINCH+QUIT)...")
-        success, result = _smooth_upgrade(
+        from utils.nginx_ops import reload_nginx
+        log("检测 Nginx 启动方式并执行 reload...")
+        success, result = reload_nginx(
             node.ip, node.port, credential.username,
-            prefix=parsed["prefix"], auth_kwargs=auth_kwargs_copy, log_fn=log,
+            nginx_path=nginx_bin, log_fn=log, **auth_kwargs_copy,
         )
         if not success:
-            log(f"平滑升级失败: {result}")
+            log(f"reload 失败: {result}")
             _rollback_binary(node, credential, binary_path, backup_path, auth_kwargs_copy, log)
-            update_status("failed", 90, error_message=f"平滑升级失败: {result}")
+            update_status("failed", 90, error_message=f"Nginx reload 失败: {result}")
             return
+        log(f"reload 完成: {result}")
 
         # ---- Step 12: 最终验证 ----
         update_status("verifying", 95)
         log("最终验证...")
-        verify_cmd = f"{nginx_bin} -v 2>&1"
-        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
-            success, output = ssh.execute_command(verify_cmd)
-        log(f"新版本: {output.strip()}")
+        from utils.ssh import get_nginx_version
+        ver_ok, ver_info = get_nginx_version(
+            node.ip, node.port, credential.username,
+            nginx_path=nginx_bin, **auth_kwargs_copy,
+        )
+        if ver_ok:
+            log(f"新版本: {ver_info}")
+        else:
+            verify_cmd = f"{nginx_bin} -v 2>&1"
+            with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
+                _, output = ssh.execute_command(verify_cmd)
+            log(f"新版本: {(output or '').strip()}")
 
         # 完成
         update_status("success", 100, finished_at=timezone.now())
         log("✅ Nginx 编译升级成功完成!")
 
-        # 更新节点上的 nginx_version
+        # 更新节点 nginx_version（优先真实 -v，失败则回退目标版本）
         from apps.nodes.models import Node as NodeModel
         target_ver = task.target_version or source_package.version
-        NodeModel.objects.filter(pk=node.pk).update(nginx_version=f"nginx/{target_ver}")
+        if ver_ok and ver_info:
+            # get_nginx_version 返回纯版本号，节点字段统一 nginx/x.y.z
+            node_ver = ver_info if str(ver_info).startswith("nginx/") else f"nginx/{ver_info}"
+        else:
+            node_ver = f"nginx/{target_ver}"
+        NodeModel.objects.filter(pk=node.pk).update(nginx_version=node_ver)
 
     except Exception as e:
         log(f"升级过程发生异常: {str(e)}")
@@ -572,59 +604,6 @@ def _extract_package_name(filename):
     elif name.endswith(".tgz"):
         name = name[:-4]
     return name
-
-
-def _smooth_upgrade(host, port, username, prefix, auth_kwargs, log_fn):
-    """执行平滑升级：USR2 → 等待新 master → WINCH old → QUIT old
-
-    Returns:
-        tuple: (success: bool, message: str)
-    """
-    pid_file = f"{prefix.rstrip('/')}/logs/nginx.pid"
-    try:
-        with SSHClient(host, port, username, **auth_kwargs) as ssh:
-            # 读取当前 pid
-            success, output = ssh.execute_command(f"cat {pid_file} 2>/dev/null")
-            if not success:
-                return False, f"无法读取 PID 文件: {output}"
-            old_pid = output.strip()
-
-            # 发送 USR2 启动新 master
-            success, output = ssh.execute_command(f"kill -USR2 {old_pid} 2>&1")
-            if not success:
-                return False, f"USR2 信号发送失败: {output}"
-            log_fn(f"已发送 USR2 信号到旧 master (pid={old_pid})")
-
-            # 等待新 master 启动
-            import time as _time
-            _time.sleep(2)
-
-            # 检查新旧 pid 文件
-            success, output = ssh.execute_command(
-                f"cat {pid_file} 2>/dev/null && echo '---' && cat {pid_file}.oldbin 2>/dev/null"
-            )
-            if not success or "---" not in output:
-                log_fn("警告: 无法确认新旧 PID 文件状态")
-
-            # 发送 WINCH 优雅关闭旧 worker
-            success, output = ssh.execute_command(f"kill -WINCH {old_pid} 2>&1")
-            if not success:
-                log_fn(f"警告: WINCH 信号发送失败: {output}")
-            else:
-                log_fn(f"已发送 WINCH 信号到旧 master (pid={old_pid})")
-
-            _time.sleep(1)
-
-            # 发送 QUIT 退出旧 master
-            success, output = ssh.execute_command(f"kill -QUIT {old_pid} 2>&1")
-            if not success:
-                log_fn(f"警告: QUIT 信号发送失败: {output}")
-            else:
-                log_fn(f"已发送 QUIT 信号到旧 master (pid={old_pid})，旧进程已退出")
-
-        return True, "平滑升级完成"
-    except Exception as e:
-        return False, str(e)
 
 
 def _rollback_binary(node, credential, binary_path, backup_path, auth_kwargs, log_fn):

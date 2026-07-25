@@ -556,8 +556,8 @@ class UpgradeTaskProgressView(LoginRequiredMixin, PermissionRequiredMixin, View)
         )
         data = _task_progress_dict(task)
         data["success"] = True
-        # 单任务日志保留更长截断
-        data["log_output"] = task.log_output[-50000:] if task.log_output else ""
+        # 任务详情轮询返回完整日志，不做截断
+        data["log_output"] = task.log_output or ""
         return JsonResponse(data)
 
 
@@ -684,6 +684,8 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
         binary_path = task.current_binary_path or task.current_configure_path.rstrip("/") + "/sbin/nginx"
 
         try:
+            from utils.nginx_ops import reload_nginx
+
             with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
                 # 恢复旧二进制
                 success, output = ssh.execute_command(
@@ -692,20 +694,13 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
                 if not success:
                     return JsonResponse({"success": False, "message": f"回滚失败: {output}"}, status=500)
 
-                # 如果旧 master 仍在，用 HUP 唤醒旧 worker
-                pid_file = (task.current_configure_path or "").rstrip("/") + "/logs/nginx.pid"
-                success, output = ssh.execute_command(f"cat {pid_file}.oldbin 2>/dev/null")
-                if success and output.strip():
-                    old_pid = output.strip()
-                    ssh.execute_command(f"kill -HUP {old_pid} 2>&1")
-                    # 退出新 master
-                    success, output = ssh.execute_command(f"cat {pid_file} 2>/dev/null")
-                    if success and output.strip():
-                        new_pid = output.strip()
-                        ssh.execute_command(f"kill -QUIT {new_pid} 2>&1")
-
-                # reload
-                ssh.execute_command(f"{binary_path} -s reload 2>&1")
+            # 按启动方式 reload，使进程回到旧二进制生效路径
+            ok, msg = reload_nginx(
+                node.ip, node.port, credential.username,
+                nginx_path=binary_path, **auth_kwargs,
+            )
+            if not ok:
+                return JsonResponse({"success": False, "message": f"二进制已回滚，但 reload 失败: {msg}"}, status=500)
         except Exception as e:
             return JsonResponse({"success": False, "message": f"回滚异常: {str(e)}"}, status=500)
 
