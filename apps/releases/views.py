@@ -123,9 +123,18 @@ class ReleaseExecutorMixin:
             self._record_history(task, action, task.result)
             return False, f"配置 {config.name} {version_label} 内容为空，无法发布"
 
-        # 备份（远程文件不存在时跳过，支持首次发布）
+        # 备份（远程文件不存在时跳过，支持首次发布；按 hostname 分子目录）
         add_log("正在备份原配置...")
-        success, backup_result = backup_remote_file(file_path=remote_path, **kwargs)
+        from utils.setting_service import get_setting
+        success, backup_result = backup_remote_file(
+            file_path=remote_path,
+            hostname=node.hostname,
+            backup_dir=get_setting(
+                "release.backup_dir",
+                "/opt/app/mascloud/ansible/mngxops",
+            ),
+            **kwargs,
+        )
         if success:
             if backup_result:
                 add_log(f"备份成功: {backup_result}")

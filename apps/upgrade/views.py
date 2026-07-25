@@ -10,6 +10,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from datetime import timedelta
 from django.views import View
 from django.views.generic import ListView, CreateView, TemplateView, DetailView
 
@@ -55,21 +56,107 @@ class PackageListView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePagina
 
 
 class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
-    """上传源码包"""
+    """上传源码包（支持 AJAX、同版本覆盖、上传进度由前端 XHR 展示）"""
     model = NginxSourcePackage
     form_class = NginxSourcePackageForm
     template_name = "upgrade/package_upload.html"
     permission_resource = "upgrade"
     permission_action = "create"
 
+    def get_form_kwargs(self):
+        """传入当前用户供版本唯一性校验"""
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+    def _wants_json(self):
+        """是否返回 JSON（XHR 上传）"""
+        return (
+            self.request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or "application/json" in self.request.headers.get("Accept", "")
+        )
+
+    def _has_version_exists_error(self, form):
+        """判断是否为同版本冲突错误"""
+        for err in form.non_field_errors().as_data():
+            if getattr(err, "code", None) == "version_exists":
+                return True
+        return False
+
     def form_valid(self, form):
-        form.instance.uploaded_by = self.request.user
-        response = super().form_valid(form)
-        messages.success(self.request, f"源码包 {form.instance.name} (nginx-{form.instance.version}) 上传成功")
-        return response
+        """新建或覆盖已有同版本源码包"""
+        user = self.request.user
+        version = form.cleaned_data["version"]
+        overwrite = form.cleaned_data.get("overwrite")
+        existing = NginxSourcePackage.objects.filter(
+            version=version,
+            uploaded_by=user,
+        ).first()
+
+        if existing and overwrite:
+            if existing.package_file:
+                existing.package_file.delete(save=False)
+            existing.name = form.cleaned_data["name"]
+            existing.description = form.cleaned_data.get("description") or ""
+            existing.is_official = bool(form.cleaned_data.get("is_official"))
+            existing.package_file = form.cleaned_data["package_file"]
+            existing.file_size = 0
+            existing.file_md5 = ""
+            existing.save()
+            self.object = existing
+            msg = f"源码包 {existing.name} (nginx-{existing.version}) 已覆盖更新"
+        else:
+            form.instance.uploaded_by = user
+            self.object = form.save()
+            msg = f"源码包 {self.object.name} (nginx-{self.object.version}) 上传成功"
+
+        if self._wants_json():
+            return JsonResponse({
+                "success": True,
+                "message": msg,
+                "redirect": self.get_success_url(),
+            })
+        messages.success(self.request, msg)
+        return redirect(self.get_success_url())
+
+    def form_invalid(self, form):
+        """校验失败：AJAX 返回 JSON，含 need_overwrite 标记"""
+        if self._wants_json():
+            need_overwrite = self._has_version_exists_error(form)
+            message = "版本已存在，是否覆盖？" if need_overwrite else "上传校验失败"
+            if not need_overwrite and form.errors:
+                # 取首条可读错误
+                for field, errs in form.errors.items():
+                    if errs:
+                        message = errs[0]
+                        break
+            return JsonResponse({
+                "success": False,
+                "need_overwrite": need_overwrite,
+                "message": message,
+                "errors": form.errors,
+            }, status=400)
+        return super().form_invalid(form)
 
     def get_success_url(self):
         return reverse("upgrade:package_list")
+
+
+class PackageVersionCheckView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """检查当前用户是否已上传同版本源码包（轻量预检，避免大文件重复上传）"""
+    permission_resource = "upgrade"
+    permission_action = "create"
+
+    def get(self, request):
+        """按 version 查询是否已存在"""
+        version = (request.GET.get("version") or "").strip()
+        if not version:
+            return JsonResponse({"exists": False, "version": version})
+        exists = NginxSourcePackage.objects.filter(
+            version=version,
+            uploaded_by=request.user,
+        ).exists()
+        return JsonResponse({"exists": exists, "version": version})
 
 
 class PackageDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -361,7 +448,12 @@ class UpgradeHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePag
                 | Q(current_version__icontains=search)
             )
         status_filter = self.request.GET.get("status", "")
-        if status_filter:
+        if status_filter == "running":
+            # 进行中 = 非终态（与首页统计一致）
+            queryset = queryset.exclude(
+                status__in=("success", "failed", "rollback", "cancelled")
+            )
+        elif status_filter:
             queryset = queryset.filter(status=status_filter)
         return queryset
 
@@ -378,20 +470,39 @@ class UpgradeHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePag
         context["is_paginated"] = page_obj.has_other_pages()
         context["search"] = self.request.GET.get("search", "")
         context["status_filter"] = self.request.GET.get("status", "")
-        context["status_choices"] = NginxUpgradeTask.STATUS_CHOICES
+        # 下拉增加「进行中」虚拟选项
+        context["status_choices"] = [("running", "进行中")] + list(
+            NginxUpgradeTask.STATUS_CHOICES
+        )
         context["per_page"] = per_page
         context["per_page_options"] = self.per_page_options
         return context
 
 
 class UpgradeTaskListView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
-    """Nginx 升级主页（兼容旧路由）"""
+    """Nginx 升级主页：运维操作台（统计 + 最近任务）"""
     template_name = "upgrade/index.html"
     permission_resource = "upgrade"
     permission_action = "read"
 
+    # 进行中：非终态
+    _TERMINAL_STATUSES = ("success", "failed", "rollback", "cancelled")
+
     def get_context_data(self, **kwargs):
+        """组装首页统计与最近任务列表"""
         context = super().get_context_data(**kwargs)
-        context["packages"] = NginxSourcePackage.objects.order_by("-created_at")[:5]
-        context["nodes"] = Node.objects.filter(is_locked=False).order_by("hostname")
+        since_7d = timezone.now() - timedelta(days=7)
+        context["package_count"] = NginxSourcePackage.objects.count()
+        context["running_count"] = NginxUpgradeTask.objects.exclude(
+            status__in=self._TERMINAL_STATUSES
+        ).count()
+        context["failed_7d_count"] = NginxUpgradeTask.objects.filter(
+            status="failed",
+            created_at__gte=since_7d,
+        ).count()
+        context["recent_tasks"] = (
+            NginxUpgradeTask.objects
+            .select_related("node", "operator", "source_package")
+            .order_by("-created_at")[:10]
+        )
         return context

@@ -1036,18 +1036,58 @@ Q59
 ```
 
 
-Qxx
+Q60
 ```text
 Ngixn 升级
     首页的信息、布局有点冗余，应该怎样重构设计一下？
     符合运维人员操作习惯
+ ✅ 已修复：首页改为运维操作台（顶栏开始升级/上传/源码包/历史 + 可点统计卡源码包/进行中/近7天失败 + 最近任务 data-table）；去掉说明书式 5 步与源码包预览；升级中心补首页/源码包/历史入口；历史支持 status=running 进行中过滤
 ```
-Qxx
+
+
+Q61
 ```text
-配置备份
+发布中心配置备份
     能否以节点为粒度
     现在所有配置都在 /opt/app/mascloud/ansible/mngxops/ 下面
     当配置重名是会覆盖
     /opt/app/mascloud/ansible/mngxops/< hostname >
     这样是否可以？
-``
+ ✅ 已修复：备份路径改为 {release.backup_dir}/{hostname}/filename.timestamp；接通系统设置；hostname 路径安全处理
+```
+
+Q62
+```text
+Nginx 升级
+    1. 若上传源码包版本已存在，抛出如下异常，应该有自定义弹窗提示是否需覆盖
+    IntegrityError at /upgrade/packages/upload/
+UNIQUE constraint failed: upgrade_nginxsourcepackage.version, upgrade_nginxsourcepackage.uploaded_by_id
+    ...
+    2. 上传源码包时，是否可以异步上传并实时以百分比形式动态展示上传进度？
+ ✅ 已修复：同版本先预检+showConfirm 覆盖确认；后端 overwrite 更新替代 IntegrityError；XHR FormData + upload.onprogress 真实百分比，复用 asyncProgressOverlay
+```
+
+Q63
+```text
+nginx 升级
+    1. 升级结果信息能否返回目标机器编译结果的信息？
+    我在目标机器尝试编译异常是
+    checking for libxslt in /usr/pkg/ ... not found
+checking for libxslt in /opt/local/ ... not found
+
+./configure: error: the HTTP XSLT module requires the libxml2/libxslt
+libraries. You can either do not enable the module or install the libraries.
+
+
+    但页面展示错误为
+    错误信息:
+编译环境依赖缺失: bash: dpkg: command not found
+
+请安装 gcc, make, pcre-devel, zlib-devel, openssl-devel
+
+    2. 当前版本 → 目标版本表行只展示了目标版本，没有展示当前版本。
+```
+
+Q64
+```text
+```

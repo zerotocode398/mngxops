@@ -79,7 +79,7 @@ PRESET_SETTINGS = [
     {"key": "release.max_parallel_tasks", "group": "发布管理", "type": "integer", "value": "3",
      "label": "最大并行任务数", "description": "批量发布/同步时 ThreadPoolExecutor 的最大 worker 数", "sort_order": 41},
     {"key": "release.backup_dir", "group": "发布管理", "type": "string", "value": "/opt/app/mascloud/ansible/mngxops",
-     "label": "远程配置备份目录", "description": "配置发布前在远程节点上备份配置文件的目录", "sort_order": 42},
+     "label": "远程配置备份目录", "description": "配置发布前在远程节点上备份的根目录，实际路径为 {backup_dir}/{节点hostname}/", "sort_order": 42},
     {"key": "release.history_retention_days", "group": "发布管理", "type": "integer", "value": "90",
      "label": "发布历史保留天数", "description": "超过此天数的发布历史记录将被自动清理", "sort_order": 43},
     # 审计日志

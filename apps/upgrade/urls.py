@@ -8,6 +8,7 @@ urlpatterns = [
     # 源码包管理
     path("packages/", views.PackageListView.as_view(), name="package_list"),
     path("packages/upload/", views.PackageUploadView.as_view(), name="package_upload"),
+    path("packages/check-version/", views.PackageVersionCheckView.as_view(), name="package_check_version"),
     path("packages/<int:pk>/delete/", views.PackageDeleteView.as_view(), name="package_delete"),
     path("packages/<int:pk>/download/", views.PackageDownloadView.as_view(), name="package_download"),
 

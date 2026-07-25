@@ -428,6 +428,21 @@ def upload_file_via_sftp(
         return False, str(e)
 
 
+def _safe_backup_hostname(hostname):
+    """将节点 hostname 转为安全的备份子目录名"""
+    raw = (hostname or "").strip()
+    if not raw:
+        return "unknown"
+    safe = []
+    for ch in raw:
+        if ch.isalnum() or ch in ("-", "_", "."):
+            safe.append(ch)
+        else:
+            safe.append("_")
+    result = "".join(safe).strip("._")
+    return result or "unknown"
+
+
 def backup_remote_file(
     host,
     port,
@@ -435,9 +450,18 @@ def backup_remote_file(
     password=None,
     private_key=None,
     file_path=None,
-    backup_dir="/opt/app/mascloud/ansible/mngxops",
+    backup_dir=None,
+    hostname=None,
 ):
-    """备份远程节点上的文件；源文件不存在时跳过备份并返回成功"""
+    """
+    备份远程节点上的文件到 {backup_dir}/{hostname}/。
+    源文件不存在时跳过备份并返回成功。
+    """
+    if not backup_dir:
+        backup_dir = get_setting(
+            "release.backup_dir",
+            "/opt/app/mascloud/ansible/mngxops",
+        )
     try:
         client = _build_ssh_client(host, port, username, password, private_key)
 
@@ -450,9 +474,10 @@ def backup_remote_file(
         timestamp = time.strftime("%Y%m%d%H%M%S")
         filename = file_path.split("/")[-1]
         backup_name = f"{filename}.{timestamp}"
-        backup_path = f"{backup_dir}/{backup_name}"
+        node_dir = f"{str(backup_dir).rstrip('/')}/{_safe_backup_hostname(hostname)}"
+        backup_path = f"{node_dir}/{backup_name}"
 
-        _, stdout, stderr = client.exec_command(f"mkdir -p {backup_dir}")
+        _, stdout, stderr = client.exec_command(f"mkdir -p {node_dir}")
         mkdir_exit = stdout.channel.recv_exit_status()
         if mkdir_exit != 0:
             err = stderr.read().decode("utf-8").strip()

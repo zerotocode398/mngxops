@@ -7,6 +7,8 @@ from .models import NginxSourcePackage, NginxUpgradeTask
 class NginxSourcePackageForm(forms.ModelForm):
     """源码包上传表单"""
 
+    overwrite = forms.BooleanField(required=False, initial=False)
+
     class Meta:
         model = NginxSourcePackage
         fields = ["name", "version", "package_file", "description", "is_official"]
@@ -31,20 +33,27 @@ class NginxSourcePackageForm(forms.ModelForm):
             "is_official": "标记为官方包",
         }
         help_texts = {
-            "package_file": "支持 .tar.gz / .tgz 格式，最大 500MB",
+            "package_file": "支持 .tar.gz / .tgz 格式，最大 10MB",
         }
 
+    def __init__(self, *args, user=None, **kwargs):
+        """接收当前用户，用于版本唯一性校验"""
+        self.user = user
+        super().__init__(*args, **kwargs)
+
     def clean_package_file(self):
+        """校验源码包格式与大小"""
         package_file = self.cleaned_data.get("package_file")
         if package_file:
             if not package_file.name.endswith((".tar.gz", ".tgz")):
                 raise forms.ValidationError("仅支持 .tar.gz / .tgz 格式的文件")
-            # 500MB 限制
-            if package_file.size > 500 * 1024 * 1024:
-                raise forms.ValidationError("文件大小不能超过 500MB")
+            # 10MB 限制（官方源码包通常仅数 MB）
+            if package_file.size > 10 * 1024 * 1024:
+                raise forms.ValidationError("文件大小不能超过 10MB")
         return package_file
 
     def clean_version(self):
+        """规范化版本号，必要时从文件名提取"""
         version = self.cleaned_data.get("version", "").strip()
         if not version:
             # 尝试从文件名提取版本号
@@ -56,6 +65,23 @@ class NginxSourcePackageForm(forms.ModelForm):
                     return match.group(1)
             raise forms.ValidationError("请输入版本号或选择具有标准命名的源码包文件")
         return version
+
+    def clean(self):
+        """同用户同版本未覆盖时拒绝，供前端弹出确认"""
+        cleaned = super().clean()
+        version = cleaned.get("version")
+        overwrite = cleaned.get("overwrite")
+        if version and self.user and not overwrite:
+            exists = NginxSourcePackage.objects.filter(
+                version=version,
+                uploaded_by=self.user,
+            ).exists()
+            if exists:
+                raise forms.ValidationError(
+                    f"版本 {version} 已存在，是否覆盖？",
+                    code="version_exists",
+                )
+        return cleaned
 
 
 class NginxUpgradeTaskForm(forms.ModelForm):

@@ -19,12 +19,13 @@
             <div class="card-body">
                 <form method="post" enctype="multipart/form-data" id="uploadForm">
                     {% csrf_token %}
+                    <input type="hidden" name="overwrite" id="id_overwrite" value="">
 
                     <!-- 拖拽上传区域 -->
                     <div class="upload-dropzone mb-4" id="dropZone">
                         <i class="bi bi-cloud-upload upload-dropzone-icon"></i>
-                        <p class="mt-2 mb-1 fw-bold">点击或拖拽文件到此处上传</p>
-                        <p class="text-muted small mb-0">支持 .tar.gz / .tgz 格式，最大 500MB</p>
+                        <p class="mt-2 mb-1">点击或拖拽文件到此处上传</p>
+                        <p class="text-muted small mb-0">支持 .tar.gz / .tgz 格式，最大 10MB</p>
                         <input type="file" name="package_file" id="id_package_file"
                                accept=".tar.gz,.tgz" style="display: none;">
                     </div>
@@ -37,40 +38,41 @@
                         已选择: <span id="fileName"></span>
                     </div>
 
-                    <!-- 表单字段 -->
                     <div class="mb-3">
-                        <label class="form-label">包名称 *</label>
-                        <input type="text" name="name" class="form-control"
-                               id="id_name" placeholder="如：官方标准包 1.26.1" required>
+                        <label class="form-label">包名称 <span class="required">*</span></label>
+                        <input type="text" name="name" class="form-control form-control-sm"
+                               id="id_name" placeholder="如：官方标准包 1.26.1" required
+                               value="{{ form.name.value|default:'' }}">
                         {% if form.name.errors %}
-                        <div class="text-danger">{{ form.name.errors|join:", " }}</div>
+                        <div class="text-danger mt-1 small">{{ form.name.errors|join:", " }}</div>
                         {% endif %}
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">版本号 *</label>
-                        <input type="text" name="version" class="form-control"
-                               id="id_version" placeholder="如：1.26.1（自动从文件名提取）" required>
-                        <small class="text-muted">留空将从文件名自动提取，如 nginx-1.26.1.tar.gz → 1.26.1</small>
+                        <label class="form-label">版本号 <span class="required">*</span></label>
+                        <input type="text" name="version" class="form-control form-control-sm"
+                               id="id_version" placeholder="如：1.26.1（自动从文件名提取）" required
+                               value="{{ form.version.value|default:'' }}">
+                        <div class="form-text">留空将从文件名自动提取，如 nginx-1.26.1.tar.gz → 1.26.1</div>
                         {% if form.version.errors %}
-                        <div class="text-danger">{{ form.version.errors|join:", " }}</div>
+                        <div class="text-danger mt-1 small">{{ form.version.errors|join:", " }}</div>
                         {% endif %}
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label">描述</label>
-                        <textarea name="description" class="form-control" rows="3"
-                                  id="id_description" placeholder="如：从 nginx.org 下载的官方稳定版"></textarea>
+                        <textarea name="description" class="form-control form-control-sm" rows="3"
+                                  id="id_description" placeholder="如：从 nginx.org 下载的官方稳定版">{{ form.description.value|default:'' }}</textarea>
                     </div>
 
                     <div class="mb-3 form-check">
-                        <input type="checkbox" name="is_official" class="form-check-input" id="id_is_official">
+                        <input type="checkbox" name="is_official" class="form-check-input" id="id_is_official"
+                               {% if form.is_official.value %}checked{% endif %}>
                         <label class="form-check-label" for="id_is_official">标记为官方包（非定制版本）</label>
                     </div>
 
                     <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-primary" id="btnSubmit"
-                                onclick="return checkBeforeSubmit();">
+                        <button type="submit" class="btn btn-primary" id="btnSubmit">
                             <i class="bi bi-upload"></i> 上传并校验
                         </button>
                         <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary"><i class="bi bi-x-circle"></i> 取消</a>
@@ -86,81 +88,207 @@
 {% block extra_js %}
 <script>
 (function() {
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('id_package_file');
-    const fileInfo = document.getElementById('fileInfo');
-    const fileName = document.getElementById('fileName');
-    const versionInput = document.getElementById('id_version');
-    const nameInput = document.getElementById('id_name');
+    var dropZone = document.getElementById('dropZone');
+    var fileInput = document.getElementById('id_package_file');
+    var fileInfo = document.getElementById('fileInfo');
+    var fileName = document.getElementById('fileName');
+    var versionInput = document.getElementById('id_version');
+    var nameInput = document.getElementById('id_name');
+    var form = document.getElementById('uploadForm');
+    var btnSubmit = document.getElementById('btnSubmit');
+    var overwriteInput = document.getElementById('id_overwrite');
+    var checkUrl = '{% url "upgrade:package_check_version" %}';
+    var uploadUrl = '{% url "upgrade:package_upload" %}';
+    var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    var uploading = false;
 
-    // 点击上传区域选择文件
-    dropZone.addEventListener('click', function() {
-        fileInput.click();
-    });
+    dropZone.addEventListener('click', function() { fileInput.click(); });
 
-    // 拖拽事件
     dropZone.addEventListener('dragover', function(e) {
         e.preventDefault();
         dropZone.classList.add('dragover');
     });
-
     dropZone.addEventListener('dragleave', function(e) {
         e.preventDefault();
         dropZone.classList.remove('dragover');
     });
-
     dropZone.addEventListener('drop', function(e) {
         e.preventDefault();
         dropZone.classList.remove('dragover');
-
         if (e.dataTransfer.files.length) {
             fileInput.files = e.dataTransfer.files;
             updateFileInfo(e.dataTransfer.files[0]);
         }
     });
-
     fileInput.addEventListener('change', function() {
-        if (fileInput.files.length) {
-            updateFileInfo(fileInput.files[0]);
-        }
+        if (fileInput.files.length) updateFileInfo(fileInput.files[0]);
     });
 
+    /** 更新已选文件信息并自动填充版本/名称 */
     function updateFileInfo(file) {
         if (!file.name.endsWith('.tar.gz') && !file.name.endsWith('.tgz')) {
-            alert('仅支持 .tar.gz / .tgz 格式的文件');
+            if (window.showToast) showToast('仅支持 .tar.gz / .tgz 格式的文件', 'danger');
             fileInput.value = '';
             fileInfo.classList.add('d-none');
             return;
         }
-        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-        if (file.size > 500 * 1024 * 1024) {
-            alert('文件超过 500MB 限制');
+        var sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        if (file.size > 10 * 1024 * 1024) {
+            if (window.showToast) showToast('文件超过 10MB 限制', 'danger');
             fileInput.value = '';
             fileInfo.classList.add('d-none');
             return;
         }
         fileName.textContent = file.name + ' (' + sizeMB + ' MB)';
         fileInfo.classList.remove('d-none');
-
-        // 自动提取版本号
-        const match = file.name.match(/nginx-(\d+\.\d+\.\d+)/);
-        if (match && !versionInput.value) {
-            versionInput.value = match[1];
-        }
-        // 自动设置包名称
-        if (!nameInput.value) {
-            nameInput.value = 'Nginx ' + (versionInput.value || '源码包');
-        }
+        var match = file.name.match(/nginx-(\d+\.\d+\.\d+)/);
+        if (match && !versionInput.value) versionInput.value = match[1];
+        if (!nameInput.value) nameInput.value = 'Nginx ' + (versionInput.value || '源码包');
     }
+
+    /** 更新全局进度遮罩百分比（真实上传进度） */
+    function updateUploadProgress(percent, text) {
+        var bar = document.getElementById('asyncProgressBar');
+        var pct = document.getElementById('asyncProgressPercent');
+        var txt = document.getElementById('asyncProgressText');
+        if (bar) bar.style.width = percent + '%';
+        if (pct) pct.textContent = percent;
+        if (txt) txt.textContent = text || ('上传中 ' + percent + '%');
+    }
+
+    /** 标记上传完成态 */
+    function finishUploadProgress(ok, text) {
+        var bar = document.getElementById('asyncProgressBar');
+        if (bar) {
+            bar.classList.remove('progress-bar-animated');
+            bar.classList.add(ok ? 'bg-success' : 'bg-warning');
+            bar.style.width = '100%';
+        }
+        var pct = document.getElementById('asyncProgressPercent');
+        if (pct) pct.textContent = '100';
+        var txt = document.getElementById('asyncProgressText');
+        if (txt) txt.textContent = text || (ok ? '上传完成' : '上传失败');
+    }
+
+    /** 恢复提交按钮 */
+    function resetSubmitBtn() {
+        uploading = false;
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = '<i class="bi bi-upload"></i> 上传并校验';
+    }
+
+    /** XHR 实际上传 */
+    function doUpload(overwrite) {
+        if (!fileInput.files.length) {
+            if (window.showToast) showToast('请选择源码包文件', 'warning');
+            return;
+        }
+        overwriteInput.value = overwrite ? '1' : '';
+        uploading = true;
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 上传中...';
+
+        if (typeof showAsyncProgressOverlay === 'function') {
+            showAsyncProgressOverlay('正在上传源码包');
+            document.getElementById('asyncProgressOverlay').setAttribute('data-no-reload', 'true');
+            var fname = fileInput.files[0].name;
+            updateUploadProgress(0, '准备上传: ' + fname);
+        }
+
+        var fd = new FormData(form);
+        if (overwrite) fd.set('overwrite', 'on');
+        else fd.delete('overwrite');
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl);
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.setRequestHeader('X-CSRFToken', csrfToken);
+
+        xhr.upload.onprogress = function(e) {
+            if (!e.lengthComputable) return;
+            var percent = Math.min(99, Math.round((e.loaded / e.total) * 100));
+            updateUploadProgress(percent, '已上传 ' + percent + '%');
+        };
+
+        xhr.onload = function() {
+            var data = null;
+            try { data = JSON.parse(xhr.responseText); } catch (err) { data = null; }
+
+            if (xhr.status >= 200 && xhr.status < 300 && data && data.success) {
+                finishUploadProgress(true, data.message || '上传成功');
+                if (window.showToast) showToast(data.message || '上传成功', 'success');
+                setTimeout(function() {
+                    window.location.href = data.redirect || '{% url "upgrade:package_list" %}';
+                }, 600);
+                return;
+            }
+
+            if (data && data.need_overwrite) {
+                if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
+                resetSubmitBtn();
+                showConfirm(
+                    '版本已存在',
+                    '版本 ' + (versionInput.value || '') + ' 已存在，是否覆盖现有源码包？',
+                    function() { doUpload(true); }
+                );
+                return;
+            }
+
+            finishUploadProgress(false, (data && data.message) || '上传失败');
+            if (window.showToast) showToast((data && data.message) || '上传失败', 'danger');
+            resetSubmitBtn();
+            setTimeout(function() {
+                if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
+            }, 1500);
+        };
+
+        xhr.onerror = function() {
+            finishUploadProgress(false, '网络错误');
+            if (window.showToast) showToast('网络错误', 'danger');
+            resetSubmitBtn();
+            setTimeout(function() {
+                if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
+            }, 1500);
+        };
+
+        xhr.send(fd);
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (uploading) return;
+        if (!fileInput.files.length) {
+            if (window.showToast) showToast('请选择源码包文件', 'warning');
+            return;
+        }
+        var version = (versionInput.value || '').trim();
+        if (!version) {
+            if (window.showToast) showToast('请填写版本号', 'warning');
+            return;
+        }
+
+        // 轻量预检：同版本已存在则先确认，避免大文件白传一遍
+        fetch(checkUrl + '?version=' + encodeURIComponent(version), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data && data.exists) {
+                showConfirm(
+                    '版本已存在',
+                    '版本 ' + version + ' 已存在，是否覆盖现有源码包？',
+                    function() { doUpload(true); }
+                );
+            } else {
+                doUpload(false);
+            }
+        })
+        .catch(function() {
+            // 预检失败时仍走上传，由后端校验兜底
+            doUpload(false);
+        });
+    });
 })();
-
-function checkBeforeSubmit() {
-    const fileInput = document.getElementById('id_package_file');
-    if (!fileInput.files.length) {
-        alert('请选择源码包文件');
-        return false;
-    }
-    return true;
-}
 </script>
 {% endblock %}
