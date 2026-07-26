@@ -526,6 +526,19 @@
         .form-text { color: var(--gray-600); font-size: var(--fs-sm); }
         label .required, .form-label .required { color: var(--danger); margin-left: 2px; }
 
+        /* 创建/编辑分区卡片：左边色条 + 浅底 header */
+        .form-section {
+            border-left: 3px solid var(--primary);
+            overflow: hidden;
+        }
+        .form-section .card-header {
+            background: var(--gray-100);
+        }
+        .form-section--basic { border-left-color: var(--primary); }
+        .form-section--status { border-left-color: var(--warning); }
+        .form-section--roles { border-left-color: var(--info); }
+        .form-section--perms { border-left-color: var(--success); }
+
         /* ========== 权限矩阵（角色创建/编辑） ========== */
         .perm-matrix {
             display: grid;

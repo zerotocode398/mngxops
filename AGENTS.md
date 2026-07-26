@@ -1342,6 +1342,51 @@ nginx 升级
  ✅ 已修复：BUILTIN_ADD_MODULES 按官方 configure/auto/options 补全全部模块参数（--with 含 dynamic + 默认模块 --without + Mail/Stream/事件等）；静态与 dynamic 互斥过滤
 ```
 
+Q68
+```text
+用户列表
+ 1. 操作自动换行了，编辑、关联角色、锁定、删除是2行展示的
+ ✅ 已修复：操作列改为 icon-only btn-group + text-nowrap；锁定/解锁用隐藏表单 + form 属性挂接；列宽调至 22%
+
+ 2. 编辑用户，页面样式设计太过于简陋了，能否美化布局、样式、排版等等等？
+ ✅ 已修复：拆为基本信息/账号状态/关联角色/直授权限分区卡片；支持 ?tab=roles 定位
+
+ 3. 编辑用户，关联角色的实现能否参考“节点关联节点组”的实现？采用自定义弹窗并展示所选项。
+ ✅ 已修复：选择角色弹窗（tag 搜索+多选+最多3）+ 已选 chips；创建页同步；views 传入 all_user_groups
+
+ 4. 编辑角色，用户直授权限看不到角色资源。
+ ✅ 已修复：直授权限改用 perm-matrix（含角色资源）；selected_ids 预选自 profile.direct_permissions
+
+ 5. 改的功能符合预期，基本信息能否再美化下？你觉得新增卡片效果如何？
+ ✅ 已修复：分区卡片左边色条（primary/warning/info/success）+ header 浅底；基本信息双列；账号状态徽标+时间一行；创建页同步色条
+ 
+ 6. 编辑/新增角色的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
+ ✅ 已修复：基本信息 + 角色权限分区卡片；底部操作栏无色条
+
+ 7. 编辑/新增用户组的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
+ ✅ 已修复：基本信息 + 关联角色分区卡片；去掉内层嵌套 card
+
+凭证管理
+ 8. 编辑凭证的时候，密码的放大镜按钮往下靠了，应该是居中
+ ✅ 已修复：.form-text 移出 .password-input-wrapper，眼睛按钮相对输入框垂直居中
+
+ 9. 编辑/新增凭证的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
+ ✅ 已修复：fieldset 改为基本信息(primary) + 认证信息(warning) 分区卡片
+
+ 13. 用户列表能否新增一列所属用户组的字段
+ ✅ 已修复：归属角色后新增「所属用户组」列（badge 展示 user_teams）；列表 queryset prefetch profile__groups + user_teams
+
+节点管理
+ 10. 编辑/新增节点的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
+ ✅ 已修复：基本信息 + 关联与连接分区卡片；测试连接保留在底部操作区
+
+ 11. 编辑/新增节点组的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
+ ✅ 已修复：基本信息 + 关联节点分区卡片
+
+ 补充：.user-edit-section 提升为全局 .form-section（base.html），用户创建/编辑同步改用全局类
+
+
+```
 
 Qxx
 ```text

@@ -2,212 +2,517 @@
 
 {% block title %}编辑用户 - MngxOps{% endblock %}
 
-{% block extra_js %}
-<style>
-    .user-info-table td .badge {
-        font-size: 0.78rem;
-    }
-    </style>
-<script>
-    document.querySelectorAll('.btn-perm-select-all').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var resource = this.dataset.resource;
-            var panel = document.getElementById('perm-' + resource);
-            panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
-                cb.checked = true;
-            });
-        });
-    });
-    document.querySelectorAll('.btn-perm-deselect-all').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var resource = this.dataset.resource;
-            var panel = document.getElementById('perm-' + resource);
-            panel.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
-                cb.checked = false;
-            });
-        });
-    });
-</script>
-{% endblock %}
-
 {% block content %}
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-pencil-square"></i> 编辑用户</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row justify-content-center">
-                        <div class="col-md-8">
-                            <form method="post">
-                                {% csrf_token %}
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <form method="post" id="userEditForm">
+                {% csrf_token %}
 
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="{{ form.username.id_for_label }}" class="form-label">
-                                            <i class="bi bi-person"></i> {{ form.username.label }}
-                                        </label>
-                                        {{ form.username }}
-                                        {% if form.username.errors %}
-                                        <div class="text-danger mt-1 small">{% for error in form.username.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
-                                        {% endif %}
-                                        <small class="text-muted">用户名不可修改</small>
-                                    </div>
-
-                                    <div class="col-md-6 mb-3">
-                                        <label for="{{ form.email.id_for_label }}" class="form-label">
-                                            <i class="bi bi-envelope"></i> {{ form.email.label }}
-                                        </label>
-                                        {{ form.email }}
-                                        {% if form.email.errors %}
-                                        <div class="text-danger mt-1 small">{% for error in form.email.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
-                                        {% endif %}
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="{{ form.first_name.id_for_label }}" class="form-label">
-                                        <i class="bi bi-person-badge"></i> {{ form.first_name.label }}
-                                    </label>
-                                    {{ form.first_name }}
-                                    {% if form.first_name.errors %}
-                                    <div class="text-danger mt-1 small">{% for error in form.first_name.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
-                                    {% endif %}
-                                </div>
-
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="{{ form.mobile.id_for_label }}" class="form-label">
-                                            <i class="bi bi-phone"></i> {{ form.mobile.label }}
-                                        </label>
-                                        {{ form.mobile }}
-                                        {% if form.mobile.errors %}
-                                        <div class="text-danger mt-1 small">{% for error in form.mobile.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
-                                        {% endif %}
-                                    </div>
-
-                                    <div class="col-md-6 mb-3">
-                                        <label for="{{ form.remark.id_for_label }}" class="form-label">
-                                            <i class="bi bi-card-text"></i> {{ form.remark.label }}
-                                        </label>
-                                        {{ form.remark }}
-                                        {% if form.remark.errors %}
-                                        <div class="text-danger mt-1 small">{% for error in form.remark.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
-                                        {% endif %}
-                                    </div>
-                                </div>
-
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <div class="form-check form-switch">
-                                            {{ form.is_active }}
-                                            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
-                                                {{ form.is_active.label }}
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-md-6 mb-3">
-                                        <div class="form-check form-switch">
-                                            {{ form.is_superuser }}
-                                            <label class="form-check-label" for="{{ form.is_superuser.id_for_label }}">
-                                                {{ form.is_superuser.label }}
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="form-label">用户信息</label>
-                                    <table class="table table-sm table-bordered table-hover mb-0 data-table user-info-table">
-                                        <tr>
-                                            <th>加入时间</th>
-                                            <td>{{ object.date_joined|date:"Y-m-d H:i:s" }}</td>
-                                        </tr>
-                                        <tr>
-                                            <th>最后登录</th>
-                                            <td>{{ object.last_login|date:"Y-m-d H:i:s"|default:"从未登录" }}</td>
-                                        </tr>
-                                    </table>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="{{ form.groups.id_for_label }}" class="form-label">
-                                        <i class="bi bi-person-badge"></i> {{ form.groups.label }}
-                                    </label>
-                                    {{ form.groups }}
-                                    {% if form.groups.errors %}
-                                    <div class="text-danger mt-1 small">{% for error in form.groups.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
-                                    {% endif %}
-                                    <small class="text-muted">可勾选多个角色，最多 3 个</small>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="form-label">
-                                        <i class="bi bi-shield-lock"></i> {{ form.direct_permissions.label }}
-                                    </label>
-                                    <div class="permission-accordion" id="permAccordion">
-                                        {% for resource_key, resource_label, permission_codes in permission_groups %}
-                                        <div class="card mb-2">
-                                            <div class="card-header py-1 px-2 d-flex justify-content-between align-items-center"
-                                                data-bs-toggle="collapse" data-bs-target="#perm-{{ resource_key }}"
-                                                style="cursor:pointer; background:#f8f9fa;">
-                                                <strong class="small">{{ resource_label }}</strong>
-                                                <div>
-                                                    <button type="button" class="btn btn-sm btn-outline-primary btn-perm-select-all"
-                                                        data-resource="{{ resource_key }}" style="font-size:11px;">
-                                                        全选
-                                                    </button>
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary btn-perm-deselect-all"
-                                                        data-resource="{{ resource_key }}" style="font-size:11px;">
-                                                        取消
-                                                    </button>
-                                                    <i class="bi bi-chevron-down ms-2"></i>
-                                                </div>
-                                            </div>
-                                            <div id="perm-{{ resource_key }}" class="collapse show">
-                                                <div class="card-body py-2 px-3">
-                                                    <div class="d-flex flex-wrap gap-2">
-                                                        {% for choice in form.direct_permissions %}
-                                                        {% if choice.data.value in permission_codes %}
-                                                        <div class="form-check form-check-inline">
-                                                            {{ choice.tag }}
-                                                            <label class="form-check-label small" for="{{ choice.id_for_label }}">
-                                                                {{ choice.choice_label }}
-                                                            </label>
-                                                        </div>
-                                                        {% endif %}
-                                                        {% endfor %}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {% endfor %}
-                                    </div>
-                                    {% if form.direct_permissions.errors %}
-                                    <div class="text-danger mt-1 small">{% for error in form.direct_permissions.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
-                                    {% endif %}
-                                    <small class="text-muted">用户可继承角色权限，也可额外授予个人权限</small>
-                                </div>
-
-                                <div class="d-flex justify-content-between">
-                                    <a href="{% url 'users:list' %}" class="btn btn-secondary">
-                                        <i class="bi bi-arrow-left"></i> 返回
-                                    </a>
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="bi bi-check-circle"></i> 确认更新
-                                    </button>
-                                </div>
-                            </form>
+                <!-- 基本信息 -->
+                <div class="card mb-3 form-section form-section--basic">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-person"></i> 基本信息</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.username.id_for_label }}" class="form-label">
+                                    <i class="bi bi-person"></i> {{ form.username.label }}
+                                </label>
+                                {{ form.username }}
+                                {% if form.username.errors %}
+                                <div class="text-danger mt-1 small">{% for error in form.username.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                                {% endif %}
+                                <div class="form-text">用户名不可修改</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.email.id_for_label }}" class="form-label">
+                                    <i class="bi bi-envelope"></i> {{ form.email.label }}
+                                </label>
+                                {{ form.email }}
+                                {% if form.email.errors %}
+                                <div class="text-danger mt-1 small">{% for error in form.email.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.first_name.id_for_label }}" class="form-label">
+                                    <i class="bi bi-person-badge"></i> {{ form.first_name.label }}
+                                </label>
+                                {{ form.first_name }}
+                                {% if form.first_name.errors %}
+                                <div class="text-danger mt-1 small">{% for error in form.first_name.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.mobile.id_for_label }}" class="form-label">
+                                    <i class="bi bi-phone"></i> {{ form.mobile.label }}
+                                </label>
+                                {{ form.mobile }}
+                                {% if form.mobile.errors %}
+                                <div class="text-danger mt-1 small">{% for error in form.mobile.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-12 mb-0">
+                                <label for="{{ form.remark.id_for_label }}" class="form-label">
+                                    <i class="bi bi-card-text"></i> {{ form.remark.label }}
+                                </label>
+                                {{ form.remark }}
+                                {% if form.remark.errors %}
+                                <div class="text-danger mt-1 small">{% for error in form.remark.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- 账号状态 -->
+                <div class="card mb-3 form-section form-section--status">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-shield-check"></i> 账号状态</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-2">
+                            <div class="col-md-6 mb-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="form-check form-switch mb-0">
+                                        {{ form.is_active }}
+                                        <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                                            {{ form.is_active.label }}
+                                        </label>
+                                    </div>
+                                    {% if object.is_active %}
+                                    <span class="badge bg-success">正常</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">锁定</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="form-check form-switch mb-0">
+                                        {{ form.is_superuser }}
+                                        <label class="form-check-label" for="{{ form.is_superuser.id_for_label }}">
+                                            {{ form.is_superuser.label }}
+                                        </label>
+                                    </div>
+                                    {% if object.is_superuser %}
+                                    <span class="badge bg-success">是</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">否</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="small text-muted">
+                            加入 {{ object.date_joined|date:"Y-m-d H:i:s" }}
+                            · 最后登录 {{ object.last_login|date:"Y-m-d H:i:s"|default:"从未登录" }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 关联角色 -->
+                <div class="card mb-3 form-section form-section--roles" id="rolesSection">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-person-badge"></i> 关联角色</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    data-bs-toggle="modal" data-bs-target="#selectRoleModal">
+                                <i class="bi bi-plus-circle"></i> 选择角色
+                            </button>
+                            <small class="text-muted">最多 3 个</small>
+                        </div>
+                        <div class="d-none" id="roleCheckboxContainer">
+                            {% for checkbox in form.groups %}
+                            <div>{{ checkbox.tag }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="d-flex flex-wrap gap-1 mt-2" id="selectedRolesTags"></div>
+                        {% if form.groups.errors %}
+                        <div class="text-danger mt-1 small">{% for error in form.groups.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- 用户直授权限 -->
+                <div class="card mb-3 form-section form-section--perms">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-shield-lock"></i> {{ form.direct_permissions.label }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="perm-matrix" id="permMatrix" style="grid-template-columns: 140px repeat(4, 1fr) 72px;">
+                            <div class="perm-matrix-corner">资源</div>
+                            {% for ah in permission_matrix.action_headers %}
+                            <div class="perm-matrix-header" data-action="{{ ah.0 }}">
+                                <span>{{ ah.1 }}</span>
+                                <button type="button" class="btn btn-sm btn-outline-primary perm-btn-col"
+                                    data-action="{{ ah.0 }}">全选</button>
+                            </div>
+                            {% endfor %}
+                            <div class="perm-matrix-header">
+                                <button type="button" class="btn btn-sm btn-outline-secondary perm-btn-global">全选</button>
+                            </div>
+                            {% for resource in permission_matrix.resources %}
+                            <div class="perm-matrix-row-header" data-resource="{{ resource.key }}">
+                                {% if resource.key == "nodes" %}<i class="bi bi-hdd-network"></i>
+                                {% elif resource.key == "credentials" %}<i class="bi bi-key"></i>
+                                {% elif resource.key == "configs" %}<i class="bi bi-file-earmark-code"></i>
+                                {% elif resource.key == "releases" %}<i class="bi bi-rocket-takeoff"></i>
+                                {% elif resource.key == "users" %}<i class="bi bi-people"></i>
+                                {% elif resource.key == "roles" %}<i class="bi bi-person-badge"></i>
+                                {% elif resource.key == "teams" %}<i class="bi bi-people-fill"></i>
+                                {% elif resource.key == "audit" %}<i class="bi bi-journal-text"></i>
+                                {% elif resource.key == "upgrade" %}<i class="bi bi-arrow-up-circle"></i>
+                                {% elif resource.key == "settings" %}<i class="bi bi-gear"></i>{% endif %}
+                                {{ resource.label }}
+                            </div>
+                            {% for action in resource.actions %}
+                            <div class="perm-matrix-cell">
+                                {% if action.applicable %}
+                                <input type="checkbox" class="perm-cb form-check-input"
+                                    name="{{ form.direct_permissions.name }}"
+                                    value="{{ action.perm_id }}"
+                                    data-resource="{{ resource.key }}"
+                                    data-action="{{ action.action }}"
+                                    title="{{ action.display_name }}"
+                                    {% if action.perm_id in permission_matrix.selected_ids %}checked{% endif %}>
+                                {% else %}
+                                <span class="text-muted" title="不可用">-</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                            <div class="perm-matrix-cell">
+                                <button type="button" class="btn btn-sm btn-outline-primary perm-btn-row"
+                                    data-resource="{{ resource.key }}">全选</button>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% if form.direct_permissions.errors %}
+                        <div class="text-danger mt-1 small">{% for error in form.direct_permissions.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                        {% endif %}
+                        <div class="form-text mt-2">用户可继承角色权限，也可额外授予个人权限</div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-body d-flex justify-content-between">
+                        <a href="{% url 'users:list' %}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> 返回
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> 确认更新
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 选择角色弹窗 -->
+<div class="modal fade" id="selectRoleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-badge"></i> 选择角色</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="tag-input-wrapper form-control" id="roleModalTagWrapper">
+                        <input type="text" class="tag-input-field" id="roleModalSearchField"
+                            placeholder="搜索角色名称、描述" autocomplete="off">
+                    </div>
+                    <input type="hidden" id="roleModalSearchHidden">
+                </div>
+
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 5%;"></th>
+                                <th style="width: 30%;">角色名称</th>
+                                <th style="width: 65%;">描述</th>
+                            </tr>
+                        </thead>
+                        <tbody id="roleModalTbody">
+                            {% for g in all_user_groups %}
+                            <tr class="modal-role-row" data-name="{{ g.name }}" data-desc="{{ g.description|default:'' }}">
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input modal-role-cb" value="{{ g.id }}">
+                                </td>
+                                <td>{{ g.name }}</td>
+                                <td><small class="text-muted">{{ g.description|default:"-" }}</small></td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-4"><i class="bi bi-inbox"></i><p class="mt-1 mb-0">暂无可选角色</p></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted" id="roleResultInfo"></small>
+                    <small class="text-muted">
+                        已选 <span id="modalRoleSelectedCount">0</span> 个
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="roleModalConfirmBtn">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .selected-group-badge {
+        display: inline-flex; align-items: center; gap: 4px;
+        background: #e9ecef; border: 1px solid #ced4da;
+        border-radius: var(--br-sm); padding: 4px 8px; font-size: var(--fs-sm);
+    }
+    .selected-group-badge .remove-group { cursor: pointer; opacity: 0.5; font-size: 1rem; line-height: 1; }
+    .selected-group-badge .remove-group:hover { opacity: 1; color: var(--danger); }
+</style>
+<script>
+    var MAX_ROLES = 3;
+
+    /** 根据隐藏 checkbox 同步已选角色 chips */
+    function syncSelectedRolesFromCheckboxes() {
+        var container = document.getElementById('selectedRolesTags');
+        var cbs = document.querySelectorAll('#roleCheckboxContainer input[type="checkbox"]');
+        var html = '';
+        cbs.forEach(function(cb) {
+            if (cb.checked) {
+                var value = cb.value;
+                var opt = document.querySelector('#roleModalTbody .modal-role-cb[value="' + value + '"]');
+                var label = (opt ? opt.closest('tr').getAttribute('data-name') : null) || value;
+                html += '<span class="selected-group-badge">' + label +
+                    '<span class="remove-group" onclick="removeSelectedRole(\'' + value + '\')">&times;</span></span>';
+            }
+        });
+        container.innerHTML = html || '<span class="text-muted small">未选择</span>';
+    }
+
+    /** 移除已选角色 */
+    function removeSelectedRole(value) {
+        var cb = document.querySelector('#roleCheckboxContainer input[value="' + value + '"]');
+        if (cb) cb.checked = false;
+        syncSelectedRolesFromCheckboxes();
+        updateRoleModalCheckboxes();
+        updateRoleModalCounts();
+    }
+
+    /** 将表单已选状态同步到弹窗勾选框 */
+    function updateRoleModalCheckboxes() {
+        document.querySelectorAll('#roleModalTbody .modal-role-cb').forEach(function(cb) {
+            var realCb = document.querySelector('#roleCheckboxContainer input[value="' + cb.value + '"]');
+            cb.checked = realCb ? realCb.checked : false;
+        });
+    }
+
+    /** 按标签与输入过滤角色列表 */
+    function doRoleSearch() {
+        var wrapper = document.getElementById('roleModalTagWrapper');
+        var badges = wrapper.querySelectorAll('.tag-badge');
+        var tags = [];
+        badges.forEach(function(b) { tags.push(b.getAttribute('data-value')); });
+        var fieldVal = document.getElementById('roleModalSearchField').value.toLowerCase();
+        var visibleCount = 0;
+        document.querySelectorAll('#roleModalTbody .modal-role-row').forEach(function(r) {
+            var name = (r.getAttribute('data-name') || '').toLowerCase();
+            var desc = (r.getAttribute('data-desc') || '').toLowerCase();
+            var txt = name + ' ' + desc;
+            var match = !tags.length || tags.some(function(t) { return txt.indexOf(t.toLowerCase()) >= 0; });
+            if (match && fieldVal) match = txt.indexOf(fieldVal) >= 0;
+            r.style.display = match ? '' : 'none';
+            if (match) visibleCount++;
+        });
+        updateRoleModalCounts();
+        document.getElementById('roleResultInfo').textContent = '共 ' + visibleCount + ' 个结果';
+    }
+
+    /** 更新弹窗已选数量 */
+    function updateRoleModalCounts() {
+        var count = document.querySelectorAll('#roleModalTbody .modal-role-cb:checked').length;
+        document.getElementById('modalRoleSelectedCount').textContent = String(count);
+    }
+
+    /** 初始化角色弹窗标签搜索 */
+    function initRoleModalTagSearch() {
+        var wrapper = document.getElementById('roleModalTagWrapper');
+        var searchHidden = document.getElementById('roleModalSearchHidden');
+        var field = document.getElementById('roleModalSearchField');
+        if (!wrapper || !field) return;
+
+        function focusField() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') field.setSelectionRange(len, len);
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function(b) { values.push(b.getAttribute('data-value')); });
+            searchHidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(function() { focusField(); doRoleSearch(); }, 0);
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        field.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) { createBadge(text); field.value = ''; }
+                updateHidden();
+                setTimeout(focusField, 0);
+                doRoleSearch();
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    setTimeout(function() { focusField(); doRoleSearch(); }, 0);
+                }
+            }
+        });
+
+        field.addEventListener('input', function() { doRoleSearch(); });
+        wrapper.addEventListener('click', function(e) { if (e.target === wrapper) focusField(); });
+    }
+
+    /** 初始化直授权限矩阵全选交互 */
+    function initPermMatrix() {
+        var matrix = document.getElementById('permMatrix');
+        if (!matrix) return;
+
+        function rowCheckboxes(resourceKey) {
+            return matrix.querySelectorAll('input.perm-cb[data-resource="' + resourceKey + '"]');
+        }
+        function colCheckboxes(actionKey) {
+            return matrix.querySelectorAll('input.perm-cb[data-action="' + actionKey + '"]');
+        }
+        function allCheckboxes() {
+            return matrix.querySelectorAll('input.perm-cb');
+        }
+        function setAll(cbs, checked) {
+            cbs.forEach(function(cb) { cb.checked = checked; });
+        }
+        function allChecked(cbs) {
+            return Array.from(cbs).every(function(cb) { return cb.checked; });
+        }
+        function updateRowBtn(resourceKey) {
+            var cbs = rowCheckboxes(resourceKey);
+            var btn = matrix.querySelector('.perm-btn-row[data-resource="' + resourceKey + '"]');
+            if (btn) btn.textContent = allChecked(cbs) ? '取消' : '全选';
+        }
+        function updateColBtn(actionKey) {
+            var cbs = colCheckboxes(actionKey);
+            var btn = matrix.querySelector('.perm-btn-col[data-action="' + actionKey + '"]');
+            if (btn) btn.textContent = allChecked(cbs) ? '取消' : '全选';
+        }
+        function updateGlobalBtn() {
+            var cbs = allCheckboxes();
+            var btn = matrix.querySelector('.perm-btn-global');
+            if (btn) btn.textContent = allChecked(cbs) ? '取消' : '全选';
+        }
+        function refreshAll() {
+            matrix.querySelectorAll('.perm-matrix-row-header[data-resource]').forEach(function(r) {
+                updateRowBtn(r.getAttribute('data-resource'));
+            });
+            matrix.querySelectorAll('.perm-matrix-header[data-action]').forEach(function(c) {
+                updateColBtn(c.getAttribute('data-action'));
+            });
+            updateGlobalBtn();
+        }
+
+        matrix.addEventListener('click', function(e) {
+            var target = e.target;
+            if (target.classList.contains('perm-btn-row')) {
+                var rk = target.getAttribute('data-resource');
+                var cbs = rowCheckboxes(rk);
+                setAll(cbs, !allChecked(cbs));
+                refreshAll();
+            }
+            if (target.classList.contains('perm-btn-col')) {
+                var ak = target.getAttribute('data-action');
+                var cbs = colCheckboxes(ak);
+                setAll(cbs, !allChecked(cbs));
+                refreshAll();
+            }
+            if (target.classList.contains('perm-btn-global')) {
+                var cbs = allCheckboxes();
+                setAll(cbs, !allChecked(cbs));
+                refreshAll();
+            }
+        });
+        matrix.addEventListener('change', function(e) {
+            if (e.target.classList.contains('perm-cb')) refreshAll();
+        });
+        refreshAll();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        syncSelectedRolesFromCheckboxes();
+        initRoleModalTagSearch();
+        initPermMatrix();
+
+        document.getElementById('selectRoleModal').addEventListener('shown.bs.modal', function() {
+            updateRoleModalCheckboxes();
+            updateRoleModalCounts();
+            var wrapper = document.getElementById('roleModalTagWrapper');
+            wrapper.querySelectorAll('.tag-badge').forEach(function(b) { b.remove(); });
+            document.getElementById('roleModalSearchHidden').value = '';
+            document.getElementById('roleModalSearchField').value = '';
+            document.querySelectorAll('#roleModalTbody .modal-role-row').forEach(function(r) { r.style.display = ''; });
+            var totalRows = document.querySelectorAll('#roleModalTbody .modal-role-row').length;
+            document.getElementById('roleResultInfo').textContent = '共 ' + totalRows + ' 个结果';
+        });
+
+        bindModalTableRowToggle(document.getElementById('roleModalTbody'), '.modal-role-cb');
+
+        document.getElementById('roleModalTbody').addEventListener('change', function(e) {
+            if (e.target.classList.contains('modal-role-cb')) {
+                var checked = document.querySelectorAll('#roleModalTbody .modal-role-cb:checked').length;
+                if (checked > MAX_ROLES) { e.target.checked = false; return; }
+                var realCb = document.querySelector('#roleCheckboxContainer input[value="' + e.target.value + '"]');
+                if (realCb) realCb.checked = e.target.checked;
+                updateRoleModalCounts();
+            }
+        });
+
+        document.getElementById('roleModalConfirmBtn').addEventListener('click', function() {
+            syncSelectedRolesFromCheckboxes();
+            bootstrap.Modal.getInstance(document.getElementById('selectRoleModal')).hide();
+        });
+
+        // 列表「关联角色」深链定位
+        if (new URLSearchParams(window.location.search).get('tab') === 'roles') {
+            var section = document.getElementById('rolesSection');
+            if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+</script>
 {% endblock %}

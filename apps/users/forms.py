@@ -40,7 +40,7 @@ class UserCreateForm(UserCreationForm):
     )
     remark = forms.CharField(
         required=False,
-        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 2, "placeholder": "可选"}),
         label="备注",
     )
     groups = forms.ModelMultipleChoiceField(
@@ -63,14 +63,18 @@ class UserCreateForm(UserCreationForm):
         fields = ("username", "email", "first_name", "password1", "password2")
         widgets = {
             "username": forms.TextInput(attrs={"class": "form-control"}),
-            "password1": forms.PasswordInput(attrs={"class": "form-control"}),
-            "password2": forms.PasswordInput(attrs={"class": "form-control"}),
         }
         labels = {
             "username": "用户名",
-            "password1": "密码",
-            "password2": "确认密码",
         }
+
+    def __init__(self, *args, **kwargs):
+        """统一密码框样式与中文标签"""
+        super().__init__(*args, **kwargs)
+        self.fields["password1"].label = "密码"
+        self.fields["password2"].label = "确认密码"
+        self.fields["password1"].widget.attrs.update({"class": "form-control"})
+        self.fields["password2"].widget.attrs.update({"class": "form-control"})
 
     def clean_groups(self):
         groups = self.cleaned_data.get("groups", [])

@@ -45,13 +45,14 @@
                         <table class="table table-hover table-sm mb-0 data-table user-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 15%;">用户名</th>
-                                    <th style="width: 12%;">姓名</th>
-                                    <th style="width: 18%;">邮箱</th>
-                                    <th style="width: 18%;">归属角色</th>
-                                    <th style="width: 10%;">超级管理员</th>
+                                    <th style="width: 12%;">用户名</th>
+                                    <th style="width: 10%;">姓名</th>
+                                    <th style="width: 14%;">邮箱</th>
+                                    <th style="width: 14%;">归属角色</th>
+                                    <th style="width: 14%;">所属用户组</th>
+                                    <th style="width: 8%;">超级管理员</th>
                                     <th style="width: 8%;">状态</th>
-                                    <th style="width: 19%;">操作</th>
+                                    <th style="width: 20%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -63,6 +64,13 @@
                                     <td>
                                         {% for group in u.profile.groups.all %}
                                         <span class="badge bg-info">{{ group.name }}</span>
+                                        {% empty %}
+                                        <span class="text-muted">无</span>
+                                        {% endfor %}
+                                    </td>
+                                    <td>
+                                        {% for team in u.user_teams.all %}
+                                        <span class="badge bg-info text-dark">{{ team.name }}</span>
                                         {% empty %}
                                         <span class="text-muted">无</span>
                                         {% endfor %}
@@ -81,45 +89,48 @@
                                         <span class="badge bg-danger">锁定</span>
                                         {% endif %}
                                     </td>
-                                    <td>
-                                        {% if request.user|has_perm_code:"users.update" %}
-                                        {% if not u.is_superuser or request.user.is_superuser %}
-                                        <a href="{% url 'users:edit' u.username %}" class="btn btn-sm btn-primary">
-                                            <i class="bi bi-pencil"></i> 编辑
-                                        </a>
-                                        <a href="{% url 'users:edit' u.username %}?tab=roles" class="btn btn-sm btn-outline-info">
-                                            <i class="bi bi-person-badge"></i> 关联角色
-                                        </a>
-                                        {% endif %}
-                                        {% endif %}
+                                    <td class="text-nowrap">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            {% if request.user|has_perm_code:"users.update" %}
+                                            {% if not u.is_superuser or request.user.is_superuser %}
+                                            <a href="{% url 'users:edit' u.username %}" class="btn btn-outline-primary" title="编辑">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <a href="{% url 'users:edit' u.username %}?tab=roles" class="btn btn-outline-info" title="关联角色">
+                                                <i class="bi bi-person-badge"></i>
+                                            </a>
+                                            {% endif %}
+                                            {% endif %}
+                                            {% if request.user|has_perm_code:"users.update" and u.username != request.user.username %}
+                                            {% if u.is_active %}
+                                            <button type="submit" form="lockForm_{{ u.id }}" class="btn btn-outline-warning" title="锁定"
+                                                {% if u.is_superuser and not request.user.is_superuser %}disabled{% endif %}>
+                                                <i class="bi bi-lock"></i>
+                                            </button>
+                                            {% else %}
+                                            <button type="submit" form="lockForm_{{ u.id }}" class="btn btn-outline-success" title="解锁"
+                                                {% if u.is_superuser and not request.user.is_superuser %}disabled{% endif %}>
+                                                <i class="bi bi-unlock"></i>
+                                            </button>
+                                            {% endif %}
+                                            {% endif %}
+                                            {% if request.user|has_perm_code:"users.delete" and u.username != request.user.username %}
+                                            <button type="button" class="btn btn-outline-danger" title="删除"
+                                                onclick="submitPostConfirm('确认删除', '确定要删除用户 {{ u.username }} 吗？此操作不可恢复！', '{% url 'users:delete' u.username %}')">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
                                         {% if request.user|has_perm_code:"users.update" and u.username != request.user.username %}
-                                        {% if u.is_active %}
-                                        <form method="post" action="{% url 'users:lock_toggle' u.username %}" style="display:inline;">
+                                        <form id="lockForm_{{ u.id }}" method="post" action="{% url 'users:lock_toggle' u.username %}" class="d-none">
                                             {% csrf_token %}
-                                            <button type="submit" class="btn btn-sm btn-outline-warning" {% if u.is_superuser and not request.user.is_superuser %}disabled{% endif %}>
-                                                <i class="bi bi-lock"></i> 锁定
-                                            </button>
                                         </form>
-                                        {% else %}
-                                        <form method="post" action="{% url 'users:lock_toggle' u.username %}" style="display:inline;">
-                                            {% csrf_token %}
-                                            <button type="submit" class="btn btn-sm btn-outline-success" {% if u.is_superuser and not request.user.is_superuser %}disabled{% endif %}>
-                                                <i class="bi bi-unlock"></i> 解锁
-                                            </button>
-                                        </form>
-                                        {% endif %}
-                                        {% endif %}
-                                        {% if request.user|has_perm_code:"users.delete" and u.username != request.user.username %}
-                                        <button type="button" class="btn btn-sm btn-danger"
-                                            onclick="submitPostConfirm('确认删除', '确定要删除用户 {{ u.username }} 吗？此操作不可恢复！', '{% url 'users:delete' u.username %}')">
-                                            <i class="bi bi-trash"></i> 删除
-                                        </button>
                                         {% endif %}
                                     </td>
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="7" class="empty-state">
+                                    <td colspan="8" class="empty-state">
                                         <i class="bi bi-inbox"></i>
                                         <p>暂无用户数据</p>
                                     </td>

@@ -26,6 +26,7 @@ class UserListView(
     permission_action = "read"
 
     def get_queryset(self):
+        """用户列表查询；预取角色与用户组，避免 N+1。"""
         queryset = super().get_queryset()
         search = self.request.GET.get("search", "")
         if search:
@@ -33,8 +34,8 @@ class UserListView(
                 queryset.filter(username__icontains=search)
                 | queryset.filter(email__icontains=search)
                 | queryset.filter(first_name__icontains=search)
-            )
-        return queryset
+            ).distinct()
+        return queryset.prefetch_related("profile__groups", "user_teams")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -49,6 +50,15 @@ class UserCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     success_url = reverse_lazy("users:list")
     permission_resource = "users"
     permission_action = "create"
+
+    def get_context_data(self, **kwargs):
+        """补充角色弹窗列表与直授权限矩阵"""
+        context = super().get_context_data(**kwargs)
+        context["all_user_groups"] = UserGroup.objects.all().order_by("name")
+        matrix = _get_permission_matrix()
+        matrix["selected_ids"] = set()
+        context["permission_matrix"] = matrix
+        return context
 
     def form_valid(self, form):
         messages.success(self.request, f"用户 {form.instance.username} 创建成功")
@@ -70,9 +80,14 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     permission_action = "update"
 
     def get_context_data(self, **kwargs):
+        """补充角色弹窗列表，并预选用户已有直授权限"""
         context = super().get_context_data(**kwargs)
+        context["all_user_groups"] = UserGroup.objects.all().order_by("name")
         matrix = _get_permission_matrix()
-        matrix["selected_ids"] = set()
+        profile, _ = UserProfile.objects.get_or_create(user=self.object)
+        matrix["selected_ids"] = set(
+            profile.direct_permissions.values_list("id", flat=True)
+        )
         context["permission_matrix"] = matrix
         return context
 
