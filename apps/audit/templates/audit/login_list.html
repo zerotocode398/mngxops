@@ -62,7 +62,7 @@
                                 {% for log in logs %}
                                 <tr>
                                     <td>
-                                        <strong>{{ log.username }}</strong>
+                                        {{ log.username }}
                                     </td>
                                     <td>
                                         <code>{{ log.ip }}</code>
@@ -103,10 +103,7 @@
 
 {% block extra_js %}
 <style>
-    .login-log-table td .badge {
-        font-size: 0.78rem;
-    }
-    </style>
+</style>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTagSearch('#loginLogSearchTagWrapper', '#loginLogSearchHidden', '#searchForm');

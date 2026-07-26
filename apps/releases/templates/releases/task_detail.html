@@ -117,13 +117,13 @@
 
 {% block extra_js %}
 <style>
-    .task-detail-body { font-size: 0.86rem; line-height: 1.5; }
-    .task-detail-body .text-muted { font-size: 0.82rem; }
+    .task-detail-body { font-size: var(--fs-base); line-height: 1.5; }
+    .task-detail-body .text-muted { font-size: var(--fs-sm); }
     .task-detail-body hr { margin: 0.75rem 0; }
-    .task-detail-body h6 { font-size: 0.92rem; }
+    .task-detail-body h6 { font-size: var(--fs-md); }
     .cursor-pointer { cursor: pointer; }
     .result-node-group:last-child { border-bottom: none !important; }
-    .result-node-header { transition: background 0.15s; user-select: none; font-size: 0.86rem; }
+    .result-node-header { transition: background 0.15s; user-select: none; font-size: var(--fs-base); }
     .result-node-header:hover { opacity: 0.9; }
     .result-config-item { border-top: 1px dashed #eee; }
     .result-config-item:first-child { border-top: none; }

@@ -80,7 +80,7 @@
                                 {% for log in logs %}
                                 <tr>
                                     <td>
-                                        <strong>{{ log.user.username }}</strong>
+                                        {{ log.user.username }}
                                     </td>
                                     <td>
                                         <span class="badge bg-primary">{{ log.module }}</span>
@@ -131,10 +131,7 @@
 
 {% block extra_js %}
 <style>
-    .audit-table td .badge {
-        font-size: 0.78rem;
-    }
-    </style>
+</style>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTagSearch('#auditSearchTagWrapper', '#auditSearchHidden', '#searchForm');

@@ -242,14 +242,14 @@
     .binding-row > td:first-child { padding-left: 48px; }
     .binding-inner-table > :not(caption) > * > *:first-child { padding-left: 1rem; }
 
-    .env-badge { font-size: 11px; padding: 2px 7px; border-radius: 3px; }
+    .env-badge { font-size: var(--fs-xs); padding: 2px 7px; border-radius: 3px; }
     .env-badge-prod { background: #f8d7da; color: #dc3545; }
     .env-badge-test { background: #d1ecf1; color: #0c5460; }
     .env-badge-dev { background: #e2e3e5; color: #6c757d; }
     .status-badge-online { color: #198754; }
     .status-badge-offline { color: #dc3545; }
 
-    .sync-badge { font-size: 11px; padding: 2px 7px; border-radius: 3px; }
+    .sync-badge { font-size: var(--fs-xs); padding: 2px 7px; border-radius: 3px; }
     .sync-badge-modified { background: #cce5ff; color: #004085; }
     .sync-badge-synced { background: #d4edda; color: #155724; }
     .sync-badge-conflict { background: #fff3cd; color: #856404; }
@@ -261,12 +261,12 @@
 
     /* 状态过滤标签 */
     .status-filter-tag {
-        padding: 5px 12px; font-size: 0.78rem; border-radius: 4px;
+        padding: 5px 12px; font-size: var(--fs-sm); border-radius: 4px;
         cursor: pointer; transition: all 0.15s ease;
         background: #f8f9fa; color: #495057; border: 1px solid #dee2e6;
     }
     .status-filter-tag:hover { opacity: 0.85; }
-    .status-filter-active { color: #fff !important; font-weight: 600; border-color: transparent; }
+    .status-filter-active { color: #fff !important; font-weight: 500; border-color: transparent; }
     .status-filter-active[data-status=""] { background-color: #6c757d; }
     .status-filter-active[data-status="pending"] { background-color: #0d6efd; }
     .status-filter-active[data-status="synced"] { background-color: #28a745; }
@@ -279,9 +279,9 @@
     /* 发布清单节点分组 */
     .preview-node-group { border-bottom: 2px solid #dee2e6; }
     .preview-node-header { background: #f8f9fa; cursor: pointer; }
-    .preview-node-header td { font-weight: 600; padding: 8px 12px; }
+    .preview-node-header td { font-weight: 400; padding: 8px 12px; }
     .preview-node-header .toggle-preview-expand { padding: 0 4px; }
-    .preview-binding td { padding: 6px 12px; font-size: 0.82rem; }
+    .preview-binding td { padding: 6px 12px; }
     .btn-publish-node { white-space: nowrap; }
 
     /* 进度弹窗 */
@@ -299,7 +299,7 @@
     .progress-tree .node-group-header {
         display: flex; align-items: center; gap: 6px;
         padding: 6px 8px; border-radius: 6px; cursor: pointer;
-        background: #f8f9fa; font-size: 0.85rem;
+        background: #f8f9fa; font-size: var(--fs-md);
     }
     .progress-tree .node-group-header.success { background: #d4edda; }
     .progress-tree .node-group-header.failed { background: #f8d7da; }
@@ -307,10 +307,10 @@
     .progress-tree .node-group-body { padding-left: 20px; }
     .progress-tree .config-item {
         display: flex; align-items: center; gap: 8px;
-        padding: 3px 0; font-size: 0.8rem;
+        padding: 3px 0; font-size: var(--fs-sm);
     }
     .config-item .retry-btn {
-        font-size: 11px; padding: 0 4px; line-height: 1.4;
+        font-size: var(--fs-xs); padding: 0 4px; line-height: 1.4;
         cursor: pointer; color: #dc3545;
     }
     .config-item .retry-btn:hover { text-decoration: underline; }
@@ -471,7 +471,7 @@
                 var groupBadges = '';
                 if (n.group_names && n.group_names.length > 0) {
                     groupBadges = n.group_names.map(function(g) {
-                        return '<span class="badge bg-info text-dark" style="font-size: 0.72rem; font-weight: normal;">' + g + '</span>';
+                        return '<span class="badge bg-info text-dark">' + g + '</span>';
                     }).join(' ');
                 }
 
@@ -663,7 +663,7 @@
             html += '<tr class="binding-item" style="border-top: 1px dashed #e0e0e0;">';
             html += '<td style="width: 30px; padding-left: 48px;"><input type="checkbox" class="form-check-input binding-cb" data-node-id="' + nodeId + '" data-binding-id="' + b.id + '" data-config-name="' + b.config_name + '" data-version="' + b.current_version + '" data-remote-path="' + (b.remote_path || '') + '" data-sync-status="' + b.sync_status + '" data-binding-content-loaded="false" ' + (isChecked ? 'checked' : '') + '></td>';
             html += '<td><code>' + b.config_name + '</code></td>';
-            html += '<td style="width: 110px;"><select class="form-select form-select-sm version-select" data-binding-id="' + b.id + '" data-node-id="' + nodeId + '" style="font-size: 11px;">' + versionsOpts + '</select></td>';
+            html += '<td style="width: 110px;"><select class="form-select form-select-sm version-select" data-binding-id="' + b.id + '" data-node-id="' + nodeId + '">' + versionsOpts + '</select></td>';
             html += '<td><small class="path-link" data-binding-id="' + b.id + '" data-config-name="' + b.config_name + '" title="点击预览配置内容">' + (b.remote_path || '-') + '</small></td>';
             html += '<td style="width: 95px;"><span class="sync-badge ' + syncCls + '">' + syncLabel + '</span></td>';
             html += '</tr>';
@@ -988,7 +988,7 @@
             html += '<td><button type="button" class="btn btn-sm btn-link text-muted p-0 toggle-preview-expand" data-node-id="' + nodeId + '"><i class="bi bi-chevron-down"></i></button></td>';
             html += '<td><div class="node-info-cell">' +
                 '<span class="node-identity">' + g.nodeName + '<small class="text-muted">(' + g.nodeIp + ')</small></span>' +
-                (g.groupNames && g.groupNames.length > 0 ? g.groupNames.map(function(gn) { return '<span class="badge bg-info text-dark" style="font-size: 0.72rem; font-weight: normal;">' + gn + '</span>'; }).join(' ') : '') +
+                (g.groupNames && g.groupNames.length > 0 ? g.groupNames.map(function(gn) { return '<span class="badge bg-info text-dark">' + gn + '</span>'; }).join(' ') : '') +
                 '</div></td>';
             html += '<td></td><td></td>';
             html += '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary btn-publish-node" data-node-id="' + nodeId + '"><i class="bi bi-send"></i> 发布此节点</button></td>';
@@ -1309,7 +1309,7 @@
         var statusIcon = statusCls === 'success' ? '<i class="bi bi-check-circle-fill text-success"></i>' : (statusCls === 'failed' ? '<i class="bi bi-x-circle-fill text-danger"></i>' : '<i class="bi bi-hourglass-split"></i>');
         var html = '<div class="node-group">';
         html += '<div class="node-group-header ' + statusCls + '">';
-        html += '<span class="toggle-icon">▶</span> ' + statusIcon + ' <strong>' + nodeName + '</strong>';
+        html += '<span class="toggle-icon">▶</span> ' + statusIcon + ' ' + nodeName;
         html += '</div>';
         html += '<div class="node-group-body">';
         configs.forEach(function(c) {

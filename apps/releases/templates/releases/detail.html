@@ -75,8 +75,8 @@
                     <div class="mb-2">
                         <strong><i class="bi bi-terminal"></i> 执行日志</strong>
                     </div>
-                    <pre class="code-font bg-dark text-light p-3 rounded"
-                        style="max-height: 500px; overflow-y: auto; font-size: 0.85rem;">{% if task.result %}{{ task.result }}{% else %}<span class="text-muted">等待执行...</span>{% endif %}</pre>
+                    <pre class="code-font code-block-preview bg-dark text-light p-3 rounded"
+                        style="max-height: 500px; overflow-y: auto;">{% if task.result %}{{ task.result }}{% else %}<span class="text-muted">等待执行...</span>{% endif %}</pre>
 
                     {% if histories %}
                     <div class="mt-4">
@@ -120,8 +120,5 @@
 
 {% block extra_js %}
 <style>
-    .release-detail-table td .badge {
-        font-size: 0.78rem;
-    }
-    </style>
+</style>
 {% endblock %}

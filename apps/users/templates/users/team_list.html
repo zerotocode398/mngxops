@@ -58,7 +58,7 @@
                             <tbody>
                                 {% for team in teams %}
                                 <tr>
-                                    <td><strong>{{ team.name }}</strong></td>
+                                    <td>{{ team.name }}</td>
                                     <td>
                                         <span class="badge bg-info">{{ team.member_count }}</span>
                                     </td>
@@ -207,9 +207,6 @@
         align-items: center;
         justify-content: flex-end;
     }
-    .team-table td .badge {
-        font-size: 0.78rem;
-    }
 </style>
 <script>
     // ========== 标签搜索（组名）==========
@@ -350,7 +347,7 @@
                     : '<span class="badge badge-outline">未加入</span>';
                 html += '<tr class="member-row' + (u.is_member ? ' table-info' : '') + '" data-user-id="' + u.id + '" data-is-member="' + (u.is_member ? '1' : '0') + '">' +
                     '<td><input type="checkbox" class="member-checkbox form-check-input" data-user-id="' + u.id + '" data-is-member="' + (u.is_member ? '1' : '0') + '"></td>' +
-                    '<td><strong>' + escapeHtml(u.username) + '</strong>' + (u.is_superuser ? ' <span class="badge bg-warning">超管</span>' : '') + '</td>' +
+                    '<td>' + escapeHtml(u.username) + (u.is_superuser ? ' <span class="badge bg-warning">超管</span>' : '') + '</td>' +
                     '<td>' + escapeHtml(u.first_name) + '</td>' +
                     '<td>' + escapeHtml(u.email) + '</td>' +
                     '<td>' + statusBadge + '</td>' +

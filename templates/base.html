@@ -147,7 +147,7 @@
 
         .table th {
             background-color: var(--gray-100);
-            font-weight: 500;
+            font-weight: 600;
         }
 
         /* 全局表格数据行颜色（统一各模板 td code/small 的 #212529 覆盖） */
@@ -484,10 +484,15 @@
             vertical-align: middle;
             padding: 0.55rem 0.75rem;
         }
-        .table.data-table thead th { font-weight: 500; white-space: nowrap; }
+        .table.data-table thead th { font-weight: 600; white-space: nowrap; }
         /* 贴边 card 表格首末列留白，避免内容顶边、与表头错位 */
         .table.data-table > :not(caption) > * > *:first-child { padding-left: 1rem; }
         .table.data-table > :not(caption) > * > *:last-child { padding-right: 1rem; }
+        /* 表格内状态徽标统一字号（覆盖各页本地重复规则） */
+        .table.data-table td .badge {
+            font-size: var(--fs-sm);
+            font-weight: 500;
+        }
 
         /* 节点信息单元格（发布中心 / 配置列表 / 升级 / 仪表盘共用） */
         .node-info-cell {
@@ -496,10 +501,20 @@
             flex-wrap: wrap;
             gap: 4px;
         }
-        .node-identity { white-space: nowrap; }
+        /* 主机名显式字号，避免 accordion 与 data-table 父级差异 */
+        .node-identity {
+            white-space: nowrap;
+            font-size: var(--fs-base);
+            font-weight: 400;
+        }
         .node-info-cell .badge {
             font-size: var(--fs-xs);
             font-weight: 500;
+        }
+
+        /* 详情页代码预览统一字号 */
+        .code-block-preview {
+            font-size: var(--fs-base);
         }
 
         /* 自定义弹窗选择表格（节点/组/成员勾选） */

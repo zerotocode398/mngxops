@@ -98,7 +98,7 @@
                                     <td class="task-summary-cell">
                                         <span class="small">
                                             {% if task.target_hostnames %}
-                                            <strong>{{ task.target_hostnames|truncatechars:40 }}</strong>
+                                            {{ task.target_hostnames|truncatechars:40 }}
                                             {% elif task.source_batch %}
                                             <code>{{ task.source_batch }}</code>
                                             {% else %}
@@ -140,8 +140,7 @@
 <style>
     .task-table td { white-space: nowrap; }
     .task-table td.task-summary-cell { white-space: normal; }
-    .task-table td .badge { font-size: 0.78rem; }
-    .task-row { cursor: pointer; }
+.task-row { cursor: pointer; }
     .task-row:hover { background: #f0f6ff; }
 </style>
 <script>

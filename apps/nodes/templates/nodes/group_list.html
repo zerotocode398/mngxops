@@ -53,7 +53,7 @@
                             <tbody>
                                 {% for group in node_groups %}
                                 <tr>
-                                    <td><strong>{{ group.name }}</strong></td>
+                                    <td>{{ group.name }}</td>
                                     <td>
                                         <a href="{% url 'nodes:list' %}?group_search={{ group.name|urlencode }}" class="btn btn-sm btn-outline-primary node-count-btn group-node-count-link" title="查看该组节点列表">
                                             {{ group.nodes.count }}
@@ -381,10 +381,7 @@
 
 {% block extra_js %}
 <style>
-    .node-group-table td .badge {
-        font-size: 0.78rem;
-    }
-    .node-group-table td .btn {
+.node-group-table td .btn {
         font-size: 0.82rem;
     }
     </style>

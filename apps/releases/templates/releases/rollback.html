@@ -235,7 +235,7 @@
                             <i class="bi bi-clipboard"></i> 复制
                         </button>
                     </div>
-                    <pre class="code-font m-0 p-3 bg-light border-0" style="max-height: 60vh; overflow: auto; font-size: 0.82rem; line-height: 1.5;"><code id="vpContent" style="white-space: pre;">加载中...</code></pre>
+                    <pre class="code-font code-block-preview m-0 p-3 bg-light border-0" style="max-height: 60vh; overflow: auto; line-height: 1.5;"><code id="vpContent" style="white-space: pre;">加载中...</code></pre>
                 </div>
                 <div id="vpLoading" class="text-center py-5 d-none">
                     <div class="spinner-border text-primary" role="status">
@@ -255,10 +255,7 @@
 
 {% block extra_js %}
 <style>
-    .rollback-table td .badge {
-        font-size: 0.78rem;
-    }
-    /* 进度弹窗（对齐发布中心） */
+/* 进度弹窗（对齐发布中心） */
     .publish-overlay {
         position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
         background: rgba(0, 0, 0, 0.45); z-index: 9999;
@@ -273,7 +270,7 @@
     .progress-tree .node-group-header {
         display: flex; align-items: center; gap: 6px;
         padding: 6px 8px; border-radius: 6px; cursor: pointer;
-        background: #f8f9fa; font-size: 0.85rem;
+        background: #f8f9fa; font-size: var(--fs-md);
     }
     .progress-tree .node-group-header.success { background: #d4edda; }
     .progress-tree .node-group-header.failed { background: #f8d7da; }
@@ -281,7 +278,7 @@
     .progress-tree .node-group-body { padding-left: 20px; }
     .progress-tree .config-item {
         display: flex; align-items: center; gap: 8px;
-        padding: 3px 0; font-size: 0.8rem;
+        padding: 3px 0; font-size: var(--fs-sm);
     }
 </style>
 <script>

@@ -110,7 +110,7 @@
                                             <span class="node-identity">{{ node.hostname }}<small class="text-muted">({{ node.ip }}:{{ node.port }})</small></span>
                                             {% if node.groups.exists %}
                                             {% for grp in node.groups.all %}
-                                            <span class="badge bg-info text-dark" style="font-size: 0.72rem; font-weight: normal;">{{ grp.name }}</span>
+                                            <span class="badge bg-info text-dark">{{ grp.name }}</span>
                                             {% endfor %}
                                             {% endif %}
                                         </div>
@@ -145,7 +145,7 @@
                                                 {% for binding in bindings %}
                                                 <tr>
                                                     <td>
-                                                        <code class="fw-bold">{{ binding.config.name }}</code>
+                                                        <code>{{ binding.config.name }}</code>
                                                     </td>
                                                     <td>
                                                         <small class="text-muted">{{ binding.remote_path }}</small>
@@ -291,7 +291,7 @@
                             <tbody>
                                 {% for cfg in unbound_configs %}
                                 <tr>
-                                    <td><code class="fw-bold">{{ cfg.name }}</code></td>
+                                    <td><code>{{ cfg.name }}</code></td>
                                     <td><small class="text-muted">{{ cfg.default_remote_path|default:"—" }}</small></td>
                                     <td><small>{{ cfg.created_by.username }}</small></td>
                                     <td><small>{{ cfg.created_at|date:"Y-m-d H:i" }}</small></td>
@@ -329,13 +329,10 @@
 
 {% block extra_js %}
 <style>
-    .config-list-table td .badge {
-        font-size: 0.78rem;
-    }
     /* 状态筛选标签 */
     .config-status-label {
         padding: 5px 12px;
-        font-size: 0.78rem;
+        font-size: var(--fs-sm);
         border-radius: 4px;
         cursor: pointer;
         transition: all 0.15s ease;
@@ -345,7 +342,7 @@
     }
     .config-status-active {
         color: #fff !important;
-        font-weight: 600;
+        font-weight: 500;
     }
 
     /* 状态筛选标签激活色 */
@@ -357,13 +354,13 @@
     .config-status-active.config-status-marked { background-color: #e83e8c; border-color: #e83e8c; }
 
     /* 状态徽标（行内） */
-    .config-badge-pending { background: #cce5ff; color: #004085; border: 1px solid #b8daff; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
-    .config-badge-synced { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
-    .config-badge-conflict { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
-    .config-badge-orphaned { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
-    .config-badge-failed { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
-    .config-badge-syncing { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
-    .config-badge-marked { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; }
+    .config-badge-pending { background: #cce5ff; color: #004085; border: 1px solid #b8daff; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
+    .config-badge-synced { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
+    .config-badge-conflict { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
+    .config-badge-orphaned { background: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
+    .config-badge-failed { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
+    .config-badge-syncing { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
+    .config-badge-marked { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
 
     /* Accordion header */
     .accordion-button:not(.collapsed) {

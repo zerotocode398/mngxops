@@ -75,9 +75,9 @@
                             </div>
                         </td>
                         <td>
-                            <code class="small">{{ task.current_version|default:task.node.nginx_version|default:"未知"|nginx_ver }}</code>
+                            <code>{{ task.current_version|default:task.node.nginx_version|default:"未知"|nginx_ver }}</code>
                             →
-                            <code class="small">{{ task.target_version|nginx_ver }}</code>
+                            <code>{{ task.target_version|nginx_ver }}</code>
                             <br>
                             <small class="text-muted">{{ task.get_upgrade_mode_display }}</small>
                         </td>
@@ -143,9 +143,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<style>
-    .upgrade-table td .badge { font-size: var(--fs-sm); }
-</style>
 <script>
 initTagSearch('#upgradeHistoryTagWrapper', '#upgradeHistorySearchHidden', '#upgradeHistoryForm');
 </script>

@@ -1387,11 +1387,16 @@ Q68
 
 
 ```
-
-Qxx
+Q69
 ```text
 项目字体
-    我发现不同表行的字体大小、类型不一致，比如配置管理的主机名 和 发布中心的主机名 字体大小不一样。
-    能否将项目里所有字体样式、大小保持一致，该粗体就粗体（比如表头）、该非粗体就非粗体（比如表行）。
-    这是我例举的，需要你对全项目字体做优化。
+  我发现不同表行的字体大小、类型不一致，比如配置管理的主机名 和 发布中心的主机名 字体大小不一样。
+  能否将项目里所有字体样式、大小保持一致，该粗体就粗体（比如表头）、该非粗体就非粗体（比如表行）。
+  这是我例举的，需要你对全项目字体做优化。
+ ✅ 已修复：
+ - base.html：表头 font-weight 500→600；.node-identity 显式 font-size:var(--fs-base)+400，消除配置列表 accordion(~1rem) 与发布中心 data-table(0.82rem) 主机名字号差；新增 .table.data-table td .badge 与 .code-block-preview
+ - configs/list：去掉组徽标内联字号、配置名 fw-bold、本地 td .badge；config-badge-* 改 var(--fs-xs)；状态过滤字重 600→500
+ - releases/center：11px→var(--fs-xs)；预览节点行去粗体；进度树改 CSS 变量；JS 组徽标/version-select 去内联字号
+ - 删除约 20 处页面级 td .badge font-size 重复规则（nodes/users/credentials/audit/releases/upgrade/dashboard/configs 等）
+ - 列表表行去 strong（节点组/角色/用户组/审计/任务中心）；详情 pre/task_detail/rollback 进度树字号对齐变量
 ```
