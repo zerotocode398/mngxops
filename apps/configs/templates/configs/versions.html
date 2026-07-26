@@ -125,7 +125,7 @@
 
                                         {% if user|has_perm_code:"configs.update" and version.version != binding.current_version %}
                                         <div class="modal fade" id="restoreModal{{ version.id }}" tabindex="-1">
-                                            <div class="modal-dialog">
+                                            <div class="modal-dialog modal-dialog-centered">
                                                 <div class="modal-content">
                                                     <div class="modal-header">
                                                         <h5 class="modal-title">确认恢复版本</h5>

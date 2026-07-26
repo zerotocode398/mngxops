@@ -286,10 +286,7 @@
         vertical-align: middle;
     }
     .history-table td, .history-table th { vertical-align: middle; }
-    .node-info-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-    .node-identity { white-space: nowrap; }
-    .node-info-cell .badge { font-size: 0.72rem; font-weight: normal; }
-    .history-table td .badge { font-size: 0.78rem; }
+    .history-table td .badge { font-size: var(--fs-sm); }
 </style>
 <script>
     (function() {
@@ -516,7 +513,10 @@
                         var canRollback = !!item.rollbackVersion;
                         if (canRollback) submitIds.push(item.id);
                         var nodeCell = idx === 0
-                            ? (escapeHtml(group.hostname) + (group.ip ? '<small class="text-muted">(' + escapeHtml(group.ip) + ')</small>' : ''))
+                            ? ('<div class="node-info-cell"><span class="node-identity">' +
+                               escapeHtml(group.hostname) +
+                               (group.ip ? '<small class="text-muted">(' + escapeHtml(group.ip) + ')</small>' : '') +
+                               '</span></div>')
                             : '';
                         var fromBadge = item.publishVersion
                             ? '<span class="badge bg-info">V' + escapeHtml(item.publishVersion) + '</span>'

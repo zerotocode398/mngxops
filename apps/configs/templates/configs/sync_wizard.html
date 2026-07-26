@@ -82,7 +82,7 @@
                                             onchange="updateBatchCount(this)">
                                     </td>
                                     <td>
-                                        <strong>{{ node.hostname }}</strong>
+                                        {{ node.hostname }}
                                     </td>
                                     <td>
                                         <code>{{ node.ip }}:{{ node.port }}</code>
@@ -158,7 +158,7 @@
                                         </div>
 
                                         <div class="modal fade" id="syncModal{{ node.id }}" tabindex="-1">
-                                            <div class="modal-dialog">
+                                            <div class="modal-dialog modal-dialog-centered">
                                                 <div class="modal-content">
                                                     <div id="syncForm{{ node.id }}"
                                                         data-pending-configs="{{ node_pending_configs|dict_get:node.id|join:',' }}">
@@ -286,7 +286,6 @@
 </style>
 <script>
     var MAX_BATCH = {{ batch_max_count|default:3 }};
-    var syncAlertModalInstance = null;
 
     function initTagInput(wrapperId, fieldId, searchHiddenId, groupHiddenId) {
         var wrapper = document.getElementById(wrapperId);
@@ -393,59 +392,14 @@
         });
     });
 
+    /** 提示弹窗：统一走全局 showAlert */
     function showCustomModal(title, message, showClose, iconClass) {
-        var iconHtml = iconClass ? '<i class="' + iconClass + '"></i> ' : '<i class="bi bi-info-circle"></i> ';
-        document.getElementById('syncAlertTitle').innerHTML = iconHtml + title;
-        document.getElementById('syncAlertBody').innerHTML = message;
-        document.getElementById('syncAlertClose').style.display = showClose ? 'inline-block' : 'none';
-        document.getElementById('syncAlertClose').onclick = null;
-        if (!syncAlertModalInstance) {
-            syncAlertModalInstance = new bootstrap.Modal(document.getElementById('syncAlertModal'));
-        }
-        syncAlertModalInstance.show();
+        showAlert(title || '提示', message || '');
     }
 
-    function showLoading(title) {
-        document.getElementById('syncAlertTitle').innerHTML = '<i class="bi bi-hourglass-split text-primary me-2"></i>' + title;
-        document.getElementById('syncAlertBody').innerHTML =
-            '<div class="text-center py-3">' +
-            '<div class="spinner-border text-primary mb-2" role="status"></div>' +
-            '<p class="text-muted mb-0">正在提交任务...</p>' +
-            '</div>';
-        document.getElementById('syncAlertClose').style.display = 'none';
-        if (!syncAlertModalInstance) {
-            syncAlertModalInstance = new bootstrap.Modal(document.getElementById('syncAlertModal'));
-        }
-        syncAlertModalInstance.show();
-    }
-
-    function updateLoadingContent(html) {
-        document.getElementById('syncAlertBody').innerHTML = html;
-    }
-
-    function hideLoading() {
-        document.getElementById('syncAlertBody').innerHTML = '';
-        if (syncAlertModalInstance) {
-            syncAlertModalInstance.hide();
-        }
-    }
-
-    var syncConfirmModalInstance = null;
+    /** 确认弹窗：统一走全局 showConfirm（HTML 正文） */
     function showConfirmModal(title, message, iconClass, onConfirm) {
-        var iconHtml = iconClass ? '<i class="' + iconClass + '"></i> ' : '<i class="bi bi-question-circle"></i> ';
-        document.getElementById('syncConfirmTitle').innerHTML = iconHtml + title;
-        document.getElementById('syncConfirmBody').innerHTML = message;
-        var okBtn = document.getElementById('syncConfirmOk');
-        okBtn.onclick = function() {
-            if (syncConfirmModalInstance) {
-                syncConfirmModalInstance.hide();
-            }
-            if (onConfirm) onConfirm();
-        };
-        if (!syncConfirmModalInstance) {
-            syncConfirmModalInstance = new bootstrap.Modal(document.getElementById('syncConfirmModal'));
-        }
-        syncConfirmModalInstance.show();
+        showConfirm(title || '确认', message || '', onConfirm, true);
     }
 
     function updateBatchCount(changedCb) {
@@ -672,42 +626,12 @@
     });
 </script>
 
-<div class="modal fade" id="syncAlertModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="syncAlertTitle"><i class="bi bi-info-circle"></i> 提示</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="syncAlertBody"></div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="syncAlertClose">关闭</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="syncConfirmModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="syncConfirmTitle"><i class="bi bi-question-circle"></i> 确认</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="syncConfirmBody"></div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-success" id="syncConfirmOk"><i class="bi bi-play-circle"></i> 开始同步</button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
 <style>
     .sync-wizard-table td .badge {
-        font-size: 0.78rem;
+        font-size: var(--fs-sm);
     }
     </style>
 {% endblock %}

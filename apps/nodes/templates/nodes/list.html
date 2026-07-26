@@ -225,7 +225,7 @@
 
 <!-- 节点详情弹窗 -->
 <div class="modal fade" id="nodeDetailModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-server"></i> <span id="detailHostname">-</span> 详情</h5>
@@ -299,31 +299,6 @@
 <form method="post" id="deleteNodeForm" action="#" class="d-none">
     {% csrf_token %}
 </form>
-
-<!-- 通用弹窗 -->
-<div class="modal fade" id="nodeListCustomModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="nodeListCustomModalTitle"><i class="bi bi-info-circle"></i> 提示</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="nodeListCustomModalBody">
-                <div id="loadingSpinner" class="text-center" style="display: none;">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">加载中...</span>
-                    </div>
-                    <p>处理中，请稍候...</p>
-                </div>
-                <div id="modalContent"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                <button type="button" class="btn btn-success" id="modalConfirmBtn" style="display: none;"><i class="bi bi-play-circle"></i> 确认</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 <style>
     .node-list-table td .badge {
@@ -406,7 +381,6 @@
 
 <script>
     /* ========== 全局变量 ========== */
-    var nodeListCustomModal;
     var nodeDetailModal;
     var currentDetailNodeId = null;
     var testTimer = null;
@@ -415,7 +389,6 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         /* 初始化 Bootstrap 模态框 */
-        nodeListCustomModal = new bootstrap.Modal(document.getElementById('nodeListCustomModal'));
         nodeDetailModal = new bootstrap.Modal(document.getElementById('nodeDetailModal'));
 
         /* 初始化标签搜索 */
@@ -474,46 +447,22 @@
         return v;
     }
 
-    /* ========== 通用弹窗工具 ========== */
-    function showCustomModal(title, content, showConfirm, confirmCallback, iconClass, confirmIconClass, confirmBtnClass) {
-        var iconHtml = iconClass ? '<i class="' + iconClass + '"></i> ' : '<i class="bi bi-info-circle"></i> ';
-        document.getElementById('nodeListCustomModalTitle').innerHTML = iconHtml + title;
-        document.getElementById('modalContent').innerHTML = content;
-        document.getElementById('loadingSpinner').style.display = 'none';
-        var confirmBtn = document.getElementById('modalConfirmBtn');
-        if (showConfirm) {
-            confirmBtn.style.display = 'block';
-            confirmBtn.onclick = function () {
-                if (confirmCallback) confirmCallback();
-            };
-            var iconInner = confirmIconClass ? '<i class="' + confirmIconClass + '"></i> ' : '<i class="bi bi-play-circle"></i> ';
-            confirmBtn.innerHTML = iconInner + '确认';
-            confirmBtn.className = 'btn ' + (confirmBtnClass || 'btn-success');
-        } else {
-            confirmBtn.style.display = 'none';
+    /* ========== 通用弹窗工具（统一走全局 showAlert / showConfirm） ========== */
+    function showCustomModal(title, content, needConfirm, confirmCallback, iconClass, confirmIconClass, confirmBtnClass) {
+        if (needConfirm && typeof confirmCallback === 'function') {
+            showConfirm(title || '确认', content || '', confirmCallback, true);
+            return;
         }
-        if (!nodeListCustomModal) nodeListCustomModal = new bootstrap.Modal(document.getElementById('nodeListCustomModal'));
-        nodeListCustomModal.show();
+        showAlert(title || '提示', content || '');
     }
 
     function showLoading(title) {
-        title = title || '处理中';
-        document.getElementById('nodeListCustomModalTitle').innerHTML = '<i class="bi bi-hourglass-split text-primary me-2"></i>' + title;
-        document.getElementById('modalContent').innerHTML = '';
-        document.getElementById('loadingSpinner').style.display = 'block';
-        document.getElementById('modalConfirmBtn').style.display = 'none';
-        if (!nodeListCustomModal) nodeListCustomModal = new bootstrap.Modal(document.getElementById('nodeListCustomModal'));
-        nodeListCustomModal.show();
+        // 短请求过程中不弹遮罩，结果由 showAlert / 进度条展示
     }
 
-    function updateLoadingContent(html) {
-        document.getElementById('loadingSpinner').style.display = 'none';
-        document.getElementById('modalContent').innerHTML = html;
-    }
+    function updateLoadingContent(html) { }
 
-    function hideLoading() {
-        document.getElementById('loadingSpinner').style.display = 'none';
-    }
+    function hideLoading() { }
 
     function stopTestTimer() {
         if (testTimer) { clearInterval(testTimer); testTimer = null; }

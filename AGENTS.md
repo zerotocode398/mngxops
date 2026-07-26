@@ -1309,12 +1309,37 @@ nginx: configuration file /etc/nginx/nginx.conf test is successful
 
 
 
-Qxx
+Q66
+```text
+排版布局
+    1. nginx 升级的最近升级记录，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
+    2. nginx 升级的升级历史记录，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
+    3. 首页的最近发布任务，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
+    4. 首页的配置下发失败，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
+    这 4 个功能的样式、排版能否优化优化。
+
+    5. 你能发现整个项目是否还有这样类似的情况吗？也需要按此调整。
+
+    6. 所有自定义弹窗表格貌似没有调整，也能按照这个规范调整吗？
+    7. 自定义弹窗表格点击表行需要自动勾选，再次点击取消勾选。部分已实现这个功能，部分未实现。
+    8. 自定义弹窗提示的样式、风格是否能保持一致呢。
+```
+✅ 已修复：
+ - base.html：.data-table 统一 th/td 内边距，首列 padding-left 1rem / 末列 padding-right 1rem；.node-info-cell/.node-identity 提升为全局样式
+ - upgrade/index + history：节点列统一单行 hostname(ip)；去掉本地重复 node-info-cell CSS
+ - dashboard：两表 card 标题 h6→h5；最近发布批次用 code、节点改 node-info-cell；下发失败配置名/节点分列；空态改 empty-state
+ - Q66.5 全项目扫齐：configs/detail 绑定表 data-table + node-info-cell；upgrade/center 参数不一致弹窗单行节点；releases/center 嵌套绑定表 data-table；releases/list 批量回滚预览 node-info-cell；nodes/group_list、users/group_list、users/team_list、binding_edit_review 弹窗表补 data-table；configs/edit 绑定节点 badge→node-info-cell；sync_wizard 主机名去 strong；configs/list 与 releases detail/rollback 去掉多余 px-3（依赖全局首末列留白）
+ - Q66.6：弹窗选择表统一 modal-dialog-centered + modal-picker-table + modal-table-scroll；base 提升弹窗表 CSS
+ - Q66.7：base 新增 bindModalTableRowToggle；补齐节点创建/编辑选组、节点组选节点、管理节点、管理用户行勾选；binding_create/upgrade/team_list 改用同一 helper
+ - Q66.8：showConfirm 支持 asHtml；sync_wizard/nodes list+edit 本地确认栈收敛到 showAlert/showConfirm；凭证/节点组删除改 submitPostConfirm；全项目 alert()→showAlert；恢复类弹窗补居中
+
+Q67
 ```text
 nginx 升级
-    1. 最近升级记录，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
-    2. 升级历史记录，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
-    这 2 个页面的样式、排版能否参考任务中心。
+  调整编译模块左侧默认的编译参数太少了
+  https://nginx.org/en/docs/
+  可以将 nginx 官方默认的编译参数加上去
+ ✅ 已修复：BUILTIN_ADD_MODULES 按官方 configure/auto/options 补全全部模块参数（--with 含 dynamic + 默认模块 --without + Mail/Stream/事件等）；静态与 dynamic 互斥过滤
 ```
 
 
@@ -1324,12 +1349,4 @@ Qxx
     我发现不同表行的字体大小、类型不一致，比如配置管理的主机名 和 发布中心的主机名 字体大小不一样。
     能否将项目里所有字体样式、大小保持一致，该粗体就粗体（比如表头）、该非粗体就非粗体（比如表行）。
     这是我例举的，需要你对全项目字体做优化。
-```
-Q66
-```text
-nginx 升级
-  调整编译模块左侧默认的编译参数太少了
-  https://nginx.org/en/docs/
-  可以将 nginx 官方默认的编译参数加上去
- ✅ 已修复：BUILTIN_ADD_MODULES 按官方 configure/auto/options 补全全部模块参数（--with 含 dynamic + 默认模块 --without + Mail/Stream/事件等）；静态与 dynamic 互斥过滤
 ```

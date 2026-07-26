@@ -78,7 +78,7 @@
 </div>
 
 <div class="modal fade" id="nodeGroupSelectModal" tabindex="-1" aria-labelledby="nodeGroupSelectModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="nodeGroupSelectModalLabel">
@@ -95,8 +95,8 @@
                     <input type="hidden" id="selectNodeSearchHidden">
                 </div>
 
-                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                    <table class="table table-sm table-bordered table-hover data-table modal-node-table">
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table modal-node-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 5%;">
@@ -324,6 +324,9 @@
                     updateModalSelectedCount();
                 });
             });
+
+            // 弹窗表格：点击行切换勾选
+            bindModalTableRowToggle(tbody, '.modal-node-check');
 
             updateModalSelectedCount();
         })

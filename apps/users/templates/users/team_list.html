@@ -115,7 +115,7 @@
 
 <!-- 管理成员 Modal -->
 <div class="modal fade" id="manageMembersModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="manageMembersTitle">
@@ -149,8 +149,8 @@
                 </div>
 
                 <!-- 用户列表 -->
-                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                    <table class="table table-sm table-hover mb-0">
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-hover mb-0 data-table modal-picker-table">
                         <thead class="table-light sticky-top">
                             <tr>
                                 <th style="width: 40px;">
@@ -363,17 +363,8 @@
             body.querySelectorAll('.member-checkbox').forEach(function (cb) {
                 cb.addEventListener('change', updateMemberButtons);
             });
-            // 绑定行点击
-            body.querySelectorAll('.member-row').forEach(function (row) {
-                row.addEventListener('click', function (e) {
-                    if (e.target.closest('input[type="checkbox"]')) return;
-                    var cb = row.querySelector('.member-checkbox');
-                    if (cb) {
-                        cb.checked = !cb.checked;
-                        cb.dispatchEvent(new Event('change'));
-                    }
-                });
-            });
+            // 弹窗表格：点击行切换勾选
+            bindModalTableRowToggle(body, '.member-checkbox');
         }
 
         // 渲染分页

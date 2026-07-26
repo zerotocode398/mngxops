@@ -7,7 +7,7 @@
 {% block extra_js %}
 <style>
     .dashboard-table td .badge {
-        font-size: 0.78rem;
+        font-size: var(--fs-sm);
     }
     </style>
 <script>
@@ -243,7 +243,7 @@
             <!-- 最近发布任务列表 -->
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0"><i class="bi bi-rocket-takeoff"></i> 最近发布任务</h6>
+                    <h5 class="mb-0"><i class="bi bi-rocket-takeoff"></i> 最近发布任务</h5>
                     <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-primary">查看全部</a>
                 </div>
                 <div class="card-body p-0">
@@ -251,21 +251,21 @@
                         <table class="table table-hover table-sm mb-0 data-table dashboard-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 12%;">批次号</th>
-                                    <th style="width: 20%;">配置名称</th>
+                                    <th style="width: 14%;">批次号</th>
+                                    <th style="width: 18%;">配置名称</th>
                                     <th style="width: 8%;">版本</th>
-                                    <th style="width: 14%;">目标节点</th>
+                                    <th style="width: 20%;">目标节点</th>
                                     <th style="width: 10%;">状态</th>
                                     <th style="width: 12%;">操作人</th>
-                                    <th style="width: 24%;">创建时间</th>
+                                    <th style="width: 18%;">创建时间</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for task in recent_tasks %}
                                 <tr>
                                     <td>
-                                        <a href="{% url 'releases:detail' task.id %}">
-                                            <small>{{ task.batch_number|default:task.id }}</small>
+                                        <a href="{% url 'releases:detail' task.id %}" class="text-decoration-none">
+                                            <code>{{ task.batch_number|default:task.id }}</code>
                                         </a>
                                     </td>
                                     <td>
@@ -275,7 +275,11 @@
                                         <span class="badge bg-secondary">v{{ task.version.version }}</span>
                                     </td>
                                     <td>
-                                        <span class="badge bg-light text-dark">{{ task.node.hostname }}</span>
+                                        <div class="node-info-cell">
+                                            <span class="node-identity">
+                                                {{ task.node.hostname }}<small class="text-muted">({{ task.node.ip }})</small>
+                                            </span>
+                                        </div>
                                     </td>
                                     <td>
                                         {% if task.status == "success" %}
@@ -285,22 +289,21 @@
                                         {% elif task.status == "running" %}
                                         <span class="badge bg-info">进行中</span>
                                         {% elif task.status == "rollback" %}
-                                        <span class="badge bg-warning">已回滚</span>
+                                        <span class="badge bg-warning text-dark">已回滚</span>
                                         {% else %}
                                         <span class="badge bg-secondary">{{ task.get_status_display }}</span>
                                         {% endif %}
                                     </td>
+                                    <td>{{ task.operator.username }}</td>
                                     <td>
-                                        <small>{{ task.operator.username }}</small>
-                                    </td>
-                                    <td>
-                                        <small title="{{ task.created_at|date:'Y-m-d H:i:s' }}">{{ task.created_at|date:"Y-m-d H:i" }}</small>
+                                        <span title="{{ task.created_at|date:'Y-m-d H:i:s' }}">{{ task.created_at|date:"Y-m-d H:i" }}</span>
                                     </td>
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-3">
-                                        <i class="bi bi-inbox"></i> 暂无发布任务
+                                    <td colspan="7" class="empty-state">
+                                        <i class="bi bi-inbox"></i>
+                                        <p>暂无发布任务</p>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -313,7 +316,7 @@
             <!-- 配置下发失败告警列表 -->
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0"><i class="bi bi-exclamation-triangle text-danger"></i> 配置下发失败</h6>
+                    <h5 class="mb-0"><i class="bi bi-exclamation-triangle text-danger"></i> 配置下发失败</h5>
                     <a href="{% url 'configs:list' %}?sync_status=failed" class="btn btn-sm btn-outline-danger">查看全部</a>
                 </div>
                 <div class="card-body p-0">
@@ -321,41 +324,43 @@
                         <table class="table table-hover table-sm mb-0 data-table dashboard-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 22%;">绑定</th>
-                                    <th style="width: 14%;">关联节点</th>
+                                    <th style="width: 20%;">配置名称</th>
+                                    <th style="width: 20%;">关联节点</th>
                                     <th style="width: 10%;">下发状态</th>
-                                    <th style="width: 15%;">最后下发</th>
-                                    <th style="width: 24%;">错误信息</th>
-                                    <th style="width: 15%;">操作</th>
+                                    <th style="width: 14%;">最后下发</th>
+                                    <th style="width: 22%;">错误信息</th>
+                                    <th style="width: 14%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for binding in failed_configs %}
                                 <tr>
                                     <td>
-                                        <a href="{% url 'configs:detail' binding.config.id %}">
-                                            <code>{{ binding.config.name }} @ {{ binding.node.hostname }}</code>
-                                        </a>
+                                        <a href="{% url 'configs:detail' binding.config.id %}">{{ binding.config.name }}</a>
                                     </td>
                                     <td>
-                                        <small>{{ binding.node.hostname }}</small>
+                                        <div class="node-info-cell">
+                                            <span class="node-identity">
+                                                {{ binding.node.hostname }}<small class="text-muted">({{ binding.node.ip }})</small>
+                                            </span>
+                                        </div>
                                     </td>
                                     <td>
                                         <span class="badge bg-danger">下发失败</span>
                                     </td>
                                     <td>
-                                        <small title="{{ binding.last_sync_time|date:'Y-m-d H:i:s' }}">
+                                        <span title="{% if binding.last_sync_time %}{{ binding.last_sync_time|date:'Y-m-d H:i:s' }}{% else %}{{ binding.updated_at|date:'Y-m-d H:i:s' }}{% endif %}">
                                             {% if binding.last_sync_time %}
                                             {{ binding.last_sync_time|date:"Y-m-d H:i" }}
                                             {% else %}
                                             {{ binding.updated_at|date:"Y-m-d H:i" }}
                                             {% endif %}
-                                        </small>
+                                        </span>
                                     </td>
                                     <td>
-                                        <small class="text-danger" title="{{ binding.last_sync_error }}">
+                                        <span class="text-danger" title="{{ binding.last_sync_error }}">
                                             {{ binding.last_sync_error|default:"未知错误"|truncatechars:50 }}
-                                        </small>
+                                        </span>
                                     </td>
                                     <td>
                                         <a href="{% url 'configs:detail' binding.config.id %}" class="btn btn-sm btn-outline-info">
@@ -365,8 +370,9 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted py-3">
-                                        <i class="bi bi-check-circle"></i> 暂无下发失败记录
+                                    <td colspan="6" class="empty-state">
+                                        <i class="bi bi-check-circle"></i>
+                                        <p>暂无下发失败记录</p>
                                     </td>
                                 </tr>
                                 {% endfor %}

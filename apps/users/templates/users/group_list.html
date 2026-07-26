@@ -103,7 +103,7 @@
                     {% for group in user_groups %}
                     {% if user|has_perm_code:"roles.update" %}
                     <div class="modal fade" id="manageUsersModal{{ group.id }}" tabindex="-1">
-                        <div class="modal-dialog modal-lg">
+                        <div class="modal-dialog modal-lg modal-dialog-centered">
                             <div class="modal-content">
                                 <div class="modal-header">
                                     <h5 class="modal-title">
@@ -114,7 +114,8 @@
                                 <form method="post" action="{% url 'users:role_manage_users' group.id %}">
                                     {% csrf_token %}
                                     <div class="modal-body">
-                                        <table class="table table-sm table-bordered table-hover data-table modal-mgmt-table">
+                                        <div class="table-responsive modal-table-scroll">
+                                        <table class="table table-sm table-bordered table-hover data-table modal-picker-table modal-mgmt-table">
                                             <thead class="table-light">
                                                 <tr>
                                                     <th style="width: 5%;">
@@ -172,6 +173,7 @@
                                                 {% endfor %}
                                             </tbody>
                                         </table>
+                                        </div>
                                         <small class="text-muted">勾选 = 赋予角色，取消勾选 =
                                             移除角色。灰色已禁用的用户已达上限（3个角色），无法加入</small>
                                     </div>
@@ -189,7 +191,7 @@
                     {% endif %}
 
                     <div class="modal fade" id="memberModal{{ group.id }}" tabindex="-1">
-                        <div class="modal-dialog">
+                        <div class="modal-dialog modal-dialog-centered">
                             <div class="modal-content">
                                 <div class="modal-header">
                                     <h5 class="modal-title">
@@ -199,7 +201,7 @@
                                 </div>
                                 <div class="modal-body">
                                     {% if group.members.exists %}
-                                    <table class="table table-sm table-bordered">
+                                    <table class="table table-sm table-bordered data-table">
                                         <thead>
                                             <tr>
                                                 <th>用户名</th>
@@ -255,6 +257,11 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         initTagSearch('#roleSearchTagWrapper', '#roleSearchHidden', '#searchForm');
+
+        // 管理用户弹窗：点击行切换勾选
+        document.querySelectorAll('[id^="manageUsersModal"] tbody').forEach(function (tbody) {
+            bindModalTableRowToggle(tbody, '.user-check');
+        });
     });
 </script>
 {% endblock %}

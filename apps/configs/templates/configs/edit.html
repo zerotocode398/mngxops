@@ -21,9 +21,13 @@
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <label class="form-label text-muted small"><i class="bi bi-server"></i> 绑定节点</label>
-                                    <div>
+                                    <div class="d-flex flex-wrap gap-2">
                                         {% for binding in config.bindings.all %}
-                                        <span class="badge bg-light text-dark me-1">{{ binding.node.hostname }}</span>
+                                        <div class="node-info-cell">
+                                            <span class="node-identity">
+                                                {{ binding.node.hostname }}<small class="text-muted">({{ binding.node.ip }})</small>
+                                            </span>
+                                        </div>
                                         {% empty %}
                                         <span class="text-muted">暂无绑定</span>
                                         {% endfor %}

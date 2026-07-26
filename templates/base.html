@@ -477,10 +477,45 @@
         /* 全局去粗体（特殊标题如 stat-number/step-badge 可自行覆盖） */
         strong, b, .fw-bold { font-weight: 500; }
 
-        /* 全局数据表格 */
+        /* 全局数据表格（选择器需压过 Bootstrap .table-sm 单元格 padding） */
         .data-table { table-layout: fixed; width: 100%; }
-        .data-table td { font-size: var(--fs-base); vertical-align: middle; }
-        .data-table thead th { font-weight: 500; white-space: nowrap; }
+        .table.data-table > :not(caption) > * > * {
+            font-size: var(--fs-base);
+            vertical-align: middle;
+            padding: 0.55rem 0.75rem;
+        }
+        .table.data-table thead th { font-weight: 500; white-space: nowrap; }
+        /* 贴边 card 表格首末列留白，避免内容顶边、与表头错位 */
+        .table.data-table > :not(caption) > * > *:first-child { padding-left: 1rem; }
+        .table.data-table > :not(caption) > * > *:last-child { padding-right: 1rem; }
+
+        /* 节点信息单元格（发布中心 / 配置列表 / 升级 / 仪表盘共用） */
+        .node-info-cell {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .node-identity { white-space: nowrap; }
+        .node-info-cell .badge {
+            font-size: var(--fs-xs);
+            font-weight: 500;
+        }
+
+        /* 自定义弹窗选择表格（节点/组/成员勾选） */
+        .modal .table-responsive.modal-table-scroll {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .modal-picker-table tbody tr { cursor: pointer; }
+        .modal-picker-table tbody tr.disabled,
+        .modal-picker-table tbody tr.table-secondary { cursor: not-allowed; }
+        .modal-picker-table td .badge,
+        .modal-node-table td .badge,
+        .group-modal-table td .badge,
+        .modal-mgmt-table td .badge {
+            font-size: var(--fs-sm);
+        }
 
         /* 空状态统一 */
         .empty-state { text-align: center; padding: 2rem 1rem; }
@@ -892,27 +927,45 @@
                     var next = queuedConfirm;
                     queuedConfirm = null;
                     document.getElementById('mngxopsConfirmTitle').textContent = next.title || '确认操作';
-                    document.getElementById('mngxopsConfirmBody').textContent = next.message || '';
+                    var bodyEl = document.getElementById('mngxopsConfirmBody');
+                    if (next.asHtml) {
+                        bodyEl.innerHTML = next.message || '';
+                    } else {
+                        bodyEl.textContent = next.message || '';
+                    }
                     confirmCallback = next.onConfirm;
                     confirmModal.show();
                 }
             });
 
-            window.showConfirm = function(title, message, onConfirm) {
+            /**
+             * 全局确认弹窗
+             * @param {string} title 标题
+             * @param {string} message 正文（纯文本或 HTML）
+             * @param {Function} onConfirm 确认回调
+             * @param {boolean} [asHtml=false] 为 true 时 message 按 HTML 渲染
+             */
+            window.showConfirm = function(title, message, onConfirm, asHtml) {
+                asHtml = !!asHtml;
                 var isShown = confirmModalEl.classList.contains('show');
                 var isTransitioning = confirmModalEl.classList.contains('showing')
                     || confirmModalEl.classList.contains('hiding')
                     || !!pendingAcceptedCallback;
                 if (isShown || isTransitioning) {
                     // 正在显示/关闭时排队，等 hidden 后再弹出
-                    queuedConfirm = { title: title, message: message, onConfirm: onConfirm };
+                    queuedConfirm = { title: title, message: message, onConfirm: onConfirm, asHtml: asHtml };
                     if (isShown && !pendingAcceptedCallback) {
                         confirmModal.hide();
                     }
                     return;
                 }
                 document.getElementById('mngxopsConfirmTitle').textContent = title || '确认操作';
-                document.getElementById('mngxopsConfirmBody').textContent = message || '';
+                var bodyEl = document.getElementById('mngxopsConfirmBody');
+                if (asHtml) {
+                    bodyEl.innerHTML = message || '';
+                } else {
+                    bodyEl.textContent = message || '';
+                }
                 confirmCallback = onConfirm;
                 confirmModal.show();
             };
@@ -940,6 +993,31 @@
                 document.getElementById('mngxopsAlertTitle').textContent = title || '提示';
                 document.getElementById('mngxopsAlertBody').innerHTML = message || '';
                 alertModal.show();
+            };
+
+            /**
+             * 弹窗表格：点击行切换勾选（再次点击取消）
+             * @param {Element|string} tbodyOrSelector tbody 元素或选择器
+             * @param {string} checkboxSelector 行内 checkbox 选择器
+             */
+            window.bindModalTableRowToggle = function(tbodyOrSelector, checkboxSelector) {
+                var tbody = typeof tbodyOrSelector === 'string'
+                    ? document.querySelector(tbodyOrSelector)
+                    : tbodyOrSelector;
+                if (!tbody || !checkboxSelector) return;
+                tbody.querySelectorAll('tr').forEach(function(row) {
+                    if (row.dataset.rowToggleBound === '1') return;
+                    row.dataset.rowToggleBound = '1';
+                    row.addEventListener('click', function(e) {
+                        var tag = (e.target.tagName || '').toUpperCase();
+                        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A') return;
+                        if (e.target.closest('button, a, label, input, select')) return;
+                        var cb = row.querySelector(checkboxSelector);
+                        if (!cb || cb.disabled) return;
+                        cb.checked = !cb.checked;
+                        cb.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+                });
             };
         })();
 

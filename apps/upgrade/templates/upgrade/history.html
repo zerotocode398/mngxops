@@ -68,8 +68,11 @@
                 {% for task in tasks %}
                     <tr>
                         <td>
-                            <strong>{{ task.node.hostname }}</strong><br>
-                            <small class="text-muted">{{ task.node.ip }}</small>
+                            <div class="node-info-cell">
+                                <span class="node-identity">
+                                    {{ task.node.hostname }}<small class="text-muted">({{ task.node.ip }})</small>
+                                </span>
+                            </div>
                         </td>
                         <td>
                             <code class="small">{{ task.current_version|default:task.node.nginx_version|default:"未知"|nginx_ver }}</code>
@@ -141,10 +144,8 @@
 
 {% block extra_js %}
 <style>
-    .upgrade-table td .badge {
-        font-size: 0.78rem;
-    }
-    </style>
+    .upgrade-table td .badge { font-size: var(--fs-sm); }
+</style>
 <script>
 initTagSearch('#upgradeHistoryTagWrapper', '#upgradeHistorySearchHidden', '#upgradeHistoryForm');
 </script>

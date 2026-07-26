@@ -167,7 +167,7 @@
 
 <!-- 配置内容预览弹窗 -->
 <div class="modal fade" id="contentPreviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="contentPreviewTitle">
@@ -238,7 +238,9 @@
 
     .binding-row { background: #fafbfc; }
     .binding-row td { padding-top: 5px; padding-bottom: 5px; border-top: 1px dashed #e0e0e0; }
-    .binding-row td:first-child { padding-left: 48px; }
+    /* 外层展开行左侧层级缩进（嵌套表本身走 data-table 首列留白） */
+    .binding-row > td:first-child { padding-left: 48px; }
+    .binding-inner-table > :not(caption) > * > *:first-child { padding-left: 1rem; }
 
     .env-badge { font-size: 11px; padding: 2px 7px; border-radius: 3px; }
     .env-badge-prod { background: #f8d7da; color: #dc3545; }
@@ -256,15 +258,6 @@
 
     .path-link { cursor: pointer; color: var(--primary); }
     .path-link:hover { text-decoration: underline; }
-
-    /* 节点信息单元格 */
-    .node-info-cell {
-        display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
-    }
-    .node-identity { white-space: nowrap; }
-    .node-info-cell .badge {
-        font-size: 0.72rem; font-weight: normal;
-    }
 
     /* 状态过滤标签 */
     .status-filter-tag {
@@ -639,7 +632,7 @@
         if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
 
         var html = '<td colspan="6" style="padding:0;">';
-        html += '<table class="table table-sm mb-0" style="background: #fafbfc; width: 100%;">';
+        html += '<table class="table table-sm mb-0 data-table binding-inner-table" style="background: #fafbfc; width: 100%;">';
         bindings.forEach(function(b) {
             var isModified = b.sync_status === 'modified' || b.sync_status === 'not_synced';
             var isConflict = b.sync_status === 'conflict';

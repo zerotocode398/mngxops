@@ -133,7 +133,7 @@
 
 <!-- 选择节点组弹窗 -->
 <div class="modal fade" id="selectGroupModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-collection"></i> 选择节点组</h5>
@@ -148,8 +148,8 @@
                     <input type="hidden" id="groupModalSearchHidden">
                 </div>
 
-                <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
-                    <table class="table table-sm table-bordered table-hover data-table group-modal-table">
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table group-modal-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 5%;"></th>
@@ -350,6 +350,9 @@
         });
 
         initGroupModalTagSearch();
+
+        // 弹窗表格：点击行切换勾选
+        bindModalTableRowToggle(document.getElementById('groupModalTbody'), '.modal-group-cb');
 
         document.getElementById('groupModalTbody').addEventListener('change', function(e) {
             if (e.target.classList.contains('modal-group-cb')) {

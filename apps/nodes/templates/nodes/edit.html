@@ -140,7 +140,7 @@
 
 <!-- 选择节点组弹窗 -->
 <div class="modal fade" id="selectGroupModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-collection"></i> 选择节点组</h5>
@@ -155,8 +155,8 @@
                     <input type="hidden" id="groupModalSearchHidden">
                 </div>
 
-                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                    <table class="table table-sm table-bordered table-hover data-table group-modal-table">
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table group-modal-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 5%;"></th>
@@ -197,29 +197,6 @@
     </div>
 </div>
 
-<!-- 测试连接弹窗 -->
-<div class="modal fade" id="nodeEditCustomModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="nodeEditCustomModalTitle">提示</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div id="loadingSpinner" class="text-center" style="display: none;">
-                    <div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div>
-                    <p class="mt-2">处理中，请稍候...</p>
-                </div>
-                <div id="modalContent"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                <button type="button" class="btn btn-primary" id="modalConfirmBtn" style="display: none;">确认</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <style>
     .d-flex.gap-3 .form-check { margin-right: 1.5rem; }
     .selected-group-badge {
@@ -229,7 +206,6 @@
     }
     .selected-group-badge .remove-group { cursor: pointer; opacity: 0.5; font-size: 1rem; line-height: 1; }
     .selected-group-badge .remove-group:hover { opacity: 1; color: #dc3545; }
-    .group-modal-table td .badge { font-size: 0.78rem; }
     </style>
 {% endblock %}
 
@@ -237,7 +213,7 @@
 <script>
     var MAX_GROUPS = 3;
     var groupSelectedMap = {};
-    var nodeEditCustomModal, editTestTimer, editTestSeconds;
+    var editTestTimer, editTestSeconds;
 
     function syncSelectedTagsFromCheckboxes() {
         var container = document.getElementById('selectedGroupsTags');
@@ -334,27 +310,17 @@
         focusField();
     }
 
-    /* ========== 测试连接 ========== */
-    function showCustomModal(title, content, showConfirm, confirmCallback) {
-        document.getElementById('nodeEditCustomModalTitle').textContent = title;
-        document.getElementById('modalContent').innerHTML = content;
-        document.getElementById('loadingSpinner').style.display = 'none';
-        var btn = document.getElementById('modalConfirmBtn');
-        if (showConfirm) { btn.style.display = 'block'; btn.onclick = function() { if (confirmCallback) confirmCallback(); nodeEditCustomModal.hide(); }; }
-        else btn.style.display = 'none';
-        if (!nodeEditCustomModal) nodeEditCustomModal = new bootstrap.Modal(document.getElementById('nodeEditCustomModal'));
-        nodeEditCustomModal.show();
+    /* ========== 测试连接弹窗（统一走全局 showAlert / showConfirm） ========== */
+    function showCustomModal(title, content, needConfirm, confirmCallback) {
+        if (needConfirm && typeof confirmCallback === 'function') {
+            showConfirm(title || '确认', content || '', confirmCallback, true);
+            return;
+        }
+        showAlert(title || '提示', content || '');
     }
 
-    function showLoading(title) {
-        document.getElementById('nodeEditCustomModalTitle').textContent = title || '处理中';
-        document.getElementById('modalContent').innerHTML = '';
-        document.getElementById('loadingSpinner').style.display = 'block'; document.getElementById('modalConfirmBtn').style.display = 'none';
-        if (!nodeEditCustomModal) nodeEditCustomModal = new bootstrap.Modal(document.getElementById('nodeEditCustomModal'));
-        nodeEditCustomModal.show();
-    }
-
-    function hideLoading() { document.getElementById('loadingSpinner').style.display = 'none'; }
+    function showLoading(title) { }
+    function hideLoading() { }
     function stopEditTestTimer() { if (editTestTimer) { clearInterval(editTestTimer); editTestTimer = null; } }
 
     function testConnection() {
@@ -413,6 +379,9 @@
         });
 
         initGroupModalTagSearch();
+
+        // 弹窗表格：点击行切换勾选
+        bindModalTableRowToggle(document.getElementById('groupModalTbody'), '.modal-group-cb');
 
         document.getElementById('groupModalTbody').addEventListener('change', function(e) {
             if (e.target.classList.contains('modal-group-cb')) {

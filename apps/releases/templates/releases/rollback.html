@@ -54,7 +54,7 @@
                     <form method="post" id="rollbackForm">
                         {% csrf_token %}
                         <input type="hidden" name="version_id" id="selectedVersionId" value="">
-                        <div class="table-responsive px-3">
+                        <div class="table-responsive">
                             <table class="table table-hover table-sm mb-0 data-table rollback-table">
                                 <thead class="table-light">
                                     <tr>
@@ -296,7 +296,7 @@
         document.getElementById('rollbackConfirmBtn').addEventListener('click', function() {
             var selectedRadio = document.querySelector('input[name="version_radio"]:checked');
             if (!selectedRadio) {
-                alert('请先选择一个版本');
+                showAlert('提示', '请先选择一个版本');
                 return;
             }
             document.getElementById('selectedVersionId').value = selectedRadio.value;
@@ -309,7 +309,7 @@
         document.getElementById('rollbackSubmitBtn').addEventListener('click', function() {
             var versionId = document.getElementById('selectedVersionId').value;
             if (!versionId) {
-                alert('请先选择一个版本');
+                showAlert('提示', '请先选择一个版本');
                 return;
             }
             var btn = this;
@@ -327,7 +327,7 @@
             .then(function(res) {
                 btn.disabled = false;
                 if (!res.data.success) {
-                    alert(res.data.message || '回滚启动失败');
+                    showAlert('提示', res.data.message || '回滚启动失败');
                     return;
                 }
                 rollbackConfirmModal.hide();
@@ -335,7 +335,7 @@
             })
             .catch(function() {
                 btn.disabled = false;
-                alert('网络错误，请重试');
+                showAlert('提示', '网络错误，请重试');
             });
         });
 
@@ -545,7 +545,7 @@
                 document.execCommand('copy');
                 showCopyToast();
             } catch (e) {
-                alert('复制失败，请手动复制');
+                showAlert('提示', '复制失败，请手动复制');
             }
             document.body.removeChild(textarea);
         }

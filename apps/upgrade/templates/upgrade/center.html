@@ -52,7 +52,6 @@
     .pkg-table-wrap { max-height: 280px; overflow-y: auto; }
     .pkg-table-wrap tbody tr { cursor: pointer; }
     .pkg-table-wrap tbody tr.selected { background: rgba(102, 126, 234, 0.08); }
-    .modal-node-table tbody tr { cursor: pointer; }
     .modal-node-table tbody tr.disabled-row { opacity: 0.55; cursor: not-allowed; }
     .upgrade-mode-option { border: 1px solid var(--gray-200); border-radius: var(--br-md); padding: 10px 12px; cursor: pointer; }
     .upgrade-mode-option:has(input:checked) { border-color: var(--primary); background: rgba(102, 126, 234, 0.06); }
@@ -444,8 +443,8 @@
                     </div>
                     <input type="hidden" id="upgradeNodeSearchHidden">
                 </div>
-                <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
-                    <table class="table table-sm table-bordered table-hover data-table modal-node-table">
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table modal-node-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 6%;">
@@ -1299,13 +1298,6 @@ function doUpgradeNodeSearch() {
             if (tr.getAttribute('data-disabled') === '1') return;
             var nodeId = tr.getAttribute('data-node-id');
             var node = lastSearchNodes.find(function (n) { return String(n.id) === String(nodeId); });
-            tr.addEventListener('click', function (e) {
-                if (e.target && e.target.tagName === 'INPUT') return;
-                var cb = tr.querySelector('.upgrade-node-cb');
-                if (!cb || cb.disabled) return;
-                cb.checked = !cb.checked;
-                toggleModalPick(node, cb.checked);
-            });
             var cb = tr.querySelector('.upgrade-node-cb');
             if (cb) {
                 cb.addEventListener('change', function () {
@@ -1313,6 +1305,8 @@ function doUpgradeNodeSearch() {
                 });
             }
         });
+        // 弹窗表格：点击行切换勾选
+        bindModalTableRowToggle(tbody, '.upgrade-node-cb');
         updateModalPickedCount();
     })
     .catch(function () {
@@ -1496,8 +1490,9 @@ function showParamsMismatchModal(okNodes) {
         var params = cache.params || [];
         var prefix = cache.prefix || '-';
         html += '<tr class="mismatch-node-row" data-node-id="' + n.id + '" onclick="toggleMismatchExpand(this)">' +
-            '<td>' + escapeHtml(n.hostname) +
-            '<br><small class="text-muted">' + escapeHtml(n.ip) + '</small></td>' +
+            '<td><div class="node-info-cell"><span class="node-identity">' +
+            escapeHtml(n.hostname) + '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small>' +
+            '</span></div></td>' +
             '<td><code class="code-font">' + escapeHtml(formatNginxVer(cache.version) || '-') + '</code></td>' +
             '<td><span class="code-font text-truncate d-inline-block" style="max-width:100%;" title="' +
             escapeHtml(prefix) + '">' + escapeHtml(prefix) + '</span></td>' +
