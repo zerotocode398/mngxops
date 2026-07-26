@@ -28,9 +28,17 @@ def _run_credential_enable_task(task_id, credential_id):
     close_old_connections()
 
     try:
+        from apps.releases.task_result import (
+            build_tree_result,
+            item_failed,
+            item_success,
+            node_header,
+        )
+
         task = CredentialEnableTask.objects.get(pk=task_id)
         credential = Credential.objects.get(pk=credential_id)
         center_task_id = task.task_center_id
+        cred_label = credential.name or f"凭证#{credential_id}"
 
         task.status = "running"
         task.started_at = timezone.now()
@@ -41,7 +49,7 @@ def _run_credential_enable_task(task_id, credential_id):
                 status="running",
                 started_at=timezone.now(),
                 progress=0,
-                detail="凭证启用后后台测试开始",
+                detail="测试开始",
             )
 
         nodes = list(Node.objects.filter(credential=credential, is_locked=False).order_by("id"))
@@ -65,24 +73,25 @@ def _run_credential_enable_task(task_id, credential_id):
                     status="success",
                     progress=100,
                     finished_at=timezone.now(),
-                    result="无可测试节点",
+                    detail="无可测试节点",
+                    result=f"执行完成：成功 0，失败 0，共 0\n凭证 {cred_label} 无可测试节点",
                 )
             return
 
         max_workers = min(int(get_setting("credential.test_max_concurrency", "10")), len(nodes))
 
         def _test_node(node):
-            """对单个节点执行SSH连接测试"""
+            """对单个节点执行SSH连接测试，返回 (node, success, message)"""
             try:
                 if credential.auth_type == "password":
-                    success, _ = test_ssh_connection(
+                    success, message = test_ssh_connection(
                         node.ip,
                         node.port,
                         credential.username,
                         password=credential.get_password(),
                     )
                 else:
-                    success, _ = test_ssh_connection(
+                    success, message = test_ssh_connection(
                         node.ip,
                         node.port,
                         credential.username,
@@ -90,24 +99,30 @@ def _run_credential_enable_task(task_id, credential_id):
                     )
                 node.status = "online" if success else "offline"
                 node.save(update_fields=["status", "updated_at"])
-                return success
-            except Exception:
+                return node, success, message or ("连接成功" if success else "连接失败")
+            except Exception as exc:
                 node.status = "offline"
                 node.save(update_fields=["status", "updated_at"])
-                return False
+                return node, False, str(exc)
 
         success_count = 0
         fail_count = 0
         completed_count = 0
+        node_blocks = []
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(_test_node, n) for n in nodes]
             for future in as_completed(futures):
                 completed_count += 1
-                if future.result():
+                node, ok, message = future.result()
+                if ok:
                     success_count += 1
+                    node_blocks.append(node_header(node.ip, node.hostname))
+                    node_blocks.append(item_success("SSH连接"))
                 else:
                     fail_count += 1
+                    node_blocks.append(node_header(node.ip, node.hostname))
+                    node_blocks.append(item_failed("SSH连接", message))
 
                 CredentialEnableTask.objects.filter(pk=task.pk).update(
                     completed_count=completed_count,
@@ -118,16 +133,16 @@ def _run_credential_enable_task(task_id, credential_id):
                 if center_task_id:
                     TaskCenterTask.objects.filter(pk=center_task_id).update(
                         progress=int((completed_count / len(nodes)) * 100),
-                        detail=f"执行中：成功 {success_count}，失败 {fail_count}，共 {len(nodes)}",
+                        detail=f"成功 {success_count}，失败 {fail_count}，共 {len(nodes)}",
                         updated_at=timezone.now(),
                     )
 
         task.refresh_from_db()
         task.status = "completed"
         task.finished_at = timezone.now()
+        skip_tip = f"，锁定跳过 {task.skipped_count}" if task.skipped_count else ""
         task.message = (
-            f"自动测试完成：成功 {task.success_count}，失败 {task.failed_count}"
-            + (f"，锁定跳过 {task.skipped_count}" if task.skipped_count else "")
+            f"凭证 {cred_label}：成功 {task.success_count}，失败 {task.failed_count}{skip_tip}"
         )
         task.save(
             update_fields=["status", "finished_at", "message", "updated_at"]
@@ -137,12 +152,20 @@ def _run_credential_enable_task(task_id, credential_id):
         _update_credential_test_result(credential, fail_count)
 
         if center_task_id:
+            result_text = build_tree_result(
+                task.success_count, task.failed_count, len(nodes), node_blocks
+            )
+            if task.skipped_count:
+                result_text += f"\n锁定跳过 {task.skipped_count} 台"
             TaskCenterTask.objects.filter(pk=center_task_id).update(
                 status="success" if task.failed_count == 0 else "failed",
                 progress=100,
                 finished_at=timezone.now(),
-                result=task.message,
-                detail=task.message,
+                result=result_text,
+                detail=f"成功 {task.success_count} / 失败 {task.failed_count}",
+                target_hostnames=",".join(n.hostname for n in nodes if n.hostname),
+                target_ips=",".join(n.ip for n in nodes if n.ip),
+                target_configs=cred_label,
             )
     except Exception as exc:
         CredentialEnableTask.objects.filter(pk=task_id).update(
@@ -158,7 +181,7 @@ def _run_credential_enable_task(task_id, credential_id):
                     status="failed",
                     finished_at=timezone.now(),
                     progress=100,
-                    result=f"任务失败: {exc}",
+                    result=f"  [失败] 凭证测试 - 失败原因: {exc}",
                     detail=f"任务失败: {exc}",
                 )
         except CredentialEnableTask.DoesNotExist:
@@ -325,12 +348,19 @@ class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, Vi
 
             Node.objects.filter(credential=credential, is_locked=False).update(status="unknown")
 
-            # 在任务中心创建记录
+            # 关联可测节点，供任务中心摘要/详情展示
+            related_nodes = list(
+                Node.objects.filter(credential=credential, is_locked=False)
+                .order_by("id")
+                .values_list("hostname", "ip")
+            )
             center_task = TaskCenterTask.objects.create(
                 operation_type="credential_enable_test",
                 status="pending",
-                detail="凭证已启用，后台测试任务已创建",
+                detail="后台测试已创建",
                 target_configs=credential.name,
+                target_hostnames=",".join(hn for hn, _ in related_nodes if hn),
+                target_ips=",".join(ip for _, ip in related_nodes if ip),
                 trigger_user=request.user,
             )
 

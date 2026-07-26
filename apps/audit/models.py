@@ -19,6 +19,13 @@ class AuditLog(models.Model):
     ip = models.CharField(max_length=50, verbose_name="IP地址")
     result = models.CharField(max_length=20, choices=RESULT_CHOICES, verbose_name="结果")
     detail = models.TextField(blank=True, verbose_name="详情")
+    # 异步任务关联（任务中心详情超链）
+    task_center_id = models.IntegerField(
+        null=True, blank=True, db_index=True, verbose_name="任务中心ID",
+    )
+    source_batch = models.CharField(
+        max_length=64, blank=True, db_index=True, verbose_name="来源批次",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
 
     class Meta:

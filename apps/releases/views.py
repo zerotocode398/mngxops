@@ -366,6 +366,8 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseE
                 except (ValueError, TypeError):
                     max_workers = 3
 
+            from apps.releases.task_result import targets_from_release_tasks
+            targets = targets_from_release_tasks(task_ids)
             task_center = TaskCenterTask.objects.create(
                 operation_type="release_publish",
                 status="running",
@@ -374,6 +376,7 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseE
                 progress=0,
                 started_at=timezone.now(),
                 trigger_user=request.user,
+                **targets,
             )
 
             target_func = _run_release_tasks_parallel if parallel and max_workers > 1 else _run_release_tasks
@@ -567,6 +570,14 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        from apps.releases.task_result import format_task_center_summary
+
+        # 为列表行注入格式化摘要（目标 + 结果）
+        for task in context.get("tasks") or []:
+            primary, secondary = format_task_center_summary(task)
+            task.summary_primary = primary
+            task.summary_secondary = secondary
+
         context["search"] = self.request.GET.get("search", "")
         context["status_filter"] = self.request.GET.get("status", "")
         context["operation_type_filter"] = self.request.GET.get("operation_type", "")
@@ -604,20 +615,23 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         task = self.object
         result_text = (task.result or "").strip()
+        op = task.operation_type
+        is_release_type = op in ("release_publish", "release_rollback")
 
-        # 解析目标节点和目标配置
+        # 解析目标节点和目标配置/凭证
         target_nodes = []
         target_configs = []
         if task.target_hostnames:
             ips = (task.target_ips or "").split(",")
             hostnames = task.target_hostnames.split(",")
             seen = set()
-            for i in range(min(len(ips), len(hostnames))):
-                ip = ips[i].strip()
-                if ip and ip not in seen:
-                    seen.add(ip)
-                    hn = hostnames[i].strip() if i < len(hostnames) else ""
-                    target_nodes.append(f"{ip} ({hn})" if hn else ip)
+            for i, hn_raw in enumerate(hostnames):
+                hn = hn_raw.strip()
+                if not hn or hn in seen:
+                    continue
+                seen.add(hn)
+                ip = ips[i].strip() if i < len(ips) else ""
+                target_nodes.append(f"{hn}({ip})" if ip else hn)
         if task.target_configs:
             configs_raw = task.target_configs.split(",")
             target_configs = [c.strip() for c in configs_raw if c.strip()]
@@ -627,8 +641,12 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         context["target_nodes"] = target_nodes[:50]
         context["target_configs"] = target_configs[:50]
         context["target_configs_count"] = len(target_configs)
+        context["is_release_type"] = is_release_type
+        context["target_configs_label"] = (
+            "目标凭证" if op == "credential_enable_test" else "目标配置"
+        )
 
-        # 解析结果树（按节点分组 + 成功/失败配置）
+        # 解析结果树（按节点分组 + 成功/失败明细）
         result_tree = []
         success_total = 0
         failed_total = 0
@@ -653,14 +671,18 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                     raw_name = raw[len("  [成功] "):].strip()
                     name = re.sub(r'\s+v(\d+).*', r' (V\1)', raw_name)
                     search_name = re.sub(r'\s+v\d+.*', '', raw_name).strip()
-                    current_node["configs"].append({"name": name, "search_name": search_name, "status": "success"})
+                    current_node["configs"].append({
+                        "name": name, "search_name": search_name, "status": "success",
+                    })
                     current_node["success"] += 1
                     success_total += 1
                 elif raw.startswith("  [失败]") and current_node is not None:
                     raw_name = raw[len("  [失败] "):].strip()
                     name = re.sub(r'\s+v(\d+).*', r' (V\1)', raw_name)
                     search_name = re.sub(r'\s+v\d+.*', '', raw_name).strip()
-                    current_node["configs"].append({"name": name, "search_name": search_name, "status": "failed"})
+                    current_node["configs"].append({
+                        "name": name, "search_name": search_name, "status": "failed",
+                    })
                     current_node["failed"] += 1
                     failed_total += 1
 
@@ -708,9 +730,41 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
             else:
                 duration = f"{delta:.1f} 秒"
 
+        # Nginx 升级：关联升级任务详情入口
+        upgrade_task = None
+        if op == "nginx_upgrade":
+            try:
+                from apps.upgrade.models import NginxUpgradeTask
+                upgrade_task = (
+                    NginxUpgradeTask.objects.filter(task_center_id=task.id)
+                    .select_related("node")
+                    .first()
+                )
+            except Exception:
+                upgrade_task = None
+
+        # 系统信息 / 版本检测：特化展示
+        system_info_rows = None
+        nginx_version_text = None
+        if op == "node_system_info" and result_text:
+            try:
+                import json as _json
+                data = _json.loads(result_text)
+                if isinstance(data, dict):
+                    system_info_rows = [
+                        {"key": k, "value": v} for k, v in data.items()
+                    ]
+            except (ValueError, TypeError):
+                system_info_rows = None
+        elif op == "node_nginx_version" and result_text:
+            nginx_version_text = result_text
+
         context["result_tree"] = result_tree
         context["result_summary"] = {"success": success_total, "failed": failed_total}
         context["execution_duration"] = duration
+        context["upgrade_task"] = upgrade_task
+        context["system_info_rows"] = system_info_rows
+        context["nginx_version_text"] = nginx_version_text
         return context
 
 
@@ -796,6 +850,8 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
             batch_number=batch_number,
         )
 
+        from apps.releases.task_result import targets_from_release_tasks
+        targets = targets_from_release_tasks([new_task.id])
         task_center = TaskCenterTask.objects.create(
             operation_type="release_rollback",
             status="running",
@@ -804,6 +860,7 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
             progress=0,
             started_at=timezone.now(),
             trigger_user=request.user,
+            **targets,
         )
         thread = threading.Thread(
             target=_run_release_tasks,
@@ -1058,6 +1115,8 @@ class ReleaseCenterExecuteView(
             return redirect("releases:center")
 
         # 创建 TaskCenterTask
+        from apps.releases.task_result import targets_from_release_tasks
+        targets = targets_from_release_tasks(task_ids)
         task_center = TaskCenterTask.objects.create(
             operation_type="release_publish",
             status="running",
@@ -1066,6 +1125,7 @@ class ReleaseCenterExecuteView(
             progress=0,
             started_at=timezone.now(),
             trigger_user=request.user,
+            **targets,
         )
 
         thread = threading.Thread(
@@ -1118,6 +1178,8 @@ class ReleaseCenterSingleExecuteView(
             messages.error(request, "任务不是待发布状态")
             return redirect("releases:center")
 
+        from apps.releases.task_result import targets_from_release_tasks
+        targets = targets_from_release_tasks([task.id])
         task_center = TaskCenterTask.objects.create(
             operation_type="release_publish",
             status="running",
@@ -1126,6 +1188,7 @@ class ReleaseCenterSingleExecuteView(
             progress=0,
             started_at=timezone.now(),
             trigger_user=request.user,
+            **targets,
         )
 
         thread = threading.Thread(
@@ -1338,6 +1401,8 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
         task.result = ""
         task.save(update_fields=["status", "result"])
 
+        from apps.releases.task_result import targets_from_release_tasks
+        targets = targets_from_release_tasks([task.id])
         task_center = TaskCenterTask.objects.create(
             operation_type="release_publish",
             status="running",
@@ -1346,6 +1411,7 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
             progress=0,
             started_at=timezone.now(),
             trigger_user=request.user,
+            **targets,
         )
 
         thread = threading.Thread(
@@ -1435,6 +1501,8 @@ def _start_rollback_for_release_tasks(tasks, user):
     if skipped:
         detail += f"（跳过 {skipped} 个）"
 
+    from apps.releases.task_result import targets_from_release_tasks
+    targets = targets_from_release_tasks(rollback_task_ids)
     task_center = TaskCenterTask.objects.create(
         operation_type="release_rollback",
         status="running",
@@ -1443,6 +1511,7 @@ def _start_rollback_for_release_tasks(tasks, user):
         progress=0,
         started_at=timezone.now(),
         trigger_user=user,
+        **targets,
     )
 
     thread = threading.Thread(

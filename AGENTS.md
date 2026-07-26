@@ -1400,3 +1400,33 @@ Q69
  - 删除约 20 处页面级 td .badge font-size 重复规则（nodes/users/credentials/audit/releases/upgrade/dashboard/configs 等）
  - 列表表行去 strong（节点组/角色/用户组/审计/任务中心）；详情 pre/task_detail/rollback 进度树字号对齐变量
 ```
+
+Q70
+```text
+审计操作日志
+  1. 查询整体布局是否需要优化一下？
+  2. 全部类型的查询条件是否可以删除
+  3. 查询时间范围应该如何优化？
+  4. 模块能否新增一个软链，如果是和发布、升级、节点测试、配置等等等相关有异步任务的，搞个超链是否可以？
+ ✅ 已修复（方案 B）：
+ - AuditLog 新增 task_center_id / source_batch；log_async_task + log_task_center_created；TaskCenterTask 创建信号写操作日志
+ - 操作日志：删「全部类型」改「结果」筛选；时间快捷今天/近7天/近30天；tag 多词 AND；per_page 底栏；详情「查看任务」→任务中心详情
+ - 登录日志：结果筛选、时间快捷、失败原因列、时间精确到秒
+```
+
+Q71
+```text
+任务中心
+ 1. 摘要显示过长，Nginx 升级 [UG-260725-0011]: lsj → nginx-1.30.3，能否简化？
+ 2. 摘要显示信息不对，凭证启用测试失败时摘要只有「自动测试完成：成功 0，失败 1」，看不出测的是什么
+ 3. 任务详情执行结果不明确（仅计数文案）
+ 4. 任务详情除「回滚配置」外其它类型输出不符合预期
+ ✅ 已修复：
+ - 新增 apps/releases/task_result.py：统一 [节点]/[成功]/[失败] 树协议与升级短摘要
+ - 列表摘要：凭证显示凭证名；发布类优先批次号；Nginx 升级 detail 改为「旧→新」
+ - 凭证/SSH单测批测解锁/配置同步 finish result 全部写入标准树
+ - 发布/回滚创建时补填 target_hostnames/ips/configs
+ - run_upgrade_task.update_status 同步 TaskCenter 进度与终态结果树；取消/回滚同样写树
+ - task_detail：非发布类型子项不链发布历史；Nginx 升级入口「升级任务详情」+批次链升级历史；system_info JSON 定义列表；凭证区标签「目标凭证」
+ - 列表摘要补强：format_task_center_summary 目标+结果；摘要列定宽横滚不截断；凭证 detail 改为纯结果计数
+```

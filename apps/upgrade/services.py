@@ -275,7 +275,9 @@ def run_upgrade_task(task_id):
     close_old_connections()
 
     try:
-        task = NginxUpgradeTask.objects.select_related("node", "source_package", "operator").get(pk=task_id)
+        task = NginxUpgradeTask.objects.select_related(
+            "node", "source_package", "operator", "task_center"
+        ).get(pk=task_id)
     except NginxUpgradeTask.DoesNotExist:
         return
 
@@ -307,10 +309,84 @@ def run_upgrade_task(task_id):
         log_lines.append(text)
         _persist_log()
 
+    _STEP_DETAIL = {
+        "fetching_config": "正在获取编译参数...",
+        "uploading_package": "正在上传源码包...",
+        "downloading_modules": "正在下载第三方模块...",
+        "backing_up": "正在备份旧二进制...",
+        "configuring": "正在执行 configure...",
+        "compiling": "正在编译 make...",
+        "replacing_binary": "正在 make install...",
+        "verifying": "正在校验...",
+        "upgrading": "正在平滑升级/重载...",
+    }
+
     def update_status(status, progress, **kwargs):
+        """更新升级任务状态，并同步任务中心进度/结果"""
+        from apps.releases.task_result import (
+            build_tree_result,
+            item_failed,
+            item_success,
+            node_header,
+            short_error_tail,
+            upgrade_detail_short,
+        )
+
         updates = {"status": status, "progress": progress, "updated_at": timezone.now()}
         updates.update(kwargs)
         NginxUpgradeTask.objects.filter(pk=task_id).update(**updates)
+
+        center_id = getattr(task, "task_center_id", None)
+        if not center_id:
+            return
+
+        if status == "success":
+            tc_status = "success"
+        elif status == "failed":
+            tc_status = "failed"
+        elif status == "cancelled":
+            tc_status = "cancelled"
+        elif status == "pending":
+            tc_status = "pending"
+        else:
+            tc_status = "running"
+
+        ver_label = upgrade_detail_short(task.current_version, task.target_version)
+        tc_updates = {
+            "status": tc_status,
+            "progress": progress,
+            "updated_at": timezone.now(),
+        }
+        if tc_status == "running":
+            tc_updates["detail"] = _STEP_DETAIL.get(status, ver_label)
+            if not task.started_at and progress > 0:
+                tc_updates["started_at"] = timezone.now()
+        elif tc_status == "success":
+            blocks = [
+                node_header(node.ip, node.hostname),
+                item_success(ver_label),
+            ]
+            tc_updates["detail"] = ver_label
+            tc_updates["progress"] = 100
+            tc_updates["finished_at"] = kwargs.get("finished_at") or timezone.now()
+            tc_updates["result"] = build_tree_result(1, 0, 1, blocks)
+        elif tc_status == "failed":
+            err = kwargs.get("error_message") or ""
+            blocks = [
+                node_header(node.ip, node.hostname),
+                item_failed(ver_label, short_error_tail(err)),
+            ]
+            tc_updates["detail"] = ver_label
+            tc_updates["progress"] = 100
+            tc_updates["finished_at"] = kwargs.get("finished_at") or timezone.now()
+            tc_updates["result"] = build_tree_result(0, 1, 1, blocks)
+        else:
+            tc_updates["detail"] = ver_label
+            if kwargs.get("finished_at"):
+                tc_updates["finished_at"] = kwargs["finished_at"]
+                tc_updates["progress"] = 100
+
+        TaskCenterTask.objects.filter(pk=center_id).update(**tc_updates)
 
     try:
         from apps.nodes.views import _get_node_credential
@@ -580,6 +656,8 @@ def run_upgrade_task(task_id):
                 status="failed", error_message=str(e), finished_at=timezone.now(),
                 log_output="\n".join(log_lines) if log_lines else "",
             )
+            # 异常路径同样同步任务中心
+            update_status("failed", 100, error_message=str(e), finished_at=timezone.now())
         except Exception:
             pass
 

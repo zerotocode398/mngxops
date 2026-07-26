@@ -10,9 +10,14 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-card-text"></i> 任务详情 #{{ task.id }}</h5>
                     <div class="btn-group btn-group-sm">
-                        {% if task.source_batch and task.operation_type in 'release_publish,release_rollback' %}
-                        <a href="{% url 'releases:list' %}?search={{ task.source_batch|urlencode }}" class="btn btn-outline-info">
+                        {% if is_release_type and task.source_batch %}
+                        <a href="{% url 'releases:list' %}?search={{ task.source_batch|urlencode }}" class="btn btn-outline-info" target="_blank">
                             <i class="bi bi-clock-history"></i> 发布历史
+                        </a>
+                        {% endif %}
+                        {% if upgrade_task %}
+                        <a href="{% url 'upgrade:task_log' upgrade_task.id %}" class="btn btn-outline-info" target="_blank">
+                            <i class="bi bi-terminal"></i> 升级任务详情
                         </a>
                         {% endif %}
                         <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary">
@@ -25,8 +30,10 @@
                         <div class="col-md-3"><span class="text-muted">任务类型</span> {{ task.get_operation_type_display }}</div>
                         <div class="col-md-3">
                             <span class="text-muted">来源批次</span>
-                            {% if task.source_batch and task.operation_type in 'release_publish,release_rollback' %}
+                            {% if is_release_type and task.source_batch %}
                             <a href="{% url 'releases:list' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
+                            {% elif task.operation_type == 'nginx_upgrade' and task.source_batch %}
+                            <a href="{% url 'upgrade:history' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
                             {% else %}
                             <code>{{ task.source_batch|default:'-' }}</code>
                             {% endif %}
@@ -36,6 +43,7 @@
                             {% if task.status == 'success' %}<span class="badge bg-success">成功</span>
                             {% elif task.status == 'failed' %}<span class="badge bg-danger">失败</span>
                             {% elif task.status == 'running' %}<span class="badge bg-info">执行中</span>
+                            {% elif task.status == 'cancelled' %}<span class="badge bg-secondary">已取消</span>
                             {% else %}<span class="badge bg-secondary">{{ task.status }}</span>{% endif %}
                         </div>
                         <div class="col-md-3"><span class="text-muted">进度</span> {{ task.progress }}%</div>
@@ -57,7 +65,7 @@
 
                     {% if target_configs %}
                     <div class="mb-3">
-                        <div class="small fw-semibold mb-1"><i class="bi bi-file-earmark-code"></i> 目标配置（{{ target_configs_count }} 个）</div>
+                        <div class="small fw-semibold mb-1"><i class="bi bi-file-earmark-code"></i> {{ target_configs_label }}（{{ target_configs_count }} 个）</div>
                         <div class="d-flex flex-wrap gap-1">
                             {% for cfg in target_configs %}
                             <span class="badge badge-outline">{{ cfg }}</span>
@@ -74,10 +82,19 @@
                         {% endif %}
                     </h6>
 
-                    {% if result_tree %}
+                    {% if system_info_rows %}
+                    <dl class="row small mb-0 task-kv-list">
+                        {% for row in system_info_rows %}
+                        <dt class="col-sm-3 text-muted">{{ row.key }}</dt>
+                        <dd class="col-sm-9">{{ row.value }}</dd>
+                        {% endfor %}
+                    </dl>
+                    {% elif nginx_version_text %}
+                    <div class="border rounded px-3 py-2 small">{{ nginx_version_text }}</div>
+                    {% elif result_tree %}
                     <div class="d-flex gap-2 mb-3">
-                        <span class="badge bg-success"><i class="bi bi-check-circle-fill text-success"></i> 成功 {{ result_summary.success }}</span>
-                        <span class="badge bg-danger"><i class="bi bi-x-circle-fill text-danger"></i> 失败 {{ result_summary.failed }}</span>
+                        <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> 成功 {{ result_summary.success }}</span>
+                        <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> 失败 {{ result_summary.failed }}</span>
                     </div>
                     <div class="border rounded shadow-sm" id="resultTreeContainer">
                         {% for node in result_tree %}
@@ -94,11 +111,15 @@
                                 {% for cfg in node.configs %}
                                 <div class="result-config-item d-flex align-items-center gap-2 py-1 small{% if cfg.status == 'failed' %} bg-failed-light{% endif %}">
                                     {% if cfg.status == 'success' %}
-                                    <span class="text-success"><i class="bi bi-check-circle-fill text-success"></i></span>
+                                    <span class="text-success"><i class="bi bi-check-circle-fill"></i></span>
                                     {% else %}
-                                    <span class="text-danger"><i class="bi bi-x-circle-fill text-danger"></i></span>
+                                    <span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>
                                     {% endif %}
+                                    {% if is_release_type %}
                                     <a href="{% url 'releases:list' %}?search={{ cfg.search_name|urlencode }},{{ node.node_hostname|urlencode }},{{ task.source_batch|urlencode }}&batch={{ task.source_batch|urlencode }}&node_ip={{ node.node_ip|urlencode }}" target="_blank" class="text-decoration-none">{{ cfg.name }}</a>
+                                    {% else %}
+                                    <span>{{ cfg.name }}</span>
+                                    {% endif %}
                                 </div>
                                 {% endfor %}
                             </div>
@@ -106,7 +127,7 @@
                         {% endfor %}
                     </div>
                     {% else %}
-                    <pre class="bg-dark text-light p-3 rounded small" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">{{ task.result|default:'暂无结果数据' }}</pre>
+                    <pre class="bg-dark text-light p-3 rounded small code-font" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">{{ task.result|default:'暂无结果数据' }}</pre>
                     {% endif %}
                 </div>
             </div>
@@ -123,12 +144,13 @@
     .task-detail-body h6 { font-size: var(--fs-md); }
     .cursor-pointer { cursor: pointer; }
     .result-node-group:last-child { border-bottom: none !important; }
-    .result-node-header { transition: background 0.15s; user-select: none; font-size: var(--fs-base); }
+    .result-node-header { transition: background var(--transition-fast); user-select: none; font-size: var(--fs-base); }
     .result-node-header:hover { opacity: 0.9; }
     .result-config-item { border-top: 1px dashed #eee; }
     .result-config-item:first-child { border-top: none; }
     .bg-failed-light { background: #fff5f5; }
-    #resultTreeContainer { border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-
+    #resultTreeContainer { border-radius: var(--br-md); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .task-kv-list dt { font-weight: 500; }
+    .task-kv-list dd { margin-bottom: 0.35rem; }
 </style>
 {% endblock %}

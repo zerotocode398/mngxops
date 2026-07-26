@@ -475,6 +475,14 @@ def node_lock(request):
             )
 
             def _run_unlock_test():
+                """解锁后逐节点测试并写入标准结果树"""
+                from apps.releases.task_result import (
+                    build_tree_result,
+                    item_failed,
+                    item_success,
+                    node_header,
+                )
+
                 tid = task.id
                 TaskCenterTask.objects.filter(pk=tid).update(
                     status="running", progress=5, detail="正在解锁并测试连接...", started_at=timezone.now()
@@ -482,7 +490,7 @@ def node_lock(request):
                 success_count = 0
                 fail_count = 0
                 done = 0
-                detail_lines = []
+                node_blocks = []
 
                 for node in node_list:
                     try:
@@ -490,11 +498,13 @@ def node_lock(request):
                         if not credential:
                             node.status = "unknown"; node.save()
                             fail_count += 1
-                            detail_lines.append(f"[失败] {node.hostname}({node.ip}) - 未配置凭证")
+                            node_blocks.append(node_header(node.ip, node.hostname))
+                            node_blocks.append(item_failed("SSH连接", "未配置凭证"))
                         elif not credential.is_enabled:
                             node.status = "offline"; node.save()
                             fail_count += 1
-                            detail_lines.append(f"[失败] {node.hostname}({node.ip}) - 凭证已禁用")
+                            node_blocks.append(node_header(node.ip, node.hostname))
+                            node_blocks.append(item_failed("SSH连接", "凭证已禁用"))
                         else:
                             if credential.auth_type == "password":
                                 success, message = test_ssh_connection(
@@ -518,15 +528,18 @@ def node_lock(request):
                                 if version_success:
                                     node.nginx_version = version_info
                                 success_count += 1
-                                detail_lines.append(f"[成功] {node.hostname}({node.ip}) - {message}")
+                                node_blocks.append(node_header(node.ip, node.hostname))
+                                node_blocks.append(item_success("SSH连接"))
                             else:
                                 node.status = "offline"
                                 fail_count += 1
-                                detail_lines.append(f"[失败] {node.hostname}({node.ip}) - {message}")
+                                node_blocks.append(node_header(node.ip, node.hostname))
+                                node_blocks.append(item_failed("SSH连接", message))
                             node.save()
                     except Exception as e:
                         fail_count += 1
-                        detail_lines.append(f"[失败] {node.hostname}({node.ip}) - 异常: {str(e)}")
+                        node_blocks.append(node_header(node.ip, node.hostname))
+                        node_blocks.append(item_failed("SSH连接", f"异常: {str(e)}"))
 
                     done += 1
                     TaskCenterTask.objects.filter(pk=tid).update(
@@ -539,7 +552,7 @@ def node_lock(request):
                 TaskCenterTask.objects.filter(pk=tid).update(
                     status=status, progress=100, finished_at=timezone.now(),
                     detail=f"执行完成：成功{success_count}，失败{fail_count}，共{total}",
-                    result="\n".join(detail_lines),
+                    result=build_tree_result(success_count, fail_count, total, node_blocks),
                 )
 
             thread = threading.Thread(target=_run_unlock_test, daemon=True)
@@ -635,6 +648,14 @@ def test_node_connection(request):
             )
 
             def _run_test():
+                """单节点 SSH 测试，结果写入标准树"""
+                from apps.releases.task_result import (
+                    build_tree_result,
+                    item_failed,
+                    item_success,
+                    node_header,
+                )
+
                 tid = task.id
                 _has_node = node is not None
                 _node_id = node_id
@@ -674,15 +695,30 @@ def test_node_connection(request):
                         _node.save()
 
                     status = "success" if success else "failed"
+                    blocks = [node_header(host, target_hostname)]
+                    if success:
+                        blocks.append(item_success("SSH连接"))
+                    else:
+                        blocks.append(item_failed("SSH连接", message))
                     TaskCenterTask.objects.filter(pk=tid).update(
                         status=status, progress=100, finished_at=timezone.now(),
                         detail=f"连接{'成功' if success else '失败'}",
-                        result=message,
+                        result=build_tree_result(
+                            1 if success else 0,
+                            0 if success else 1,
+                            1,
+                            blocks,
+                        ),
                     )
                 except Exception as e:
+                    blocks = [
+                        node_header(host, target_hostname),
+                        item_failed("SSH连接", str(e)),
+                    ]
                     TaskCenterTask.objects.filter(pk=tid).update(
                         status="failed", progress=100, finished_at=timezone.now(),
                         detail=f"执行异常: {str(e)}",
+                        result=build_tree_result(0, 1, 1, blocks),
                     )
 
             thread = threading.Thread(target=_run_test, daemon=True)
@@ -825,6 +861,14 @@ def batch_test_node_connection(request):
                 }
 
         def _run_batch_test_task(task_id, test_nodes):
+            """批量 SSH 测试，结果写入标准树"""
+            from apps.releases.task_result import (
+                build_tree_result,
+                item_failed,
+                item_success,
+                node_header,
+            )
+
             TaskCenterTask.objects.filter(pk=task_id).update(
                 status="running",
                 started_at=timezone.now(),
@@ -835,7 +879,7 @@ def batch_test_node_connection(request):
             success_count = 0
             fail_count = 0
             done = 0
-            detail_lines = []
+            node_blocks = []
 
             with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
                 future_to_node = {
@@ -844,16 +888,13 @@ def batch_test_node_connection(request):
                 for future in as_completed(future_to_node):
                     result = future.result()
                     done += 1
+                    node_blocks.append(node_header(result.get("ip"), result.get("hostname")))
                     if result.get("success"):
                         success_count += 1
-                        detail_lines.append(
-                            f"[成功] {result['hostname']}({result['ip']}) - {result.get('message','')}"
-                        )
+                        node_blocks.append(item_success("SSH连接"))
                     else:
                         fail_count += 1
-                        detail_lines.append(
-                            f"[失败] {result['hostname']}({result['ip']}) - {result.get('message','')}"
-                        )
+                        node_blocks.append(item_failed("SSH连接", result.get("message", "")))
 
                     TaskCenterTask.objects.filter(pk=task_id).update(
                         progress=(
@@ -869,7 +910,9 @@ def batch_test_node_connection(request):
                 progress=100,
                 finished_at=timezone.now(),
                 detail=f"执行完成：成功 {success_count}，失败 {fail_count}，共 {len(test_nodes)}",
-                result="\n".join(detail_lines),
+                result=build_tree_result(
+                    success_count, fail_count, len(test_nodes), node_blocks
+                ),
                 updated_at=timezone.now(),
             )
 

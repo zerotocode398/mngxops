@@ -352,10 +352,11 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         task.save()
 
         from apps.releases.models import TaskCenterTask
+        from apps.releases.task_result import upgrade_detail_short
         task_center = TaskCenterTask.objects.create(
             operation_type="nginx_upgrade",
             status="pending",
-            detail=f"Nginx 升级 [{batch_number}]: {task.node.hostname} → nginx-{task.target_version}",
+            detail=upgrade_detail_short(task.current_version, task.target_version),
             target_hostnames=task.node.hostname,
             target_ips=task.node.ip,
             trigger_user=request.user,
@@ -518,11 +519,13 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
             task.save()
 
+            from apps.releases.task_result import upgrade_detail_short
             task_center = TaskCenterTask.objects.create(
                 operation_type="nginx_upgrade",
                 status="pending",
-                detail=(
-                    f"Nginx 升级 [{batch_number}]: {node.hostname} → nginx-{target_version}"
+                detail=upgrade_detail_short(
+                    current_version or (node.nginx_version or ""),
+                    target_version,
                 ),
                 target_hostnames=node.hostname,
                 target_ips=node.ip,
@@ -646,10 +649,27 @@ class UpgradeTaskCancelView(LoginRequiredMixin, PermissionRequiredMixin, View):
         task.save()
 
         if task.task_center:
+            from apps.releases.task_result import (
+                build_tree_result,
+                item_failed,
+                node_header,
+                upgrade_detail_short,
+            )
+            ver_label = upgrade_detail_short(task.current_version, task.target_version)
             task.task_center.status = "cancelled"
-            task.task_center.result = "用户手动取消"
+            task.task_center.progress = 100
+            task.task_center.detail = ver_label
+            task.task_center.result = build_tree_result(
+                0, 1, 1,
+                [
+                    node_header(task.node.ip, task.node.hostname),
+                    item_failed(ver_label, "用户手动取消"),
+                ],
+            )
             task.task_center.finished_at = timezone.now()
-            task.task_center.save(update_fields=["status", "result", "finished_at"])
+            task.task_center.save(
+                update_fields=["status", "progress", "detail", "result", "finished_at"]
+            )
 
         messages.success(request, "升级任务已取消")
         return JsonResponse({"success": True})
@@ -710,10 +730,27 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
         task.save()
 
         if task.task_center:
+            from apps.releases.task_result import (
+                build_tree_result,
+                item_success,
+                node_header,
+                upgrade_detail_short,
+            )
+            ver_label = upgrade_detail_short(task.current_version, task.target_version)
             task.task_center.status = "cancelled"
-            task.task_center.result = "已回滚到旧版本"
+            task.task_center.progress = 100
+            task.task_center.detail = f"已回滚：{ver_label}"
+            task.task_center.result = build_tree_result(
+                1, 0, 1,
+                [
+                    node_header(task.node.ip, task.node.hostname),
+                    item_success(f"已回滚到旧版本 ({ver_label})"),
+                ],
+            )
             task.task_center.finished_at = timezone.now()
-            task.task_center.save(update_fields=["status", "result", "finished_at"])
+            task.task_center.save(
+                update_fields=["status", "progress", "detail", "result", "finished_at"]
+            )
 
         messages.success(request, f"Nginx 已回滚到备份版本 ({task.old_binary_backup})")
         return JsonResponse({"success": True})
@@ -740,6 +777,7 @@ class UpgradeHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePag
                 | Q(node__ip__icontains=search)
                 | Q(target_version__icontains=search)
                 | Q(current_version__icontains=search)
+                | Q(batch_number__icontains=search)
             )
         status_filter = self.request.GET.get("status", "")
         if status_filter == "running":

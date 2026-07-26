@@ -95,3 +95,23 @@ def audit_post_delete(sender, instance, **kwargs):
         user=user, module=module_name, action=f"删除{module_name}",
         ip=ip, result="success", detail=f"删除 {module_name}「{label}」",
     )
+
+
+def _connect_task_center_audit():
+    """TaskCenterTask 创建时写入带超链字段的操作日志（不走 TRACKED_MODELS CRUD）。"""
+    from apps.releases.models import TaskCenterTask
+    from .utils import log_task_center_created
+
+    def _on_task_center_created(sender, instance, created, **kwargs):
+        if not created:
+            return
+        log_task_center_created(instance)
+
+    post_save.connect(
+        _on_task_center_created,
+        sender=TaskCenterTask,
+        dispatch_uid="audit_task_center_created",
+    )
+
+
+_connect_task_center_audit()

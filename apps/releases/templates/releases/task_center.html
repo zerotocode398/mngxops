@@ -96,18 +96,12 @@
                                         <small class="text-muted" id="taskProgressText{{ task.id }}">{{ task.progress }}%</small>
                                     </td>
                                     <td class="task-summary-cell">
-                                        <span class="small">
-                                            {% if task.target_hostnames %}
-                                            {{ task.target_hostnames|truncatechars:40 }}
-                                            {% elif task.source_batch %}
-                                            <code>{{ task.source_batch }}</code>
-                                            {% else %}
-                                            <span class="text-muted">-</span>
+                                        <div class="task-summary-scroll">
+                                            <div class="small">{% if task.operation_type == 'release_publish' or task.operation_type == 'release_rollback' %}<code>{{ task.summary_primary|default:"-" }}</code>{% else %}{{ task.summary_primary|default:"-" }}{% endif %}</div>
+                                            {% if task.summary_secondary %}
+                                            <div class="small text-muted">{{ task.summary_secondary }}</div>
                                             {% endif %}
-                                        </span>
-                                        {% if task.detail %}
-                                        <br><small class="text-muted">{{ task.detail|truncatechars:60 }}</small>
-                                        {% endif %}
+                                        </div>
                                     </td>
                                     <td><small>{{ task.trigger_user.username|default:'-' }}</small></td>
                                     <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
@@ -139,8 +133,22 @@
 {% block extra_js %}
 <style>
     .task-table td { white-space: nowrap; }
-    .task-table td.task-summary-cell { white-space: normal; }
-.task-row { cursor: pointer; }
+    .task-table td.task-summary-cell {
+        max-width: 280px;
+        width: 28%;
+        white-space: normal;
+        vertical-align: middle;
+    }
+    .task-summary-scroll {
+        max-width: 100%;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+    .task-summary-scroll .small {
+        white-space: nowrap;
+        line-height: 1.4;
+    }
+    .task-row { cursor: pointer; }
     .task-row:hover { background: #f0f6ff; }
 </style>
 <script>

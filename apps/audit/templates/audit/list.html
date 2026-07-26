@@ -19,16 +19,17 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <form method="get" class="row g-2 mb-3" id="searchForm" autocomplete="off">
-                        <div class="col-md-4">
+                    <form method="get" class="row g-2 mb-3 align-items-center" id="searchForm" autocomplete="off">
+                        <div class="col-md-3">
                             <div class="tag-input-wrapper form-control form-control-sm" id="auditSearchTagWrapper">
                                 <input type="text" class="tag-input-field" id="auditSearchField"
-                                    placeholder="搜索用户或动作">
+                                    placeholder="搜索用户、动作或详情">
                             </div>
                             <input type="hidden" name="search" id="auditSearchHidden" value="{{ search }}">
                         </div>
                         <div class="col-md-2">
-                            <select name="module" class="form-select form-select-sm">
+                            <select name="module" class="form-select form-select-sm"
+                                onchange="document.getElementById('searchForm').submit()">
                                 <option value="">全部模块</option>
                                 {% for m in modules %}
                                 <option value="{{ m }}" {% if module_filter == m %}selected{% endif %}>{{ m }}</option>
@@ -36,31 +37,39 @@
                             </select>
                         </div>
                         <div class="col-md-1">
-                            <select name="action" class="form-select form-select-sm">
-                                <option value="">全部类型</option>
-                                {% for a in action_types %}
-                                <option value="{{ a }}" {% if action_filter == a %}selected{% endif %}>{{ a }}</option>
-                                {% endfor %}
+                            <select name="result" class="form-select form-select-sm"
+                                onchange="document.getElementById('searchForm').submit()">
+                                <option value="">全部结果</option>
+                                <option value="success" {% if result_filter == "success" %}selected{% endif %}>成功</option>
+                                <option value="failed" {% if result_filter == "failed" %}selected{% endif %}>失败</option>
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <input type="date" name="date_from" class="form-control form-control-sm"
-                                value="{{ date_from }}" placeholder="开始日期">
+                            <input type="date" name="date_from" id="auditDateFrom"
+                                class="form-control form-control-sm"
+                                value="{{ date_from }}"
+                                onchange="document.getElementById('searchForm').submit()">
                         </div>
                         <div class="col-md-2">
-                            <input type="date" name="date_to" class="form-control form-control-sm"
-                                value="{{ date_to }}" placeholder="结束日期">
+                            <input type="date" name="date_to" id="auditDateTo"
+                                class="form-control form-control-sm"
+                                value="{{ date_to }}"
+                                onchange="document.getElementById('searchForm').submit()">
                         </div>
-                        <div class="col-md-1">
-                            <select name="per_page" class="form-select form-select-sm">
-                                {% for size in per_page_options %}
-                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }}</option>
-                                {% endfor %}
-                            </select>
+                        <div class="col-md-2">
+                            <div class="btn-group btn-group-sm w-100" role="group" aria-label="时间快捷">
+                                <button type="button" class="btn btn-outline-secondary" onclick="setAuditDateRange(0)">今天</button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="setAuditDateRange(6)">近7天</button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="setAuditDateRange(29)">近30天</button>
+                            </div>
                         </div>
-                        <div class="col-md-1 d-grid">
-                            <a href="{% url 'audit:list' %}" class="btn btn-sm btn-outline-secondary" title="清空筛选"><i class="bi bi-x-circle"></i> 清空</a>
+                        {% if has_filters %}
+                        <div class="col-auto">
+                            <a href="{% url 'audit:list' %}" class="btn btn-sm btn-outline-secondary" title="清空筛选">
+                                <i class="bi bi-x-circle"></i> 清空
+                            </a>
                         </div>
+                        {% endif %}
                     </form>
 
                     <div class="table-responsive">
@@ -69,28 +78,27 @@
                                 <tr>
                                     <th style="width: 8%;">用户</th>
                                     <th style="width: 10%;">模块</th>
-                                    <th style="width: 15%;">动作</th>
+                                    <th style="width: 14%;">动作</th>
                                     <th style="width: 10%;">IP</th>
                                     <th style="width: 8%;">结果</th>
-                                    <th style="width: 15%;">时间</th>
-                                    <th style="width: 34%;">详情</th>
+                                    <th style="width: 14%;">时间</th>
+                                    <th style="width: 36%;">详情</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for log in logs %}
                                 <tr>
+                                    <td>{{ log.user.username }}</td>
                                     <td>
-                                        {{ log.user.username }}
-                                    </td>
-                                    <td>
+                                        {% if log.module_link %}
+                                        <a href="{{ log.module_link }}" class="badge bg-primary text-decoration-none"
+                                            target="_blank" rel="noopener" title="打开关联页面">{{ log.module }}</a>
+                                        {% else %}
                                         <span class="badge bg-primary">{{ log.module }}</span>
+                                        {% endif %}
                                     </td>
-                                    <td>
-                                        <small>{{ log.action }}</small>
-                                    </td>
-                                    <td>
-                                        <code>{{ log.ip }}</code>
-                                    </td>
+                                    <td>{{ log.action }}</td>
+                                    <td><code>{{ log.ip }}</code></td>
                                     <td>
                                         {% if log.result == "success" %}
                                         <span class="badge bg-success">成功</span>
@@ -98,14 +106,16 @@
                                         <span class="badge bg-danger">失败</span>
                                         {% endif %}
                                     </td>
-                                    <td>
-                                        <small>{{ log.created_at|date:"Y-m-d H:i:s" }}</small>
-                                    </td>
+                                    <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
                                     <td>
                                         {% if log.detail %}
-                                        <small class="text-muted">{{ log.detail|truncatechars:80 }}</small>
+                                        <span class="text-muted">{{ log.detail|truncatechars:80 }}</span>
                                         {% else %}
-                                        <small class="text-muted">-</small>
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                        {% if log.task_center_id %}
+                                        <a href="{% url 'releases:task_center_detail' log.task_center_id %}"
+                                            class="ms-1" target="_blank" rel="noopener">查看任务</a>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -122,6 +132,19 @@
                     </div>
 
                     {% include "includes/pagination.html" %}
+
+                    <div class="d-flex justify-content-end mt-2">
+                        <form method="get" class="d-flex align-items-center gap-1" id="perPageForm">
+                            <label class="form-label mb-0 small text-muted">每页</label>
+                            <select name="per_page" class="form-select form-select-sm" style="width:auto;"
+                                onchange="document.getElementById('perPageForm').submit()">
+                                {% for size in per_page_options %}
+                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+                                {% endfor %}
+                            </select>
+                            {% for key, val in request.GET.items %}{% if key != 'per_page' and key != 'page' %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endif %}{% endfor %}
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -130,9 +153,25 @@
 {% endblock %}
 
 {% block extra_js %}
-<style>
-</style>
 <script>
+    /** 将日期对象格式化为 YYYY-MM-DD */
+    function formatAuditDate(d) {
+        var y = d.getFullYear();
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + day;
+    }
+
+    /** 设置近 N+1 天时间范围并提交查询（daysBack=0 为今天） */
+    function setAuditDateRange(daysBack) {
+        var end = new Date();
+        var start = new Date();
+        start.setDate(end.getDate() - daysBack);
+        document.getElementById('auditDateFrom').value = formatAuditDate(start);
+        document.getElementById('auditDateTo').value = formatAuditDate(end);
+        document.getElementById('searchForm').submit();
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         initTagSearch('#auditSearchTagWrapper', '#auditSearchHidden', '#searchForm');
     });

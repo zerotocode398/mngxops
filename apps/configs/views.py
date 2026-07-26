@@ -949,6 +949,14 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return result
 
         def _run_batch_sync_task(task_id, sync_nodes):
+            """批量同步，结果写入标准节点→配置树"""
+            from apps.releases.task_result import (
+                build_tree_result,
+                item_failed,
+                item_success,
+                node_header,
+            )
+
             TaskCenterTask.objects.filter(pk=task_id).update(
                 status="running", started_at=timezone.now(), progress=0,
                 detail=f"执行中：0/{len(sync_nodes)}",
@@ -956,7 +964,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             success_count = 0
             fail_count = 0
             done = 0
-            detail_lines = []
+            node_blocks = []
 
             from concurrent.futures import ThreadPoolExecutor, as_completed
             with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
@@ -965,14 +973,20 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     result = future.result()
                     done += 1
                     node = future_to_node[future]
+                    node_blocks.append(node_header(node.ip, node.hostname))
                     if result["success"]:
                         success_count += 1
+                        names = list(result.get("created_names") or []) + list(
+                            result.get("updated_names") or []
+                        )
+                        if names:
+                            for name in names:
+                                node_blocks.append(item_success(name))
+                        else:
+                            node_blocks.append(item_success(result.get("message") or "同步"))
                     else:
                         fail_count += 1
-                    detail_lines.append(
-                        f"[节点] {node.ip} ({node.hostname}) - "
-                        f"{'成功' if result['success'] else '失败'}: {result['message']}"
-                    )
+                        node_blocks.append(item_failed("同步", result.get("message") or "失败"))
                     TaskCenterTask.objects.filter(pk=task_id).update(
                         progress=int(done * 100 / total) if total else 100,
                         detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{total}",
@@ -982,7 +996,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             status = "success" if fail_count == 0 else "failed"
             TaskCenterTask.objects.filter(pk=task_id).update(
                 status=status, progress=100, finished_at=timezone.now(),
-                result="\n".join([f"执行完成：成功 {success_count}，失败 {fail_count}，共 {total}"] + detail_lines),
+                result=build_tree_result(success_count, fail_count, total, node_blocks),
                 detail=f"执行完成：成功 {success_count}，失败 {fail_count}，共 {total}",
             )
 
@@ -1075,13 +1089,21 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                 mark_discovery_failed_configs(node, errors, request.user, task_id=task.id)
 
             if not discovered:
+                from apps.releases.task_result import (
+                    build_tree_result,
+                    item_failed,
+                    node_header,
+                )
                 task.status = "failed"
                 task.progress = 100
                 task.finished_at = timezone.now()
-                result_text = "未发现配置文件"
+                reason = "未发现配置文件"
                 if errors:
-                    result_text += "\n" + "\n".join(errors)
-                task.result = result_text
+                    reason += "；" + "；".join(errors[:3])
+                task.result = build_tree_result(
+                    0, 1, 1,
+                    [node_header(node.ip, node.hostname), item_failed("同步", reason)],
+                )
                 task.detail = "同步失败：未发现配置文件"
                 task.save(update_fields=["status", "progress", "finished_at", "result", "detail", "updated_at"])
                 return
@@ -1113,20 +1135,35 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
             save_sync_path(node, nginx_conf_path, request.user)
 
+            from apps.releases.task_result import (
+                build_tree_result,
+                item_failed,
+                item_success,
+                node_header,
+            )
+
             success = len(errors) == 0
-            detail_parts = [f"共发现 {total} 个配置文件"]
-            if created:
-                detail_parts.append(f"新建 {len(created)} 个")
-            if updated:
-                detail_parts.append(f"更新 {len(updated)} 个")
-            if errors:
-                detail_parts.append(f"失败 {len(errors)} 个")
+            node_blocks = [node_header(node.ip, node.hostname)]
+            item_ok = 0
+            item_fail = 0
+            for name in created or []:
+                node_blocks.append(item_success(f"{name} (新建)"))
+                item_ok += 1
+            for name in updated or []:
+                node_blocks.append(item_success(f"{name} (更新)"))
+                item_ok += 1
+            for err in errors or []:
+                node_blocks.append(item_failed("同步", err))
+                item_fail += 1
+            if item_ok == 0 and item_fail == 0:
+                node_blocks.append(item_success(f"共发现 {total} 个配置文件"))
+                item_ok = 1
 
             TaskCenterTask.objects.filter(pk=task.id).update(
                 status="success" if success else "failed",
                 progress=100,
                 finished_at=timezone.now(),
-                result="；".join(detail_parts) + ("\n错误:\n" + "\n".join(errors) if errors else ""),
+                result=build_tree_result(item_ok, item_fail, item_ok + item_fail, node_blocks),
                 detail=f"同步{'完成' if success else '失败'}: {len(created)} 新增, {len(updated)} 更新",
                 updated_at=timezone.now(),
             )
