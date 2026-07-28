@@ -52,12 +52,14 @@
             submitBtn.innerHTML = '<i class="bi bi-check2"></i> 开始导入';
         });
 
-        /** 将行错误列表渲染为表格 HTML */
+        /** 将行错误列表渲染为可滚动表格（标题已含摘要，正文不再重复） */
         function buildImportErrorHtml(errors) {
-            var html = '<p class="mb-2">校验未通过，未导入任何节点：</p>';
-            html += '<div class="modal-table-scroll"><table class="table table-sm data-table modal-picker-table mb-0">';
-            html += '<thead><tr><th style="width:20%">行号</th><th>错误信息</th></tr></thead><tbody>';
-            (errors || []).forEach(function(err) {
+            var list = errors || [];
+            var html = '<p class="small text-muted mb-2">共 ' + list.length + ' 条，整批未导入</p>';
+            html += '<div class="table-responsive modal-table-scroll" style="max-height:40vh">';
+            html += '<table class="table table-sm data-table modal-picker-table mb-0">';
+            html += '<thead><tr><th style="width:22%">行号</th><th>错误信息</th></tr></thead><tbody>';
+            list.forEach(function(err) {
                 var rowLabel = err.row ? ('第 ' + err.row + ' 行') : '文件';
                 html += '<tr><td>' + escapeHtml(rowLabel) + '</td><td>' + escapeHtml(err.message || '') + '</td></tr>';
             });
@@ -102,7 +104,7 @@
                 }
                 var errs = (data && data.errors) || [];
                 if (errs.length) {
-                    showAlert(data.message || '导入失败', buildImportErrorHtml(errs));
+                    showAlert('导入校验未通过', buildImportErrorHtml(errs));
                 } else {
                     showAlert('导入失败', (data && data.message) || '未知错误');
                 }

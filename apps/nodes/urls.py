@@ -20,6 +20,7 @@ urlpatterns = [
     path("import/", views.NodeImportAPIView.as_view(), name="import_api"),
     path("<int:pk>/edit/", views.NodeUpdateView.as_view(), name="edit"),
     path("<int:pk>/delete/", views.NodeDeleteView.as_view(), name="delete"),
+    path("batch-delete/", views.batch_delete_nodes, name="batch_delete"),
     path("lock/", views.node_lock, name="lock"),
     path("test/", views.test_node_connection, name="test"),
     path("batch-test/", views.batch_test_node_connection, name="batch_test"),

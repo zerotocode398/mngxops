@@ -79,6 +79,11 @@
                             <i class="bi bi-unlock"></i> 批量解锁
                         </button>
                         {% endif %}
+                        {% if user|has_perm_code:"nodes.delete" %}
+                        <button type="button" class="btn btn-sm node-list-batch-btn text-danger" id="batchDeleteBtn" onclick="batchDeleteNodes()" disabled>
+                            <i class="bi bi-trash"></i> 批量删除
+                        </button>
+                        {% endif %}
                     </div>
 
                     <!-- 数据表格 -->
@@ -104,6 +109,8 @@
                                 <tr class="{% if node.is_locked %}table-secondary{% endif %}">
                                     <td>
                                         <input type="checkbox" class="node-checkbox" data-node-id="{{ node.id }}"
+                                            data-node-hostname="{{ node.hostname }}"
+                                            data-node-ip="{{ node.ip }}"
                                             data-node-locked="{{ node.is_locked|yesno:'true,false' }}"
                                             aria-label="勾选节点 {{ node.hostname }}">
                                     </td>
@@ -523,6 +530,7 @@
         var batchTestBtn = document.getElementById('batchTestBtn');
         var batchLockBtn = document.getElementById('batchLockBtn');
         var batchUnlockBtn = document.getElementById('batchUnlockBtn');
+        var batchDeleteBtn = document.getElementById('batchDeleteBtn');
         var batchSelectionHint = document.getElementById('batchSelectionHint');
 
         function getNodeCheckboxes() {
@@ -560,6 +568,7 @@
             if (batchTestBtn) batchTestBtn.disabled = count === 0;
             if (batchLockBtn) batchLockBtn.disabled = count === 0;
             if (batchUnlockBtn) batchUnlockBtn.disabled = count === 0;
+            if (batchDeleteBtn) batchDeleteBtn.disabled = count === 0;
             if (batchSelectionHint) {
                 batchSelectionHint.textContent = '已选择 ' + count + '/' + MAX_SELECT;
             }
@@ -809,6 +818,51 @@
                 })
                 .catch(function () { closeAsyncProgressOverlay(); showCustomModal('错误', '<p class="text-danger">网络错误或服务器异常</p>'); });
             }, 'bi-unlock', 'bi-unlock', 'btn-success');
+    }
+
+    /** 批量逻辑删除选中节点 */
+    function batchDeleteNodes() {
+        var nodeIds = window.getSelectedNodeIds ? window.getSelectedNodeIds() : [];
+        if (nodeIds.length === 0) {
+            showAlert('提示', '请先选择要删除的节点');
+            return;
+        }
+        var rows = [];
+        document.querySelectorAll('.node-checkbox:checked').forEach(function (cb) {
+            var hostname = cb.getAttribute('data-node-hostname') || ('#' + cb.getAttribute('data-node-id'));
+            var ip = cb.getAttribute('data-node-ip') || '';
+            rows.push('<tr><td>' + escapeHtml(hostname) + '</td><td><code>' + escapeHtml(ip) + '</code></td></tr>');
+        });
+        var html = '<p class="mb-2">确定从运维清单移除以下 <strong>' + nodeIds.length + '</strong> 个节点吗？</p>';
+        html += '<div class="table-responsive modal-table-scroll" style="max-height:40vh">';
+        html += '<table class="table table-sm data-table mb-0"><thead><tr><th>主机名</th><th>IP</th></tr></thead><tbody>';
+        html += rows.join('') + '</tbody></table></div>';
+        html += '<p class="small text-muted mt-2 mb-0">发布/升级历史会保留；使用相同 IP 再次添加可恢复并关联历史。</p>';
+        showConfirm('批量删除节点', html, function () {
+            var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            fetch('{% url "nodes:batch_delete" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ node_ids: nodeIds })
+            })
+            .then(function (resp) { return resp.json(); })
+            .then(function (result) {
+                if (result && result.success) {
+                    if (window.showToast) showToast(result.message || '删除成功', 'success');
+                    setTimeout(function () { location.reload(); }, 400);
+                    return;
+                }
+                showAlert('批量删除失败', (result && result.message) || '操作失败');
+            })
+            .catch(function () {
+                showAlert('批量删除失败', '网络错误或服务器异常');
+            });
+        }, true, 'lg');
     }
 
     /* ========== 节点详情弹窗 ========== */

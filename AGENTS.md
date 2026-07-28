@@ -1540,6 +1540,7 @@ Q77
  - 节点列表「批量导入」弹窗：下载 8 列 xlsx 模板 + 上传；整文件校验失败 showAlert 行错误表且不写入
  - 必填主机名/IP/SSH端口；环境空→test；Nginx路径空→系统设置；节点组/凭证/备注空或 - 表示不设置
  - 同 IP 逻辑删除走恢复；openpyxl + nodes/services.py + import API
+ - 补充：节点列表批量操作栏新增「批量删除」（逻辑删除，权限 nodes.delete，上限同 batch_max_count）
 ```
 
 Q78

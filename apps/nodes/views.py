@@ -544,6 +544,59 @@ class NodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
         return self.form_valid(None)
 
 
+def batch_delete_nodes(request):
+    """批量逻辑删除节点（从运维清单移除，保留历史）"""
+    if not request.user.is_authenticated:
+        return JsonResponse({"success": False, "message": "请先登录"})
+    if not user_has_permission(request.user, "nodes", "delete"):
+        return JsonResponse({"success": False, "message": "无权限执行该操作"})
+
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "仅支持POST请求"})
+
+    import json
+
+    try:
+        data = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "message": "请求数据格式错误"})
+
+    node_ids = data.get("node_ids") or []
+    if not node_ids:
+        return JsonResponse({"success": False, "message": "未指定节点"})
+
+    try:
+        node_ids = [int(nid) for nid in node_ids]
+    except (TypeError, ValueError):
+        return JsonResponse({"success": False, "message": "节点 ID 无效"})
+
+    max_batch = int(get_setting("node.batch_max_count", "3"))
+    if len(node_ids) > max_batch:
+        return JsonResponse(
+            {"success": False, "message": f"最多只能操作 {max_batch} 个节点"}
+        )
+
+    nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
+    if not nodes:
+        return JsonResponse({"success": False, "message": "节点不存在"})
+
+    deleted = []
+    for node in nodes:
+        hostname = node.hostname
+        ip = node.ip
+        node.soft_delete(user=request.user)
+        deleted.append({"id": node.id, "hostname": hostname, "ip": str(ip)})
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": f"已从运维清单移除 {len(deleted)} 个节点（历史记录已保留）",
+            "deleted": deleted,
+            "count": len(deleted),
+        }
+    )
+
+
 def node_lock(request):
     if not request.user.is_authenticated:
         return JsonResponse({"success": False, "message": "请先登录"})

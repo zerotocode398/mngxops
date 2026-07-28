@@ -1091,6 +1091,22 @@
                 confirmModal.hide();
             });
 
+            /** 设置确认弹窗宽度：sm（默认）/ md / lg / xl */
+            function applyConfirmDialogSize(size) {
+                var dialog = confirmModalEl.querySelector('.modal-dialog');
+                if (!dialog) return;
+                dialog.classList.remove('modal-sm', 'modal-lg', 'modal-xl');
+                if (size === 'lg') {
+                    dialog.classList.add('modal-lg');
+                } else if (size === 'xl') {
+                    dialog.classList.add('modal-xl');
+                } else if (size === 'md') {
+                    // 默认 Bootstrap 中等宽度，不加尺寸类
+                } else {
+                    dialog.classList.add('modal-sm');
+                }
+            }
+
             confirmModalEl.addEventListener('hidden.bs.modal', function() {
                 document.getElementById('mngxopsConfirmBtn').disabled = false;
                 document.getElementById('mngxopsConfirmBtn').innerHTML = '确认';
@@ -1110,6 +1126,7 @@
                 if (queuedConfirm) {
                     var next = queuedConfirm;
                     queuedConfirm = null;
+                    applyConfirmDialogSize(next.size);
                     document.getElementById('mngxopsConfirmTitle').textContent = next.title || '确认操作';
                     var bodyEl = document.getElementById('mngxopsConfirmBody');
                     if (next.asHtml) {
@@ -1119,6 +1136,9 @@
                     }
                     confirmCallback = next.onConfirm;
                     confirmModal.show();
+                } else if (!confirmModalEl.classList.contains('show')) {
+                    // 仅在没有立刻再打开确认框时恢复默认窄弹窗
+                    applyConfirmDialogSize('sm');
                 }
             });
 
@@ -1128,21 +1148,24 @@
              * @param {string} message 正文（纯文本或 HTML）
              * @param {Function} onConfirm 确认回调
              * @param {boolean} [asHtml=false] 为 true 时 message 按 HTML 渲染
+             * @param {string} [size='sm'] 弹窗宽度：sm / md / lg / xl
              */
-            window.showConfirm = function(title, message, onConfirm, asHtml) {
+            window.showConfirm = function(title, message, onConfirm, asHtml, size) {
                 asHtml = !!asHtml;
+                size = size || 'sm';
                 var isShown = confirmModalEl.classList.contains('show');
                 var isTransitioning = confirmModalEl.classList.contains('showing')
                     || confirmModalEl.classList.contains('hiding')
                     || !!pendingAcceptedCallback;
                 if (isShown || isTransitioning) {
                     // 正在显示/关闭时排队，等 hidden 后再弹出
-                    queuedConfirm = { title: title, message: message, onConfirm: onConfirm, asHtml: asHtml };
+                    queuedConfirm = { title: title, message: message, onConfirm: onConfirm, asHtml: asHtml, size: size };
                     if (isShown && !pendingAcceptedCallback) {
                         confirmModal.hide();
                     }
                     return;
                 }
+                applyConfirmDialogSize(size);
                 document.getElementById('mngxopsConfirmTitle').textContent = title || '确认操作';
                 var bodyEl = document.getElementById('mngxopsConfirmBody');
                 if (asHtml) {
