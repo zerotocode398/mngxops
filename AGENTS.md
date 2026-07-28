@@ -1450,6 +1450,11 @@ Q72
  - 侧栏去条数；设置块 side-by-side（左标题描述 / 右限宽控件）；无字段类型图标
  - 底部左对齐「保存更改」；integer 限宽 10rem、string 限宽 28rem
  - 静态原型保留于 docs/prototypes/settings-gitlab-prototype.html
+ ✅ 再优化：
+ - GROUP_META 补每组 description，去掉无用 section/count；pane 展示分组说明
+ - 切换分组 history.replaceState 同步 ?group= + localStorage
+ - 未保存切换/离开 showConfirm + beforeunload；保存按 saved.length 区分成功/未变化 toast
+ - settings-nav sticky 滚动；boolean 去「启用」文案 + 后端未勾选写 false；页面 max-width 1140px
 ```
 
 Q73
@@ -1457,4 +1462,9 @@ Q73
 左侧菜单
     感觉有点宽了，能否调整下？
     另外左侧菜单能否可伸缩模式？
+ ✅ 已修复：
+ - 弃用 col-md-2/10，改为 app-shell flex：展开 220px / 折叠 64px（CSS 变量）
+ - 顶栏 bi-list 改为侧栏切换；localStorage mngxops_sidebar_collapsed + 首屏防闪脚本
+ - 折叠态仅图标 + title；子菜单改为右侧浮层；展开态保持原 accordion
+ - 文案包在 .sidebar-label；品牌区折叠仅留图标
 ```

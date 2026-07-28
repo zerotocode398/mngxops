@@ -5,10 +5,17 @@
 {% block extra_head %}
 <style>
     /* GitLab 风格：左导航 + 右扁平内容（对齐 docs/prototypes/settings-gitlab-prototype.html） */
+    .settings-page-wrap {
+        max-width: 1140px;
+    }
     .settings-nav-col {
         position: sticky;
         top: 1rem;
         align-self: flex-start;
+    }
+    .settings-nav {
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
     }
     .settings-nav .settings-nav-item {
         display: flex;
@@ -60,6 +67,9 @@
     }
     .gl-setting-block:last-of-type {
         border-bottom: none;
+    }
+    .gl-setting-block.is-boolean {
+        align-items: center;
     }
     .gl-setting-meta {
         flex: 1 1 55%;
@@ -125,12 +135,16 @@
             position: static;
             border-bottom: 1px solid var(--gray-200);
         }
+        .settings-nav {
+            max-height: none;
+            overflow-y: visible;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid">
+<div class="container-fluid settings-page-wrap px-0">
     {% if group_list %}
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
@@ -140,11 +154,12 @@
         <div class="card-body p-0">
             <div class="row g-0">
                 <div class="col-md-3 border-end settings-nav-col">
-                    <div class="settings-nav py-2" id="settingsNav" role="tablist">
+                    <div class="settings-nav py-2" id="settingsNav" role="navigation">
                         {% for g in group_list %}
                         <button type="button"
                                 class="settings-nav-item {% if g.name == active_group %}active{% endif %}"
-                                data-group="{{ g.name }}">
+                                data-group="{{ g.name }}"
+                                {% if g.name == active_group %}aria-current="page"{% endif %}>
                             <i class="bi {{ g.icon }}"></i>
                             <span>{{ g.name }}</span>
                         </button>
@@ -158,13 +173,15 @@
                         <div class="settings-pane {% if g.name != active_group %}d-none{% endif %}" data-pane="{{ g.name }}">
                             <div class="settings-pane-header">
                                 <h4>{{ g.name }}</h4>
-                                <p class="settings-pane-desc">调整本模块相关运行参数，保存后立即生效。</p>
+                                {% if g.description %}
+                                <p class="settings-pane-desc">{{ g.description }}</p>
+                                {% endif %}
                             </div>
-                            <form method="post" action="{% url 'settings:save' %}" class="settings-form" id="form-{{ forloop.counter }}">
+                            <form method="post" action="{% url 'settings:save' %}" class="settings-form" data-group="{{ g.name }}">
                                 {% csrf_token %}
                                 <input type="hidden" name="group" value="{{ g.name }}">
                                 {% for setting in g.items %}
-                                <div class="gl-setting-block">
+                                <div class="gl-setting-block {% if setting.type == 'boolean' %}is-boolean{% endif %}">
                                     <div class="gl-setting-meta">
                                         <label class="gl-setting-title" for="id_{{ setting.key }}">
                                             {{ setting.label }}
@@ -176,13 +193,13 @@
                                     </div>
                                     <div class="gl-setting-control">
                                         {% if setting.type == "boolean" %}
-                                        <div class="form-check form-switch pt-1">
+                                        <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox"
                                                    id="id_{{ setting.key }}"
                                                    name="{{ setting.key }}" value="true"
+                                                   aria-label="{{ setting.label }}"
                                                    {% if setting.value == "true" %}checked{% endif %}
                                                    {% if not can_update %}disabled{% endif %}>
-                                            <label class="form-check-label" for="id_{{ setting.key }}">启用</label>
                                         </div>
                                         {% elif setting.type == "integer" %}
                                         <div class="input-group input-group-sm input-group-int">
@@ -240,7 +257,7 @@
         </div>
         <div class="card-body">
             <div class="empty-state text-center py-4">
-                <i class="bi bi-gear" style="font-size: 3rem;"></i>
+                <i class="bi bi-gear"></i>
                 <p class="mt-2 mb-1">暂无可配置项</p>
                 <p class="text-muted small mb-0">请运行 <code>seed_default_settings()</code> 初始化预设配置。</p>
             </div>
@@ -256,32 +273,97 @@ document.addEventListener('DOMContentLoaded', function() {
     var nav = document.getElementById('settingsNav');
     if (!nav) return;
 
+    var formSnapshots = {};
+    var dirtyMap = {};
+
+    /**
+     * 序列化表单当前值（用于脏检测）
+     */
+    function serializeForm(form) {
+        var fd = new FormData(form);
+        var parts = [];
+        fd.forEach(function(value, key) {
+            parts.push(key + '=' + value);
+        });
+        return parts.sort().join('&');
+    }
+
+    /**
+     * 记录表单快照并清除 dirty
+     */
+    function snapshotForm(form) {
+        var group = form.dataset.group;
+        formSnapshots[group] = serializeForm(form);
+        dirtyMap[group] = false;
+    }
+
+    /**
+     * 刷新指定表单的 dirty 状态
+     */
+    function refreshDirty(form) {
+        var group = form.dataset.group;
+        dirtyMap[group] = serializeForm(form) !== formSnapshots[group];
+    }
+
+    /**
+     * 当前可见分组是否有未保存修改
+     */
+    function isActiveDirty() {
+        var active = nav.querySelector('.settings-nav-item.active');
+        if (!active) return false;
+        return !!dirtyMap[active.dataset.group];
+    }
+
+    /**
+     * 同步 URL ?group= 与 localStorage
+     */
+    function syncGroupUrl(groupName) {
+        var url = new URL(window.location.href);
+        url.searchParams.set('group', groupName);
+        history.replaceState(null, '', url.pathname + url.search);
+        localStorage.setItem('settingsActiveGroup', groupName);
+    }
+
     /**
      * 切换到指定分组：侧栏高亮 + 右侧 pane 显示
      */
     function switchGroup(groupName) {
         nav.querySelectorAll('.settings-nav-item').forEach(function(btn) {
-            btn.classList.toggle('active', btn.dataset.group === groupName);
+            var isActive = btn.dataset.group === groupName;
+            btn.classList.toggle('active', isActive);
+            if (isActive) {
+                btn.setAttribute('aria-current', 'page');
+            } else {
+                btn.removeAttribute('aria-current');
+            }
         });
         document.querySelectorAll('.settings-pane').forEach(function(pane) {
             pane.classList.toggle('d-none', pane.dataset.pane !== groupName);
         });
-        localStorage.setItem('settingsActiveGroup', groupName);
+        syncGroupUrl(groupName);
     }
 
-    nav.querySelectorAll('.settings-nav-item').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            switchGroup(btn.dataset.group);
-        });
-    });
+    /**
+     * 在确认未保存修改后切换分组
+     */
+    function requestSwitchGroup(groupName) {
+        var active = nav.querySelector('.settings-nav-item.active');
+        if (active && active.dataset.group === groupName) return;
 
-    var urlGroup = new URLSearchParams(window.location.search).get('group');
-    var savedGroup = urlGroup || localStorage.getItem('settingsActiveGroup');
-    if (savedGroup && nav.querySelector('[data-group="' + savedGroup + '"]')) {
-        switchGroup(savedGroup);
+        if (isActiveDirty()) {
+            showConfirm('未保存的更改', '当前分组有未保存的修改，切换后将丢失。确定继续？', function() {
+                switchGroup(groupName);
+            });
+            return;
+        }
+        switchGroup(groupName);
     }
 
     document.querySelectorAll('.settings-form').forEach(function(form) {
+        snapshotForm(form);
+        form.addEventListener('input', function() { refreshDirty(form); });
+        form.addEventListener('change', function() { refreshDirty(form); });
+
         form.addEventListener('submit', function(e) {
             e.preventDefault();
             var btn = form.querySelector('button[type="submit"]');
@@ -291,9 +373,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中...';
             }
 
+            // checkbox 与 hidden 同名时，仅保留勾选值或 false
+            var fd = new FormData(form);
+            form.querySelectorAll('input[type="checkbox"][name]').forEach(function(cb) {
+                fd.delete(cb.name);
+                fd.append(cb.name, cb.checked ? 'true' : 'false');
+            });
+
             fetch(form.action, {
                 method: 'POST',
-                body: new FormData(form),
+                body: fd,
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value,
@@ -302,7 +391,12 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(function(resp) { return resp.json(); })
             .then(function(data) {
                 if (data.success) {
-                    showToast('<i class="bi bi-check-circle-fill"></i> 保存成功', 'success');
+                    snapshotForm(form);
+                    if (data.saved && data.saved.length) {
+                        showToast('<i class="bi bi-check-circle-fill"></i> 保存成功', 'success');
+                    } else {
+                        showToast('<i class="bi bi-info-circle-fill"></i> 配置未发生变化', 'info');
+                    }
                 } else {
                     showToast('<i class="bi bi-x-circle-fill"></i> ' + (data.message || '保存失败'), 'danger');
                 }
@@ -317,6 +411,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         });
+    });
+
+    nav.querySelectorAll('.settings-nav-item').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            requestSwitchGroup(btn.dataset.group);
+        });
+    });
+
+    var urlGroup = new URLSearchParams(window.location.search).get('group');
+    var savedGroup = urlGroup || localStorage.getItem('settingsActiveGroup');
+    if (savedGroup && nav.querySelector('[data-group="' + savedGroup + '"]')) {
+        switchGroup(savedGroup);
+    } else {
+        var active = nav.querySelector('.settings-nav-item.active');
+        if (active) syncGroupUrl(active.dataset.group);
+    }
+
+    window.addEventListener('beforeunload', function(e) {
+        if (!isActiveDirty()) return;
+        e.preventDefault();
+        e.returnValue = '';
     });
 });
 </script>

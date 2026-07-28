@@ -9,17 +9,44 @@ from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from .models import SystemSetting
 from utils.setting_service import refresh_setting_cache
 
-# 分组导航图标与 form-section 色条（轮换已有修饰符）
+# 分组导航图标与说明文案
 GROUP_META = {
-    "仪表盘": {"icon": "bi-bar-chart", "section": "basic"},
-    "节点管理": {"icon": "bi-plug", "section": "status"},
-    "凭证管理": {"icon": "bi-key", "section": "roles"},
-    "配置管理": {"icon": "bi-pencil", "section": "perms"},
-    "发布管理": {"icon": "bi-rocket-takeoff", "section": "basic"},
-    "审计日志": {"icon": "bi-file-text", "section": "status"},
-    "系统": {"icon": "bi-display", "section": "roles"},
-    "任务中心": {"icon": "bi-list-task", "section": "perms"},
-    "Nginx升级": {"icon": "bi-box-seam", "section": "basic"},
+    "仪表盘": {
+        "icon": "bi-bar-chart",
+        "description": "首页最近任务与失败绑定等展示条数。",
+    },
+    "节点管理": {
+        "icon": "bi-plug",
+        "description": "SSH 超时、默认端口、批量与探测相关参数。",
+    },
+    "凭证管理": {
+        "icon": "bi-key",
+        "description": "凭证启用测试时的并发上限。",
+    },
+    "配置管理": {
+        "icon": "bi-pencil",
+        "description": "发现深度、版本保留、同步并发与缓存超时。",
+    },
+    "发布管理": {
+        "icon": "bi-rocket-takeoff",
+        "description": "发布超时、并行任务数、备份路径与历史保留。",
+    },
+    "审计日志": {
+        "icon": "bi-file-text",
+        "description": "操作/登录日志保留天数与登录锁定策略。",
+    },
+    "系统": {
+        "icon": "bi-display",
+        "description": "任务进度轮询与仪表盘刷新间隔。",
+    },
+    "任务中心": {
+        "icon": "bi-list-task",
+        "description": "任务中心记录保留天数。",
+    },
+    "Nginx升级": {
+        "icon": "bi-box-seam",
+        "description": "默认工作目录、并行编译核数、源码包大小与旧二进制保留。",
+    },
 }
 
 # 配置项单位后缀（与 PRESET_SETTINGS 键一致）
@@ -65,29 +92,28 @@ class SettingsIndexView(LoginRequiredMixin, PermissionRequiredMixin, View):
         settings_qs = SystemSetting.objects.all().order_by("group", "sort_order")
         can_update = user_has_permission(request.user, "settings", "update")
 
-        # 按分组整理为有序列表（含图标/色条/条数，便于模板渲染）
+        # 按分组整理为有序列表（含图标与说明，便于模板渲染）
         grouped = {}
         group_order = []
         total_count = 0
         for s in settings_qs:
             if s.group not in grouped:
-                meta = GROUP_META.get(s.group, {"icon": "bi-gear", "section": "basic"})
+                meta = GROUP_META.get(s.group, {
+                    "icon": "bi-gear",
+                    "description": "调整本模块相关运行参数，保存后立即生效。",
+                })
                 grouped[s.group] = {
                     "name": s.group,
                     "items": [],
                     "icon": meta["icon"],
-                    "section": meta["section"],
+                    "description": meta.get("description", ""),
                 }
                 group_order.append(s.group)
             s.help_unit = UNIT_MAP.get(s.key, "")
             grouped[s.group]["items"].append(s)
             total_count += 1
 
-        group_list = []
-        for name in group_order:
-            g = grouped[name]
-            g["count"] = len(g["items"])
-            group_list.append(g)
+        group_list = [grouped[name] for name in group_order]
 
         default_group = group_list[0]["name"] if group_list else ""
         active_group = request.GET.get("group", default_group)
@@ -100,6 +126,7 @@ class SettingsIndexView(LoginRequiredMixin, PermissionRequiredMixin, View):
             "can_update": can_update,
             "total_count": total_count,
         })
+
 
 class SettingsSaveAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """保存指定分组的配置 (Ajax)"""
@@ -115,7 +142,11 @@ class SettingsSaveAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         settings_qs = SystemSetting.objects.filter(group=group)
         saved = []
         for s in settings_qs:
-            new_value = request.POST.get(s.key)
+            # boolean 未勾选时 POST 无键，按 false 处理
+            if s.type == "boolean":
+                new_value = "true" if request.POST.get(s.key) == "true" else "false"
+            else:
+                new_value = request.POST.get(s.key)
             if new_value is not None and new_value != s.value:
                 s.value = new_value
                 s.updated_by = request.user

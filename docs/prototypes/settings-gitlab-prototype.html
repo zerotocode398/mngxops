@@ -64,6 +64,10 @@
       top: 1rem;
       align-self: flex-start;
     }
+    .settings-nav {
+      max-height: calc(100vh - 2rem);
+      overflow-y: auto;
+    }
     .settings-nav .nav-item {
       display: flex;
       align-items: center;
@@ -167,7 +171,7 @@
     点左侧分组可切换。看完若满意，再回复「按此实施」落到正式 settings 页。
   </div>
 
-  <div class="container-fluid" style="max-width: 1100px; margin: 0 auto;">
+  <div class="container-fluid" style="max-width: 1140px; margin: 0 auto;">
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <h5><i class="bi bi-sliders2"></i> 系统设置</h5>
@@ -195,7 +199,7 @@
               <div class="settings-pane" data-pane="节点管理">
                 <div class="settings-pane-header">
                   <h4>节点管理</h4>
-                  <p class="settings-pane-desc">调整本模块相关运行参数，保存后立即生效。</p>
+                  <p class="settings-pane-desc">SSH 超时、默认端口、批量与探测相关参数。</p>
                 </div>
                 <form onsubmit="return fakeSave(event)">
                   <div class="gl-setting-block">
@@ -252,7 +256,7 @@
               <div class="settings-pane d-none" data-pane="发布管理">
                 <div class="settings-pane-header">
                   <h4>发布管理</h4>
-                  <p class="settings-pane-desc">调整本模块相关运行参数，保存后立即生效。</p>
+                  <p class="settings-pane-desc">发布超时、并行任务数、备份路径与历史保留。</p>
                 </div>
                 <form onsubmit="return fakeSave(event)">
                   <div class="gl-setting-block">
