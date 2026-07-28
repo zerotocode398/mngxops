@@ -1585,14 +1585,23 @@ Q80
 
 这个能优化吗，比如 发布执行中 动态展示 ssh 操作日志啥的？
 类似 Nginx 升级过程的那个动态输出
-```
-✅ 已修复：
- - 发布链路 SSH 助手支持 client= 会话复用；_execute_release 每配置只建连一次（含 nginx reload）
- - TaskCenterTask 新增 log_output；add_log 增量写入 ReleaseTask.result + TaskCenter 日志
- - 并行路径按配置刷新进度；center/rollback 进度弹窗增加实时滚动 SSH 日志
- - 补充精炼展示：弹窗默认显示「当前步骤」+ 增量结果树（含[进行中]）；全量 SSH 日志默认折叠；progress API 返回 current_steps
 
- 2. 单/多 节点有多个 nginx 配置时，每更新一个配置就会 nginx reload，你觉得有必要吗？
+2. 单/多 节点有多个 nginx 配置时，每更新一个配置就会 nginx reload，你觉得有必要吗？
+
+3. 发布执行中，我觉得没必要记录“详细 SSH 日志”了，因为有完整日志跳转可以查看。<xxx> 备份中 xxx 你看是否还可以加点其他必要信息？
+```
+✅ 已修复（1）：
+ - 发布链路 SSH 助手支持 client= 会话复用；同节点本批次共用一条 SSH
+ - TaskCenterTask 新增 log_output；add_log 增量写入 ReleaseTask.result + TaskCenter 日志
+ - 并行路径按配置刷新进度；center/rollback 进度弹窗展示当前步骤 + 增量结果树；progress API 返回 current_steps
+✅ 已修复（2）：
+ - 没必要每配置 reload；同节点本批次改为备份→上传→nginx -t，全部通过后统一 reload 一次
+ - `_deploy_release_config` / `_finalize_node_reload` + `_execute_node_release_batch`
+ - 中途失败或 reload 失败：回滚本节点本批次已上传未生效的全部配置
+ - 顺序/并行编排均走节点批次；回滚文案同步说明「同节点统一 reload」
+✅ 已修复（3）：
+ - 进度弹窗去掉「详细 SSH 日志」折叠区，仅保留「完整日志」跳转（后端仍写 log_output 供详情页）
+ - `_release_step_label` 统一步骤：阶段 · 配置 vN → 远程路径（过长截断中间）
 
 Q81
 ```text

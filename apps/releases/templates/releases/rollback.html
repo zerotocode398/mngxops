@@ -46,7 +46,7 @@
                         回滚说明：
                         <ul class="mb-0 mt-1">
                             <li>确认后将<strong>立即执行</strong>回滚（无需再到发布中心）</li>
-                            <li>执行流程：备份当前配置 → 上传所选版本 → nginx -t → reload</li>
+                            <li>执行流程：备份当前配置 → 上传所选版本 → nginx -t；同节点多配置最后统一 reload</li>
                             <li>失败时自动按备份恢复；进度可在任务中心查看</li>
                         </ul>
                     </div>
@@ -165,7 +165,7 @@
                 <p>将把配置 <code id="confirmConfigName">{{ config.name }}</code> 回滚到
                     <span class="badge bg-secondary" id="confirmVersionBadge">V-</span>，
                     并立即在节点 <code>{{ task.node.hostname }}</code> 上执行。</p>
-                <p class="mb-0 text-muted small">执行过程：备份 → 上传 → nginx -t → reload。失败时自动按备份恢复。</p>
+                <p class="mb-0 text-muted small">执行过程：备份 → 上传 → nginx -t；同节点多配置最后统一 reload。失败时自动按备份恢复本批次未生效配置。</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
@@ -200,10 +200,6 @@
                 <div class="spinner-border spinner-border-sm"></div> 初始化中...
             </div>
         </div>
-        <details id="progressLogDetails" class="mt-2">
-            <summary class="small text-muted" style="cursor:pointer;">详细 SSH 日志</summary>
-            <pre id="progressLiveLog" class="code-font progress-live-log mt-2 mb-0 d-none"></pre>
-        </details>
         <div class="d-flex justify-content-end gap-2 mt-3">
             <a href="#" id="progressLogLink" class="btn btn-sm btn-outline-info" target="_blank">
                 <i class="bi bi-journal-text"></i> 完整日志
@@ -270,13 +266,6 @@
         background: #fff; border-radius: 12px; padding: 24px 28px;
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
         width: 640px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
-    }
-    .progress-live-log {
-        max-height: 180px; overflow-y: auto; margin: 0;
-        padding: 10px 12px; border-radius: var(--br-md);
-        background: #1a1a2e; color: #e9ecef;
-        font-size: var(--fs-sm); line-height: 1.45;
-        white-space: pre-wrap; word-break: break-word;
     }
     .progress-current-steps {
         font-size: var(--fs-sm); line-height: 1.5;
@@ -372,11 +361,6 @@
             var stepsEl = document.getElementById('progressCurrentSteps');
             stepsEl.innerHTML = '';
             stepsEl.classList.add('d-none');
-            var liveLog = document.getElementById('progressLiveLog');
-            liveLog.textContent = '';
-            liveLog.classList.add('d-none');
-            var details = document.getElementById('progressLogDetails');
-            if (details) details.open = false;
             document.getElementById('progressTree').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 等待任务启动...</div>';
             document.getElementById('progressLogLink').href =
                 '/releases/history/?search=' + encodeURIComponent(batchNumber);
@@ -407,23 +391,6 @@
             }).join('');
         }
 
-        /** 仅在详细日志展开时刷新全量 SSH 输出 */
-        function updateProgressLiveLog(logText) {
-            var el = document.getElementById('progressLiveLog');
-            var details = document.getElementById('progressLogDetails');
-            if (!el) return;
-            if (!logText) {
-                el.classList.add('d-none');
-                el.textContent = '';
-                return;
-            }
-            el.classList.remove('d-none');
-            el.textContent = logText;
-            if (details && details.open) {
-                el.scrollTop = el.scrollHeight;
-            }
-        }
-
         /** 轮询 TaskCenterTask 进度 */
         function startProgressPolling(taskCenterId) {
             if (rollbackInterval) clearInterval(rollbackInterval);
@@ -441,7 +408,6 @@
                     document.getElementById('progressText').textContent = task.detail || '执行中...';
                     updateProgressCurrentSteps(task.finished ? '' : (task.current_steps || ''));
                     if (task.result) renderProgressTree(task.result);
-                    updateProgressLiveLog(task.log_output || '');
                     if (task.finished) {
                         clearInterval(rollbackInterval);
                         rollbackInterval = null;

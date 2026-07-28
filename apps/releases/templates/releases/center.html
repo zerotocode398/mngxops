@@ -212,10 +212,6 @@
                 <div class="spinner-border spinner-border-sm"></div> 初始化中...
             </div>
         </div>
-        <details id="progressLogDetails" class="mt-2">
-            <summary class="small text-muted" style="cursor:pointer;">详细 SSH 日志</summary>
-            <pre id="progressLiveLog" class="code-font progress-live-log mt-2 mb-0 d-none"></pre>
-        </details>
         <div class="d-flex justify-content-end gap-2 mt-3">
             <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSkipFailed">
                 <i class="bi bi-skip-forward"></i> 跳过失败继续
@@ -299,13 +295,6 @@
         background: #fff; border-radius: 12px; padding: 24px 28px;
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
         width: 640px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
-    }
-    .progress-live-log {
-        max-height: 180px; overflow-y: auto; margin: 0;
-        padding: 10px 12px; border-radius: var(--br-md);
-        background: #1a1a2e; color: #e9ecef;
-        font-size: var(--fs-sm); line-height: 1.45;
-        white-space: pre-wrap; word-break: break-word;
     }
     .progress-current-steps {
         font-size: var(--fs-sm); line-height: 1.5;
@@ -1256,11 +1245,6 @@
         var stepsEl = document.getElementById('progressCurrentSteps');
         stepsEl.innerHTML = '';
         stepsEl.classList.add('d-none');
-        var liveLog = document.getElementById('progressLiveLog');
-        liveLog.textContent = '';
-        liveLog.classList.add('d-none');
-        var details = document.getElementById('progressLogDetails');
-        if (details) details.open = false;
         document.getElementById('progressTree').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 等待任务启动...</div>';
         // 完整日志跳转任务中心，按当前批次号筛选
         document.getElementById('progressLogLink').href =
@@ -1292,23 +1276,6 @@
         }).join('');
     }
 
-    function updateProgressLiveLog(logText) {
-        // 仅在「详细 SSH 日志」展开时刷新全量日志
-        var el = document.getElementById('progressLiveLog');
-        var details = document.getElementById('progressLogDetails');
-        if (!el) return;
-        if (!logText) {
-            el.classList.add('d-none');
-            el.textContent = '';
-            return;
-        }
-        el.classList.remove('d-none');
-        el.textContent = logText;
-        if (details && details.open) {
-            el.scrollTop = el.scrollHeight;
-        }
-    }
-
     function startProgressPolling(checkedIds, batchNumber) {
         if (publishInterval) clearInterval(publishInterval);
 
@@ -1323,7 +1290,6 @@
                 var progress = task.progress || 0;
                 var detail = task.detail || '';
                 var result = task.result || '';
-                var logOutput = task.log_output || '';
                 var currentSteps = task.current_steps || '';
                 var finished = task.finished;
 
@@ -1333,7 +1299,6 @@
 
                 updateProgressCurrentSteps(finished ? '' : currentSteps);
                 if (result) renderProgressTree(result);
-                updateProgressLiveLog(logOutput);
 
                 if (finished) {
                     clearInterval(publishInterval);
