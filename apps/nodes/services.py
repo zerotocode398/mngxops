@@ -19,6 +19,7 @@ IMPORT_HEADERS = (
     "SSH端口",
     "所属环境",
     "Nginx路径",
+    "Nginx主配置路径",
     "节点组",
     "凭证",
     "备注",
@@ -56,6 +57,13 @@ def _default_nginx_bin() -> str:
     return (
         get_setting("config.default_nginx_bin", "/usr/sbin/nginx") or "/usr/sbin/nginx"
     ).strip()
+
+
+def _default_nginx_conf() -> str:
+    """读取系统设置中的默认 nginx.conf 主配置路径。"""
+    from apps.configs.services import default_nginx_conf_path
+
+    return (default_nginx_conf_path() or "/etc/nginx/nginx.conf").strip()
 
 
 def _cell_str(value: Any) -> str:
@@ -199,12 +207,14 @@ def build_import_template_bytes() -> bytes:
     ws.append(list(IMPORT_HEADERS))
     default_port = _default_ssh_port()
     default_bin = _default_nginx_bin()
+    default_conf = _default_nginx_conf()
     # 示例行：可选列用 - 表示空（将套用默认规则）
     ws.append(
         [
             "web01",
             "10.10.10.101",
             default_port,
+            "-",
             "-",
             "-",
             "-",
@@ -219,6 +229,7 @@ def build_import_template_bytes() -> bytes:
             default_port,
             "测试",
             default_bin,
+            default_conf,
             "默认组",
             "default",
             "示例备注",
@@ -229,20 +240,27 @@ def build_import_template_bytes() -> bytes:
     tip.append(["说明"])
     tip.append(
         [
-            "1. 表头必须为：主机名、IP、SSH端口、所属环境、Nginx路径、节点组、凭证、备注，请勿修改顺序或名称"
+            "1. 表头必须为：主机名、IP、SSH端口、所属环境、Nginx路径、"
+            "Nginx主配置路径、节点组、凭证、备注，请勿修改顺序或名称"
         ]
     )
     tip.append(["2. 主机名、IP、SSH端口为必填"])
     tip.append(["3. 所属环境可填开发/测试/生产或 dev/test/prod；空或 - 默认为测试环境"])
     tip.append(
-        [f"4. Nginx路径空或 - 时使用系统设置默认值（当前：{default_bin}）"]
+        [f"4. Nginx路径为空或 - 时使用系统设置「默认 Nginx 可执行文件路径」（当前：{default_bin}）"]
     )
     tip.append(
-        ["5. 多个节点组可用逗号、顿号或分号分隔，最多 3 个，须为系统中已存在的组名"]
+        [
+            "5. Nginx主配置路径映射配置同步的主配置文件路径；"
+            f"空或 - 时使用系统设置「默认 nginx 主配置路径」（当前：{default_conf}）"
+        ]
     )
-    tip.append(["6. 凭证须填写已启用凭证的名称；节点组/凭证空或 - 表示不设置"])
-    tip.append(["7. 备注可空；同 IP 若曾逻辑删除，导入将恢复原节点并关联历史记录"])
-    tip.append(["8. 任一行校验失败则整批不导入"])
+    tip.append(
+        ["6. 多个节点组可用逗号、顿号或分号分隔，最多 3 个，须为系统中已存在的组名"]
+    )
+    tip.append(["7. 凭证须填写已启用凭证的名称；节点组/凭证空或 - 表示不设置"])
+    tip.append(["8. 备注可空；同 IP 若曾逻辑删除，导入将恢复原节点并关联历史记录"])
+    tip.append(["9. 任一行校验失败则整批不导入"])
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -303,9 +321,10 @@ def parse_node_import_workbook(
                 "port_raw": values[2],
                 "environment_raw": values[3],
                 "nginx_path_raw": values[4],
-                "groups_raw": values[5],
-                "credential_raw": values[6],
-                "description_raw": values[7],
+                "main_conf_path_raw": values[5],
+                "groups_raw": values[6],
+                "credential_raw": values[7],
+                "description_raw": values[8],
             }
         )
     wb.close()
@@ -330,6 +349,7 @@ def validate_node_import_rows(
     ip_seen: Dict[str, int] = {}
     pending: List[Dict[str, Any]] = []
     default_bin = _default_nginx_bin()
+    default_conf = _default_nginx_conf()
 
     for item in rows:
         row_no = item["row"]
@@ -367,6 +387,14 @@ def validate_node_import_rows(
             nginx_path = nginx_raw
             if len(nginx_path) > 255:
                 row_errors.append("Nginx路径长度不能超过 255")
+
+        conf_raw = item.get("main_conf_path_raw") or ""
+        if _is_empty_optional(conf_raw):
+            main_conf_path = default_conf
+        else:
+            main_conf_path = conf_raw
+            if len(main_conf_path) > 500:
+                row_errors.append("Nginx主配置路径长度不能超过 500")
 
         desc_raw = item.get("description_raw") or ""
         description = "" if _is_empty_optional(desc_raw) else desc_raw
@@ -415,6 +443,7 @@ def validate_node_import_rows(
                 "port": port,
                 "environment": environment,
                 "nginx_path": nginx_path,
+                "main_conf_path": main_conf_path,
                 "description": description,
                 "groups": groups,
                 "credential": credential,
@@ -464,11 +493,13 @@ def validate_node_import_rows(
 
 @transaction.atomic
 def apply_node_import(cleaned: List[Dict[str, Any]], user) -> Dict[str, int]:
-    """事务内写入已校验通过的节点行，返回 created/restored 计数。"""
+    """事务内写入已校验通过的节点行，并同步配置主路径。"""
+    from apps.configs.services import save_sync_path
+
     created = 0
     restored = 0
     for item in cleaned:
-        _, was_restored = create_or_restore_node(
+        node, was_restored = create_or_restore_node(
             user,
             hostname=item["hostname"],
             ip=item["ip"],
@@ -478,6 +509,11 @@ def apply_node_import(cleaned: List[Dict[str, Any]], user) -> Dict[str, int]:
             environment=item.get("environment") or "test",
             nginx_path=item.get("nginx_path") or "",
             description=item.get("description") or "",
+        )
+        save_sync_path(
+            node,
+            item.get("main_conf_path") or _default_nginx_conf(),
+            user,
         )
         if was_restored:
             restored += 1

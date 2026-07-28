@@ -1541,6 +1541,7 @@ Q77
  - 必填主机名/IP/SSH端口；环境空→test；Nginx路径空→系统设置；节点组/凭证/备注空或 - 表示不设置
  - 同 IP 逻辑删除走恢复；openpyxl + nodes/services.py + import API
  - 补充：节点列表批量操作栏新增「批量删除」（逻辑删除，权限 nodes.delete，上限同 batch_max_count）
+ - 补充：导入表头新增「Nginx主配置路径」→ ConfigSyncSetting.main_conf_path；空则用 config.default_nginx_path
 ```
 
 Q78
