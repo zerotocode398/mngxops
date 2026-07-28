@@ -1468,3 +1468,21 @@ Q73
  - 折叠态仅图标 + title；子菜单改为右侧浮层；展开态保持原 accordion
  - 文案包在 .sidebar-label；品牌区折叠仅留图标
 ```
+
+Q74
+```text
+系统设置
+    整体感觉像是居中，能否将一级类放置左右（仪表盘等等），二级类也就是参数做响应的调整
+ ✅ 已修复：
+ - 去掉 settings max-width 居中；卡片铺满主内容区
+ - 左一级分组固定宽 240px（flex），右二级参数 flex:1 全宽
+ - 宽屏路径控件 max-width 36rem；窄屏一级横滑 + 参数纵向堆叠
+ - 原型 docs/prototypes/settings-gitlab-prototype.html 同步全宽布局
+```
+
+Q75
+```text
+项目功能
+    系统设置里的参数目前是不是都是硬编码？
+    我测试了几个，都没生效
+```

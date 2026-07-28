@@ -4,14 +4,24 @@
 
 {% block extra_head %}
 <style>
-    /* GitLab 风格：左导航 + 右扁平内容（对齐 docs/prototypes/settings-gitlab-prototype.html） */
-    .settings-page-wrap {
-        max-width: 1140px;
+    /* Q74：左一级分组固定宽 + 右二级参数全宽（不再 max-width 居中） */
+    .settings-layout {
+        display: flex;
+        align-items: stretch;
+        min-height: 0;
     }
     .settings-nav-col {
+        flex: 0 0 240px;
+        width: 240px;
+        max-width: 240px;
+        border-right: 1px solid var(--gray-200);
         position: sticky;
         top: 1rem;
         align-self: flex-start;
+    }
+    .settings-main-col {
+        flex: 1 1 auto;
+        min-width: 0;
     }
     .settings-nav {
         max-height: calc(100vh - 2rem);
@@ -31,6 +41,7 @@
         padding: 0.75rem 1rem;
         text-align: left;
         cursor: pointer;
+        white-space: nowrap;
         transition: background-color var(--transition-fast), border-color var(--transition-fast);
     }
     .settings-nav .settings-nav-item:hover {
@@ -72,7 +83,7 @@
         align-items: center;
     }
     .gl-setting-meta {
-        flex: 1 1 55%;
+        flex: 1 1 45%;
         min-width: 12rem;
     }
     .gl-setting-title {
@@ -89,23 +100,36 @@
         margin: 0;
     }
     .gl-setting-control {
-        flex: 0 1 40%;
-        max-width: 28rem;
+        flex: 1 1 55%;
+        min-width: 10rem;
+        max-width: none;
     }
     .gl-setting-control input[type="number"] {
         max-width: 10rem;
     }
     .gl-setting-control input[type="text"] {
-        max-width: 28rem;
+        max-width: none;
         width: 100%;
     }
     .gl-setting-control .input-group-int {
         max-width: 10rem;
     }
     .gl-setting-control .input-group-path {
-        max-width: 28rem;
+        max-width: none;
         width: 100%;
     }
+
+    @media (min-width: 992px) {
+        .gl-setting-control {
+            flex: 0 1 55%;
+            max-width: 36rem;
+        }
+        .gl-setting-control input[type="text"],
+        .gl-setting-control .input-group-path {
+            max-width: 36rem;
+        }
+    }
+
     .setting-unit-suffix {
         white-space: nowrap;
         color: var(--gray-600);
@@ -119,10 +143,44 @@
     }
 
     @media (max-width: 767.98px) {
+        .settings-layout {
+            flex-direction: column;
+        }
+        .settings-nav-col {
+            flex: none;
+            width: 100%;
+            max-width: none;
+            position: static;
+            border-right: none;
+            border-bottom: 1px solid var(--gray-200);
+            align-self: stretch;
+        }
+        .settings-nav {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            max-height: none;
+            overflow-x: auto;
+            overflow-y: hidden;
+            gap: 0;
+            -webkit-overflow-scrolling: touch;
+        }
+        .settings-nav .settings-nav-item {
+            flex: 0 0 auto;
+            width: auto;
+            border-left: none;
+            border-bottom: 3px solid transparent;
+            padding: 0.65rem 0.9rem;
+        }
+        .settings-nav .settings-nav-item.active {
+            border-left-color: transparent;
+            border-bottom-color: var(--primary);
+        }
         .gl-setting-block {
             flex-direction: column;
             gap: 0.5rem;
         }
+        .gl-setting-meta,
         .gl-setting-control,
         .gl-setting-control input[type="number"],
         .gl-setting-control input[type="text"],
@@ -130,21 +188,14 @@
         .gl-setting-control .input-group-path {
             max-width: none;
             width: 100%;
-        }
-        .settings-nav-col {
-            position: static;
-            border-bottom: 1px solid var(--gray-200);
-        }
-        .settings-nav {
-            max-height: none;
-            overflow-y: visible;
+            min-width: 0;
         }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid settings-page-wrap px-0">
+<div class="container-fluid px-0">
     {% if group_list %}
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
@@ -152,8 +203,8 @@
             <span class="badge badge-outline">{{ total_count }} 项配置</span>
         </div>
         <div class="card-body p-0">
-            <div class="row g-0">
-                <div class="col-md-3 border-end settings-nav-col">
+            <div class="settings-layout">
+                <div class="settings-nav-col">
                     <div class="settings-nav py-2" id="settingsNav" role="navigation">
                         {% for g in group_list %}
                         <button type="button"
@@ -167,7 +218,7 @@
                     </div>
                 </div>
 
-                <div class="col-md-9">
+                <div class="settings-main-col">
                     <div class="settings-content">
                         {% for g in group_list %}
                         <div class="settings-pane {% if g.name != active_group %}d-none{% endif %}" data-pane="{{ g.name }}">

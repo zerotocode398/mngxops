@@ -58,11 +58,23 @@
       background: #fff;
     }
 
-    /* 左导航 */
+    /* 左一级 / 右二级全宽布局（对齐 Q74） */
+    .settings-layout {
+      display: flex;
+      align-items: stretch;
+    }
     .settings-nav-col {
+      flex: 0 0 240px;
+      width: 240px;
+      max-width: 240px;
+      border-right: 1px solid var(--gray-200);
       position: sticky;
       top: 1rem;
       align-self: flex-start;
+    }
+    .settings-main-col {
+      flex: 1 1 auto;
+      min-width: 0;
     }
     .settings-nav {
       max-height: calc(100vh - 2rem);
@@ -82,6 +94,7 @@
       padding: 0.75rem 1rem;
       text-align: left;
       cursor: pointer;
+      white-space: nowrap;
       transition: background-color var(--transition-fast), border-color var(--transition-fast);
     }
     .settings-nav .nav-item:hover { background: var(--gray-100); }
@@ -115,7 +128,7 @@
     }
     .gl-setting-block:last-of-type { border-bottom: none; }
     .gl-setting-meta {
-      flex: 1 1 55%;
+      flex: 1 1 45%;
       min-width: 12rem;
     }
     .gl-setting-title {
@@ -132,11 +145,16 @@
       margin: 0;
     }
     .gl-setting-control {
-      flex: 0 1 40%;
-      max-width: 28rem;
+      flex: 1 1 55%;
+      min-width: 10rem;
+      max-width: none;
     }
     .gl-setting-control input[type="number"] { max-width: 10rem; }
-    .gl-setting-control input[type="text"] { max-width: 28rem; width: 100%; }
+    .gl-setting-control input[type="text"] { max-width: none; width: 100%; }
+    @media (min-width: 992px) {
+      .gl-setting-control { flex: 0 1 55%; max-width: 36rem; }
+      .gl-setting-control input[type="text"] { max-width: 36rem; }
+    }
     .input-group-text {
       font-size: var(--fs-sm);
       color: var(--gray-600);
@@ -159,27 +177,51 @@
     .settings-pane.d-none { display: none !important; }
 
     @media (max-width: 767.98px) {
+      .settings-layout { flex-direction: column; }
+      .settings-nav-col {
+        flex: none;
+        width: 100%;
+        max-width: none;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--gray-200);
+      }
+      .settings-nav {
+        display: flex;
+        flex-direction: row;
+        overflow-x: auto;
+        max-height: none;
+      }
+      .settings-nav .nav-item {
+        flex: 0 0 auto;
+        width: auto;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+      }
+      .settings-nav .nav-item.active {
+        border-left-color: transparent;
+        border-bottom-color: var(--primary);
+      }
       .gl-setting-block { flex-direction: column; gap: 0.5rem; }
       .gl-setting-control { max-width: none; width: 100%; }
-      .settings-nav-col { position: static; border-bottom: 1px solid var(--gray-200); }
     }
   </style>
 </head>
 <body>
   <div class="proto-banner">
-    <strong>静态原型预览</strong> — 对齐 GitLab Settings 布局草案；不连后端、不改 mngxops 现有业务代码。
-    点左侧分组可切换。看完若满意，再回复「按此实施」落到正式 settings 页。
+    <strong>静态原型预览</strong> — Q74 全宽：左一级分组 240px + 右二级参数；不连后端。
+    点左侧分组可切换。
   </div>
 
-  <div class="container-fluid" style="max-width: 1140px; margin: 0 auto;">
+  <div class="container-fluid px-0">
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <h5><i class="bi bi-sliders2"></i> 系统设置</h5>
         <span class="badge badge-outline rounded-pill px-2 py-1">27 项配置</span>
       </div>
       <div class="card-body p-0">
-        <div class="row g-0">
-          <div class="col-md-3 border-end settings-nav-col">
+        <div class="settings-layout">
+          <div class="settings-nav-col">
             <div class="settings-nav" id="settingsNav">
               <button type="button" class="nav-item" data-group="仪表盘"><i class="bi bi-bar-chart"></i> 仪表盘</button>
               <button type="button" class="nav-item active" data-group="节点管理"><i class="bi bi-plug"></i> 节点管理</button>
@@ -193,7 +235,7 @@
             </div>
           </div>
 
-          <div class="col-md-9">
+          <div class="settings-main-col">
             <div class="settings-content">
 
               <div class="settings-pane" data-pane="节点管理">
