@@ -316,6 +316,12 @@ class NodeListView(
         context["node_groups"] = {
             node.id: list(node.groups.all()) for node in context["nodes"]
         }
+        try:
+            context["batch_max_count"] = max(
+                1, int(get_setting("node.batch_max_count", "3") or 3)
+            )
+        except (TypeError, ValueError):
+            context["batch_max_count"] = 3
         return context
 
 
@@ -346,10 +352,41 @@ class NodeCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
         return url
 
     def form_valid(self, form):
+        """创建节点；同 IP 若存在逻辑删除记录则恢复原节点"""
+        ip = form.cleaned_data.get("ip")
+        deleted_node = (
+            Node.all_objects.filter(ip=ip, is_deleted=True).first() if ip else None
+        )
+        if deleted_node:
+            return self._restore_deleted_node(form, deleted_node)
+
         form.instance.created_by = self.request.user
         form.instance.status = "unknown"
         messages.success(self.request, f"节点 {form.instance.hostname} 创建成功")
         return super().form_valid(form)
+
+    def _restore_deleted_node(self, form, node):
+        """用表单数据覆盖并恢复逻辑删除的同 IP 节点"""
+        node.hostname = form.cleaned_data["hostname"]
+        node.port = form.cleaned_data["port"]
+        node.credential = form.cleaned_data.get("credential")
+        node.environment = form.cleaned_data.get("environment") or "dev"
+        node.nginx_path = form.cleaned_data.get("nginx_path") or ""
+        node.description = form.cleaned_data.get("description") or ""
+        node.status = "unknown"
+        node.is_deleted = False
+        node.deleted_at = None
+        node.deleted_by = None
+        node.save()
+        groups = form.cleaned_data.get("groups")
+        if groups is not None:
+            node.groups.set(groups)
+        self.object = node
+        messages.success(
+            self.request,
+            f"已恢复同 IP 历史节点 {node.hostname}，发布历史已关联",
+        )
+        return redirect(self.get_success_url())
 
     def form_invalid(self, form):
         messages.error(self.request, "节点创建失败，请检查输入")
@@ -414,10 +451,21 @@ class NodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
             url = f"{url}?{qs}"
         return url
 
-    def post(self, request, *args, **kwargs):
-        node = self.get_object()
-        messages.success(request, f"节点 {node.hostname} 删除成功")
-        return super().post(request, *args, **kwargs)
+    def form_valid(self, form):
+        """逻辑删除节点，保留发布/升级历史记录"""
+        node = self.object
+        hostname = node.hostname
+        node.soft_delete(user=self.request.user)
+        messages.success(
+            self.request,
+            f"节点 {hostname} 已从运维清单移除（发布/升级历史已保留，同 IP 再次添加可恢复）",
+        )
+        return redirect(self.get_success_url())
+
+    def delete(self, request, *args, **kwargs):
+        """兼容旧版 DeleteView 调用路径，统一走逻辑删除"""
+        self.object = self.get_object()
+        return self.form_valid(None)
 
 
 def node_lock(request):

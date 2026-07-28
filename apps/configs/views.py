@@ -21,6 +21,8 @@ from .services import (
     sync_discovered_configs,
     sync_selected_configs,
     mark_discovery_failed_configs,
+    default_nginx_conf_path,
+    discover_max_depth,
 )
 from apps.users.permissions import PermissionRequiredMixin
 from utils.pagination import PerPagePaginationMixin
@@ -52,17 +54,15 @@ def _build_node_stats(node):
 
 
 def _build_global_status_counts():
-    """构建全局绑定状态计数"""
-    from django.db.models import Q
-    total = ConfigNodeBinding.objects.count()
-    pending = ConfigNodeBinding.objects.filter(
-        sync_status__in=["not_synced", "modified"]
-    ).count()
-    conflict = ConfigNodeBinding.objects.filter(sync_status="conflict").count()
-    orphaned = ConfigNodeBinding.objects.filter(sync_status="orphaned").count()
-    failed = ConfigNodeBinding.objects.filter(sync_status="failed").count()
-    syncing = ConfigNodeBinding.objects.filter(sync_status="syncing").count()
-    marked_deleted = ConfigNodeBinding.objects.filter(sync_status="marked_deleted").count()
+    """构建全局绑定状态计数（排除已逻辑删除节点）"""
+    base = ConfigNodeBinding.objects.filter(node__is_deleted=False)
+    total = base.count()
+    pending = base.filter(sync_status__in=["not_synced", "modified"]).count()
+    conflict = base.filter(sync_status="conflict").count()
+    orphaned = base.filter(sync_status="orphaned").count()
+    failed = base.filter(sync_status="failed").count()
+    syncing = base.filter(sync_status="syncing").count()
+    marked_deleted = base.filter(sync_status="marked_deleted").count()
     return {
         "total": total, "pending": pending, "conflict": conflict,
         "orphaned": orphaned, "failed": failed, "syncing": syncing,
@@ -271,7 +271,9 @@ class ConfigDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
         """注入绑定的最新版本信息"""
         context = super().get_context_data(**kwargs)
         config = self.object
-        bindings = config.bindings.select_related("node").order_by("node__hostname")
+        bindings = config.bindings.filter(node__is_deleted=False).select_related(
+            "node"
+        ).order_by("node__hostname")
         context["bindings"] = bindings
 
         latest_version = None
@@ -759,7 +761,7 @@ class ConfigGlobPreviewView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "message": "未配置SSH凭证"}, status=400)
 
         setting = get_or_create_sync_setting(node)
-        main_conf_path = request.POST.get("main_conf_path") or setting.main_conf_path
+        main_conf_path = request.POST.get("main_conf_path") or setting.main_conf_path or default_nginx_conf_path()
         if main_conf_path and main_conf_path != setting.main_conf_path:
             setting.main_conf_path = main_conf_path
             setting.save(update_fields=["main_conf_path"])
@@ -775,7 +777,9 @@ class ConfigGlobPreviewView(LoginRequiredMixin, View):
 
         discovered, errors = discover_nginx_configs(
             node.ip, node.port, credential.username,
-            nginx_conf_path=nginx_conf_path, **auth_kwargs,
+            nginx_conf_path=nginx_conf_path,
+            max_include_depth=discover_max_depth(),
+            **auth_kwargs,
         )
 
         files = [{"path": item["path"], "name": item["name"]} for item in discovered]
@@ -851,7 +855,7 @@ class ConfigSyncWizardView(
         context["node_groups"] = node_groups
         context["search"] = search
         context["group_search"] = group_search
-        context["batch_max_count"] = int(get_setting("node.batch_max_count", "3"))
+        context["batch_max_count"] = int(get_setting("config.sync_max_concurrency", "3"))
         return context
 
 
@@ -873,7 +877,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         if not node_ids:
             return JsonResponse({"success": False, "message": "请至少选择一个节点"})
 
-        MAX_BATCH = int(get_setting("node.batch_max_count", "3"))
+        MAX_BATCH = int(get_setting("config.sync_max_concurrency", "3"))
         if len(node_ids) > MAX_BATCH:
             return JsonResponse({"success": False, "message": f"最多只能选择 {MAX_BATCH} 个节点"})
 
@@ -904,20 +908,23 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 result["message"] = "未配置SSH凭证"
                 return result
             setting = get_or_create_sync_setting(node)
-            nginx_conf_path = setting.main_conf_path or "/etc/nginx/nginx.conf"
+            nginx_conf_path = setting.main_conf_path or default_nginx_conf_path()
             if not nginx_conf_path:
                 result["message"] = "未配置nginx路径"
                 return result
 
+            depth = discover_max_depth()
             if credential.auth_type == "password":
                 discovered, errors = discover_nginx_configs(
                     node.ip, node.port, credential.username,
                     password=credential.get_password(), nginx_conf_path=nginx_conf_path,
+                    max_include_depth=depth,
                 )
             else:
                 discovered, errors = discover_nginx_configs(
                     node.ip, node.port, credential.username,
                     private_key=credential.get_private_key(), nginx_conf_path=nginx_conf_path,
+                    max_include_depth=depth,
                 )
 
             if errors:
@@ -1038,7 +1045,7 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
             return JsonResponse({"success": False, "message": "未配置SSH凭证"})
 
         setting = get_or_create_sync_setting(node)
-        main_conf_path = data.get("main_conf_path") or setting.main_conf_path
+        main_conf_path = data.get("main_conf_path") or setting.main_conf_path or default_nginx_conf_path()
         if main_conf_path and main_conf_path != setting.main_conf_path:
             setting.main_conf_path = main_conf_path
             setting.save(update_fields=["main_conf_path"])
@@ -1075,7 +1082,9 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
             discovered, errors = discover_nginx_configs(
                 node.ip, node.port, credential.username,
-                nginx_conf_path=nginx_conf_path, **auth_kwargs,
+                nginx_conf_path=nginx_conf_path,
+                max_include_depth=discover_max_depth(),
+                **auth_kwargs,
             )
 
             if is_partial:

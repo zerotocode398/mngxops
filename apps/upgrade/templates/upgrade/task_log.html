@@ -285,7 +285,7 @@
     }
 
     pollOnce();
-    pollTimer = setInterval(pollOnce, 2000);
+    pollTimer = setInterval(pollOnce, {{ sys_poll_interval_ms|default:2000 }});
 })();
 </script>
 {% endblock %}

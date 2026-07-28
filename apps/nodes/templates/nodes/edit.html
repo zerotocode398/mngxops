@@ -362,7 +362,7 @@
                             document.getElementById('testResult').innerHTML='<span class="text-'+(ok?'success':'danger')+' ms-2"><i class="bi bi-'+(ok?'check-circle-fill':'x-circle-fill')+'"></i> 连接'+(ok?'成功':'失败')+'</span>';
                         }
                     });
-                }, 1500);
+                }, {{ sys_poll_interval_ms|default:2000 }});
             }
         }).catch(function(){
             closeAsyncProgressOverlay();

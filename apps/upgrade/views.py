@@ -77,6 +77,18 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
         kwargs["user"] = self.request.user
         return kwargs
 
+    def get_context_data(self, **kwargs):
+        """传入源码包大小限制供前端校验"""
+        from utils.setting_service import get_setting
+        context = super().get_context_data(**kwargs)
+        try:
+            context["package_max_size_mb"] = max(
+                1, int(get_setting("upgrade.package_max_size_mb", "500") or 500)
+            )
+        except (TypeError, ValueError):
+            context["package_max_size_mb"] = 500
+        return context
+
     def _wants_json(self):
         """是否返回 JSON（XHR 上传）"""
         return (

@@ -2189,7 +2189,7 @@ function startBatchPolling() {
         });
     }
     pollOnce();
-    pollTimer = setInterval(pollOnce, 2000);
+    pollTimer = setInterval(pollOnce, {{ sys_poll_interval_ms|default:2000 }});
 }
 
 /** 截断错误信息为前 N 行，完整内容见任务详情日志 */

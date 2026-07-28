@@ -259,7 +259,7 @@
 
         initTaskCenterSearchTagInput();
         pollTaskCenterProgress();
-        setInterval(pollTaskCenterProgress, 2000);
+        setInterval(pollTaskCenterProgress, {{ sys_poll_interval_ms|default:2000 }});
     })();
 </script>
 {% endblock %}

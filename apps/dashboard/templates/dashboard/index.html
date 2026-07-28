@@ -7,7 +7,7 @@
 {% block extra_js %}
 <script>
     /** 统计卡片 30 秒自动轮询间隔（毫秒） */
-    const POLL_INTERVAL_MS = 30000;
+    const POLL_INTERVAL_MS = {{ sys_dashboard_refresh_ms|default:30000 }};
 
     /**
      * 通过 AJAX 获取最新统计数字并更新卡片

@@ -32,7 +32,7 @@ INSTALLED_APPS = [
     "apps.configs",
     "apps.releases",
     "apps.audit",
-    "apps.settings",
+    "apps.settings.apps.SettingsConfig",
     "apps.upgrade",
 ]
 
@@ -46,6 +46,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.audit.middleware.CurrentUserMiddleware",
     "apps.audit.middleware.AjaxErrorMiddleware",
+    "apps.settings.middleware.DataRetentionMiddleware",
 ]
 
 ROOT_URLCONF = "ngxops.urls"
@@ -61,6 +62,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "apps.settings.context_processors.system_runtime_settings",
             ],
         },
     },

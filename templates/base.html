@@ -1571,7 +1571,7 @@
                         }
                     }
                 });
-            }, 1500);
+            }, {{ sys_poll_interval_ms|default:2000 }});
         }
 
         document.getElementById('btnCloseAsyncProgress').addEventListener('click', function() {

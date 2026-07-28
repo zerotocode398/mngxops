@@ -34,7 +34,7 @@
                         <h6 class="mb-0"><i class="bi bi-server"></i> 选择节点进行同步</h6>
                         <button type="button" class="btn btn-primary btn-sm" id="applyBatchBtn"
                             onclick="batchSyncSelected()" disabled>
-                            <i class="bi bi-check-circle"></i> 应用（<span id="batchCount">0</span>/3）
+                            <i class="bi bi-check-circle"></i> 应用（<span id="batchCount">0</span>/{{ batch_max_count|default:3 }}）
                         </button>
                     </div>
 

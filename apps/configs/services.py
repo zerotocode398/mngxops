@@ -3,16 +3,30 @@
 import logging
 from .models import Config, ConfigNodeBinding, BindingVersion, ConfigSyncSetting
 from django.utils import timezone
+from utils.setting_service import get_setting
 
 logger = logging.getLogger(__name__)
 
 SKIP_FILES = {"mime.types"}
 
 
+def default_nginx_conf_path():
+    """读取系统设置中的默认 nginx 主配置路径"""
+    return get_setting("config.default_nginx_path", "/etc/nginx/nginx.conf") or "/etc/nginx/nginx.conf"
+
+
+def discover_max_depth():
+    """读取配置发现最大递归深度"""
+    try:
+        return max(1, int(get_setting("config.discover_max_depth", "3") or 3))
+    except (TypeError, ValueError):
+        return 3
+
+
 def get_or_create_sync_setting(node, user=None):
     setting, created = ConfigSyncSetting.objects.get_or_create(
         node=node,
-        defaults={"main_conf_path": "/etc/nginx/nginx.conf", "updated_by": user},
+        defaults={"main_conf_path": default_nginx_conf_path(), "updated_by": user},
     )
     return setting
 

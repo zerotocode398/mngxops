@@ -37,6 +37,34 @@ from utils.ssh import (
 
 from .models import ReleaseTask, ReleaseHistory, TaskCenterTask, generate_batch_number
 from utils.pagination import PerPagePaginationMixin
+from utils.setting_service import get_setting
+
+
+def _release_max_workers():
+    """读取发布并行 worker 数"""
+    try:
+        return max(1, int(get_setting("release.max_parallel_tasks", "3") or 3))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _start_release_executor(task_ids, task_center_id):
+    """按系统设置并行度启动发布/回滚后台线程"""
+    max_workers = _release_max_workers()
+    if max_workers > 1 and len(task_ids) > 1:
+        thread = threading.Thread(
+            target=_run_release_tasks_parallel,
+            args=(task_ids, task_center_id, max_workers),
+            daemon=True,
+        )
+    else:
+        thread = threading.Thread(
+            target=_run_release_tasks,
+            args=(task_ids, task_center_id),
+            daemon=True,
+        )
+    thread.start()
+    return thread
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +356,7 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseE
             except ConfigNodeBinding.DoesNotExist:
                 continue
 
-            if binding.node.is_locked:
+            if binding.node.is_locked or binding.node.is_deleted:
                 continue
 
             publish_version = version if version else binding.current_version
@@ -357,15 +385,6 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseE
         }
 
         if auto_execute:
-            parallel = data.get("parallel", False)
-            max_workers = 1
-            if parallel:
-                from utils.setting_service import get_setting
-                try:
-                    max_workers = int(get_setting("release.max_parallel_tasks", "3"))
-                except (ValueError, TypeError):
-                    max_workers = 3
-
             from apps.releases.task_result import targets_from_release_tasks
             targets = targets_from_release_tasks(task_ids)
             task_center = TaskCenterTask.objects.create(
@@ -379,13 +398,7 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseE
                 **targets,
             )
 
-            target_func = _run_release_tasks_parallel if parallel and max_workers > 1 else _run_release_tasks
-            thread = threading.Thread(
-                target=target_func,
-                args=(task_ids, task_center.id) if target_func == _run_release_tasks else (task_ids, task_center.id, max_workers),
-                daemon=True,
-            )
-            thread.start()
+            _start_release_executor(task_ids, task_center.id)
 
             response_data["task_center_id"] = task_center.id
             response_data["async"] = True
@@ -798,6 +811,9 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
         if task.status not in self.ROLLBACK_ALLOWED_STATUSES:
             messages.error(request, "仅成功或失败的发布可回滚")
             return redirect("releases:detail", pk=task.pk)
+        if task.node.is_deleted:
+            messages.error(request, f"节点 {task.node.hostname} 已删除，无法回滚")
+            return redirect("releases:detail", pk=task.pk)
         binding = task.binding
         versions = []
         if binding:
@@ -827,6 +843,12 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 return JsonResponse({"success": False, "message": msg}, status=400)
             messages.error(request, msg)
             return redirect("releases:rollback", pk=task.pk)
+        if task.node.is_deleted:
+            msg = f"节点 {task.node.hostname} 已删除，无法回滚"
+            if is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=400)
+            messages.error(request, msg)
+            return redirect("releases:detail", pk=task.pk)
 
         version_id = request.POST.get("version_id")
         if not version_id:
@@ -862,12 +884,7 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
             trigger_user=request.user,
             **targets,
         )
-        thread = threading.Thread(
-            target=_run_release_tasks,
-            args=([new_task.id], task_center.id),
-            daemon=True,
-        )
-        thread.start()
+        _start_release_executor([new_task.id], task_center.id)
 
         if is_ajax:
             return JsonResponse({
@@ -1128,12 +1145,7 @@ class ReleaseCenterExecuteView(
             **targets,
         )
 
-        thread = threading.Thread(
-            target=_run_release_tasks,
-            args=(task_ids, task_center.id),
-            daemon=True,
-        )
-        thread.start()
+        _start_release_executor(task_ids, task_center.id)
 
         redirect_url = reverse("releases:task_center_detail", kwargs={"pk": task_center.id})
         if is_ajax:
@@ -1191,12 +1203,7 @@ class ReleaseCenterSingleExecuteView(
             **targets,
         )
 
-        thread = threading.Thread(
-            target=_run_release_tasks,
-            args=([task.id], task_center.id),
-            daemon=True,
-        )
-        thread.start()
+        _start_release_executor([task.id], task_center.id)
 
         messages.success(request, f"发布任务 #{task_id} 已开始执行")
         return redirect("releases:center")
@@ -1233,9 +1240,9 @@ class VersionContentAPIView(LoginRequiredMixin, View):
 
 
 def _build_release_status_counts():
-    """构建发布中心绑定状态全局统计（含 marked_deleted）"""
+    """构建发布中心绑定状态全局统计（排除已逻辑删除节点）"""
     from apps.configs.models import ConfigNodeBinding
-    bindings = ConfigNodeBinding.objects.all()
+    bindings = ConfigNodeBinding.objects.filter(node__is_deleted=False)
     return {
         "total": bindings.count(),
         "pending": bindings.filter(sync_status__in=["not_synced", "modified"]).count(),
@@ -1396,6 +1403,8 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         if task.node.is_locked:
             return JsonResponse({"success": False, "message": f"节点 {task.node.hostname} 已锁定"}, status=400)
+        if task.node.is_deleted:
+            return JsonResponse({"success": False, "message": f"节点 {task.node.hostname} 已删除，无法重试"}, status=400)
 
         task.status = "pending"
         task.result = ""
@@ -1414,12 +1423,7 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
             **targets,
         )
 
-        thread = threading.Thread(
-            target=_run_release_tasks,
-            args=([task.id], task_center.id),
-            daemon=True,
-        )
-        thread.start()
+        _start_release_executor([task.id], task_center.id)
 
         return JsonResponse({
             "success": True,
@@ -1463,7 +1467,7 @@ def _start_rollback_for_release_tasks(tasks, user):
     candidates = list(by_binding.values()) + no_binding
 
     for task in candidates:
-        if task.node.is_locked:
+        if task.node.is_locked or task.node.is_deleted:
             skipped += 1
             continue
         if not task.binding:
@@ -1494,7 +1498,7 @@ def _start_rollback_for_release_tasks(tasks, user):
         rollback_task_ids.append(new_task.id)
 
     if not rollback_task_ids:
-        return False, "未生成任何回滚任务（所选任务均无上一版本、同绑定已去重或节点已锁定）"
+        return False, "未生成任何回滚任务（所选任务均无上一版本、同绑定已去重、节点已锁定或已删除）"
 
     started = len(rollback_task_ids)
     detail = f"批量回滚：{started} 个任务"
@@ -1514,12 +1518,7 @@ def _start_rollback_for_release_tasks(tasks, user):
         **targets,
     )
 
-    thread = threading.Thread(
-        target=_run_release_tasks,
-        args=(rollback_task_ids, task_center.id),
-        daemon=True,
-    )
-    thread.start()
+    _start_release_executor(rollback_task_ids, task_center.id)
 
     message = f"批量回滚已开始，批次号: {rollback_batch}，已启动 {started} 个"
     if skipped:

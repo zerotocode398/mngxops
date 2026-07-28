@@ -14,7 +14,7 @@
                     <div class="node-list-actions">
                         {% if user|has_perm_code:"nodes.create" %}
                         <a href="{% url 'nodes:create' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-primary btn-sm node-list-create-btn">
-                            <i class="bi bi-plus-circle"></i> 添加节点
+                            <i class="bi bi-plus-circle"></i> 新增节点
                         </a>
                         {% endif %}
                     </div>
@@ -64,16 +64,16 @@
 
                     <!-- 批量操作栏 -->
                     <div class="node-list-batch-toolbar" role="group" aria-label="批量操作">
-                        <span class="node-list-selection-hint" id="batchSelectionHint">已选择 0/3</span>
+                        <span class="node-list-selection-hint" id="batchSelectionHint">已选择 0/{{ batch_max_count|default:3 }}</span>
                         {% if user|has_perm_code:"nodes.update" %}
                         <button type="button" class="btn btn-sm node-list-batch-btn" id="batchTestBtn" onclick="batchTestConnection()" disabled>
-                            <i class="bi bi-lightning-charge"></i> 批量测试连接（0/3）
+                            <i class="bi bi-lightning-charge"></i> 批量测试连接
                         </button>
                         <button type="button" class="btn btn-sm node-list-batch-btn" id="batchLockBtn" onclick="batchLockNodes()" disabled>
-                            <i class="bi bi-lock"></i> 批量锁定（0/3）
+                            <i class="bi bi-lock"></i> 批量锁定
                         </button>
                         <button type="button" class="btn btn-sm node-list-batch-btn" id="batchUnlockBtn" onclick="batchUnlockNodes()" disabled>
-                            <i class="bi bi-unlock"></i> 批量解锁（0/3）
+                            <i class="bi bi-unlock"></i> 批量解锁
                         </button>
                         {% endif %}
                     </div>
@@ -84,7 +84,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 4%;">
-                                        <input type="checkbox" id="selectAllNodes" title="全选/取消（最多 3 台）" aria-label="全选或取消勾选节点，最多 3 台">
+                                        <input type="checkbox" id="selectAllNodes" title="全选/取消（最多 {{ batch_max_count|default:3 }} 台）" aria-label="全选或取消勾选节点，最多 {{ batch_max_count|default:3 }} 台">
                                     </th>
                                     <th style="width: 14%;">主机名</th>
                                     <th style="width: 14%;">IP地址</th>
@@ -382,7 +382,7 @@
     var currentDetailNodeId = null;
     var testTimer = null;
     var testSeconds = 0;
-    var MAX_SELECT = 3;
+    var MAX_SELECT = {{ batch_max_count|default:3 }};
 
     document.addEventListener('DOMContentLoaded', function () {
         /* 初始化 Bootstrap 模态框 */
@@ -518,18 +518,9 @@
         function updateBatchUI() {
             var checked = document.querySelectorAll('.node-checkbox:checked');
             var count = checked.length;
-            if (batchTestBtn) {
-                batchTestBtn.innerHTML = '<i class="bi bi-lightning-charge"></i> 批量测试连接（' + count + '/' + MAX_SELECT + '）';
-                batchTestBtn.disabled = count === 0;
-            }
-            if (batchLockBtn) {
-                batchLockBtn.innerHTML = '<i class="bi bi-lock"></i> 批量锁定（' + count + '/' + MAX_SELECT + '）';
-                batchLockBtn.disabled = count === 0;
-            }
-            if (batchUnlockBtn) {
-                batchUnlockBtn.innerHTML = '<i class="bi bi-unlock"></i> 批量解锁（' + count + '/' + MAX_SELECT + '）';
-                batchUnlockBtn.disabled = count === 0;
-            }
+            if (batchTestBtn) batchTestBtn.disabled = count === 0;
+            if (batchLockBtn) batchLockBtn.disabled = count === 0;
+            if (batchUnlockBtn) batchUnlockBtn.disabled = count === 0;
             if (batchSelectionHint) {
                 batchSelectionHint.textContent = '已选择 ' + count + '/' + MAX_SELECT;
             }
@@ -887,7 +878,7 @@
                             }
                         }
                     });
-                }, 2000);
+                }, {{ sys_poll_interval_ms|default:2000 }});
             }
         })
         .catch(function () {
@@ -925,7 +916,7 @@
                             }
                         }
                     });
-                }, 2000);
+                }, {{ sys_poll_interval_ms|default:2000 }});
             }
         })
         .catch(function () {

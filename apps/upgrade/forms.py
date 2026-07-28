@@ -33,13 +33,19 @@ class NginxSourcePackageForm(forms.ModelForm):
             "is_official": "标记为官方包",
         }
         help_texts = {
-            "package_file": "支持 .tar.gz / .tgz 格式，最大 10MB",
+            "package_file": "支持 .tar.gz / .tgz 格式，大小限制见系统设置",
         }
 
     def __init__(self, *args, user=None, **kwargs):
         """接收当前用户，用于版本唯一性校验"""
         self.user = user
         super().__init__(*args, **kwargs)
+        from utils.setting_service import get_setting
+        try:
+            max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "500") or 500))
+        except (TypeError, ValueError):
+            max_mb = 500
+        self.fields["package_file"].help_text = f"支持 .tar.gz / .tgz 格式，最大 {max_mb}MB"
 
     def clean_package_file(self):
         """校验源码包格式与大小"""
@@ -47,9 +53,14 @@ class NginxSourcePackageForm(forms.ModelForm):
         if package_file:
             if not package_file.name.endswith((".tar.gz", ".tgz")):
                 raise forms.ValidationError("仅支持 .tar.gz / .tgz 格式的文件")
-            # 10MB 限制（官方源码包通常仅数 MB）
-            if package_file.size > 10 * 1024 * 1024:
-                raise forms.ValidationError("文件大小不能超过 10MB")
+            # 按系统设置限制源码包大小
+            from utils.setting_service import get_setting
+            try:
+                max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "500") or 500))
+            except (TypeError, ValueError):
+                max_mb = 500
+            if package_file.size > max_mb * 1024 * 1024:
+                raise forms.ValidationError(f"文件大小不能超过 {max_mb}MB")
         return package_file
 
     def clean_version(self):

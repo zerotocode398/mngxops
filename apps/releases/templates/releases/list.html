@@ -108,7 +108,7 @@
                                     data-expanded="{% if expand_all_nodes or forloop.parentloop.first and forloop.first %}1{% else %}0{% endif %}">
                                     {% if user|has_perm_code:"releases.update" %}
                                     <td class="text-center">
-                                        {% if not node_data.node.is_locked %}
+                                        {% if not node_data.node.is_locked and not node_data.node.is_deleted %}
                                         <input type="checkbox" class="rollback-node-cb"
                                             data-node-uid="{{ batch_key }}-{{ node_key }}"
                                             data-node-id="{{ node_data.node.id }}"
@@ -126,6 +126,9 @@
                                                 {% if node_data.node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
                                                 {{ node_data.node.hostname }}<small class="text-muted">({{ node_data.node.ip }}:{{ node_data.node.port }})</small>
                                             </span>
+                                            {% if node_data.node.is_deleted %}
+                                            <span class="badge bg-secondary">已删除</span>
+                                            {% endif %}
                                             {% for grp in node_data.node.groups.all %}
                                             <span class="badge bg-info text-dark">{{ grp.name }}</span>
                                             {% endfor %}
@@ -146,7 +149,7 @@
                                     {% if user|has_perm_code:"releases.update" %}
                                     <td class="text-center">
                                         {% if task.status == 'success' or task.status == 'failed' %}
-                                        {% if not task.node.is_locked %}
+                                        {% if not task.node.is_locked and not task.node.is_deleted %}
                                         <input type="checkbox" class="rollback-task-cb"
                                             value="{{ task.id }}"
                                             data-node-uid="{{ batch_key }}-{{ node_key }}"
@@ -186,10 +189,12 @@
                                             </a>
                                             {% if user|has_perm_code:"releases.update" %}
                                             {% if task.status == 'success' or task.status == 'failed' %}
+                                            {% if not task.node.is_deleted and not task.node.is_locked %}
                                             <a href="{% url 'releases:rollback' task.id %}"
                                                 class="btn btn-outline-warning" title="回滚">
                                                 <i class="bi bi-arrow-counterclockwise"></i>
                                             </a>
+                                            {% endif %}
                                             {% endif %}
                                             {% endif %}
                                         </div>

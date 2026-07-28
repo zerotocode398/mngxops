@@ -34,34 +34,67 @@ class SSHClient:
                 continue
         return None
 
-    def connect(self):
-        """建立SSH连接"""
+    def _connect_timeout(self):
+        """读取 SSH 连接超时秒数"""
         try:
-            self.client = paramiko.SSHClient()
-            self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            return max(1, int(get_setting("node.ssh_connect_timeout", "10") or 10))
+        except (TypeError, ValueError):
+            return 10
 
-            if self.private_key:
-                pkey = self._parse_private_key(self.private_key)
-                if pkey is None:
-                    return False, "无法识别的私钥格式"
-                self.client.connect(
-                    hostname=self.host,
-                    port=self.port,
-                    username=self.username,
-                    pkey=pkey,
-                    timeout=int(get_setting("node.ssh_connect_timeout", "10")),
-                )
-            else:
-                self.client.connect(
-                    hostname=self.host,
-                    port=self.port,
-                    username=self.username,
-                    password=self.password,
-                    timeout=int(get_setting("node.ssh_connect_timeout", "10")),
-                )
-            return True, "连接成功"
-        except Exception as e:
-            return False, str(e)
+    def _detect_retries(self):
+        """读取连接失败后的额外重试次数"""
+        try:
+            return max(0, int(get_setting("node.detect_retries", "1") or 0))
+        except (TypeError, ValueError):
+            return 1
+
+    def _connect_once(self):
+        """单次尝试建立 SSH 连接"""
+        self.client = paramiko.SSHClient()
+        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        timeout = self._connect_timeout()
+        if self.private_key:
+            pkey = self._parse_private_key(self.private_key)
+            if pkey is None:
+                return False, "无法识别的私钥格式"
+            self.client.connect(
+                hostname=self.host,
+                port=self.port,
+                username=self.username,
+                pkey=pkey,
+                timeout=timeout,
+            )
+        else:
+            self.client.connect(
+                hostname=self.host,
+                port=self.port,
+                username=self.username,
+                password=self.password,
+                timeout=timeout,
+            )
+        return True, "连接成功"
+
+    def connect(self):
+        """建立SSH连接（按系统设置重试）"""
+        retries = self._detect_retries()
+        last_error = "连接失败"
+        for attempt in range(retries + 1):
+            try:
+                ok, msg = self._connect_once()
+                if ok:
+                    return True, msg
+                last_error = msg
+            except Exception as e:
+                last_error = str(e)
+                if self.client:
+                    try:
+                        self.client.close()
+                    except Exception:
+                        pass
+                    self.client = None
+            if attempt < retries:
+                time.sleep(0.5)
+        return False, last_error
 
     def execute_command(self, command):
         """执行远程Shell命令，按退出码判定成败并合并 stdout/stderr"""
@@ -102,32 +135,64 @@ class SSHClient:
         self.close()
 
 
-def _build_ssh_client(host, port, username, password=None, private_key=None):
-    """创建并连接SSH客户端，支持多种密钥格式（辅助函数）"""
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+def _ssh_connect_timeout():
+    """读取 SSH 连接超时秒数"""
+    try:
+        return max(1, int(get_setting("node.ssh_connect_timeout", "10") or 10))
+    except (TypeError, ValueError):
+        return 10
 
+
+def _ssh_detect_retries():
+    """读取连接失败后的额外重试次数"""
+    try:
+        return max(0, int(get_setting("node.detect_retries", "1") or 0))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _build_ssh_client(host, port, username, password=None, private_key=None):
+    """创建并连接SSH客户端，支持多种密钥格式与重试"""
+    retries = _ssh_detect_retries()
+    timeout = _ssh_connect_timeout()
+    last_error = None
+    pkey = None
     if private_key:
         ssh_inst = SSHClient(host, port, username, private_key=private_key)
         pkey = ssh_inst._parse_private_key(private_key)
         if pkey is None:
             raise ValueError("无法识别的私钥格式")
-        client.connect(
-            hostname=host,
-            port=port,
-            username=username,
-            pkey=pkey,
-            timeout=int(get_setting("node.ssh_connect_timeout", "10")),
-        )
-    else:
-        client.connect(
-            hostname=host,
-            port=port,
-            username=username,
-            password=password,
-            timeout=int(get_setting("node.ssh_connect_timeout", "10")),
-        )
-    return client
+
+    for attempt in range(retries + 1):
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            if pkey is not None:
+                client.connect(
+                    hostname=host,
+                    port=port,
+                    username=username,
+                    pkey=pkey,
+                    timeout=timeout,
+                )
+            else:
+                client.connect(
+                    hostname=host,
+                    port=port,
+                    username=username,
+                    password=password,
+                    timeout=timeout,
+                )
+            return client
+        except Exception as e:
+            last_error = e
+            try:
+                client.close()
+            except Exception:
+                pass
+            if attempt < retries:
+                time.sleep(0.5)
+    raise last_error if last_error else RuntimeError("SSH 连接失败")
 
 
 def test_ssh_connection(host, port, username, password=None, private_key=None):

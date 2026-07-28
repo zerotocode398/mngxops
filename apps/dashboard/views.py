@@ -5,6 +5,15 @@ from django.shortcuts import render
 from apps.nodes.models import Node, NodeGroup
 from apps.configs.models import ConfigNodeBinding
 from apps.releases.models import ReleaseTask
+from utils.setting_service import get_setting
+
+
+def _dashboard_limit(key, default=10):
+    """读取仪表盘列表条数上限"""
+    try:
+        return max(1, int(get_setting(key, str(default)) or default))
+    except (TypeError, ValueError):
+        return default
 
 
 @login_required
@@ -16,20 +25,27 @@ def index(request):
     node_group_count = NodeGroup.objects.count()
     release_task_count = ReleaseTask.objects.count()
     # 待推送：本地有修改但未推送的绑定数
-    pending_push_count = ConfigNodeBinding.objects.filter(sync_status="modified").count()
+    pending_push_count = ConfigNodeBinding.objects.filter(
+        sync_status="modified", node__is_deleted=False
+    ).count()
     # 冲突：本地与远程均被修改产生冲突的绑定数
-    conflict_count = ConfigNodeBinding.objects.filter(sync_status="conflict").count()
+    conflict_count = ConfigNodeBinding.objects.filter(
+        sync_status="conflict", node__is_deleted=False
+    ).count()
 
-    # 最近发布任务（最多10条），预加载关联数据减少查询
+    recent_limit = _dashboard_limit("dashboard.recent_tasks_count", 10)
+    failed_limit = _dashboard_limit("dashboard.recent_failed_bindings_count", 10)
+
+    # 最近发布任务，预加载关联数据减少查询
     recent_tasks = ReleaseTask.objects.select_related(
         "config", "version", "operator", "node"
-    ).order_by("-created_at")[:10]
+    ).order_by("-created_at")[:recent_limit]
 
-    # 下发失败的绑定列表（最多10条）
+    # 下发失败的绑定列表
     failed_configs = (
-        ConfigNodeBinding.objects.filter(sync_status="failed")
+        ConfigNodeBinding.objects.filter(sync_status="failed", node__is_deleted=False)
         .select_related("config", "node")
-        .order_by("-updated_at")[:10]
+        .order_by("-updated_at")[:failed_limit]
     )
 
     context = {
@@ -52,8 +68,12 @@ def stats_api(request):
     node_count = Node.objects.count()
     online_count = Node.objects.filter(status="online").count()
     offline_count = node_count - online_count
-    pending_push_count = ConfigNodeBinding.objects.filter(sync_status="modified").count()
-    conflict_count = ConfigNodeBinding.objects.filter(sync_status="conflict").count()
+    pending_push_count = ConfigNodeBinding.objects.filter(
+        sync_status="modified", node__is_deleted=False
+    ).count()
+    conflict_count = ConfigNodeBinding.objects.filter(
+        sync_status="conflict", node__is_deleted=False
+    ).count()
 
     return JsonResponse({
         "node_count": node_count,

@@ -16,7 +16,12 @@
                             <div class="alert alert-warning">
                                 <h5 class="alert-heading"><i class="bi bi-exclamation-circle text-warning"></i> 警告</h5>
                                 <hr>
-                                <p class="mb-0">您即将删除节点 <strong>{{ object.hostname }} ({{ object.ip }})</strong></p>
+                                <p class="mb-2">您即将从运维清单移除节点 <strong>{{ object.hostname }} ({{ object.ip }})</strong></p>
+                                <ul class="mb-0 small">
+                                    <li>节点将不再出现在节点列表、发布中心、配置同步等运维入口</li>
+                                    <li>发布历史、升级历史等审计记录会保留</li>
+                                    <li>使用相同 IP 再次添加时，将恢复本节点并自动关联历史任务</li>
+                                </ul>
                             </div>
 
                             <div class="card">

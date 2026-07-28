@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from apps.credentials.models import Credential
 
 User = get_user_model()
@@ -21,6 +22,13 @@ class NodeGroup(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ActiveNodeManager(models.Manager):
+    """仅返回未逻辑删除的节点"""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(is_deleted=False)
 
 
 class Node(models.Model):
@@ -71,11 +79,24 @@ class Node(models.Model):
     )
     is_locked = models.BooleanField(default=False, verbose_name="已锁定")
     description = models.TextField(blank=True, verbose_name="描述")
+    is_deleted = models.BooleanField(default=False, db_index=True, verbose_name="已删除")
+    deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
+    deleted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deleted_nodes",
+        verbose_name="删除人",
+    )
     created_by = models.ForeignKey(
         User, on_delete=models.CASCADE, verbose_name="创建人"
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    objects = ActiveNodeManager()
+    all_objects = models.Manager()
 
     class Meta:
         verbose_name = "节点"
@@ -93,6 +114,31 @@ class Node(models.Model):
     @property
     def is_online(self):
         return self.status == "online"
+
+    def soft_delete(self, user=None):
+        """将节点标记为逻辑删除，保留发布/升级历史"""
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        self.deleted_by = user
+        self.status = "unknown"
+        self.save(
+            update_fields=[
+                "is_deleted",
+                "deleted_at",
+                "deleted_by",
+                "status",
+                "updated_at",
+            ]
+        )
+
+    def restore(self):
+        """恢复逻辑删除的节点，保留原主键与历史关联"""
+        self.is_deleted = False
+        self.deleted_at = None
+        self.deleted_by = None
+        self.save(
+            update_fields=["is_deleted", "deleted_at", "deleted_by", "updated_at"]
+        )
 
     def __str__(self):
         return f"{self.hostname} ({self.ip})"

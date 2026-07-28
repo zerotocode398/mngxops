@@ -385,7 +385,7 @@
                         document.getElementById('btnCloseProgress').classList.remove('d-none');
                     }
                 });
-            }, 1500);
+            }, {{ sys_poll_interval_ms|default:2000 }});
         }
 
         /** 渲染进度结果树 */
@@ -558,7 +558,7 @@
                 vpCopyBtn.classList.remove('btn-success');
                 vpCopyBtn.classList.add('btn-outline-secondary');
                 vpCopyBtn.disabled = false;
-            }, 2000);
+            }, {{ sys_poll_interval_ms|default:2000 }});
         }
     });
 </script>

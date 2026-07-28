@@ -2,6 +2,7 @@ from django import forms
 
 from .models import Node, NodeGroup
 from apps.credentials.models import Credential
+from utils.setting_service import get_setting
 
 
 class NodeGroupForm(forms.ModelForm):
@@ -114,6 +115,13 @@ class NodeForm(forms.ModelForm):
         self.fields["credential"].required = False
         # 凭证字段已在 CredentialChoiceField 中过滤为仅已启用的凭证
         self.fields["credential"].empty_label = "不设置"
+        if not self.instance.pk:
+            try:
+                self.fields["port"].initial = int(
+                    get_setting("node.ssh_default_port", "22") or 22
+                )
+            except (TypeError, ValueError):
+                self.fields["port"].initial = 22
         if user and user.is_superuser:
             self.fields["credential"].queryset = Credential.objects.filter(
                 is_enabled=True
@@ -128,3 +136,25 @@ class NodeForm(forms.ModelForm):
         if len(groups) > 3:
             raise forms.ValidationError("节点最多只能关联 3 个节点组")
         return groups
+
+    def clean_ip(self):
+        """校验 IP：活跃节点不可重复；已逻辑删除的同 IP 仅允许创建时恢复"""
+        ip = self.cleaned_data.get("ip")
+        if not ip:
+            return ip
+        active_qs = Node.objects.filter(ip=ip)
+        if self.instance and self.instance.pk:
+            active_qs = active_qs.exclude(pk=self.instance.pk)
+        if active_qs.exists():
+            raise forms.ValidationError("该 IP 地址已被其他节点使用")
+        # 编辑时不可占用已逻辑删除节点的 IP（需通过新建同 IP 走恢复）
+        if self.instance and self.instance.pk:
+            if (
+                Node.all_objects.filter(ip=ip, is_deleted=True)
+                .exclude(pk=self.instance.pk)
+                .exists()
+            ):
+                raise forms.ValidationError(
+                    "该 IP 对应已删除节点，请新建同 IP 节点以恢复历史记录"
+                )
+        return ip

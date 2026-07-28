@@ -1113,7 +1113,7 @@
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             },
-            body: JSON.stringify({ bindings: bindings, auto_execute: true, parallel: false })
+            body: JSON.stringify({ bindings: bindings, auto_execute: true, parallel: true })
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -1276,7 +1276,7 @@
                     document.getElementById('btnCloseProgress').classList.remove('d-none');
                 }
             });
-        }, 1500);
+        }, {{ sys_poll_interval_ms|default:2000 }});
     }
 
     function renderProgressTree(resultText) {

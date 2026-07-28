@@ -10,7 +10,7 @@ def _cast_value(value, value_type):
     if value_type == "integer":
         return int(value)
     elif value_type == "boolean":
-        return value.lower() in ("true", "1", "yes")
+        return str(value).lower() in ("true", "1", "yes")
     return value
 
 
@@ -37,17 +37,17 @@ def refresh_setting_cache(key=None):
     if key:
         cache.delete(f"system_setting:{key}")
     else:
-        cache.delete_many(
-            [f"system_setting:{k}" for k in _defaults.keys()]
-        )
+        from apps.settings.models import preset_key_set
+        keys = list(preset_key_set() | set(_defaults.keys()))
+        cache.delete_many([f"system_setting:{k}" for k in keys])
 
 
 def seed_default_settings():
-    """初始化预置配置项（幂等操作）"""
-    from apps.settings.models import SystemSetting, PRESET_SETTINGS
+    """初始化预置配置项：upsert 元数据，并删除不在 PRESET 的孤儿键"""
+    from apps.settings.models import SystemSetting, PRESET_SETTINGS, preset_key_set
 
     for item in PRESET_SETTINGS:
-        SystemSetting.objects.get_or_create(
+        obj, created = SystemSetting.objects.get_or_create(
             key=item["key"],
             defaults={
                 "value": item["value"],
@@ -58,3 +58,28 @@ def seed_default_settings():
                 "sort_order": item.get("sort_order", 0),
             },
         )
+        if not created:
+            # 同步展示元数据，不覆盖用户已保存的 value
+            mapping = {
+                "type": item["type"],
+                "group": item["group"],
+                "label": item["label"],
+                "description": item.get("description", ""),
+                "sort_order": item.get("sort_order", 0),
+            }
+            update_fields = []
+            for field, new_val in mapping.items():
+                if getattr(obj, field) != new_val:
+                    setattr(obj, field, new_val)
+                    update_fields.append(field)
+            if update_fields:
+                obj.save(update_fields=update_fields)
+
+    # 清理已从 PRESET 移除的孤儿配置
+    orphan_keys = list(
+        SystemSetting.objects.exclude(key__in=preset_key_set()).values_list("key", flat=True)
+    )
+    if orphan_keys:
+        SystemSetting.objects.filter(key__in=orphan_keys).delete()
+        for k in orphan_keys:
+            refresh_setting_cache(k)

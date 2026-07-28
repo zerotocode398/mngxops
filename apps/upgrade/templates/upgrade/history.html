@@ -72,6 +72,9 @@
                                 <span class="node-identity">
                                     {{ task.node.hostname }}<small class="text-muted">({{ task.node.ip }})</small>
                                 </span>
+                                {% if task.node.is_deleted %}
+                                <span class="badge bg-secondary">已删除</span>
+                                {% endif %}
                             </div>
                         </td>
                         <td>

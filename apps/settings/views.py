@@ -6,10 +6,10 @@ from django.shortcuts import render
 from django.views import View
 
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
-from .models import SystemSetting
+from .models import SystemSetting, preset_key_set
 from utils.setting_service import refresh_setting_cache
 
-# 分组导航图标与说明文案
+# 分组导航图标与说明文案（仅保留已接线分组）
 GROUP_META = {
     "仪表盘": {
         "icon": "bi-bar-chart",
@@ -25,27 +25,19 @@ GROUP_META = {
     },
     "配置管理": {
         "icon": "bi-pencil",
-        "description": "发现深度、版本保留、同步并发与缓存超时。",
+        "description": "发现深度、默认主配置路径与同步并发。",
     },
     "发布管理": {
         "icon": "bi-rocket-takeoff",
-        "description": "发布超时、并行任务数、备份路径与历史保留。",
-    },
-    "审计日志": {
-        "icon": "bi-file-text",
-        "description": "操作/登录日志保留天数与登录锁定策略。",
+        "description": "并行任务数与远程备份路径。",
     },
     "系统": {
         "icon": "bi-display",
-        "description": "任务进度轮询与仪表盘刷新间隔。",
-    },
-    "任务中心": {
-        "icon": "bi-list-task",
-        "description": "任务中心记录保留天数。",
+        "description": "任务进度轮询、仪表盘刷新间隔与历史数据保留天数。",
     },
     "Nginx升级": {
         "icon": "bi-box-seam",
-        "description": "默认工作目录、并行编译核数、源码包大小与旧二进制保留。",
+        "description": "默认工作目录、并行编译核数与源码包大小限制。",
     },
 }
 
@@ -60,25 +52,27 @@ UNIT_MAP = {
     "credential.test_max_concurrency": "个",
     "config.discover_max_depth": "层",
     "config.default_nginx_path": "",
-    "config.version_retention_days": "天",
     "config.sync_max_concurrency": "个",
-    "config.sync_cache_timeout": "秒",
-    "release.single_node_timeout": "秒",
     "release.max_parallel_tasks": "个",
     "release.backup_dir": "",
-    "release.history_retention_days": "天",
-    "audit.operation_log_retention_days": "天",
-    "audit.login_log_retention_days": "天",
-    "audit.login_max_fail_count": "次",
-    "audit.login_lock_minutes": "分钟",
     "system.task_progress_poll_interval": "秒",
     "system.dashboard_refresh_interval": "秒",
-    "task_center.retention_days": "天",
+    "system.retention_task_center_days": "天",
+    "system.retention_release_history_days": "天",
+    "system.retention_audit_log_days": "天",
+    "system.retention_login_log_days": "天",
     "upgrade.default_work_dir": "",
     "upgrade.make_jobs_default": "核",
     "upgrade.package_max_size_mb": "MB",
-    "upgrade.oldbin_keep_seconds": "秒",
 }
+
+
+def _active_settings_qs(extra_filter=None):
+    """仅返回仍在 PRESET 中的配置项"""
+    qs = SystemSetting.objects.filter(key__in=preset_key_set())
+    if extra_filter:
+        qs = qs.filter(**extra_filter)
+    return qs.order_by("group", "sort_order")
 
 
 class SettingsIndexView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -89,7 +83,7 @@ class SettingsIndexView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def get(self, request):
         """渲染分组设置页"""
-        settings_qs = SystemSetting.objects.all().order_by("group", "sort_order")
+        settings_qs = _active_settings_qs()
         can_update = user_has_permission(request.user, "settings", "update")
 
         # 按分组整理为有序列表（含图标与说明，便于模板渲染）
@@ -139,7 +133,7 @@ class SettingsSaveAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         if not group:
             return JsonResponse({"success": False, "message": "缺少配置分组"})
 
-        settings_qs = SystemSetting.objects.filter(group=group)
+        settings_qs = _active_settings_qs({"group": group})
         saved = []
         for s in settings_qs:
             # boolean 未勾选时 POST 无键，按 false 处理
@@ -147,7 +141,24 @@ class SettingsSaveAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 new_value = "true" if request.POST.get(s.key) == "true" else "false"
             else:
                 new_value = request.POST.get(s.key)
-            if new_value is not None and new_value != s.value:
+            if new_value is None:
+                continue
+            if s.type == "integer":
+                text = str(new_value).strip()
+                if text == "":
+                    return JsonResponse({
+                        "success": False,
+                        "message": f"「{s.label}」不能为空",
+                    })
+                try:
+                    int(text)
+                except (TypeError, ValueError):
+                    return JsonResponse({
+                        "success": False,
+                        "message": f"「{s.label}」必须是整数",
+                    })
+                new_value = text
+            if new_value != s.value:
                 s.value = new_value
                 s.updated_by = request.user
                 s.save(update_fields=["value", "updated_by", "updated_at"])
@@ -168,7 +179,7 @@ class SettingsGroupAPIView(LoginRequiredMixin, View):
     def get(self, request):
         """返回指定分组配置的 JSON 列表"""
         group = request.GET.get("group", "")
-        settings_qs = SystemSetting.objects.filter(group=group).order_by("sort_order")
+        settings_qs = _active_settings_qs({"group": group})
         data = [
             {
                 "key": s.key,
@@ -189,7 +200,7 @@ class SettingsAllAPIView(LoginRequiredMixin, View):
 
     def get(self, request):
         """返回全部配置的扁平 key→value 映射"""
-        settings_qs = SystemSetting.objects.all().order_by("group", "sort_order")
+        settings_qs = _active_settings_qs()
         data = {}
         for s in settings_qs:
             data[s.key] = s.value

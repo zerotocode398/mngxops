@@ -25,7 +25,7 @@
                     <div class="upload-dropzone mb-4" id="dropZone">
                         <i class="bi bi-cloud-upload upload-dropzone-icon"></i>
                         <p class="mt-2 mb-1">点击或拖拽文件到此处上传</p>
-                        <p class="text-muted small mb-0">支持 .tar.gz / .tgz 格式，最大 10MB</p>
+                        <p class="text-muted small mb-0">支持 .tar.gz / .tgz 格式，最大 {{ package_max_size_mb|default:500 }}MB</p>
                         <input type="file" name="package_file" id="id_package_file"
                                accept=".tar.gz,.tgz" style="display: none;">
                     </div>
@@ -133,8 +133,9 @@
             return;
         }
         var sizeMB = (file.size / 1024 / 1024).toFixed(2);
-        if (file.size > 10 * 1024 * 1024) {
-            if (window.showToast) showToast('文件超过 10MB 限制', 'danger');
+        var maxMb = {{ package_max_size_mb|default:500 }};
+        if (file.size > maxMb * 1024 * 1024) {
+            if (window.showToast) showToast('文件超过 ' + maxMb + 'MB 限制', 'danger');
             fileInput.value = '';
             fileInfo.classList.add('d-none');
             return;
@@ -240,7 +241,7 @@
             resetSubmitBtn();
             setTimeout(function() {
                 if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
-            }, 1500);
+            }, {{ sys_poll_interval_ms|default:2000 }});
         };
 
         xhr.onerror = function() {
@@ -249,7 +250,7 @@
             resetSubmitBtn();
             setTimeout(function() {
                 if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
-            }, 1500);
+            }, {{ sys_poll_interval_ms|default:2000 }});
         };
 
         xhr.send(fd);

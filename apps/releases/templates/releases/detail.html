@@ -31,9 +31,11 @@
                             <i class="bi bi-list-task"></i> 任务中心
                         </a>
                         {% if task.status == 'success' or task.status == 'failed' %}
+                        {% if not task.node.is_deleted and not task.node.is_locked %}
                         <a href="{% url 'releases:rollback' task.id %}" class="btn btn-outline-warning">
                             <i class="bi bi-arrow-counterclockwise"></i> 回滚
                         </a>
+                        {% endif %}
                         {% endif %}
                     </div>
                 </div>
@@ -41,7 +43,12 @@
                     <div class="row mb-4">
                         <div class="col-md-3">
                             <div class="text-muted small">节点</div>
-                            <div><strong>{{ task.node.hostname }}</strong> ({{ task.node.ip }})</div>
+                            <div>
+                                {{ task.node.hostname }} ({{ task.node.ip }})
+                                {% if task.node.is_deleted %}
+                                <span class="badge bg-secondary">已删除</span>
+                                {% endif %}
+                            </div>
                         </div>
                         <div class="col-md-3">
                             <div class="text-muted small">配置</div>
