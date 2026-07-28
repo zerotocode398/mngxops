@@ -1611,3 +1611,61 @@ Nginx 升级 & 系统设置
     我之前明明让你确认了系统设置里的所有参数是否所见及所用，你说是都改了，但是我刚刚发现了并没有。
     希望你在全面检查一遍系统设置里的所有参数调整后是否立马生效。
 ```
+✅ 已修复：
+ - 根因：升级中心 sessionStorage 恢复无条件覆盖 remoteWorkDir/makeJobs；现按 settingsBaseline 智能恢复（未改过则用服务端新默认）
+ - 创建 API / make -j / _ensure_remote_dir 空值回退改 get_setting，mkdir 使用 task.remote_work_dir
+ - 22 项 PRESET 全量核对均已接线；description 补齐生效时机（立即 / 刷新页面 / 仅新建 / 次日清理）
+
+
+Q82
+```text
+用户列表
+    我刚刚随便天了一个信息就报错了
+    NoReverseMatch at /users/
+Reverse for 'edit' with arguments '('阿萨德',)' not found. 1 pattern(s) tried: ['users/(?P<username>[-a-zA-Z0-9_]+)/edit/\\Z']
+Request Method:	GET
+Request URL:	http://127.0.0.1:8000/users/
+Django Version:	4.2.30
+Exception Type:	NoReverseMatch
+Exception Value:	
+Reverse for 'edit' with arguments '('阿萨德',)' not found. 1 pattern(s) tried: ['users/(?P<username>[-a-zA-Z0-9_]+)/edit/\\Z']
+Exception Location:	D:\PyCharm\联动优势\works\django-labs\venv3\lib\site-packages\django\urls\resolvers.py, line 828, in _reverse_with_prefix
+Raised during:	apps.users.views.UserListView
+Python Executable:	D:\PyCharm\联动优势\works\django-labs\venv3\Scripts\python.exe
+Python Version:	3.9.6
+Python Path:	
+['D:\\PyCharm\\联动优势\\works\\django-labs\\mngxops',
+ 'D:\\Python3.9\\python39.zip',
+ 'D:\\Python3.9\\DLLs',
+ 'D:\\Python3.9\\lib',
+ 'D:\\Python3.9',
+ 'D:\\PyCharm\\联动优势\\works\\django-labs\\venv3',
+ 'D:\\PyCharm\\联动优势\\works\\django-labs\\venv3\\lib\\site-packages']
+Server time:	Tue, 28 Jul 2026 17:36:38 +0800
+Reverse for 'edit' with arguments '('阿萨德',)' not found. 1 pattern(s) tried: ['users/(?P<username>[-a-zA-Z0-9_]+)/edit/\\Z']
+86	                                        {% if u.is_active %}
+87	                                        <span class="badge bg-success">正常</span>
+88	                                        {% else %}
+89	                                        <span class="badge bg-danger">锁定</span>
+90	                                        {% endif %}
+91	                                    </td>
+92	                                    <td class="text-nowrap">
+93	                                        <div class="btn-group btn-group-sm" role="group">
+94	                                            {% if request.user|has_perm_code:"users.update" %}
+95	                                            {% if not u.is_superuser or request.user.is_superuser %}
+96	                                            <a href="{% url 'users:edit' u.username %}" class="btn btn-outline-primary" title="编辑">
+97	                                                <i class="bi bi-pencil"></i>
+98	                                            </a>
+99	                                            <a href="{% url 'users:edit' u.username %}?tab=roles" class="btn btn-outline-info" title="关联角色">
+100	                                                <i class="bi bi-person-badge"></i>
+101	                                            </a>
+102	                                            {% endif %}
+103	                                            {% endif %}
+104	                                            {% if request.user|has_perm_code:"users.update" and u.username != request.user.username %}
+105	                                            {% if u.is_active %}
+106	                                            <button type="submit" form="lockForm_{{ u.id }}" class="btn btn-outline-warning" title="锁定"
+```
+✅ 已修复：
+ - 用户 edit/delete/lock 路由由 <slug:username> 改为 <int:pk>，列表反转不再因中文用户名崩溃
+ - 创建/编辑表单限制用户名为 [-a-zA-Z0-9_]+，中文请填姓名；历史非法用户名可在编辑页改名
+

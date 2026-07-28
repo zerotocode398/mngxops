@@ -22,6 +22,9 @@
                                     <span class="required">*</span>
                                 </label>
                                 {{ form.username }}
+                                {% if form.username.help_text %}
+                                <div class="form-text">{{ form.username.help_text }}</div>
+                                {% endif %}
                                 {% if form.username.errors %}
                                 <div class="text-danger mt-1 small">{% for error in form.username.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                 {% endif %}
@@ -72,7 +75,7 @@
                 <!-- 关联角色 -->
                 <div class="card mb-3 form-section form-section--roles" id="rolesSection">
                     <div class="card-header">
-                        <h5 class="mb-0"><i class="bi bi-person-badge"></i> 关联角色</h5>
+                        <h5 class="mb-0"><i class="bi bi-person-badge"></i> 关联角色 <span class="required">*</span></h5>
                     </div>
                     <div class="card-body">
                         <div class="d-flex align-items-center gap-2">
@@ -80,8 +83,9 @@
                                     data-bs-toggle="modal" data-bs-target="#selectRoleModal">
                                 <i class="bi bi-plus-circle"></i> 选择角色
                             </button>
-                            <small class="text-muted">最多 3 个</small>
+                            <small class="text-muted">须至少 1 个，最多 3 个</small>
                         </div>
+                        <div class="form-text mt-1">须至少选择一个角色，否则无法使用功能菜单</div>
                         <div class="d-none" id="roleCheckboxContainer">
                             {% for checkbox in form.groups %}
                             <div>{{ checkbox.tag }}</div>

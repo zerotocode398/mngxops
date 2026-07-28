@@ -1,6 +1,7 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, View
@@ -33,7 +34,6 @@ class UserListView(
             queryset = (
                 queryset.filter(username__icontains=search)
                 | queryset.filter(email__icontains=search)
-                | queryset.filter(first_name__icontains=search)
             ).distinct()
         return queryset.prefetch_related("profile__groups", "user_teams")
 
@@ -74,8 +74,6 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     form_class = UserUpdateForm
     template_name = "users/edit.html"
     success_url = reverse_lazy("users:list")
-    slug_field = "username"
-    slug_url_kwarg = "username"
     permission_resource = "users"
     permission_action = "update"
 
@@ -89,6 +87,12 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
             profile.direct_permissions.values_list("id", flat=True)
         )
         context["permission_matrix"] = matrix
+        # 无角色且无直授时提示侧栏将无功能菜单
+        has_roles = profile.groups.exists()
+        has_direct = profile.direct_permissions.exists()
+        context["show_empty_perm_warning"] = (
+            not self.object.is_superuser and not has_roles and not has_direct
+        )
         return context
 
     def form_valid(self, form):
@@ -104,8 +108,6 @@ class UserDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = User
     template_name = "users/delete.html"
     success_url = reverse_lazy("users:list")
-    slug_field = "username"
-    slug_url_kwarg = "username"
     permission_resource = "users"
     permission_action = "delete"
 
@@ -122,20 +124,34 @@ class UserLockToggleView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "users"
     permission_action = "update"
 
-    def post(self, request, username):
-        user = get_object_or_404(User, username=username)
+    def post(self, request, pk):
+        """按主键切换用户启用状态（支持 AJAX）"""
+        user = get_object_or_404(User, pk=pk)
+        is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+        def _fail(message):
+            if is_ajax:
+                return JsonResponse({"success": False, "message": message}, status=400)
+            messages.error(request, message)
+            return redirect("users:list")
+
         if user == request.user:
-            messages.error(request, "不能锁定当前登录用户")
-            return redirect("users:list")
+            return _fail("不能停用当前登录用户")
         if user.is_superuser and not request.user.is_superuser:
-            messages.error(request, "无权操作超级管理员")
-            return redirect("users:list")
+            return _fail("无权操作超级管理员")
+
         user.is_active = not user.is_active
-        user.save()
+        user.save(update_fields=["is_active"])
         if user.is_active:
-            messages.success(request, f"用户 {user.username} 已解锁")
+            msg = f"用户 {user.username} 已启用"
         else:
-            messages.success(request, f"用户 {user.username} 已锁定")
+            msg = f"用户 {user.username} 已停用"
+
+        if is_ajax:
+            return JsonResponse(
+                {"success": True, "is_active": user.is_active, "message": msg}
+            )
+        messages.success(request, msg)
         return redirect("users:list")
 
 

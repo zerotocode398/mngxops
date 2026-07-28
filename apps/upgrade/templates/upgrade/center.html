@@ -2100,7 +2100,7 @@ function doStartUpgrade() {
         source_package: parseInt(pkg.id, 10),
         upgrade_mode: getUpgradeMode(),
         remote_work_dir: document.getElementById('remoteWorkDir').value,
-        make_jobs: parseInt(document.getElementById('makeJobs').value, 10) || 4,
+        make_jobs: parseInt(document.getElementById('makeJobs').value, 10) || UPGRADE_SETTINGS_MAKE_JOBS,
         target_version: pkg.version,
         target_prefix: getUpgradeMode() === 'switch_path'
             ? ((document.getElementById('targetPrefix').value || '').trim())
@@ -2315,6 +2315,9 @@ function removeTpModule(btn) {
 // ========== 向导状态持久化（刷新保持当前步骤） ==========
 var UPGRADE_WIZARD_STORAGE_KEY = 'mngxops_upgrade_center_v1';
 var _skipWizardSave = false;
+/** 当前页服务端注入的系统设置默认值（所见即所得） */
+var UPGRADE_SETTINGS_WORK_DIR = "{{ default_work_dir|default:'/tmp/nginx-upgrade'|escapejs }}";
+var UPGRADE_SETTINGS_MAKE_JOBS = {{ default_make_jobs|default:4 }};
 
 /** 收集第三方模块行数据 */
 function collectThirdPartyRows() {
@@ -2350,6 +2353,30 @@ function applyThirdPartyRows(rows) {
     });
 }
 
+/**
+ * 按系统设置基线恢复表单字段：用户未改过则保留服务端新默认
+ * @param {string} elId 输入框 id
+ * @param {*} savedValue session 中保存的值
+ * @param {*} oldBaseline 保存时的系统默认
+ * @param {string} currentDefault 当前页服务端默认
+ * @param {string} legacyHardcode 历史硬编码回退（兼容无 baseline 的旧缓存）
+ */
+function applyRestoredSettingField(elId, savedValue, oldBaseline, currentDefault, legacyHardcode) {
+    var el = document.getElementById(elId);
+    if (!el || savedValue == null || savedValue === '') return;
+    var saved = String(savedValue);
+    var baseline = (oldBaseline != null && oldBaseline !== '') ? String(oldBaseline) : null;
+    if (baseline !== null) {
+        // 等于旧系统默认 → 用户未自定义，保留 DOM 上的新默认
+        if (saved === baseline) return;
+        el.value = saved;
+        return;
+    }
+    // 旧缓存无 baseline：等于当前默认或历史硬编码则不覆盖
+    if (saved === String(currentDefault) || saved === String(legacyHardcode)) return;
+    el.value = saved;
+}
+
 /** 保存升级中心向导状态到 sessionStorage */
 function saveUpgradeWizardState() {
     if (_skipWizardSave) return;
@@ -2367,6 +2394,11 @@ function saveUpgradeWizardState() {
             upgradeMode: getUpgradeMode(),
             remoteWorkDir: (document.getElementById('remoteWorkDir') || {}).value || '',
             makeJobs: (document.getElementById('makeJobs') || {}).value || '',
+            // 记录保存时的系统默认，恢复时据此判断用户是否改过
+            settingsBaseline: {
+                workDir: UPGRADE_SETTINGS_WORK_DIR,
+                makeJobs: String(UPGRADE_SETTINGS_MAKE_JOBS),
+            },
             targetPrefix: (document.getElementById('targetPrefix') || {}).value || '',
             currentTaskIds: currentTaskIds,
             currentBatchNumber: currentBatchNumber,
@@ -2409,12 +2441,11 @@ function restoreUpgradeWizardState() {
         var modeEl = document.querySelector('input[name="upgradeMode"][value="' + state.upgradeMode + '"]');
         if (modeEl) modeEl.checked = true;
     }
-    if (document.getElementById('remoteWorkDir') && state.remoteWorkDir != null) {
-        document.getElementById('remoteWorkDir').value = state.remoteWorkDir;
-    }
-    if (document.getElementById('makeJobs') && state.makeJobs != null) {
-        document.getElementById('makeJobs').value = state.makeJobs;
-    }
+    // 工作目录/-j：仅恢复用户相对旧系统默认的自定义值；未改过则保留服务端新默认
+    applyRestoredSettingField('remoteWorkDir', state.remoteWorkDir,
+        (state.settingsBaseline || {}).workDir, UPGRADE_SETTINGS_WORK_DIR, '/tmp/nginx-upgrade');
+    applyRestoredSettingField('makeJobs', state.makeJobs,
+        (state.settingsBaseline || {}).makeJobs, String(UPGRADE_SETTINGS_MAKE_JOBS), '4');
     if (document.getElementById('targetPrefix') && state.targetPrefix != null) {
         document.getElementById('targetPrefix').value = state.targetPrefix;
     }

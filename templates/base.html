@@ -800,7 +800,9 @@
                     </a>
 
                     <!-- ========== 功能模块 ========== -->
+                    {% if user|has_perm_code:"nodes.read" or user|has_perm_code:"credentials.read" or user|has_perm_code:"configs.read" or user|has_perm_code:"releases.read" or user|has_perm_code:"releases.create" %}
                     <div class="nav-section-title">功能模块</div>
+                    {% endif %}
 
                     <!-- 节点管理（可展开） -->
                     {% if user|has_perm_code:"nodes.read" %}
@@ -862,10 +864,9 @@
                     {% endif %}
 
                     <!-- ========== 运维工具 ========== -->
-                    <div class="nav-section-title">运维工具</div>
-
-                    <!-- 运维工具（可展开分组） -->
                     {% if user|has_perm_code:"nodes.read" %}
+                    <div class="nav-section-title">运维工具</div>
+                    <!-- 运维工具（可展开分组） -->
                     <div class="nav-item-wrap">
                     <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-ops" title="运维工具">
                         <i class="bi bi-tools"></i> <span class="sidebar-label">运维工具</span>
@@ -880,7 +881,9 @@
                     {% endif %}
 
                     <!-- ========== 系统管理 ========== -->
+                    {% if user|has_perm_code:"users.read" or user|has_perm_code:"roles.read" or user|has_perm_code:"teams.read" or user|has_perm_code:"audit.read" or user|has_perm_code:"settings.read" %}
                     <div class="nav-section-title">系统管理</div>
+                    {% endif %}
 
                     <!-- 用户管理（可展开） -->
                     {% if user|has_perm_code:"users.read" or user|has_perm_code:"roles.read" or user|has_perm_code:"teams.read" %}

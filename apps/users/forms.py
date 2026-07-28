@@ -3,6 +3,21 @@ from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from .models import UserProfile, UserGroup, UserTeam, PermissionItem
 
+import re
+
+# 登录用户名仅允许 ASCII 字母数字与 _-
+USERNAME_PATTERN = re.compile(r"^[-a-zA-Z0-9_]+$")
+USERNAME_HELP = "仅支持字母、数字、下划线与连字符"
+
+
+def validate_ascii_username(username):
+    """校验用户名是否为 ASCII 合法登录标识"""
+    if not username or not USERNAME_PATTERN.fullmatch(username):
+        raise forms.ValidationError(
+            "用户名仅支持字母、数字、下划线与连字符"
+        )
+    return username
+
 
 class UserGroupForm(forms.ModelForm):
     permissions = forms.ModelMultipleChoiceField(
@@ -32,12 +47,6 @@ class UserCreateForm(UserCreationForm):
         widget=forms.EmailInput(attrs={"class": "form-control"}),
         label="邮箱",
     )
-    first_name = forms.CharField(
-        max_length=30,
-        required=False,
-        widget=forms.TextInput(attrs={"class": "form-control"}),
-        label="姓名",
-    )
     remark = forms.CharField(
         required=False,
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 2, "placeholder": "可选"}),
@@ -45,10 +54,11 @@ class UserCreateForm(UserCreationForm):
     )
     groups = forms.ModelMultipleChoiceField(
         queryset=UserGroup.objects.all(),
-        required=False,
+        required=True,
         widget=forms.CheckboxSelectMultiple(),
         label="角色",
-        help_text="最多可选 3 个",
+        help_text="须至少选择 1 个角色（最多 3 个），否则无法使用功能菜单",
+        error_messages={"required": "请至少选择一个角色"},
     )
     direct_permissions = forms.ModelMultipleChoiceField(
         queryset=PermissionItem.objects.all(),
@@ -60,12 +70,20 @@ class UserCreateForm(UserCreationForm):
 
     class Meta:
         model = User
-        fields = ("username", "email", "first_name", "password1", "password2")
+        fields = ("username", "email", "password1", "password2")
         widgets = {
-            "username": forms.TextInput(attrs={"class": "form-control"}),
+            "username": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "如 ops_admin",
+                }
+            ),
         }
         labels = {
             "username": "用户名",
+        }
+        help_texts = {
+            "username": USERNAME_HELP,
         }
 
     def __init__(self, *args, **kwargs):
@@ -75,9 +93,19 @@ class UserCreateForm(UserCreationForm):
         self.fields["password2"].label = "确认密码"
         self.fields["password1"].widget.attrs.update({"class": "form-control"})
         self.fields["password2"].widget.attrs.update({"class": "form-control"})
+        self.fields["username"].help_text = USERNAME_HELP
+
+    def clean_username(self):
+        """限制用户名为 ASCII 登录标识，并保留唯一性校验"""
+        username = self.cleaned_data.get("username", "")
+        validate_ascii_username(username)
+        return super().clean_username()
 
     def clean_groups(self):
-        groups = self.cleaned_data.get("groups", [])
+        """创建用户须至少关联一个角色"""
+        groups = self.cleaned_data.get("groups") or []
+        if not groups:
+            raise forms.ValidationError("请至少选择一个角色")
         if len(groups) > 3:
             raise forms.ValidationError("用户最多只能关联 3 个角色")
         return groups
@@ -85,7 +113,6 @@ class UserCreateForm(UserCreationForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.email = self.cleaned_data["email"]
-        user.first_name = self.cleaned_data["first_name"]
         if commit:
             user.save()
             profile = UserProfile.objects.create(
@@ -128,12 +155,6 @@ class UserUpdateForm(forms.ModelForm):
         widget=forms.EmailInput(attrs={"class": "form-control"}),
         label="邮箱",
     )
-    first_name = forms.CharField(
-        max_length=30,
-        required=False,
-        widget=forms.TextInput(attrs={"class": "form-control"}),
-        label="姓名",
-    )
     mobile = forms.CharField(
         max_length=20,
         required=False,
@@ -144,12 +165,6 @@ class UserUpdateForm(forms.ModelForm):
         required=False,
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         label="备注",
-    )
-    is_active = forms.BooleanField(
-        required=False,
-        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
-        label="锁定用户",
-        help_text="勾选后用户将无法登录",
     )
     is_superuser = forms.BooleanField(
         required=False,
@@ -173,29 +188,36 @@ class UserUpdateForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ("username", "email", "first_name", "is_active", "is_superuser")
+        fields = ("username", "email", "is_superuser")
         widgets = {
             "username": forms.TextInput(
-                attrs={"class": "form-control", "readonly": True}
+                attrs={"class": "form-control", "placeholder": "如 ops_admin"}
             ),
         }
         labels = {
             "username": "用户名",
         }
+        help_texts = {
+            "username": USERNAME_HELP,
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["username"].help_text = USERNAME_HELP
         if self.instance and hasattr(self.instance, "profile"):
             self.fields["mobile"].initial = self.instance.profile.mobile
             self.fields["remark"].initial = self.instance.profile.remark
             self.fields["email"].initial = self.instance.email
-            self.fields["first_name"].initial = self.instance.first_name
-            self.fields["is_active"].initial = not self.instance.is_active
             self.fields["is_superuser"].initial = self.instance.is_superuser
             self.fields["groups"].initial = self.instance.profile.groups.all()
             self.fields["direct_permissions"].initial = (
                 self.instance.profile.direct_permissions.all()
             )
+
+    def clean_username(self):
+        """限制用户名为 ASCII 登录标识（便于修正历史中文用户名）"""
+        username = self.cleaned_data.get("username", "")
+        return validate_ascii_username(username)
 
     def clean_groups(self):
         groups = self.cleaned_data.get("groups", [])
@@ -206,8 +228,6 @@ class UserUpdateForm(forms.ModelForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.email = self.cleaned_data["email"]
-        user.first_name = self.cleaned_data["first_name"]
-        user.is_active = not self.cleaned_data["is_active"]
         user.is_superuser = self.cleaned_data["is_superuser"]
         if commit:
             user.save()

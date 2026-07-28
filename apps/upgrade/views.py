@@ -396,8 +396,16 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
             node_ids = [int(x) for x in (data.get("node_ids") or [])]
             package_id = int(data.get("source_package") or 0)
             upgrade_mode = (data.get("upgrade_mode") or "upgrade").strip()
-            remote_work_dir = (data.get("remote_work_dir") or "/tmp/nginx-upgrade").strip()
-            make_jobs = int(data.get("make_jobs") or 4)
+            remote_work_dir = (
+                data.get("remote_work_dir")
+                or get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
+                or "/tmp/nginx-upgrade"
+            ).strip()
+            make_jobs = int(
+                data.get("make_jobs")
+                or get_setting("upgrade.make_jobs_default", "4")
+                or 4
+            )
             target_version = (data.get("target_version") or "").strip()
             shared_prefix = (data.get("target_prefix") or "").strip()
             added_modules = data.get("added_modules") or []

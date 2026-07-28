@@ -404,7 +404,10 @@ def run_upgrade_task(task_id):
         # ---- Step 1: 获取 nginx -V（优先写入当前版本，便于失败任务列表展示）----
         update_status("fetching_config", 5)
         log("获取当前 Nginx 编译参数...")
-        _ensure_remote_dir(node.ip, node.port, credential.username, **auth_kwargs_copy)
+        _ensure_remote_dir(
+            node.ip, node.port, credential.username,
+            work_dir=task.remote_work_dir, **auth_kwargs_copy
+        )
 
         success, parsed = fetch_nginx_v_from_node(node)
         if not success:
@@ -450,7 +453,10 @@ def run_upgrade_task(task_id):
         package_filename = os.path.basename(source_package.package_file.name)
         remote_package_path = f"{work_dir}/{package_filename}"
 
-        _ensure_remote_dir(node.ip, node.port, credential.username, **auth_kwargs_copy)
+        _ensure_remote_dir(
+            node.ip, node.port, credential.username,
+            work_dir=work_dir, **auth_kwargs_copy
+        )
 
         # SFTP 上传
         local_path = source_package.package_file.path
@@ -562,7 +568,7 @@ def run_upgrade_task(task_id):
 
         # ---- Step 8: 执行 make ----
         update_status("compiling", 65)
-        make_jobs = task.make_jobs or 4
+        make_jobs = task.make_jobs or int(get_setting("upgrade.make_jobs_default", "4") or 4)
         make_cmd = f"cd {work_dir}/{extract_dir} && make -j{make_jobs} 2>&1"
         log(f"执行 make -j{make_jobs} ...")
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
@@ -662,14 +668,15 @@ def run_upgrade_task(task_id):
             pass
 
 
-def _ensure_remote_dir(host, port, username, password=None, private_key=None):
-    """确保远程目录存在"""
+def _ensure_remote_dir(host, port, username, password=None, private_key=None, work_dir=None):
+    """确保远程编译工作目录存在（优先使用任务目录）"""
     from utils.ssh import SSHClient
-    work_dir = get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
-    # 这里只是确保关键的 work_dir 存在,在 run_upgrade_task 中会确保完整路径
+    target = (work_dir or "").strip() or get_setting(
+        "upgrade.default_work_dir", "/tmp/nginx-upgrade"
+    ) or "/tmp/nginx-upgrade"
     try:
         with SSHClient(host, port, username, password=password, private_key=private_key) as ssh:
-            ssh.execute_command(f"mkdir -p {work_dir}")
+            ssh.execute_command(f"mkdir -p {target}")
     except Exception:
         pass
 
