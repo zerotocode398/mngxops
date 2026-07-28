@@ -1430,3 +1430,31 @@ Q71
  - task_detail：非发布类型子项不链发布历史；Nginx 升级入口「升级任务详情」+批次链升级历史；system_info JSON 定义列表；凭证区标签「目标凭证」
  - 列表摘要补强：format_task_center_summary 目标+结果；摘要列定宽横滚不截断；凭证 detail 改为纯结果计数
 ```
+
+Q72
+```text
+系统设置
+    页面样式过于简陋，其样式、排版、布局过于粗糙，信息密度高层次感低，不符合运维人员操作习惯。
+    你觉得应该怎么设计？
+ ✅ 已修复：
+ - 顶栏独立 card（标题 + 配置项数）+ 左侧粘性 list-group 分组导航 + 右侧 form-section 双列表单
+ - 字段改用 form-label / form-control-sm / form-text + 单位 input-group；底部无色条保存栏（按分组 Ajax）
+ - views：UNIT_MAP 对齐 PRESET 键；GROUP_META 补齐图标（任务中心/Nginx升级）与色条修饰符
+ - 删除旧 pill Tab / setting-row 等页面 CSS；空态改用 empty-state
+ ✅ 布局再优化：
+ - 合并为单一外层 card（header + 左右同框），去掉空顶栏与底部孤立保存卡
+ - 侧栏 active 改为左边色条 + 浅底（对齐 form-section）；条数改为 text-muted 数字
+ - 保存并入 form-section card-header；字段改为单列「标签|控件」行，路径/数字对齐整齐
+ ✅ 对齐 GitLab Settings：
+ - 去掉内层 form-section 色条卡；右侧扁平分区标题 h4 + 说明
+ - 侧栏去条数；设置块 side-by-side（左标题描述 / 右限宽控件）；无字段类型图标
+ - 底部左对齐「保存更改」；integer 限宽 10rem、string 限宽 28rem
+ - 静态原型保留于 docs/prototypes/settings-gitlab-prototype.html
+```
+
+Q73
+```text
+左侧菜单
+    感觉有点宽了，能否调整下？
+    另外左侧菜单能否可伸缩模式？
+```
