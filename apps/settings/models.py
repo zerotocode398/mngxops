@@ -67,6 +67,9 @@ PRESET_SETTINGS = [
      "label": "配置发现最大递归深度", "description": "远程 nginx 配置文件扫描的最大 include 递归层次", "sort_order": 30},
     {"key": "config.default_nginx_path", "group": "配置管理", "type": "string", "value": "/etc/nginx/nginx.conf",
      "label": "默认 nginx 主配置路径", "description": "配置发现时的默认 nginx 主配置文件路径", "sort_order": 31},
+    {"key": "config.default_nginx_bin", "group": "配置管理", "type": "string", "value": "/usr/sbin/nginx",
+     "label": "默认 Nginx 可执行文件路径",
+     "description": "新建/批量导入节点时，Nginx 路径未填则使用该值（与主配置路径区分）", "sort_order": 32},
     {"key": "config.sync_max_concurrency", "group": "配置管理", "type": "integer", "value": "3",
      "label": "配置同步最大并发节点数", "description": "批量同步时的最大并发节点数", "sort_order": 33},
     # 发布管理

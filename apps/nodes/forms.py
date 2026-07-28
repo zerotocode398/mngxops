@@ -122,6 +122,10 @@ class NodeForm(forms.ModelForm):
                 )
             except (TypeError, ValueError):
                 self.fields["port"].initial = 22
+            self.fields["nginx_path"].initial = (
+                get_setting("config.default_nginx_bin", "/usr/sbin/nginx")
+                or "/usr/sbin/nginx"
+            )
         if user and user.is_superuser:
             self.fields["credential"].queryset = Credential.objects.filter(
                 is_enabled=True

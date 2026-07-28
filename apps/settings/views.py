@@ -52,6 +52,7 @@ UNIT_MAP = {
     "credential.test_max_concurrency": "个",
     "config.discover_max_depth": "层",
     "config.default_nginx_path": "",
+    "config.default_nginx_bin": "",
     "config.sync_max_concurrency": "个",
     "release.max_parallel_tasks": "个",
     "release.backup_dir": "",

@@ -11,6 +11,13 @@ urlpatterns = [
     ),
     path("api/groups/", views.NodeGroupListAPIView.as_view(), name="api_groups"),
     path("create/", views.NodeCreateView.as_view(), name="create"),
+    # 批量导入：模板下载 + 上传解析
+    path(
+        "import/template/",
+        views.NodeImportTemplateView.as_view(),
+        name="import_template",
+    ),
+    path("import/", views.NodeImportAPIView.as_view(), name="import_api"),
     path("<int:pk>/edit/", views.NodeUpdateView.as_view(), name="edit"),
     path("<int:pk>/delete/", views.NodeDeleteView.as_view(), name="delete"),
     path("lock/", views.node_lock, name="lock"),

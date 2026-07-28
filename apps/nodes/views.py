@@ -2,7 +2,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.db.models import Q
 from django.utils import timezone
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import redirect, get_object_or_404
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, View
 from django.urls import reverse_lazy
@@ -11,6 +11,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .forms import NodeForm, NodeGroupForm
 from .models import Node, NodeGroup
+from .services import (
+    apply_node_import,
+    build_import_template_bytes,
+    create_or_restore_node,
+    parse_node_import_workbook,
+    validate_node_import_rows,
+)
 from apps.credentials.models import Credential
 from apps.releases.models import TaskCenterTask
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
@@ -353,44 +360,113 @@ class NodeCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
 
     def form_valid(self, form):
         """创建节点；同 IP 若存在逻辑删除记录则恢复原节点"""
-        ip = form.cleaned_data.get("ip")
-        deleted_node = (
-            Node.all_objects.filter(ip=ip, is_deleted=True).first() if ip else None
+        node, restored = create_or_restore_node(
+            self.request.user,
+            hostname=form.cleaned_data["hostname"],
+            ip=form.cleaned_data["ip"],
+            port=form.cleaned_data["port"],
+            credential=form.cleaned_data.get("credential"),
+            groups=list(form.cleaned_data.get("groups") or []),
+            environment=form.cleaned_data.get("environment") or "dev",
+            nginx_path=form.cleaned_data.get("nginx_path") or "",
+            description=form.cleaned_data.get("description") or "",
         )
-        if deleted_node:
-            return self._restore_deleted_node(form, deleted_node)
-
-        form.instance.created_by = self.request.user
-        form.instance.status = "unknown"
-        messages.success(self.request, f"节点 {form.instance.hostname} 创建成功")
-        return super().form_valid(form)
-
-    def _restore_deleted_node(self, form, node):
-        """用表单数据覆盖并恢复逻辑删除的同 IP 节点"""
-        node.hostname = form.cleaned_data["hostname"]
-        node.port = form.cleaned_data["port"]
-        node.credential = form.cleaned_data.get("credential")
-        node.environment = form.cleaned_data.get("environment") or "dev"
-        node.nginx_path = form.cleaned_data.get("nginx_path") or ""
-        node.description = form.cleaned_data.get("description") or ""
-        node.status = "unknown"
-        node.is_deleted = False
-        node.deleted_at = None
-        node.deleted_by = None
-        node.save()
-        groups = form.cleaned_data.get("groups")
-        if groups is not None:
-            node.groups.set(groups)
         self.object = node
-        messages.success(
-            self.request,
-            f"已恢复同 IP 历史节点 {node.hostname}，发布历史已关联",
-        )
+        if restored:
+            messages.success(
+                self.request,
+                f"已恢复同 IP 历史节点 {node.hostname}，发布历史已关联",
+            )
+        else:
+            messages.success(self.request, f"节点 {node.hostname} 创建成功")
         return redirect(self.get_success_url())
 
     def form_invalid(self, form):
         messages.error(self.request, "节点创建失败，请检查输入")
         return super().form_invalid(form)
+
+
+class NodeImportTemplateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """下载节点批量导入 Excel 模板"""
+
+    permission_resource = "nodes"
+    permission_action = "create"
+
+    def get(self, request):
+        """返回 xlsx 模板文件流"""
+        content = build_import_template_bytes()
+        response = HttpResponse(
+            content,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+        response["Content-Disposition"] = (
+            'attachment; filename="node_import_template.xlsx"'
+        )
+        return response
+
+
+class NodeImportAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """上传 Excel 批量创建/恢复节点（整文件校验，失败不写入）"""
+
+    permission_resource = "nodes"
+    permission_action = "create"
+
+    def post(self, request):
+        """解析并导入节点 Excel"""
+        upload = request.FILES.get("file")
+        if not upload:
+            return JsonResponse(
+                {"success": False, "message": "请选择要上传的 Excel 文件", "errors": []}
+            )
+        name = (upload.name or "").lower()
+        if not name.endswith(".xlsx"):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": "仅支持 .xlsx 格式",
+                    "errors": [{"row": 0, "message": "仅支持 .xlsx 格式"}],
+                }
+            )
+
+        rows, parse_errors = parse_node_import_workbook(upload)
+        if parse_errors:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": "Excel 解析失败",
+                    "errors": parse_errors,
+                }
+            )
+
+        cleaned, errors = validate_node_import_rows(rows, request.user)
+        if errors:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": f"校验未通过，共 {len(errors)} 条错误，未导入任何节点",
+                    "errors": errors,
+                }
+            )
+
+        result = apply_node_import(cleaned, request.user)
+        parts = []
+        if result["created"]:
+            parts.append(f"新建 {result['created']} 台")
+        if result["restored"]:
+            parts.append(f"恢复 {result['restored']} 台")
+        message = "批量导入成功：" + "，".join(parts) if parts else "批量导入完成"
+        return JsonResponse(
+            {
+                "success": True,
+                "message": message,
+                "created": result["created"],
+                "restored": result["restored"],
+                "total": result["total"],
+                "errors": [],
+            }
+        )
 
 
 class NodeUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
