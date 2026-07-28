@@ -46,6 +46,27 @@
                                 <div class="text-danger mt-1 small">{% for error in form.mobile.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                                 {% endif %}
                             </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password1.id_for_label }}" class="form-label">
+                                    <i class="bi bi-key"></i> {{ form.password1.label }}
+                                </label>
+                                {{ form.password1 }}
+                                {% if form.password1.help_text %}
+                                <div class="form-text">{{ form.password1.help_text }}</div>
+                                {% endif %}
+                                {% if form.password1.errors %}
+                                <div class="text-danger mt-1 small">{% for error in form.password1.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password2.id_for_label }}" class="form-label">
+                                    <i class="bi bi-key-fill"></i> {{ form.password2.label }}
+                                </label>
+                                {{ form.password2 }}
+                                {% if form.password2.errors %}
+                                <div class="text-danger mt-1 small">{% for error in form.password2.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                                {% endif %}
+                            </div>
                             <div class="col-12 mb-0">
                                 <label for="{{ form.remark.id_for_label }}" class="form-label">
                                     <i class="bi bi-card-text"></i> {{ form.remark.label }}
@@ -109,7 +130,7 @@
                         {% if show_empty_perm_warning %}
                         <div class="alert alert-warning py-2 small mb-3" role="alert">
                             <i class="bi bi-exclamation-triangle text-warning"></i>
-                            当前用户未关联角色且无直授权限，登录后将无法使用侧栏功能菜单，请至少选择一个角色。
+                            当前用户未关联角色且无直授权限，登录后侧栏仅首页。
                         </div>
                         {% endif %}
                         <div class="d-flex align-items-center gap-2">
@@ -127,6 +148,31 @@
                         <div class="d-flex flex-wrap gap-1 mt-2" id="selectedRolesTags"></div>
                         {% if form.groups.errors %}
                         <div class="text-danger mt-1 small">{% for error in form.groups.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- 所属用户组 -->
+                <div class="card mb-3 form-section form-section--teams" id="teamsSection">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-people-fill"></i> 所属用户组</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    data-bs-toggle="modal" data-bs-target="#selectTeamModal">
+                                <i class="bi bi-plus-circle"></i> 选择用户组
+                            </button>
+                            <small class="text-muted">可选</small>
+                        </div>
+                        <div class="d-none" id="teamCheckboxContainer">
+                            {% for checkbox in form.teams %}
+                            <div>{{ checkbox.tag }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="d-flex flex-wrap gap-1 mt-2" id="selectedTeamsTags"></div>
+                        {% if form.teams.errors %}
+                        <div class="text-danger mt-1 small">{% for error in form.teams.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                         {% endif %}
                     </div>
                 </div>
@@ -258,6 +304,65 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                 <button type="button" class="btn btn-primary" id="roleModalConfirmBtn">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 选择用户组弹窗 -->
+<div class="modal fade" id="selectTeamModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-people-fill"></i> 选择用户组</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="tag-input-wrapper form-control" id="teamModalTagWrapper">
+                        <input type="text" class="tag-input-field" id="teamModalSearchField"
+                            placeholder="搜索用户组名称、描述" autocomplete="off">
+                    </div>
+                    <input type="hidden" id="teamModalSearchHidden">
+                </div>
+
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 5%;"></th>
+                                <th style="width: 30%;">组名</th>
+                                <th style="width: 65%;">描述</th>
+                            </tr>
+                        </thead>
+                        <tbody id="teamModalTbody">
+                            {% for t in all_user_teams %}
+                            <tr class="modal-team-row" data-name="{{ t.name }}" data-desc="{{ t.description|default:'' }}">
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input modal-team-cb" value="{{ t.id }}">
+                                </td>
+                                <td>{{ t.name }}</td>
+                                <td><small class="text-muted">{{ t.description|default:"-" }}</small></td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="3" class="text-center text-muted py-4"><i class="bi bi-inbox"></i><p class="mt-1 mb-0">暂无可选用户组</p></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted" id="teamResultInfo"></small>
+                    <small class="text-muted">
+                        已选 <span id="modalTeamSelectedCount">0</span> 个
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="teamModalConfirmBtn">
                     <i class="bi bi-check-lg"></i> 确认选择
                 </button>
             </div>
@@ -398,6 +503,125 @@
         wrapper.addEventListener('click', function(e) { if (e.target === wrapper) focusField(); });
     }
 
+    /** 根据隐藏 checkbox 同步已选用户组 chips */
+    function syncSelectedTeamsFromCheckboxes() {
+        var container = document.getElementById('selectedTeamsTags');
+        var cbs = document.querySelectorAll('#teamCheckboxContainer input[type="checkbox"]');
+        var html = '';
+        cbs.forEach(function(cb) {
+            if (cb.checked) {
+                var value = cb.value;
+                var opt = document.querySelector('#teamModalTbody .modal-team-cb[value="' + value + '"]');
+                var label = (opt ? opt.closest('tr').getAttribute('data-name') : null) || value;
+                html += '<span class="selected-group-badge">' + label +
+                    '<span class="remove-group" onclick="removeSelectedTeam(\'' + value + '\')">&times;</span></span>';
+            }
+        });
+        container.innerHTML = html || '<span class="text-muted small">未选择</span>';
+    }
+
+    /** 移除已选用户组 */
+    function removeSelectedTeam(value) {
+        var cb = document.querySelector('#teamCheckboxContainer input[value="' + value + '"]');
+        if (cb) cb.checked = false;
+        syncSelectedTeamsFromCheckboxes();
+        updateTeamModalCheckboxes();
+        updateTeamModalCounts();
+    }
+
+    /** 将表单已选状态同步到用户组弹窗勾选框 */
+    function updateTeamModalCheckboxes() {
+        document.querySelectorAll('#teamModalTbody .modal-team-cb').forEach(function(cb) {
+            var realCb = document.querySelector('#teamCheckboxContainer input[value="' + cb.value + '"]');
+            cb.checked = realCb ? realCb.checked : false;
+        });
+    }
+
+    /** 按标签与输入过滤用户组列表 */
+    function doTeamSearch() {
+        var wrapper = document.getElementById('teamModalTagWrapper');
+        var badges = wrapper.querySelectorAll('.tag-badge');
+        var tags = [];
+        badges.forEach(function(b) { tags.push(b.getAttribute('data-value')); });
+        var fieldVal = document.getElementById('teamModalSearchField').value.toLowerCase();
+        var visibleCount = 0;
+        document.querySelectorAll('#teamModalTbody .modal-team-row').forEach(function(r) {
+            var name = (r.getAttribute('data-name') || '').toLowerCase();
+            var desc = (r.getAttribute('data-desc') || '').toLowerCase();
+            var txt = name + ' ' + desc;
+            var match = !tags.length || tags.some(function(t) { return txt.indexOf(t.toLowerCase()) >= 0; });
+            if (match && fieldVal) match = txt.indexOf(fieldVal) >= 0;
+            r.style.display = match ? '' : 'none';
+            if (match) visibleCount++;
+        });
+        updateTeamModalCounts();
+        document.getElementById('teamResultInfo').textContent = '共 ' + visibleCount + ' 个结果';
+    }
+
+    /** 更新用户组弹窗已选数量 */
+    function updateTeamModalCounts() {
+        var count = document.querySelectorAll('#teamModalTbody .modal-team-cb:checked').length;
+        document.getElementById('modalTeamSelectedCount').textContent = String(count);
+    }
+
+    /** 初始化用户组弹窗标签搜索 */
+    function initTeamModalTagSearch() {
+        var wrapper = document.getElementById('teamModalTagWrapper');
+        var searchHidden = document.getElementById('teamModalSearchHidden');
+        var field = document.getElementById('teamModalSearchField');
+        if (!wrapper || !field) return;
+
+        function focusField() {
+            field.focus();
+            var len = field.value.length;
+            if (typeof field.setSelectionRange === 'function') field.setSelectionRange(len, len);
+        }
+
+        function updateHidden() {
+            var badges = wrapper.querySelectorAll('.tag-badge');
+            var values = [];
+            badges.forEach(function(b) { values.push(b.getAttribute('data-value')); });
+            searchHidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function(e) {
+                e.stopPropagation();
+                badge.remove();
+                updateHidden();
+                setTimeout(function() { focusField(); doTeamSearch(); }, 0);
+            });
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        field.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = field.value.trim();
+                if (text) { createBadge(text); field.value = ''; }
+                updateHidden();
+                setTimeout(focusField, 0);
+                doTeamSearch();
+            }
+            if (e.key === 'Backspace' && field.value === '') {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length > 0) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    setTimeout(function() { focusField(); doTeamSearch(); }, 0);
+                }
+            }
+        });
+
+        field.addEventListener('input', function() { doTeamSearch(); });
+        wrapper.addEventListener('click', function(e) { if (e.target === wrapper) focusField(); });
+    }
+
     /** 初始化直授权限矩阵全选交互 */
     function initPermMatrix() {
         var matrix = document.getElementById('permMatrix');
@@ -471,7 +695,9 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         syncSelectedRolesFromCheckboxes();
+        syncSelectedTeamsFromCheckboxes();
         initRoleModalTagSearch();
+        initTeamModalTagSearch();
         initPermMatrix();
 
         document.getElementById('selectRoleModal').addEventListener('shown.bs.modal', function() {
@@ -501,6 +727,33 @@
         document.getElementById('roleModalConfirmBtn').addEventListener('click', function() {
             syncSelectedRolesFromCheckboxes();
             bootstrap.Modal.getInstance(document.getElementById('selectRoleModal')).hide();
+        });
+
+        document.getElementById('selectTeamModal').addEventListener('shown.bs.modal', function() {
+            updateTeamModalCheckboxes();
+            updateTeamModalCounts();
+            var wrapper = document.getElementById('teamModalTagWrapper');
+            wrapper.querySelectorAll('.tag-badge').forEach(function(b) { b.remove(); });
+            document.getElementById('teamModalSearchHidden').value = '';
+            document.getElementById('teamModalSearchField').value = '';
+            document.querySelectorAll('#teamModalTbody .modal-team-row').forEach(function(r) { r.style.display = ''; });
+            var totalRows = document.querySelectorAll('#teamModalTbody .modal-team-row').length;
+            document.getElementById('teamResultInfo').textContent = '共 ' + totalRows + ' 个结果';
+        });
+
+        bindModalTableRowToggle(document.getElementById('teamModalTbody'), '.modal-team-cb');
+
+        document.getElementById('teamModalTbody').addEventListener('change', function(e) {
+            if (e.target.classList.contains('modal-team-cb')) {
+                var realCb = document.querySelector('#teamCheckboxContainer input[value="' + e.target.value + '"]');
+                if (realCb) realCb.checked = e.target.checked;
+                updateTeamModalCounts();
+            }
+        });
+
+        document.getElementById('teamModalConfirmBtn').addEventListener('click', function() {
+            syncSelectedTeamsFromCheckboxes();
+            bootstrap.Modal.getInstance(document.getElementById('selectTeamModal')).hide();
         });
 
         // 列表「关联角色」深链定位

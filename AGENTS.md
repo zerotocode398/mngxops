@@ -1669,3 +1669,12 @@ Reverse for 'edit' with arguments '('阿萨德',)' not found. 1 pattern(s) tried
  - 用户 edit/delete/lock 路由由 <slug:username> 改为 <int:pk>，列表反转不再因中文用户名崩溃
  - 创建/编辑表单限制用户名为 [-a-zA-Z0-9_]+，中文请填姓名；历史非法用户名可在编辑页改名
 
+Q83
+```text
+用户管理
+  新增/编辑用户得时候，应该有一个可选用户组的选项，其实现方式可以参考节点列表节点管理节点组
+```
+✅ 已修复：
+ - UserCreateForm/UserUpdateForm 新增 teams 字段，save 时 user.user_teams.set
+ - 创建/编辑页「所属用户组」分区 + 弹窗多选（tag 搜索、行点击勾选、chips），对齐节点组/关联角色
+ - View 传入 all_user_teams；用户组侧「管理成员」入口保留

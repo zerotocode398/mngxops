@@ -1,6 +1,8 @@
 from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import UserProfile, UserGroup, UserTeam, PermissionItem
 
 import re
@@ -54,11 +56,16 @@ class UserCreateForm(UserCreationForm):
     )
     groups = forms.ModelMultipleChoiceField(
         queryset=UserGroup.objects.all(),
-        required=True,
+        required=False,
         widget=forms.CheckboxSelectMultiple(),
         label="角色",
-        help_text="须至少选择 1 个角色（最多 3 个），否则无法使用功能菜单",
-        error_messages={"required": "请至少选择一个角色"},
+        help_text="最多可选 3 个；不选则无功能权限",
+    )
+    teams = forms.ModelMultipleChoiceField(
+        queryset=UserTeam.objects.all(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple(),
+        label="用户组",
     )
     direct_permissions = forms.ModelMultipleChoiceField(
         queryset=PermissionItem.objects.all(),
@@ -102,15 +109,14 @@ class UserCreateForm(UserCreationForm):
         return super().clean_username()
 
     def clean_groups(self):
-        """创建用户须至少关联一个角色"""
+        """校验角色数量上限"""
         groups = self.cleaned_data.get("groups") or []
-        if not groups:
-            raise forms.ValidationError("请至少选择一个角色")
         if len(groups) > 3:
             raise forms.ValidationError("用户最多只能关联 3 个角色")
         return groups
 
     def save(self, commit=True):
+        """创建用户并写入角色、用户组与直授权限"""
         user = super().save(commit=False)
         user.email = self.cleaned_data["email"]
         if commit:
@@ -123,6 +129,7 @@ class UserCreateForm(UserCreationForm):
             profile.direct_permissions.set(
                 self.cleaned_data.get("direct_permissions", [])
             )
+            user.user_teams.set(self.cleaned_data.get("teams") or [])
         return user
 
 
@@ -166,6 +173,29 @@ class UserUpdateForm(forms.ModelForm):
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         label="备注",
     )
+    password1 = forms.CharField(
+        required=False,
+        label="新密码",
+        widget=forms.PasswordInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "留空则不修改",
+                "autocomplete": "new-password",
+            }
+        ),
+        help_text="无法查看原密码；留空表示不修改",
+    )
+    password2 = forms.CharField(
+        required=False,
+        label="确认新密码",
+        widget=forms.PasswordInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "留空则不修改",
+                "autocomplete": "new-password",
+            }
+        ),
+    )
     is_superuser = forms.BooleanField(
         required=False,
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
@@ -177,6 +207,12 @@ class UserUpdateForm(forms.ModelForm):
         widget=forms.CheckboxSelectMultiple(),
         label="角色",
         help_text="最多可选 3 个",
+    )
+    teams = forms.ModelMultipleChoiceField(
+        queryset=UserTeam.objects.all(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple(),
+        label="用户组",
     )
     direct_permissions = forms.ModelMultipleChoiceField(
         queryset=PermissionItem.objects.all(),
@@ -202,8 +238,11 @@ class UserUpdateForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        """预填资料、角色、用户组与直授权限"""
         super().__init__(*args, **kwargs)
         self.fields["username"].help_text = USERNAME_HELP
+        if self.instance and self.instance.pk:
+            self.fields["teams"].initial = list(self.instance.user_teams.all())
         if self.instance and hasattr(self.instance, "profile"):
             self.fields["mobile"].initial = self.instance.profile.mobile
             self.fields["remark"].initial = self.instance.profile.remark
@@ -220,15 +259,42 @@ class UserUpdateForm(forms.ModelForm):
         return validate_ascii_username(username)
 
     def clean_groups(self):
-        groups = self.cleaned_data.get("groups", [])
+        """校验角色数量上限"""
+        groups = self.cleaned_data.get("groups") or []
         if len(groups) > 3:
             raise forms.ValidationError("用户最多只能关联 3 个角色")
         return groups
 
+    def clean(self):
+        """可选重置密码：填任一则两者必填且一致，并校验强度"""
+        cleaned = super().clean()
+        p1 = (cleaned.get("password1") or "").strip()
+        p2 = (cleaned.get("password2") or "").strip()
+        cleaned["password1"] = p1
+        cleaned["password2"] = p2
+        if not p1 and not p2:
+            return cleaned
+        if not p1 or not p2:
+            self.add_error("password1", "修改密码时请同时填写新密码与确认密码")
+            self.add_error("password2", "修改密码时请同时填写新密码与确认密码")
+            return cleaned
+        if p1 != p2:
+            self.add_error("password2", "两次输入的密码不一致")
+            return cleaned
+        try:
+            validate_password(p1, self.instance)
+        except DjangoValidationError as exc:
+            self.add_error("password1", exc)
+        return cleaned
+
     def save(self, commit=True):
+        """更新用户并同步角色、用户组与直授权限"""
         user = super().save(commit=False)
         user.email = self.cleaned_data["email"]
         user.is_superuser = self.cleaned_data["is_superuser"]
+        new_password = self.cleaned_data.get("password1") or ""
+        if new_password:
+            user.set_password(new_password)
         if commit:
             user.save()
             profile, created = UserProfile.objects.get_or_create(user=user)
@@ -239,4 +305,5 @@ class UserUpdateForm(forms.ModelForm):
             profile.direct_permissions.set(
                 self.cleaned_data.get("direct_permissions", [])
             )
+            user.user_teams.set(self.cleaned_data.get("teams") or [])
         return user

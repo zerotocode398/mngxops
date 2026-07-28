@@ -52,9 +52,10 @@ class UserCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     permission_action = "create"
 
     def get_context_data(self, **kwargs):
-        """补充角色弹窗列表与直授权限矩阵"""
+        """补充角色/用户组弹窗列表与直授权限矩阵"""
         context = super().get_context_data(**kwargs)
         context["all_user_groups"] = UserGroup.objects.all().order_by("name")
+        context["all_user_teams"] = UserTeam.objects.all().order_by("name")
         matrix = _get_permission_matrix()
         matrix["selected_ids"] = set()
         context["permission_matrix"] = matrix
@@ -65,7 +66,7 @@ class UserCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
         return super().form_valid(form)
 
     def form_invalid(self, form):
-        messages.error(self.request, "用户创建失败，请检查输入")
+        """仅展示字段级错误，不弹全局失败 toast"""
         return super().form_invalid(form)
 
 
@@ -78,9 +79,10 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     permission_action = "update"
 
     def get_context_data(self, **kwargs):
-        """补充角色弹窗列表，并预选用户已有直授权限"""
+        """补充角色/用户组弹窗列表，并预选用户已有直授权限"""
         context = super().get_context_data(**kwargs)
         context["all_user_groups"] = UserGroup.objects.all().order_by("name")
+        context["all_user_teams"] = UserTeam.objects.all().order_by("name")
         matrix = _get_permission_matrix()
         profile, _ = UserProfile.objects.get_or_create(user=self.object)
         matrix["selected_ids"] = set(
@@ -100,7 +102,7 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
         return super().form_valid(form)
 
     def form_invalid(self, form):
-        messages.error(self.request, "用户更新失败，请检查输入")
+        """仅展示字段级错误，不弹全局失败 toast"""
         return super().form_invalid(form)
 
 
