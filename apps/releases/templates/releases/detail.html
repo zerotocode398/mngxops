@@ -11,17 +11,6 @@
                     <h5 class="mb-0">
                         <i class="bi bi-info-circle"></i>
                         发布详情
-                        {% if task.status == "pending" %}
-                        <span class="badge bg-secondary ms-2">等待发布</span>
-                        {% elif task.status == "running" %}
-                        <span class="badge bg-info ms-2">发布中</span>
-                        {% elif task.status == "success" %}
-                        <span class="badge bg-success ms-2">发布成功</span>
-                        {% elif task.status == "failed" %}
-                        <span class="badge bg-danger ms-2">发布失败</span>
-                        {% elif task.status == "rollback" %}
-                        <span class="badge bg-warning ms-2">已回滚</span>
-                        {% endif %}
                     </h5>
                     <div class="btn-group btn-group-sm">
                         <a href="{% url 'releases:list' %}" class="btn btn-outline-secondary" onclick="goBackToReleaseHistory(event)">
@@ -39,55 +28,65 @@
                         {% endif %}
                     </div>
                 </div>
-                <div class="card-body">
-                    <div class="row mb-4">
+                <div class="card-body task-detail-body">
+                    <div class="row g-2 small mb-3">
                         <div class="col-md-3">
-                            <div class="text-muted small">节点</div>
-                            <div>
-                                {{ task.node.hostname }} ({{ task.node.ip }})
-                                {% if task.node.is_deleted %}
-                                <span class="badge bg-secondary">已删除</span>
-                                {% endif %}
-                            </div>
+                            <span class="text-muted">节点</span>
+                            {{ task.node.hostname }} ({{ task.node.ip }})
+                            {% if task.node.is_deleted %}
+                            <span class="badge bg-secondary">已删除</span>
+                            {% endif %}
                         </div>
                         <div class="col-md-3">
-                            <div class="text-muted small">配置</div>
-                            <div><code>{{ task.config.name }}</code></div>
+                            <span class="text-muted">配置</span>
+                            <code>{{ task.config.name }}</code>
                         </div>
                         <div class="col-md-3">
-                            <div class="text-muted small">版本</div>
-                            <div><span class="badge bg-secondary">v{{ task.version.version }}</span></div>
+                            <span class="text-muted">版本</span>
+                            <span class="badge bg-secondary">v{{ task.version.version }}</span>
                         </div>
                         <div class="col-md-3">
-                            <div class="text-muted small">操作人</div>
-                            <div>{{ task.operator.username }}</div>
+                            <span class="text-muted">操作人</span>
+                            {{ task.operator.username }}
+                        </div>
+                        <div class="col-md-3">
+                            <span class="text-muted">状态</span>
+                            {% if task.status == "pending" %}
+                            <span class="badge bg-secondary">等待发布</span>
+                            {% elif task.status == "running" %}
+                            <span class="badge bg-info">发布中</span>
+                            {% elif task.status == "success" %}
+                            <span class="badge bg-success">发布成功</span>
+                            {% elif task.status == "failed" %}
+                            <span class="badge bg-danger">发布失败</span>
+                            {% elif task.status == "rollback" %}
+                            <span class="badge bg-warning">已回滚</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ task.status }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3">
+                            <span class="text-muted">创建时间</span>
+                            {{ task.created_at|date:"Y-m-d H:i:s" }}
+                        </div>
+                        <div class="col-md-3">
+                            <span class="text-muted">开始时间</span>
+                            {{ task.started_at|date:"Y-m-d H:i:s"|default:"-" }}
+                        </div>
+                        <div class="col-md-3">
+                            <span class="text-muted">完成时间</span>
+                            {{ task.finished_at|date:"Y-m-d H:i:s"|default:"-" }}
                         </div>
                     </div>
 
-                    <div class="row mb-4">
-                        <div class="col-md-4">
-                            <div class="text-muted small">创建时间</div>
-                            <div>{{ task.created_at|date:"Y-m-d H:i:s" }}</div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="text-muted small">开始时间</div>
-                            <div>{% if task.started_at %}{{ task.started_at|date:"Y-m-d H:i:s" }}{% else %}<span class="text-muted">-</span>{% endif %}</div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="text-muted small">完成时间</div>
-                            <div>{% if task.finished_at %}{{ task.finished_at|date:"Y-m-d H:i:s" }}{% else %}<span class="text-muted">-</span>{% endif %}</div>
-                        </div>
-                    </div>
-
-                    <div class="mb-2">
-                        <strong><i class="bi bi-terminal"></i> 执行日志</strong>
-                    </div>
+                    <hr>
+                    <h6 class="mb-2"><i class="bi bi-terminal"></i> 执行日志</h6>
                     <pre class="code-font code-block-preview bg-dark text-light p-3 rounded"
                         style="max-height: 500px; overflow-y: auto;">{% if task.result %}{{ task.result }}{% else %}<span class="text-muted">等待执行...</span>{% endif %}</pre>
 
                     {% if histories %}
                     <div class="mt-4">
-                        <strong><i class="bi bi-list-ul"></i> 操作记录</strong>
+                        <div class="small fw-semibold mb-1"><i class="bi bi-list-ul"></i> 操作记录</div>
                         <div class="table-responsive mt-2">
                             <table class="table table-sm table-hover mb-0 data-table release-detail-table">
                                 <thead class="table-light">
@@ -127,5 +126,9 @@
 
 {% block extra_js %}
 <style>
+    .task-detail-body { font-size: var(--fs-base); line-height: 1.5; }
+    .task-detail-body .text-muted { font-size: var(--fs-sm); }
+    .task-detail-body hr { margin: 0.75rem 0; }
+    .task-detail-body h6 { font-size: var(--fs-md); }
 </style>
 {% endblock %}

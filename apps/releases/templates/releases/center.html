@@ -206,11 +206,16 @@
             <small id="progressText" class="text-muted">准备中...</small>
             <small class="text-muted"><span id="progressPercent">0</span>%</small>
         </div>
-        <div id="progressTree" class="progress-tree" style="max-height: 350px; overflow-y: auto;">
+        <div id="progressCurrentSteps" class="progress-current-steps mb-2 d-none"></div>
+        <div id="progressTree" class="progress-tree" style="max-height: 280px; overflow-y: auto;">
             <div class="text-center text-muted py-3">
                 <div class="spinner-border spinner-border-sm"></div> 初始化中...
             </div>
         </div>
+        <details id="progressLogDetails" class="mt-2">
+            <summary class="small text-muted" style="cursor:pointer;">详细 SSH 日志</summary>
+            <pre id="progressLiveLog" class="code-font progress-live-log mt-2 mb-0 d-none"></pre>
+        </details>
         <div class="d-flex justify-content-end gap-2 mt-3">
             <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSkipFailed">
                 <i class="bi bi-skip-forward"></i> 跳过失败继续
@@ -293,7 +298,24 @@
     .publish-progress-dialog {
         background: #fff; border-radius: 12px; padding: 24px 28px;
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
-        width: 600px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+        width: 640px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+    }
+    .progress-live-log {
+        max-height: 180px; overflow-y: auto; margin: 0;
+        padding: 10px 12px; border-radius: var(--br-md);
+        background: #1a1a2e; color: #e9ecef;
+        font-size: var(--fs-sm); line-height: 1.45;
+        white-space: pre-wrap; word-break: break-word;
+    }
+    .progress-current-steps {
+        font-size: var(--fs-sm); line-height: 1.5;
+        padding: 8px 10px; border-radius: var(--br-md);
+        background: #f8f9fa; border: 1px solid #e9ecef;
+        max-height: 140px; overflow-y: auto;
+    }
+    .progress-current-steps .step-line {
+        display: flex; align-items: center; gap: 6px;
+        padding: 2px 0; color: var(--dark);
     }
     .progress-tree .node-group { margin-bottom: 8px; }
     .progress-tree .node-group-header {
@@ -1231,6 +1253,14 @@
         document.getElementById('progressBar').style.width = '0%';
         document.getElementById('progressPercent').textContent = '0';
         document.getElementById('progressText').textContent = '初始化中...';
+        var stepsEl = document.getElementById('progressCurrentSteps');
+        stepsEl.innerHTML = '';
+        stepsEl.classList.add('d-none');
+        var liveLog = document.getElementById('progressLiveLog');
+        liveLog.textContent = '';
+        liveLog.classList.add('d-none');
+        var details = document.getElementById('progressLogDetails');
+        if (details) details.open = false;
         document.getElementById('progressTree').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 等待任务启动...</div>';
         // 完整日志跳转任务中心，按当前批次号筛选
         document.getElementById('progressLogLink').href =
@@ -1238,6 +1268,45 @@
         document.getElementById('progressOverlay').style.display = 'flex';
 
         startProgressPolling([taskCenterId], batchNumber);
+    }
+
+    function updateProgressCurrentSteps(stepsText) {
+        // 渲染每主机一行当前精炼步骤
+        var el = document.getElementById('progressCurrentSteps');
+        if (!el) return;
+        if (!stepsText) {
+            el.classList.add('d-none');
+            el.innerHTML = '';
+            return;
+        }
+        var lines = stepsText.split('\n').filter(function(l) { return l.trim(); });
+        if (!lines.length) {
+            el.classList.add('d-none');
+            el.innerHTML = '';
+            return;
+        }
+        el.classList.remove('d-none');
+        el.innerHTML = lines.map(function(line) {
+            return '<div class="step-line"><i class="bi bi-arrow-repeat text-info"></i> ' +
+                line.replace(/</g, '&lt;') + '</div>';
+        }).join('');
+    }
+
+    function updateProgressLiveLog(logText) {
+        // 仅在「详细 SSH 日志」展开时刷新全量日志
+        var el = document.getElementById('progressLiveLog');
+        var details = document.getElementById('progressLogDetails');
+        if (!el) return;
+        if (!logText) {
+            el.classList.add('d-none');
+            el.textContent = '';
+            return;
+        }
+        el.classList.remove('d-none');
+        el.textContent = logText;
+        if (details && details.open) {
+            el.scrollTop = el.scrollHeight;
+        }
     }
 
     function startProgressPolling(checkedIds, batchNumber) {
@@ -1254,13 +1323,17 @@
                 var progress = task.progress || 0;
                 var detail = task.detail || '';
                 var result = task.result || '';
+                var logOutput = task.log_output || '';
+                var currentSteps = task.current_steps || '';
                 var finished = task.finished;
 
                 document.getElementById('progressBar').style.width = progress + '%';
                 document.getElementById('progressPercent').textContent = progress;
                 document.getElementById('progressText').textContent = detail || '执行中...';
 
+                updateProgressCurrentSteps(finished ? '' : currentSteps);
                 if (result) renderProgressTree(result);
+                updateProgressLiveLog(logOutput);
 
                 if (finished) {
                     clearInterval(publishInterval);
@@ -1291,6 +1364,10 @@
             if (trimmed.startsWith('[节点] ')) {
                 if (currentNode) html += buildNodeGroup(currentNode.name, currentNode.status, currentNode.configs);
                 currentNode = { name: trimmed.replace('[节点] ', ''), configs: [], status: 'running' };
+            } else if (currentNode && trimmed.startsWith('[进行中]')) {
+                var rname = trimmed.replace('[进行中] ', '').replace(/ v\d+.*$/, '').trim();
+                currentNode.configs.push({ name: rname, status: 'running' });
+                currentNode.status = 'running';
             } else if (currentNode && trimmed.startsWith('[成功]')) {
                 var name = trimmed.replace('[成功] ', '').replace(/ v\d+.*$/, '').trim();
                 currentNode.configs.push({ name: name, status: 'success' });
@@ -1305,7 +1382,8 @@
     }
 
     function buildNodeGroup(nodeName, nodeStatus, configs) {
-        var statusCls = nodeStatus === 'running' ? 'running' : (configs.every(function(c) { return c.status === 'success'; }) ? 'success' : 'failed');
+        var allDone = configs.length && configs.every(function(c) { return c.status !== 'running'; });
+        var statusCls = !allDone ? 'running' : (configs.every(function(c) { return c.status === 'success'; }) ? 'success' : 'failed');
         var statusIcon = statusCls === 'success' ? '<i class="bi bi-check-circle-fill text-success"></i>' : (statusCls === 'failed' ? '<i class="bi bi-x-circle-fill text-danger"></i>' : '<i class="bi bi-hourglass-split"></i>');
         var html = '<div class="node-group">';
         html += '<div class="node-group-header ' + statusCls + '">';
@@ -1313,7 +1391,7 @@
         html += '</div>';
         html += '<div class="node-group-body">';
         configs.forEach(function(c) {
-            var icon = c.status === 'success' ? '<i class="bi bi-check-circle-fill text-success"></i>' : (c.status === 'running' ? '<i class="bi bi-arrow-repeat"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>');
+            var icon = c.status === 'success' ? '<i class="bi bi-check-circle-fill text-success"></i>' : (c.status === 'running' ? '<i class="bi bi-arrow-repeat text-info"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>');
             html += '<div class="config-item">' + icon + ' ' + c.name + '</div>';
         });
         html += '</div></div>';

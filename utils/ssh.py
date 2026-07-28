@@ -455,6 +455,13 @@ def get_system_info(host, port, username, password=None, private_key=None):
         return False, str(e)
 
 
+def _acquire_ssh_client(host, port, username, password=None, private_key=None, client=None):
+    """获取可用 SSH 客户端，返回 (client, should_close)"""
+    if client is not None:
+        return client, False
+    return _build_ssh_client(host, port, username, password, private_key), True
+
+
 def upload_file_via_sftp(
     host,
     port,
@@ -464,38 +471,44 @@ def upload_file_via_sftp(
     local_path=None,
     remote_path=None,
     content=None,
+    client=None,
 ):
-    """通过SFTP上传文件到远程节点"""
+    """通过SFTP上传文件到远程节点（可传入已连接 client 复用会话）"""
+    owns = False
     try:
-        client = _build_ssh_client(host, port, username, password, private_key)
-
+        client, owns = _acquire_ssh_client(
+            host, port, username, password, private_key, client=client,
+        )
         sftp = client.open_sftp()
+        try:
+            if local_path:
+                sftp.put(local_path, remote_path)
+            elif content is not None:
+                import tempfile
+                import os
 
-        if local_path:
-            sftp.put(local_path, remote_path)
-        elif content is not None:
-            import tempfile
-            import os
-
-            content = content.replace("\r\n", "\n").replace("\r", "\n")
-
-            temp_file = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".tmp", delete=False, encoding="utf-8", newline=""
-            )
-            temp_file.write(content)
-            temp_path = temp_file.name
-            temp_file.close()
-
-            try:
-                sftp.put(temp_path, remote_path)
-            finally:
-                os.unlink(temp_path)
-
-        sftp.close()
-        client.close()
+                content = content.replace("\r\n", "\n").replace("\r", "\n")
+                temp_file = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".tmp", delete=False, encoding="utf-8", newline=""
+                )
+                temp_file.write(content)
+                temp_path = temp_file.name
+                temp_file.close()
+                try:
+                    sftp.put(temp_path, remote_path)
+                finally:
+                    os.unlink(temp_path)
+        finally:
+            sftp.close()
         return True, "上传成功"
     except Exception as e:
         return False, str(e)
+    finally:
+        if owns and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def _safe_backup_hostname(hostname):
@@ -522,23 +535,25 @@ def backup_remote_file(
     file_path=None,
     backup_dir=None,
     hostname=None,
+    client=None,
 ):
     """
     备份远程节点上的文件到 {backup_dir}/{hostname}/。
-    源文件不存在时跳过备份并返回成功。
+    源文件不存在时跳过备份并返回成功。可传入已连接 client 复用会话。
     """
     if not backup_dir:
         backup_dir = get_setting(
             "release.backup_dir",
             "/opt/app/mascloud/ansible/mngxops",
         )
+    owns = False
     try:
-        client = _build_ssh_client(host, port, username, password, private_key)
-
+        client, owns = _acquire_ssh_client(
+            host, port, username, password, private_key, client=client,
+        )
         # 首次发布时远程尚无目标文件，跳过备份
         _, stdout, stderr = client.exec_command(f"test -f {file_path}")
         if stdout.channel.recv_exit_status() != 0:
-            client.close()
             return True, ""
 
         timestamp = time.strftime("%Y%m%d%H%M%S")
@@ -551,21 +566,22 @@ def backup_remote_file(
         mkdir_exit = stdout.channel.recv_exit_status()
         if mkdir_exit != 0:
             err = stderr.read().decode("utf-8").strip()
-            client.close()
             return False, f"创建备份目录失败: {err}"
 
         _, stdout, stderr = client.exec_command(f"cp {file_path} {backup_path}")
         exit_code = stdout.channel.recv_exit_status()
-
-        client.close()
-
         if exit_code == 0:
             return True, backup_path
-        else:
-            err = stderr.read().decode("utf-8").strip()
-            return False, f"备份失败: {err}"
+        err = stderr.read().decode("utf-8").strip()
+        return False, f"备份失败: {err}"
     except Exception as e:
         return False, str(e)
+    finally:
+        if owns and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def remove_remote_file(
@@ -575,19 +591,28 @@ def remove_remote_file(
     password=None,
     private_key=None,
     file_path=None,
+    client=None,
 ):
-    """删除远程节点上的文件（首次发布失败回滚用）"""
+    """删除远程节点上的文件（首次发布失败回滚用，可复用 client）"""
+    owns = False
     try:
-        client = _build_ssh_client(host, port, username, password, private_key)
+        client, owns = _acquire_ssh_client(
+            host, port, username, password, private_key, client=client,
+        )
         _, stdout, stderr = client.exec_command(f"rm -f {file_path}")
         exit_code = stdout.channel.recv_exit_status()
-        client.close()
         if exit_code == 0:
             return True, "已删除"
         err = stderr.read().decode("utf-8").strip()
         return False, err or "删除失败"
     except Exception as e:
         return False, str(e)
+    finally:
+        if owns and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def restore_backup_file(
@@ -598,23 +623,28 @@ def restore_backup_file(
     private_key=None,
     backup_path=None,
     original_path=None,
+    client=None,
 ):
-    """从备份恢复远程文件"""
+    """从备份恢复远程文件（可复用 client）"""
+    owns = False
     try:
-        client = _build_ssh_client(host, port, username, password, private_key)
-
+        client, owns = _acquire_ssh_client(
+            host, port, username, password, private_key, client=client,
+        )
         _, stdout, stderr = client.exec_command(f"cp {backup_path} {original_path}")
         exit_code = stdout.channel.recv_exit_status()
-
-        client.close()
-
         if exit_code == 0:
             return True, "回滚成功"
-        else:
-            err = stderr.read().decode("utf-8").strip()
-            return False, f"回滚失败: {err}"
+        err = stderr.read().decode("utf-8").strip()
+        return False, f"回滚失败: {err}"
     except Exception as e:
         return False, str(e)
+    finally:
+        if owns and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def check_remote_file_size(
@@ -624,25 +654,30 @@ def check_remote_file_size(
     password=None,
     private_key=None,
     file_path=None,
+    client=None,
 ):
-    """检查远程文件大小"""
+    """检查远程文件大小（可复用 client）"""
+    owns = False
     try:
-        client = _build_ssh_client(host, port, username, password, private_key)
-
+        client, owns = _acquire_ssh_client(
+            host, port, username, password, private_key, client=client,
+        )
         _, stdout, stderr = client.exec_command(f"wc -c < {file_path}")
         out = stdout.read().decode("utf-8").strip()
         exit_code = stdout.channel.recv_exit_status()
-
-        client.close()
-
         if exit_code == 0:
             size = int(out)
             return size > 0, f"{size} bytes"
-        else:
-            err = stderr.read().decode("utf-8").strip()
-            return False, f"检查失败: {err}"
+        err = stderr.read().decode("utf-8").strip()
+        return False, f"检查失败: {err}"
     except Exception as e:
         return False, str(e)
+    finally:
+        if owns and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def copy_remote_file(
@@ -653,23 +688,28 @@ def copy_remote_file(
     private_key=None,
     src_path=None,
     dst_path=None,
+    client=None,
 ):
-    """在远程节点上复制文件"""
+    """在远程节点上复制文件（可复用 client）"""
+    owns = False
     try:
-        client = _build_ssh_client(host, port, username, password, private_key)
-
+        client, owns = _acquire_ssh_client(
+            host, port, username, password, private_key, client=client,
+        )
         _, stdout, stderr = client.exec_command(f"cp {src_path} {dst_path}")
         exit_code = stdout.channel.recv_exit_status()
-
-        client.close()
-
         if exit_code == 0:
             return True, "复制成功"
-        else:
-            err = stderr.read().decode("utf-8").strip()
-            return False, f"复制失败: {err}"
+        err = stderr.read().decode("utf-8").strip()
+        return False, f"复制失败: {err}"
     except Exception as e:
         return False, str(e)
+    finally:
+        if owns and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def check_remote_file_md5(
@@ -679,25 +719,30 @@ def check_remote_file_md5(
     password=None,
     private_key=None,
     file_path=None,
+    client=None,
 ):
-    """计算远程文件的MD5值"""
+    """计算远程文件的MD5值（可复用 client）"""
+    owns = False
     try:
-        client = _build_ssh_client(host, port, username, password, private_key)
-
+        client, owns = _acquire_ssh_client(
+            host, port, username, password, private_key, client=client,
+        )
         _, stdout, stderr = client.exec_command(f"md5sum {file_path}")
         out = stdout.read().decode("utf-8").strip()
         exit_code = stdout.channel.recv_exit_status()
-
-        client.close()
-
         if exit_code == 0:
             md5 = out.split()[0]
             return True, md5
-        else:
-            err = stderr.read().decode("utf-8").strip()
-            return False, f"md5 失败: {err}"
+        err = stderr.read().decode("utf-8").strip()
+        return False, f"md5 失败: {err}"
     except Exception as e:
         return False, str(e)
+    finally:
+        if owns and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def execute_nginx_test(
@@ -708,25 +753,30 @@ def execute_nginx_test(
     private_key=None,
     nginx_path=None,
     config_path=None,
+    client=None,
 ):
-    """在远程节点执行nginx -t配置测试"""
+    """在远程节点执行nginx -t配置测试（可复用 client）"""
+    owns = False
     try:
-        client = _build_ssh_client(host, port, username, password, private_key)
-
+        client, owns = _acquire_ssh_client(
+            host, port, username, password, private_key, client=client,
+        )
         nginx_bin = nginx_path or "nginx"
         command = f"{nginx_bin} -t"
-
         _, stdout, stderr = client.exec_command(command)
         out = stdout.read().decode("utf-8")
         err = stderr.read().decode("utf-8")
         exit_code = stdout.channel.recv_exit_status()
-
-        client.close()
-
         combined = out + err
         return exit_code == 0, combined.strip()
     except Exception as e:
         return False, str(e)
+    finally:
+        if owns and client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def execute_nginx_reload(
@@ -736,6 +786,7 @@ def execute_nginx_reload(
     password=None,
     private_key=None,
     nginx_path=None,
+    client=None,
 ):
     """在远程节点按启动方式 reload（委托 utils.nginx_ops.reload_nginx）"""
     from utils.nginx_ops import reload_nginx
@@ -747,4 +798,5 @@ def execute_nginx_reload(
         password=password,
         private_key=private_key,
         nginx_path=nginx_path,
+        client=client,
     )

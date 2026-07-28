@@ -33,6 +33,7 @@ from utils.ssh import (
     copy_remote_file,
     execute_nginx_test,
     execute_nginx_reload,
+    _build_ssh_client,
 )
 
 from .models import ReleaseTask, ReleaseHistory, TaskCenterTask, generate_batch_number
@@ -68,11 +69,188 @@ def _start_release_executor(task_ids, task_center_id):
 
 logger = logging.getLogger(__name__)
 
+# 进程内精炼进度：task_center_id -> {hostname: 当前步骤文案}
+_RELEASE_CURRENT_STEPS = {}
+# 进程内增量结果树：task_center_id -> OrderedDict[node_key -> [{name, status, version, reason}]]
+_RELEASE_LIVE_TREE = {}
+
+
+def _append_task_center_log(task_center_id, line, lock=None):
+    """线程安全地向 TaskCenterTask.log_output 追加一行"""
+    def _do():
+        tc = TaskCenterTask.objects.filter(pk=task_center_id).only("log_output").first()
+        if not tc:
+            return
+        prev = tc.log_output or ""
+        new_val = f"{prev}\n{line}" if prev else line
+        TaskCenterTask.objects.filter(pk=task_center_id).update(
+            log_output=new_val,
+            updated_at=timezone.now(),
+        )
+
+    if lock is not None:
+        with lock:
+            _do()
+    else:
+        _do()
+
+
+def _set_current_step(task_center_id, hostname, step, lock=None):
+    """更新某主机当前精炼步骤；step 为 None 时清除该主机"""
+    if not task_center_id:
+        return
+
+    def _do():
+        bucket = _RELEASE_CURRENT_STEPS.setdefault(task_center_id, {})
+        if step is None:
+            bucket.pop(hostname, None)
+            if not bucket:
+                _RELEASE_CURRENT_STEPS.pop(task_center_id, None)
+        else:
+            bucket[hostname] = step
+
+    if lock is not None:
+        with lock:
+            _do()
+    else:
+        _do()
+
+
+def _format_current_steps(task_center_id):
+    """将当前步骤 dict 格式化为多行文本供进度 API 返回"""
+    bucket = _RELEASE_CURRENT_STEPS.get(task_center_id) or {}
+    if not bucket:
+        return ""
+    return "\n".join(f"{host} · {text}" for host, text in sorted(bucket.items()))
+
+
+def _clear_release_progress_state(task_center_id):
+    """批次结束时清理进程内精炼状态"""
+    if not task_center_id:
+        return
+    _RELEASE_CURRENT_STEPS.pop(task_center_id, None)
+    _RELEASE_LIVE_TREE.pop(task_center_id, None)
+
+
+def _serialize_live_tree(task_center_id):
+    """将内存结果树序列化为进度树文本"""
+    from collections import OrderedDict
+    tree = _RELEASE_LIVE_TREE.get(task_center_id) or OrderedDict()
+    lines = []
+    for node_key, configs in tree.items():
+        lines.append(f"[节点] {node_key}")
+        for c in configs:
+            name = c.get("name") or ""
+            ver = c.get("version")
+            ver_s = f" v{ver}" if ver is not None and ver != "" else ""
+            status = c.get("status") or "running"
+            if status == "running":
+                lines.append(f"  [进行中] {name}")
+            elif status == "success":
+                lines.append(f"  [成功] {name}{ver_s}")
+            else:
+                reason = c.get("reason") or ""
+                suffix = f" - 失败原因: {reason}" if reason else ""
+                lines.append(f"  [失败] {name}{ver_s}{suffix}")
+    return "\n".join(lines)
+
+
+def _flush_live_result(task_center_id, lock=None):
+    """把内存结果树刷入 TaskCenterTask.result"""
+    if not task_center_id:
+        return
+
+    def _do():
+        text = _serialize_live_tree(task_center_id)
+        TaskCenterTask.objects.filter(pk=task_center_id).update(
+            result=text,
+            updated_at=timezone.now(),
+        )
+
+    if lock is not None:
+        with lock:
+            _do()
+    else:
+        _do()
+
+
+def _live_tree_set_running(task_center_id, node_key, config_name, version=None, lock=None):
+    """配置开始执行：写入 [进行中]"""
+    if not task_center_id:
+        return
+    from collections import OrderedDict
+
+    def _do():
+        tree = _RELEASE_LIVE_TREE.setdefault(task_center_id, OrderedDict())
+        configs = tree.setdefault(node_key, [])
+        # 同名配置若已有进行中则覆盖，否则追加
+        for c in configs:
+            if c.get("name") == config_name and c.get("status") == "running":
+                c["version"] = version
+                break
+        else:
+            configs.append({
+                "name": config_name,
+                "status": "running",
+                "version": version,
+                "reason": "",
+            })
+        text = _serialize_live_tree(task_center_id)
+        TaskCenterTask.objects.filter(pk=task_center_id).update(
+            result=text, updated_at=timezone.now(),
+        )
+
+    if lock is not None:
+        with lock:
+            _do()
+    else:
+        _do()
+
+
+def _live_tree_set_done(
+    task_center_id, node_key, config_name, ok, version=None, reason="", lock=None,
+):
+    """配置执行结束：将 [进行中] 改为成功/失败"""
+    if not task_center_id:
+        return
+    from collections import OrderedDict
+
+    def _do():
+        tree = _RELEASE_LIVE_TREE.setdefault(task_center_id, OrderedDict())
+        configs = tree.setdefault(node_key, [])
+        status = "success" if ok else "failed"
+        updated = False
+        for c in configs:
+            if c.get("name") == config_name and c.get("status") == "running":
+                c["status"] = status
+                c["version"] = version if version is not None else c.get("version")
+                c["reason"] = reason if not ok else ""
+                updated = True
+                break
+        if not updated:
+            configs.append({
+                "name": config_name,
+                "status": status,
+                "version": version,
+                "reason": reason if not ok else "",
+            })
+        text = _serialize_live_tree(task_center_id)
+        TaskCenterTask.objects.filter(pk=task_center_id).update(
+            result=text, updated_at=timezone.now(),
+        )
+
+    if lock is not None:
+        with lock:
+            _do()
+    else:
+        _do()
+
 
 class ReleaseExecutorMixin:
     """发布执行核心逻辑 - 适配 ConfigNodeBinding"""
 
-    def _execute_release(self, task, action):
+    def _execute_release(self, task, action, task_center_id=None, log_lock=None):
+        """执行单条发布/回滚：复用一条 SSH 会话，并增量写入实时日志"""
         node = task.node
         config = task.config
 
@@ -106,9 +284,39 @@ class ReleaseExecutorMixin:
             return False, "未指定远程路径"
 
         log_lines = []
+        config_label = config.name
 
-        def add_log(msg):
-            log_lines.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+        def add_log(msg, milestone=False, step=None):
+            """追加步骤日志；milestone 时同步精炼当前步骤"""
+            ts = datetime.now().strftime("%H:%M:%S")
+            line = f"[{ts}] {msg}"
+            log_lines.append(line)
+            task.result = "\n".join(log_lines)
+            task.save(update_fields=["result"])
+            if task_center_id:
+                _append_task_center_log(
+                    task_center_id,
+                    f"[{ts}] [{node.hostname}] {msg}",
+                    log_lock,
+                )
+                if milestone:
+                    _set_current_step(
+                        task_center_id,
+                        node.hostname,
+                        step if step is not None else msg,
+                        log_lock,
+                    )
+
+        def _fail(msg):
+            """标记失败并记录历史"""
+            task.status = "failed"
+            task.result = "\n".join(log_lines)
+            task.finished_at = datetime.now()
+            task.save()
+            self._record_history(task, action, task.result)
+            if task_center_id:
+                _set_current_step(task_center_id, node.hostname, None, log_lock)
+            return False, msg
 
         task.status = "running"
         task.started_at = datetime.now()
@@ -124,162 +332,191 @@ class ReleaseExecutorMixin:
         else:
             kwargs["private_key"] = credential.get_private_key()
 
-        # SSH 连接预检
-        add_log("正在测试 SSH 连接...")
-        from utils.ssh import test_ssh_connection
-        conn_ok, conn_msg = test_ssh_connection(**kwargs)
-        if not conn_ok:
-            add_log(f"SSH 连接失败: {conn_msg}")
-            task.status = "failed"
-            task.result = "\n".join(log_lines)
-            task.finished_at = datetime.now()
-            task.save()
-            self._record_history(task, action, task.result)
-            return False, f"SSH 连接失败: {conn_msg}"
-        add_log("SSH 连接测试通过 ✓")
+        ssh = None
+        try:
+            add_log(
+                "正在建立 SSH 连接...",
+                milestone=True,
+                step=f"连接 SSH · {config_label}",
+            )
+            try:
+                ssh = _build_ssh_client(**kwargs)
+            except Exception as e:
+                add_log(f"SSH 连接失败: {e}", milestone=True, step=f"连接失败 · {config_label}")
+                return _fail(f"SSH 连接失败: {e}")
+            add_log(
+                "SSH 连接成功 ✓",
+                milestone=True,
+                step=f"已连接 · {config_label}",
+            )
+            step_kwargs = {**kwargs, "client": ssh}
 
-        version_label = f"v{task.publish_version}" if task.publish_version else "latest"
-        add_log(f"开始发布: {config.name} {version_label} → {node.hostname}")
-        add_log(f"目标路径: {remote_path}")
+            version_label = f"v{task.publish_version}" if task.publish_version else "latest"
+            add_log(
+                f"开始发布: {config.name} {version_label} → {node.hostname}",
+                milestone=True,
+                step=f"开始发布 · {config_label}",
+            )
+            add_log(f"目标路径: {remote_path}")
 
-        if not content or not content.strip():
-            add_log("配置内容为空，中止发布")
-            task.status = "failed"
-            task.result = "\n".join(log_lines)
-            task.finished_at = datetime.now()
-            task.save()
-            self._record_history(task, action, task.result)
-            return False, f"配置 {config.name} {version_label} 内容为空，无法发布"
+            if not content or not content.strip():
+                add_log("配置内容为空，中止发布", milestone=True, step=f"内容为空 · {config_label}")
+                return _fail(f"配置 {config.name} {version_label} 内容为空，无法发布")
 
-        # 备份（远程文件不存在时跳过，支持首次发布；按 hostname 分子目录）
-        add_log("正在备份原配置...")
-        from utils.setting_service import get_setting
-        success, backup_result = backup_remote_file(
-            file_path=remote_path,
-            hostname=node.hostname,
-            backup_dir=get_setting(
-                "release.backup_dir",
-                "/opt/app/mascloud/ansible/mngxops",
-            ),
-            **kwargs,
-        )
-        if success:
-            if backup_result:
-                add_log(f"备份成功: {backup_result}")
-                backup_size_ok, backup_size_msg = check_remote_file_size(file_path=backup_result, **kwargs)
-                add_log(f"备份文件大小: {backup_size_msg}")
-                if not backup_size_ok:
-                    add_log("警告: 备份文件为空，回滚将无法恢复原配置")
+            # 备份（远程文件不存在时跳过，支持首次发布；按 hostname 分子目录）
+            add_log(
+                "正在备份原配置...",
+                milestone=True,
+                step=f"备份中 · {config_label}",
+            )
+            success, backup_result = backup_remote_file(
+                file_path=remote_path,
+                hostname=node.hostname,
+                backup_dir=get_setting(
+                    "release.backup_dir",
+                    "/opt/app/mascloud/ansible/mngxops",
+                ),
+                **step_kwargs,
+            )
+            if success:
+                if backup_result:
+                    add_log(
+                        f"备份成功: {backup_result}",
+                        milestone=True,
+                        step=f"备份完成 · {config_label}",
+                    )
+                    backup_size_ok, backup_size_msg = check_remote_file_size(
+                        file_path=backup_result, **step_kwargs,
+                    )
+                    add_log(f"备份文件大小: {backup_size_msg}")
+                    if not backup_size_ok:
+                        add_log("警告: 备份文件为空，回滚将无法恢复原配置")
+                else:
+                    add_log(
+                        "远程文件不存在，跳过备份（首次发布）",
+                        milestone=True,
+                        step=f"跳过备份 · {config_label}",
+                    )
             else:
-                add_log("远程文件不存在，跳过备份（首次发布）")
-        else:
-            add_log(f"备份失败: {backup_result}")
-            task.status = "failed"
+                add_log(
+                    f"备份失败: {backup_result}",
+                    milestone=True,
+                    step=f"备份失败 · {config_label}",
+                )
+                return _fail(f"备份失败: {backup_result}")
+
+            # 上传到 /tmp
+            add_log(
+                "正在上传配置到 /tmp ...",
+                milestone=True,
+                step=f"上传中 · {config_label}",
+            )
+            tmp_path = f"/tmp/{remote_path.split('/')[-1]}.mngxops_tmp"
+            success, upload_result = upload_file_via_sftp(
+                remote_path=tmp_path, content=content, **step_kwargs,
+            )
+            if not success:
+                add_log(
+                    f"上传到 /tmp 失败: {upload_result}",
+                    milestone=True,
+                    step=f"上传失败 · {config_label}",
+                )
+                return _fail(f"上传到 /tmp 失败: {upload_result}")
+
+            add_log(f"已上传到 {tmp_path}，检查文件大小...")
+            size_ok, size_msg = check_remote_file_size(file_path=tmp_path, **step_kwargs)
+            add_log(f"/tmp 文件大小: {size_msg}")
+            if not size_ok:
+                add_log("/tmp 文件为空，中止发布", milestone=True, step=f"上传为空 · {config_label}")
+                return _fail(f"/tmp 文件为空: {size_msg}")
+
+            # 复制到目标路径
+            add_log(f"从 /tmp 复制到目标路径 {remote_path} ...")
+            copy_ok, copy_msg = copy_remote_file(
+                src_path=tmp_path, dst_path=remote_path, **step_kwargs,
+            )
+            if not copy_ok:
+                add_log(f"复制失败: {copy_msg}", milestone=True, step=f"复制失败 · {config_label}")
+                add_log("正在回滚备份...")
+                self._rollback_backup(backup_result, remote_path, step_kwargs, log_lines, add_log)
+                return _fail(f"复制失败: {copy_msg}")
+
+            # 校验
+            add_log("验证目标文件大小...")
+            target_ok, target_msg = check_remote_file_size(
+                file_path=remote_path, **step_kwargs,
+            )
+            add_log(f"目标文件大小: {target_msg}")
+            add_log("校验文件 md5...")
+            tmp_md5_ok, tmp_md5 = check_remote_file_md5(file_path=tmp_path, **step_kwargs)
+            target_md5_ok, target_md5 = check_remote_file_md5(
+                file_path=remote_path, **step_kwargs,
+            )
+            add_log(f"/tmp md5: {tmp_md5}")
+            add_log(f"目标 md5: {target_md5}")
+            if tmp_md5_ok and target_md5_ok and tmp_md5 == target_md5:
+                add_log("md5 一致 ✓")
+            else:
+                add_log("md5 不一致 ✗")
+
+            if not target_ok:
+                add_log("目标文件为空，正在回滚备份...", milestone=True, step=f"校验失败 · {config_label}")
+                self._rollback_backup(backup_result, remote_path, step_kwargs, log_lines, add_log)
+                return _fail(f"目标文件为空: {target_msg}")
+
+            add_log("上传成功", milestone=True, step=f"上传完成 · {config_label}")
+
+            # nginx -t
+            add_log(
+                "正在执行 nginx -t ...",
+                milestone=True,
+                step=f"nginx -t · {config_label}",
+            )
+            nginx_path = node.nginx_path or None
+            success, test_output = execute_nginx_test(
+                config_path=remote_path, nginx_path=nginx_path, **step_kwargs,
+            )
+            add_log(test_output)
+            if not success:
+                add_log("nginx -t 失败，正在回滚备份...", milestone=True, step=f"nginx -t 失败 · {config_label}")
+                self._rollback_backup(backup_result, remote_path, step_kwargs, log_lines, add_log)
+                return _fail(f"nginx -t 失败: {test_output}")
+
+            # reload
+            add_log(
+                "nginx -t 通过，正在执行 reload...",
+                milestone=True,
+                step=f"reload · {config_label}",
+            )
+            success, reload_output = execute_nginx_reload(
+                nginx_path=nginx_path, **step_kwargs,
+            )
+            add_log(reload_output)
+            if success:
+                add_log("发布成功!", milestone=True, step=f"完成 · {config_label}")
+                task.status = "success"
+                self._on_release_success(task, target_md5)
+            else:
+                add_log("reload 失败，正在回滚备份...", milestone=True, step=f"reload 失败 · {config_label}")
+                self._rollback_backup(backup_result, remote_path, step_kwargs, log_lines, add_log)
+                task.status = "failed"
+
             task.result = "\n".join(log_lines)
             task.finished_at = datetime.now()
             task.save()
             self._record_history(task, action, task.result)
-            return False, f"备份失败: {backup_result}"
-
-        # 上传到 /tmp
-        add_log("正在上传配置到 /tmp ...")
-        tmp_path = f"/tmp/{remote_path.split('/')[-1]}.mngxops_tmp"
-        success, upload_result = upload_file_via_sftp(remote_path=tmp_path, content=content, **kwargs)
-        if not success:
-            add_log(f"上传到 /tmp 失败: {upload_result}")
-            task.status = "failed"
-            task.result = "\n".join(log_lines)
-            task.finished_at = datetime.now()
-            task.save()
-            self._record_history(task, action, task.result)
-            return False, f"上传到 /tmp 失败: {upload_result}"
-
-        add_log(f"已上传到 {tmp_path}，检查文件大小...")
-        size_ok, size_msg = check_remote_file_size(file_path=tmp_path, **kwargs)
-        add_log(f"/tmp 文件大小: {size_msg}")
-        if not size_ok:
-            add_log("/tmp 文件为空，中止发布")
-            task.status = "failed"
-            task.result = "\n".join(log_lines)
-            task.finished_at = datetime.now()
-            task.save()
-            self._record_history(task, action, task.result)
-            return False, f"/tmp 文件为空: {size_msg}"
-
-        # 复制到目标路径
-        add_log(f"从 /tmp 复制到目标路径 {remote_path} ...")
-        copy_ok, copy_msg = copy_remote_file(src_path=tmp_path, dst_path=remote_path, **kwargs)
-        if not copy_ok:
-            add_log(f"复制失败: {copy_msg}")
-            add_log("正在回滚备份...")
-            self._rollback_backup(backup_result, remote_path, kwargs, log_lines)
-            task.status = "failed"
-            task.result = "\n".join(log_lines)
-            task.finished_at = datetime.now()
-            task.save()
-            self._record_history(task, action, task.result)
-            return False, f"复制失败: {copy_msg}"
-
-        # 校验
-        add_log("验证目标文件大小...")
-        target_ok, target_msg = check_remote_file_size(file_path=remote_path, **kwargs)
-        add_log(f"目标文件大小: {target_msg}")
-        add_log("校验文件 md5...")
-        tmp_md5_ok, tmp_md5 = check_remote_file_md5(file_path=tmp_path, **kwargs)
-        target_md5_ok, target_md5 = check_remote_file_md5(file_path=remote_path, **kwargs)
-        add_log(f"/tmp md5: {tmp_md5}")
-        add_log(f"目标 md5: {target_md5}")
-        if tmp_md5_ok and target_md5_ok and tmp_md5 == target_md5:
-            add_log("md5 一致 ✓")
-        else:
-            add_log("md5 不一致 ✗")
-
-        if not target_ok:
-            add_log("目标文件为空，正在回滚备份...")
-            self._rollback_backup(backup_result, remote_path, kwargs, log_lines)
-            task.status = "failed"
-            task.result = "\n".join(log_lines)
-            task.finished_at = datetime.now()
-            task.save()
-            self._record_history(task, action, task.result)
-            return False, f"目标文件为空: {target_msg}"
-
-        add_log("上传成功")
-
-        # nginx -t
-        add_log("正在执行 nginx -t ...")
-        nginx_path = node.nginx_path or None
-        success, test_output = execute_nginx_test(config_path=remote_path, nginx_path=nginx_path, **kwargs)
-        add_log(test_output)
-        if not success:
-            add_log("nginx -t 失败，正在回滚备份...")
-            self._rollback_backup(backup_result, remote_path, kwargs, log_lines)
-            task.status = "failed"
-            task.result = "\n".join(log_lines)
-            task.finished_at = datetime.now()
-            task.save()
-            self._record_history(task, action, task.result)
-            return False, f"nginx -t 失败: {test_output}"
-
-        # reload
-        add_log("nginx -t 通过，正在执行 reload...")
-        success, reload_output = execute_nginx_reload(nginx_path=nginx_path, **kwargs)
-        add_log(reload_output)
-        if success:
-            add_log("发布成功!")
-            task.status = "success"
-            # 回写绑定状态
-            self._on_release_success(task, target_md5)
-        else:
-            add_log("reload 失败，正在回滚备份...")
-            self._rollback_backup(backup_result, remote_path, kwargs, log_lines)
-            task.status = "failed"
-
-        task.result = "\n".join(log_lines)
-        task.finished_at = datetime.now()
-        task.save()
-        self._record_history(task, action, task.result)
-        return True, f"配置 {config.name} {version_label} 发布到 {node.hostname} 成功"
+            if task_center_id:
+                _set_current_step(task_center_id, node.hostname, None, log_lock)
+            ok = task.status == "success"
+            if ok:
+                return True, f"配置 {config.name} {version_label} 发布到 {node.hostname} 成功"
+            return False, f"配置 {config.name} {version_label} 发布到 {node.hostname} 失败"
+        finally:
+            if ssh is not None:
+                try:
+                    ssh.close()
+                except Exception:
+                    pass
 
     def _on_release_success(self, task, remote_md5):
         """发布成功后回写绑定状态"""
@@ -305,26 +542,34 @@ class ReleaseExecutorMixin:
             result=result,
         )
 
-    def _rollback_backup(self, backup_result, config_file_path, kwargs, log_lines):
+    def _rollback_backup(self, backup_result, config_file_path, kwargs, log_lines, add_log=None):
         """发布失败回滚：有备份则还原，无备份（首次发布）则删除新文件"""
+        def _note(msg):
+            if add_log:
+                add_log(msg)
+            else:
+                log_lines.append(msg)
+
         if not backup_result:
             ok, msg = remove_remote_file(file_path=config_file_path, **kwargs)
             if ok:
-                log_lines.append("无原备份，已清理新上传文件")
+                _note("无原备份，已清理新上传文件")
             else:
-                log_lines.append(f"无原备份，清理新文件失败: {msg}")
+                _note(f"无原备份，清理新文件失败: {msg}")
             return
-        backup_size_ok, backup_size_msg = check_remote_file_size(file_path=backup_result, **kwargs)
+        backup_size_ok, backup_size_msg = check_remote_file_size(
+            file_path=backup_result, **kwargs,
+        )
         if not backup_size_ok:
-            log_lines.append("警告: 备份文件为空，跳过回滚")
+            _note("警告: 备份文件为空，跳过回滚")
             return
         rollback_ok, rollback_msg = restore_backup_file(
             backup_path=backup_result, original_path=config_file_path, **kwargs,
         )
         if rollback_ok:
-            log_lines.append("回滚完成")
+            _note("回滚完成")
         else:
-            log_lines.append(f"回滚失败: {rollback_msg}")
+            _note(f"回滚失败: {rollback_msg}")
 
 
 class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseExecutorMixin, View):
@@ -929,10 +1174,13 @@ def _run_release_tasks(task_ids, task_center_id=None):
     failed = 0
     detail_lines = []
     node_results = {}
+    log_lock = threading.Lock()
 
     if task_center_id:
+        _clear_release_progress_state(task_center_id)
         TaskCenterTask.objects.filter(pk=task_center_id).update(
             status="running", started_at=timezone.now(), progress=0,
+            log_output="", result="",
         )
 
     node_tasks = {}
@@ -955,7 +1203,14 @@ def _run_release_tasks(task_ids, task_center_id=None):
         detail_lines.append(f"[节点] {node_key}")
 
         for task in tasks:
-            ok, _ = executor._execute_release(task, "publish")
+            _live_tree_set_running(
+                task_center_id, node_key, task.config.name,
+                task.publish_version, log_lock,
+            )
+            ok, _ = executor._execute_release(
+                task, "publish", task_center_id=task_center_id, log_lock=log_lock,
+            )
+            reason = ""
             if ok:
                 success += 1
                 node_success += 1
@@ -964,7 +1219,14 @@ def _run_release_tasks(task_ids, task_center_id=None):
                 failed += 1
                 node_failed += 1
                 reason = (task.result or "").split("\n")[-1]
-                detail_lines.append(f"  [失败] {task.config.name} v{task.publish_version} - 失败原因: {reason}")
+                detail_lines.append(
+                    f"  [失败] {task.config.name} v{task.publish_version} - 失败原因: {reason}"
+                )
+            _live_tree_set_done(
+                task_center_id, node_key, task.config.name, ok,
+                version=task.publish_version, reason=reason, lock=log_lock,
+            )
+            _set_current_step(task_center_id, task.node.hostname, None, log_lock)
 
             if task_center_id:
                 done = success + failed
@@ -988,6 +1250,7 @@ def _run_release_tasks(task_ids, task_center_id=None):
             result="\n".join(result_lines),
             detail=f"执行完成：成功 {success}，失败 {failed}，共 {total}",
         )
+        _clear_release_progress_state(task_center_id)
 
 
 def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
@@ -996,14 +1259,17 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
 
     executor = ReleaseExecutorMixin()
     total = len(task_ids)
-    success = 0
-    failed = 0
     detail_lines = []
     node_results = {}
+    state = {"success": 0, "failed": 0}
+    state_lock = threading.Lock()
+    log_lock = threading.Lock()
 
     if task_center_id:
+        _clear_release_progress_state(task_center_id)
         TaskCenterTask.objects.filter(pk=task_center_id).update(
             status="running", started_at=timezone.now(), progress=0,
+            log_output="", result="",
         )
 
     node_tasks = {}
@@ -1017,24 +1283,52 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
                 node_tasks[node_key] = []
             node_tasks[node_key].append(task)
         except ReleaseTask.DoesNotExist:
-            failed += 1
+            with state_lock:
+                state["failed"] += 1
             detail_lines.append(f"[失败] 任务#{task_id} 不存在")
 
     def _execute_node(node_key, tasks):
-        """执行单个节点的所有配置发布"""
+        """执行单个节点的所有配置发布，每完成一个配置即刷新进度"""
         node_success = 0
         node_failed = 0
         node_lines = []
         node_lines.append(f"[节点] {node_key}")
         for t in tasks:
-            ok, _ = executor._execute_release(t, "publish")
-            if ok:
-                node_success += 1
-                node_lines.append(f"  [成功] {t.config.name} v{t.publish_version}")
-            else:
-                node_failed += 1
-                reason = (t.result or "").split("\n")[-1]
-                node_lines.append(f"  [失败] {t.config.name} v{t.publish_version} - 失败原因: {reason}")
+            _live_tree_set_running(
+                task_center_id, node_key, t.config.name,
+                t.publish_version, log_lock,
+            )
+            ok, _ = executor._execute_release(
+                t, "publish", task_center_id=task_center_id, log_lock=log_lock,
+            )
+            reason = ""
+            with state_lock:
+                if ok:
+                    state["success"] += 1
+                    node_success += 1
+                    node_lines.append(f"  [成功] {t.config.name} v{t.publish_version}")
+                else:
+                    state["failed"] += 1
+                    node_failed += 1
+                    reason = (t.result or "").split("\n")[-1]
+                    node_lines.append(
+                        f"  [失败] {t.config.name} v{t.publish_version} - 失败原因: {reason}"
+                    )
+                if task_center_id:
+                    done = state["success"] + state["failed"]
+                    TaskCenterTask.objects.filter(pk=task_center_id).update(
+                        progress=int(done * 100 / total) if total else 100,
+                        detail=(
+                            f"并行执行中：成功 {state['success']}，"
+                            f"失败 {state['failed']}，共 {total}"
+                        ),
+                        updated_at=timezone.now(),
+                    )
+            _live_tree_set_done(
+                task_center_id, node_key, t.config.name, ok,
+                version=t.publish_version, reason=reason, lock=log_lock,
+            )
+            _set_current_step(task_center_id, t.node.hostname, None, log_lock)
         return node_key, node_success, node_failed, node_lines
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -1045,20 +1339,13 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
         for future in futures:
             try:
                 node_key, node_success, node_failed, node_lines = future.result()
-                success += node_success
-                failed += node_failed
                 detail_lines.extend(node_lines)
                 node_results[node_key] = {"success": node_success, "failed": node_failed}
-
-                if task_center_id:
-                    done = success + failed
-                    TaskCenterTask.objects.filter(pk=task_center_id).update(
-                        progress=int(done * 100 / total) if total else 100,
-                        detail=f"并行执行中：成功 {success}，失败 {failed}，共 {total}",
-                        updated_at=timezone.now(),
-                    )
             except Exception as e:
                 logger.error(f"并行节点执行异常: {e}")
+
+    success = state["success"]
+    failed = state["failed"]
 
     if task_center_id:
         status = "success" if failed == 0 else "failed"
@@ -1072,6 +1359,7 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
             result="\n".join(result_lines),
             detail=f"执行完成：成功 {success}，失败 {failed}，共 {total}",
         )
+        _clear_release_progress_state(task_center_id)
 
 
 class TaskCenterProgressAPIView(LoginRequiredMixin, View):
@@ -1094,6 +1382,12 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
             {
                 "id": t.id, "status": t.status, "progress": t.progress,
                 "detail": t.detail, "result": t.result,
+                "log_output": t.log_output or "",
+                "current_steps": (
+                    _format_current_steps(t.id)
+                    if t.status in ("pending", "running")
+                    else ""
+                ),
                 "finished": t.status in ["success", "failed", "cancelled"],
             }
             for t in tasks

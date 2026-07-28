@@ -139,6 +139,7 @@ class TaskCenterTask(models.Model):
     )
     detail = models.TextField(blank=True, verbose_name="任务说明")
     result = models.TextField(blank=True, verbose_name="任务结果")
+    log_output = models.TextField(blank=True, verbose_name="实时执行日志")
     progress = models.IntegerField(default=0, verbose_name="进度")
     source_batch = models.CharField(max_length=64, blank=True, verbose_name="来源批次")
     target_hostnames = models.TextField(blank=True, verbose_name="目标主机名")
