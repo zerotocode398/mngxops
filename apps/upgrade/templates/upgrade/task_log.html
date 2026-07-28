@@ -15,25 +15,13 @@
     .task-info-row:last-child { border-bottom: none; }
     .task-info-label { flex: 0 0 96px; color: var(--gray-600); white-space: nowrap; font-size: var(--fs-sm); }
     .task-info-value { flex: 1; min-width: 0; word-break: break-all; font-size: var(--fs-base); }
-    /* 日志标题与正文共用左右内边距，避免与 card-header 错位 */
-    .upgrade-log-panel { border-radius: var(--br-md); overflow: hidden; background: #1a1a2e; }
-    .upgrade-log-title {
-        padding: 0.875rem 1.125rem 0.5rem;
-        color: #e9ecef;
-        font-size: var(--fs-md);
-        margin: 0;
-    }
+    /* 与编译参数区同宽：同在 card-body 内，复用 .nginx-v-output */
     .upgrade-log-body {
-        padding: 0 1.125rem 0.875rem;
         max-height: 500px;
-        overflow-y: auto;
-        color: #00ff88;
-        font-family: var(--font-mono);
-        font-size: var(--fs-xs);
-        line-height: 1.6;
+        margin: 0;
         white-space: pre-wrap;
         word-break: break-all;
-        margin: 0;
+        font-size: var(--fs-xs);
     }
 </style>
 <div class="container-fluid">
@@ -167,12 +155,12 @@
         </div>
         {% endif %}
 
-        <div class="card">
-            <div class="card-body p-0">
-                <div class="upgrade-log-panel">
-                    <h5 class="upgrade-log-title"><i class="bi bi-file-text"></i> 完整执行日志</h5>
-                    <pre id="upgradeLogBody" class="upgrade-log-body code-font">{{ log_output_display|default:"暂无日志" }}</pre>
-                </div>
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-file-text"></i> 完整执行日志</h5>
+            </div>
+            <div class="card-body">
+                <pre id="upgradeLogBody" class="nginx-v-output upgrade-log-body code-font">{{ log_output_display|default:"暂无日志" }}</pre>
             </div>
         </div>
     </div>
@@ -196,7 +184,7 @@
                 } catch (e) {
                     logEl.scrollIntoView(false);
                 }
-                var panel = logEl.closest('.upgrade-log-panel') || logEl;
+                var panel = logEl.closest('.nginx-v-output') || logEl;
                 var rect = panel.getBoundingClientRect();
                 if (rect.bottom > window.innerHeight - 24) {
                     window.scrollBy(0, rect.bottom - window.innerHeight + 24);
