@@ -1386,7 +1386,7 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def get(self, request, pk):
         from django.core.paginator import Paginator
         task = get_object_or_404(
-            ReleaseTask.objects.select_related("node", "config", "binding", "operator"), pk=pk,
+            ReleaseTask.objects.select_related("node", "config", "binding", "operator", "version"), pk=pk,
         )
         if task.status not in self.ROLLBACK_ALLOWED_STATUSES:
             messages.error(request, "仅成功或失败的发布可回滚")
