@@ -1709,7 +1709,8 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
     def dispatch(self, request, *args, **kwargs):
         self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
         self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
-        if not (self.can_read_release_tasks or self.can_read_node_tasks):
+        self.can_sync_configs = user_has_permission(request.user, "configs", "update")
+        if not (self.can_read_release_tasks or self.can_read_node_tasks or self.can_sync_configs):
             return forbidden_response(request, "当前账号无权限访问该功能")
         return super().dispatch(request, *args, **kwargs)
 
@@ -1719,8 +1720,12 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
         if not id_list:
             return JsonResponse({"success": True, "tasks": []})
         tasks = TaskCenterTask.objects.filter(id__in=id_list).order_by("-created_at")
+        # 无发布读权限时：仅本人触发的节点测试 / 配置同步（对齐任务中心列表）
         if not self.can_read_release_tasks:
-            tasks = tasks.filter(operation_type="node_batch_test", trigger_user=request.user)
+            tasks = tasks.filter(
+                operation_type__in=["node_batch_test", "config_batch_sync"],
+                trigger_user=request.user,
+            )
         data = [
             {
                 "id": t.id, "status": t.status, "progress": t.progress,

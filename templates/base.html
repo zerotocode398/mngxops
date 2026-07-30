@@ -580,10 +580,34 @@
         .async-progress-dialog {
             background: #fff; border-radius: var(--br-lg); padding: 24px 28px;
             box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
-            width: 500px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+            width: 640px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
         }
         .async-progress-dialog .progress { height: 8px; }
         .async-progress-dialog .progress-bar { transition: width var(--transition-normal) ease; }
+        .async-progress-current-steps {
+            font-size: var(--fs-sm); line-height: 1.5;
+            padding: 8px 10px; border-radius: var(--br-md);
+            background: #f8f9fa; border: 1px solid #e9ecef;
+            max-height: 140px; overflow-y: auto;
+        }
+        .async-progress-current-steps .step-line {
+            display: flex; align-items: center; gap: 6px;
+            padding: 2px 0; color: var(--dark);
+        }
+        .async-progress-tree .node-group { margin-bottom: 8px; }
+        .async-progress-tree .node-group-header {
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 8px; border-radius: 6px;
+            background: #f8f9fa; font-size: var(--fs-md);
+        }
+        .async-progress-tree .node-group-header.success { background: #d4edda; }
+        .async-progress-tree .node-group-header.failed { background: #f8d7da; }
+        .async-progress-tree .node-group-header.running { background: #fff3cd; }
+        .async-progress-tree .node-group-body { padding-left: 20px; }
+        .async-progress-tree .config-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 3px 0; font-size: var(--fs-sm);
+        }
 
         /* ========== 全局工具类 ========== */
         .code-font { font-family: var(--font-mono); }
@@ -1037,7 +1061,8 @@
                 <small id="asyncProgressText" class="text-muted">准备中...</small>
                 <small class="text-muted"><span id="asyncProgressPercent">0</span>%</small>
             </div>
-            <div id="asyncProgressResult" style="max-height: 250px; overflow-y: auto;"></div>
+            <div id="asyncProgressCurrentSteps" class="async-progress-current-steps mb-2 d-none"></div>
+            <div id="asyncProgressResult" class="async-progress-tree" style="max-height: 250px; overflow-y: auto;"></div>
             <div class="d-flex justify-content-end gap-2 mt-3">
                 <a href="#" id="asyncProgressLogLink" class="btn btn-sm btn-outline-info" target="_blank" style="display:none;">
                     <i class="bi bi-journal-text"></i> 完整日志
@@ -1560,6 +1585,7 @@
             document.getElementById('asyncProgressPercent').textContent = '0';
             document.getElementById('asyncProgressText').textContent = '准备中...';
             document.getElementById('asyncProgressResult').innerHTML = '';
+            updateAsyncProgressCurrentSteps('');
             document.getElementById('asyncProgressLogLink').style.display = 'none';
             document.getElementById('asyncProgressOverlay').style.display = 'flex';
         }
@@ -1567,6 +1593,87 @@
         function closeAsyncProgressOverlay() {
             if (asyncProgressTimer) { clearInterval(asyncProgressTimer); asyncProgressTimer = null; }
             document.getElementById('asyncProgressOverlay').style.display = 'none';
+        }
+
+        /** 渲染精简当前步骤行（对齐发布进度） */
+        function updateAsyncProgressCurrentSteps(stepsText) {
+            var el = document.getElementById('asyncProgressCurrentSteps');
+            if (!el) return;
+            if (!stepsText) {
+                el.classList.add('d-none');
+                el.innerHTML = '';
+                return;
+            }
+            var lines = stepsText.split('\n').filter(function(l) { return l.trim(); });
+            if (!lines.length) {
+                el.classList.add('d-none');
+                el.innerHTML = '';
+                return;
+            }
+            el.classList.remove('d-none');
+            el.innerHTML = lines.map(function(line) {
+                return '<div class="step-line"><i class="bi bi-arrow-repeat text-info"></i> ' +
+                    line.replace(/</g, '&lt;') + '</div>';
+            }).join('');
+        }
+
+        /** 解析任务结果树文本并渲染到遮罩 */
+        function renderAsyncProgressTree(resultText) {
+            var container = document.getElementById('asyncProgressResult');
+            if (!container) return;
+            var lines = (resultText || '').split('\n');
+            var html = '';
+            var currentNode = null;
+
+            function buildNodeGroup(nodeName, configs) {
+                var allDone = configs.length && configs.every(function(c) { return c.status !== 'running'; });
+                var statusCls = !allDone ? 'running'
+                    : (configs.every(function(c) { return c.status === 'success'; }) ? 'success' : 'failed');
+                var statusIcon = statusCls === 'success'
+                    ? '<i class="bi bi-check-circle-fill text-success"></i>'
+                    : (statusCls === 'failed'
+                        ? '<i class="bi bi-x-circle-fill text-danger"></i>'
+                        : '<i class="bi bi-hourglass-split"></i>');
+                var block = '<div class="node-group">';
+                block += '<div class="node-group-header ' + statusCls + '">' + statusIcon + ' ' +
+                    nodeName.replace(/</g, '&lt;') + '</div>';
+                block += '<div class="node-group-body">';
+                configs.forEach(function(c) {
+                    var icon = c.status === 'success'
+                        ? '<i class="bi bi-check-circle-fill text-success"></i>'
+                        : (c.status === 'running'
+                            ? '<i class="bi bi-arrow-repeat text-info"></i>'
+                            : '<i class="bi bi-x-circle-fill text-danger"></i>');
+                    block += '<div class="config-item">' + icon + ' ' +
+                        String(c.name || '').replace(/</g, '&lt;') + '</div>';
+                });
+                block += '</div></div>';
+                return block;
+            }
+
+            lines.forEach(function(line) {
+                var trimmed = line.trim();
+                if (!trimmed) return;
+                if (trimmed.startsWith('[节点] ')) {
+                    if (currentNode) html += buildNodeGroup(currentNode.name, currentNode.configs);
+                    currentNode = { name: trimmed.replace('[节点] ', ''), configs: [] };
+                } else if (currentNode && trimmed.startsWith('[进行中]')) {
+                    currentNode.configs.push({
+                        name: trimmed.replace('[进行中] ', '').trim(),
+                        status: 'running'
+                    });
+                } else if (currentNode && trimmed.startsWith('[成功]')) {
+                    currentNode.configs.push({
+                        name: trimmed.replace('[成功] ', '').trim(),
+                        status: 'success'
+                    });
+                } else if (currentNode && trimmed.startsWith('[失败]')) {
+                    var fname = trimmed.replace('[失败] ', '').replace(/\s*-.*$/, '').trim();
+                    currentNode.configs.push({ name: fname, status: 'failed' });
+                }
+            });
+            if (currentNode) html += buildNodeGroup(currentNode.name, currentNode.configs);
+            container.innerHTML = html || '';
         }
 
         function startAsyncProgressPolling(taskId, onComplete) {
@@ -1587,6 +1694,10 @@
                     document.getElementById('asyncProgressBar').style.width = progress + '%';
                     document.getElementById('asyncProgressPercent').textContent = progress;
                     document.getElementById('asyncProgressText').textContent = detail || '执行中...';
+                    updateAsyncProgressCurrentSteps(finished ? '' : (task.current_steps || ''));
+                    if (task.result) {
+                        renderAsyncProgressTree(task.result);
+                    }
                     if (finished) {
                         clearInterval(asyncProgressTimer);
                         asyncProgressTimer = null;
@@ -1595,6 +1706,9 @@
                             document.getElementById('asyncProgressBar').classList.add('bg-success');
                         } else {
                             document.getElementById('asyncProgressBar').classList.add('bg-warning');
+                        }
+                        if (typeof onComplete === 'function') {
+                            onComplete(task);
                         }
                     }
                 });

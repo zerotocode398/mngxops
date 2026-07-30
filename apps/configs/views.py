@@ -901,7 +901,18 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             trigger_user=request.user,
         )
 
+        def _sync_step_label(status):
+            """同步进度状态中文文案"""
+            return {
+                "created": "新建",
+                "updated": "更新",
+                "deleted": "清理删除",
+                "skipped": "跳过",
+            }.get(status, status)
+
         def _sync_one(node):
+            from apps.releases.views import _set_current_step
+
             close_old_connections()
             result = {
                 "node_id": node.id, "hostname": node.hostname, "ip": node.ip,
@@ -910,83 +921,109 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "created_names": [], "updated_names": [], "orphaned_names": [],
                 "deleted_names": [],
             }
-            if node.is_locked:
-                result["message"] = "节点已锁定"
-                return result
-            credential = _get_node_credential(node)
-            if not credential:
-                result["message"] = "未配置SSH凭证"
-                return result
-            setting = get_or_create_sync_setting(node)
-            nginx_conf_path = setting.main_conf_path or default_nginx_conf_path()
-            if not nginx_conf_path:
-                result["message"] = "未配置nginx路径"
-                return result
+            hostname = node.hostname
+            try:
+                if node.is_locked:
+                    result["message"] = "节点已锁定"
+                    return result
+                credential = _get_node_credential(node)
+                if not credential:
+                    result["message"] = "未配置SSH凭证"
+                    return result
+                setting = get_or_create_sync_setting(node)
+                nginx_conf_path = setting.main_conf_path or default_nginx_conf_path()
+                if not nginx_conf_path:
+                    result["message"] = "未配置nginx路径"
+                    return result
 
-            depth = discover_max_depth()
-            if credential.auth_type == "password":
-                discovered, errors = discover_nginx_configs(
-                    node.ip, node.port, credential.username,
-                    password=credential.get_password(), nginx_conf_path=nginx_conf_path,
-                    max_include_depth=depth,
-                )
-            else:
-                discovered, errors = discover_nginx_configs(
-                    node.ip, node.port, credential.username,
-                    private_key=credential.get_private_key(), nginx_conf_path=nginx_conf_path,
-                    max_include_depth=depth,
-                )
-
-            if errors:
-                mark_discovery_failed_configs(node, errors, request.user, task_id=task_center.id)
-                result["errors"].extend(errors)
-
-            if discovered:
-                created, updated, skipped, orphaned, deleted = sync_discovered_configs(
-                    node, discovered, request.user, remark="批量节点全量同步",
-                    task_id=task_center.id,
-                )
-                save_sync_path(node, nginx_conf_path, request.user)
-                result["created"] = len(created)
-                result["updated"] = len(updated)
-                result["orphaned"] = len(orphaned)
-                result["deleted"] = len(deleted)
-                result["created_names"] = created
-                result["updated_names"] = updated
-                result["orphaned_names"] = orphaned
-                result["deleted_names"] = deleted
-            else:
-                # 无发现结果时仍清理已标记删除的绑定
-                deleted = _cleanup_marked_deleted_bindings(node, request.user)
-                result["deleted"] = len(deleted)
-                result["deleted_names"] = deleted
-
-            if result["errors"]:
-                result["message"] = "; ".join(result["errors"][:3])
-                result["success"] = False
-            elif not discovered:
-                if result["deleted"]:
-                    result["success"] = True
-                    result["message"] = f"已删除 {result['deleted']} 个标记删除配置"
+                _set_current_step(task_center.id, hostname, "连接远程")
+                depth = discover_max_depth()
+                _set_current_step(task_center.id, hostname, "发现配置")
+                if credential.auth_type == "password":
+                    discovered, errors = discover_nginx_configs(
+                        node.ip, node.port, credential.username,
+                        password=credential.get_password(), nginx_conf_path=nginx_conf_path,
+                        max_include_depth=depth,
+                    )
                 else:
-                    result["message"] = "未发现配置文件"
+                    discovered, errors = discover_nginx_configs(
+                        node.ip, node.port, credential.username,
+                        private_key=credential.get_private_key(), nginx_conf_path=nginx_conf_path,
+                        max_include_depth=depth,
+                    )
+
+                if errors:
+                    mark_discovery_failed_configs(node, errors, request.user, task_id=task_center.id)
+                    result["errors"].extend(errors)
+
+                def progress_callback(status, name):
+                    """批量同步：更新该主机精简阶段"""
+                    _set_current_step(
+                        task_center.id, hostname, f"{_sync_step_label(status)} · {name}"
+                    )
+
+                if discovered:
+                    created, updated, skipped, orphaned, deleted = sync_discovered_configs(
+                        node, discovered, request.user, remark="批量节点全量同步",
+                        progress_callback=progress_callback,
+                        task_id=task_center.id,
+                    )
+                    save_sync_path(node, nginx_conf_path, request.user)
+                    result["created"] = len(created)
+                    result["updated"] = len(updated)
+                    result["orphaned"] = len(orphaned)
+                    result["deleted"] = len(deleted)
+                    result["created_names"] = created
+                    result["updated_names"] = updated
+                    result["orphaned_names"] = orphaned
+                    result["deleted_names"] = deleted
+                else:
+                    _set_current_step(task_center.id, hostname, "清理标记删除")
+                    deleted = _cleanup_marked_deleted_bindings(node, request.user)
+                    result["deleted"] = len(deleted)
+                    result["deleted_names"] = deleted
+
+                if result["errors"]:
+                    result["message"] = "; ".join(result["errors"][:3])
                     result["success"] = False
-            else:
-                result["success"] = True
-                result["message"] = (
-                    f"已同步 {len(discovered)} 个配置文件"
-                    f"（新增 {result['created']}，更新 {result['updated']}，删除 {result['deleted']}）"
-                )
-            return result
+                elif not discovered:
+                    if result["deleted"]:
+                        result["success"] = True
+                        result["message"] = f"已删除 {result['deleted']} 个标记删除配置"
+                    else:
+                        result["message"] = "未发现配置文件"
+                        result["success"] = False
+                else:
+                    result["success"] = True
+                    result["message"] = (
+                        f"已同步 {len(discovered)} 个配置文件"
+                        f"（新增 {result['created']}，更新 {result['updated']}，删除 {result['deleted']}）"
+                    )
+                return result
+            finally:
+                _set_current_step(task_center.id, hostname, None)
 
         def _run_batch_sync_task(task_id, sync_nodes):
-            """批量同步，结果写入标准节点→配置树"""
+            """批量同步，结果写入标准节点→配置树，并实时刷活树"""
             from apps.releases.task_result import (
                 build_tree_result,
                 item_failed,
                 item_success,
                 node_header,
             )
+            from apps.releases.views import _clear_release_progress_state
+            import threading as _threading
+
+            live_lock = _threading.Lock()
+            live_blocks = []
+
+            def _flush_live():
+                """刷入进行中结果树供进度遮罩展示"""
+                with live_lock:
+                    text = "\n".join(live_blocks) if live_blocks else ""
+                TaskCenterTask.objects.filter(pk=task_id).update(
+                    result=text, updated_at=timezone.now(),
+                )
 
             try:
                 TaskCenterTask.objects.filter(pk=task_id).update(
@@ -1003,13 +1040,20 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     future_to_node = {executor.submit(_sync_one, node): node for node in sync_nodes}
                     for future in as_completed(future_to_node):
                         node = future_to_node[future]
-                        node_blocks.append(node_header(node.ip, node.hostname))
+                        header = node_header(node.ip, node.hostname)
+                        node_blocks.append(header)
+                        chunk = [header]
                         try:
                             result = future.result()
                         except Exception as exc:
                             fail_count += 1
                             done += 1
-                            node_blocks.append(item_failed("同步", str(exc)[:200]))
+                            fail_line = item_failed("同步", str(exc)[:200])
+                            node_blocks.append(fail_line)
+                            chunk.append(fail_line)
+                            with live_lock:
+                                live_blocks.extend(chunk)
+                            _flush_live()
                             TaskCenterTask.objects.filter(pk=task_id).update(
                                 progress=int(done * 100 / total) if total else 100,
                                 detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{total}",
@@ -1024,22 +1068,37 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                             deleted_names = list(result.get("deleted_names") or [])
                             has_items = False
                             for name in created_names:
-                                node_blocks.append(item_success(f"{name} (新建)"))
+                                line = item_success(f"{name} (新建)")
+                                node_blocks.append(line)
+                                chunk.append(line)
                                 has_items = True
                             for name in updated_names:
-                                node_blocks.append(item_success(f"{name} (更新)"))
+                                line = item_success(f"{name} (更新)")
+                                node_blocks.append(line)
+                                chunk.append(line)
                                 has_items = True
                             for name in deleted_names:
-                                node_blocks.append(item_success(f"{name} (删除)"))
+                                line = item_success(f"{name} (删除)")
+                                node_blocks.append(line)
+                                chunk.append(line)
                                 has_items = True
                             if not has_items:
-                                node_blocks.append(item_success(result.get("message") or "同步"))
+                                line = item_success(result.get("message") or "同步")
+                                node_blocks.append(line)
+                                chunk.append(line)
                         else:
                             fail_count += 1
                             deleted_names = list(result.get("deleted_names") or [])
                             for name in deleted_names:
-                                node_blocks.append(item_success(f"{name} (删除)"))
-                            node_blocks.append(item_failed("同步", result.get("message") or "失败"))
+                                line = item_success(f"{name} (删除)")
+                                node_blocks.append(line)
+                                chunk.append(line)
+                            fail_line = item_failed("同步", result.get("message") or "失败")
+                            node_blocks.append(fail_line)
+                            chunk.append(fail_line)
+                        with live_lock:
+                            live_blocks.extend(chunk)
+                        _flush_live()
                         TaskCenterTask.objects.filter(pk=task_id).update(
                             progress=int(done * 100 / total) if total else 100,
                             detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{total}",
@@ -1065,6 +1124,8 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     detail=f"同步异常: {str(exc)[:120]}",
                     updated_at=timezone.now(),
                 )
+            finally:
+                _clear_release_progress_state(task_id)
 
         import threading
         thread = threading.Thread(target=_run_batch_sync_task, args=(task_center.id, nodes), daemon=True)
@@ -1131,22 +1192,49 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
             auth_kwargs["private_key"] = credential.get_private_key()
 
         def _run_single_sync_thread():
-            """单节点同步线程：异常时将任务标为 failed，避免进度遮罩卡住"""
+            """单节点同步线程：写精简阶段与活树，异常时任务标 failed"""
             from apps.releases.task_result import (
                 build_tree_result,
                 item_failed,
                 item_success,
                 node_header,
             )
+            from apps.releases.views import _set_current_step, _clear_release_progress_state
 
             close_old_connections()
             task = TaskCenterTask.objects.get(pk=task_center.id)
+            hostname = node.hostname
+            live_blocks = [node_header(node.ip, node.hostname)]
+
+            def _flush_live():
+                """刷入进行中结果树"""
+                TaskCenterTask.objects.filter(pk=task.id).update(
+                    result="\n".join(live_blocks),
+                    updated_at=timezone.now(),
+                )
+
+            def _progress_label(status):
+                """进度状态中文文案"""
+                return {
+                    "created": "新建",
+                    "updated": "更新",
+                    "deleted": "清理删除",
+                    "skipped": "跳过",
+                }.get(status, status)
+
             try:
                 task.status = "running"
                 task.started_at = timezone.now()
                 task.progress = 5
                 task.detail = "正在连接远程节点..."
                 task.save(update_fields=["status", "started_at", "progress", "detail", "updated_at"])
+                _set_current_step(task.id, hostname, "连接远程")
+                _flush_live()
+
+                _set_current_step(task.id, hostname, "发现配置")
+                task.detail = "正在发现配置..."
+                task.progress = 10
+                task.save(update_fields=["progress", "detail", "updated_at"])
 
                 discovered, errors = discover_nginx_configs(
                     node.ip, node.port, credential.username,
@@ -1166,17 +1254,16 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                     mark_discovery_failed_configs(node, errors, request.user, task_id=task.id)
 
                 if not discovered:
-                    # 无发现结果时仍清理已标记删除的绑定
+                    _set_current_step(task.id, hostname, "清理标记删除")
                     deleted = _cleanup_marked_deleted_bindings(node, request.user)
-                    node_blocks = [node_header(node.ip, node.hostname)]
                     item_ok = 0
                     item_fail = 0
                     for name in deleted:
-                        node_blocks.append(item_success(f"{name} (删除)"))
+                        live_blocks.append(item_success(f"{name} (删除)"))
                         item_ok += 1
                     if errors:
                         reason = "未发现配置文件；" + "；".join(errors[:3])
-                        node_blocks.append(item_failed("同步", reason))
+                        live_blocks.append(item_failed("同步", reason))
                         item_fail = 1
                         task.status = "failed"
                         task.detail = (
@@ -1188,14 +1275,14 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                             f"同步完成: 0 新增, 0 更新, {len(deleted)} 删除"
                         )
                     else:
-                        node_blocks.append(item_failed("同步", "未发现配置文件"))
+                        live_blocks.append(item_failed("同步", "未发现配置文件"))
                         item_fail = 1
                         task.status = "failed"
                         task.detail = "同步失败：未发现配置文件"
                     task.progress = 100
                     task.finished_at = timezone.now()
                     task.result = build_tree_result(
-                        item_ok, item_fail, item_ok + item_fail, node_blocks,
+                        item_ok, item_fail, item_ok + item_fail, live_blocks,
                     )
                     task.save(update_fields=[
                         "status", "progress", "finished_at", "result", "detail", "updated_at",
@@ -1205,22 +1292,23 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                 total = len(discovered)
                 processed = 0
 
-                def _progress_label(status):
-                    """进度状态中文文案"""
-                    return {
-                        "created": "新建",
-                        "updated": "更新",
-                        "deleted": "删除",
-                        "skipped": "跳过",
-                    }.get(status, status)
-
                 def progress_callback(status, name):
                     nonlocal processed
                     processed += 1
                     pct = min(99, 15 + int(processed * 85 / max(total, 1)))
+                    label = _progress_label(status)
+                    _set_current_step(task.id, hostname, f"{label} · {name}")
+                    # 活树仅追加新建/更新/删除，跳过不落树
+                    if status == "created":
+                        live_blocks.append(item_success(f"{name} (新建)"))
+                    elif status == "updated":
+                        live_blocks.append(item_success(f"{name} (更新)"))
+                    elif status == "deleted":
+                        live_blocks.append(item_success(f"{name} (删除)"))
                     TaskCenterTask.objects.filter(pk=task.id).update(
                         progress=pct,
-                        detail=f"{_progress_label(status)}: {name} ({processed}/{total})",
+                        detail=f"{label}: {name} ({processed}/{total})",
+                        result="\n".join(live_blocks),
                         updated_at=timezone.now(),
                     )
 
@@ -1285,6 +1373,8 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                     detail=f"同步异常: {str(exc)[:120]}",
                     updated_at=timezone.now(),
                 )
+            finally:
+                _clear_release_progress_state(task.id)
 
         import threading
         thread = threading.Thread(target=_run_single_sync_thread, daemon=True)

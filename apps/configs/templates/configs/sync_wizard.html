@@ -397,9 +397,9 @@
         showAlert(title || '提示', message || '');
     }
 
-    /** 确认弹窗：统一走全局 showConfirm（HTML 正文） */
+    /** 确认弹窗：统一走全局 showConfirm（HTML 正文，中等宽度） */
     function showConfirmModal(title, message, iconClass, onConfirm) {
-        showConfirm(title || '确认', message || '', onConfirm, true);
+        showConfirm(title || '确认', message || '', onConfirm, true, 'md');
     }
 
     function updateBatchCount(changedCb) {
