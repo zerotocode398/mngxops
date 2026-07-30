@@ -428,37 +428,47 @@ class ReleaseExecutorMixin:
             )
             return _fail(f"备份失败: {backup_result}")
 
-        # 上传到 /tmp
+        # 上传到临时中转文件（带 task.id 避免同名并发覆盖）
+        tmp_path = f"/tmp/{remote_path.split('/')[-1]}.mngxops_tmp.{task.id}"
+
+        def _cleanup_tmp():
+            """尽力删除远程中转文件，失败仅记日志不阻断流程"""
+            ok, msg = remove_remote_file(file_path=tmp_path, **step_kwargs)
+            if ok:
+                add_log(f"已清理临时文件: {tmp_path}")
+            else:
+                add_log(f"清理临时文件失败（可忽略）: {tmp_path} ({msg})")
+
         add_log(
-            "正在上传配置到 /tmp ...",
+            "正在上传到临时中转文件...",
             milestone=True,
             step=_release_step_label("上传中", config_label, task.publish_version, remote_path),
         )
-        tmp_path = f"/tmp/{remote_path.split('/')[-1]}.mngxops_tmp"
         success, upload_result = upload_file_via_sftp(
             remote_path=tmp_path, content=content, **step_kwargs,
         )
         if not success:
             add_log(
-                f"上传到 /tmp 失败: {upload_result}",
+                f"上传到临时中转文件失败: {upload_result}",
                 milestone=True,
                 step=_release_step_label("上传失败", config_label, task.publish_version, remote_path),
             )
-            return _fail(f"上传到 /tmp 失败: {upload_result}")
+            return _fail(f"上传到临时中转文件失败: {upload_result}")
 
-        add_log(f"已上传到 {tmp_path}，检查文件大小...")
+        add_log(f"已上传到临时中转文件 {tmp_path}，检查文件大小...")
         size_ok, size_msg = check_remote_file_size(file_path=tmp_path, **step_kwargs)
-        add_log(f"/tmp 文件大小: {size_msg}")
+        add_log(f"临时文件大小: {size_msg}")
         if not size_ok:
             add_log(
-                "/tmp 文件为空，中止发布",
+                "临时中转文件为空，中止发布",
                 milestone=True,
                 step=_release_step_label("上传为空", config_label, task.publish_version, remote_path),
             )
-            return _fail(f"/tmp 文件为空: {size_msg}")
+            _cleanup_tmp()
+            return _fail(f"临时中转文件为空: {size_msg}")
 
         # 复制到目标路径
-        add_log(f"从 /tmp 复制到目标路径 {remote_path} ...")
+        add_log(f"从临时中转文件复制到目标路径 {remote_path} ...")
         copy_ok, copy_msg = copy_remote_file(
             src_path=tmp_path, dst_path=remote_path, **step_kwargs,
         )
@@ -470,6 +480,7 @@ class ReleaseExecutorMixin:
             )
             add_log("正在回滚备份...")
             self._rollback_backup(backup_result, remote_path, step_kwargs, log_lines, add_log)
+            _cleanup_tmp()
             return _fail(f"复制失败: {copy_msg}")
 
         # 校验
@@ -483,7 +494,7 @@ class ReleaseExecutorMixin:
         target_md5_ok, target_md5 = check_remote_file_md5(
             file_path=remote_path, **step_kwargs,
         )
-        add_log(f"/tmp md5: {tmp_md5}")
+        add_log(f"临时文件 md5: {tmp_md5}")
         add_log(f"目标 md5: {target_md5}")
         if tmp_md5_ok and target_md5_ok and tmp_md5 == target_md5:
             add_log("md5 一致 ✓")
@@ -497,7 +508,11 @@ class ReleaseExecutorMixin:
                 step=_release_step_label("校验失败", config_label, task.publish_version, remote_path),
             )
             self._rollback_backup(backup_result, remote_path, step_kwargs, log_lines, add_log)
+            _cleanup_tmp()
             return _fail(f"目标文件为空: {target_msg}")
+
+        # 中转已落地目标，清理临时文件后再继续 nginx -t
+        _cleanup_tmp()
 
         add_log(
             "上传成功",

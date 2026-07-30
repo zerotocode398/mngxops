@@ -334,6 +334,8 @@
     var expandedNodes = {};
     var publishInterval = null;
     var contentPreviewModal = null;
+    /** 最近一次提交发布的绑定 ID 列表（进度成功后从清单剔除） */
+    var lastPublishedBindingIds = [];
 
     var preNodeId = parseInt('{{ pre_node_id }}' || '0') || 0;
     var preBindingId = parseInt('{{ pre_binding_id }}' || '0') || 0;
@@ -347,11 +349,11 @@
         });
     }
 
-    // 从已缓存的绑定数据填充 selectedBindings
+    // 从已缓存的绑定数据填充 selectedBindings（仅纳入当前状态筛选匹配项）
     function populateBindingsFromCache(nodeId) {
         if (!bindingCache[nodeId] || bindingCache[nodeId].length === 0) return;
         if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
-        bindingCache[nodeId].forEach(function(b) {
+        filterBindingsBySyncStatus(bindingCache[nodeId]).forEach(function(b) {
             if (!selectedBindings[nodeId][b.id]) {
                 selectedBindings[nodeId][b.id] = {
                     id: b.id, config_name: b.config_name,
@@ -371,7 +373,7 @@
             if (!res.success) return;
             bindingCache[nodeId] = res.bindings;
             if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
-            res.bindings.forEach(function(b) {
+            filterBindingsBySyncStatus(res.bindings).forEach(function(b) {
                 if (!selectedBindings[nodeId][b.id]) {
                     selectedBindings[nodeId][b.id] = {
                         id: b.id, config_name: b.config_name,
@@ -396,6 +398,46 @@
         return currentFilters.search.replace(/，/g, ',').split(',').map(function(t) {
             return t.trim().toLowerCase();
         }).filter(Boolean);
+    }
+
+    /**
+     * 判断绑定 sync_status 是否匹配当前状态标签
+     * pending 对应 not_synced/modified，与节点 API 及计数口径一致
+     */
+    function matchSyncStatusFilter(syncStatus, filter) {
+        if (!filter) return true;
+        if (filter === 'pending') {
+            return syncStatus === 'not_synced' || syncStatus === 'modified';
+        }
+        return syncStatus === filter;
+    }
+
+    /** 按当前状态标签过滤绑定列表 */
+    function filterBindingsBySyncStatus(bindings) {
+        if (!bindings || bindings.length === 0) return [];
+        var filter = currentFilters.syncStatus || '';
+        if (!filter) return bindings;
+        return bindings.filter(function(b) {
+            return matchSyncStatusFilter(b.sync_status, filter);
+        });
+    }
+
+    /** 切换状态标签时修剪已选绑定，去掉不匹配项 */
+    function pruneSelectedBySyncStatus() {
+        var filter = currentFilters.syncStatus || '';
+        Object.keys(selectedBindings).forEach(function(nodeId) {
+            var nodeBindings = selectedBindings[nodeId];
+            Object.keys(nodeBindings).forEach(function(bid) {
+                if (!matchSyncStatusFilter(nodeBindings[bid].sync_status, filter)) {
+                    delete nodeBindings[bid];
+                }
+            });
+            if (Object.keys(nodeBindings).length === 0) {
+                delete selectedBindings[nodeId];
+                delete selectedNodes[nodeId];
+            }
+        });
+        refreshSelectionUI();
     }
 
     /**
@@ -629,11 +671,15 @@
         if (!bindingRow) return;
         if (!expandedNodes[nodeId]) return;
 
-        // 展示层按搜索词过滤（缓存仍保留完整列表）
-        bindings = filterBindingsBySearch(bindings);
+        // 展示层按搜索词与状态标签过滤（缓存仍保留完整列表）
+        var rawBindings = bindings || [];
+        bindings = filterBindingsBySyncStatus(filterBindingsBySearch(rawBindings));
 
         if (bindings.length === 0) {
-            bindingRow.innerHTML = '<td colspan="6" class="text-center text-muted py-2">当前节点无配置绑定</td>';
+            var emptyMsg = rawBindings.length === 0
+                ? '当前节点无配置绑定'
+                : '当前筛选条件下无配置绑定';
+            bindingRow.innerHTML = '<td colspan="6" class="text-center text-muted py-2">' + emptyMsg + '</td>';
             return;
         }
 
@@ -898,6 +944,7 @@
         tag.addEventListener('click', function() {
             currentFilters.syncStatus = this.dataset.status;
             currentNodePage = 1;
+            pruneSelectedBySyncStatus();
             loadNodes(1);
             // 切换 active 样式
             document.querySelectorAll('#bindingStatusFilter .status-filter-tag').forEach(function(t) {
@@ -1114,6 +1161,10 @@
             triggerBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
         }
 
+        // 记录本次提交的绑定，供进度成功后从确认清单剔除
+        lastPublishedBindingIds = bindings.map(function(b) { return parseInt(b.binding_id, 10); })
+            .filter(function(id) { return !!id; });
+
         fetch('/releases/api/create/', {
             method: 'POST',
             headers: {
@@ -1135,16 +1186,81 @@
                     showProgressOverlay(data.batch_number, data.task_center_id);
                 }
             } else {
+                lastPublishedBindingIds = [];
                 showToast(data.message || '创建失败', 'danger');
             }
         })
         .catch(function() {
+            lastPublishedBindingIds = [];
             if (triggerBtn) {
                 triggerBtn.disabled = false;
                 triggerBtn.innerHTML = origHTML;
             }
             showToast('网络错误，请重试', 'danger');
         });
+    }
+
+    /** 按 binding_id 从已选中移除，并同步 Step1 勾选 / Step2 清单 */
+    function removePublishedFromSelection(bindingIds) {
+        if (!bindingIds || bindingIds.length === 0) return;
+        var idSet = {};
+        bindingIds.forEach(function(id) { idSet[id] = true; });
+        var affectedNodeIds = [];
+
+        Object.keys(selectedBindings).forEach(function(nodeId) {
+            var nodeBindings = selectedBindings[nodeId];
+            var removed = false;
+            Object.keys(nodeBindings).forEach(function(bid) {
+                if (idSet[parseInt(bid, 10)]) {
+                    delete nodeBindings[bid];
+                    removed = true;
+                }
+            });
+            if (removed) {
+                affectedNodeIds.push(parseInt(nodeId, 10));
+                delete bindingCache[nodeId];
+            }
+            if (Object.keys(nodeBindings).length === 0) {
+                delete selectedBindings[nodeId];
+                delete selectedNodes[nodeId];
+            }
+        });
+
+        syncStep1Checkboxes();
+        refreshSelectionUI();
+
+        var step2 = document.getElementById('step2');
+        var onStep2 = step2 && !step2.classList.contains('d-none');
+        if (onStep2) {
+            buildPreview();
+            var remaining = 0;
+            Object.keys(selectedBindings).forEach(function(nid) {
+                remaining += Object.keys(selectedBindings[nid]).length;
+            });
+            if (remaining === 0) {
+                // 清单已空，回到 Step1 继续选择
+                step2.classList.add('d-none');
+                document.getElementById('step1').classList.remove('d-none');
+            }
+        }
+        return affectedNodeIds;
+    }
+
+    /** 按 selectedBindings / selectedNodes 同步 Step1 复选框 */
+    function syncStep1Checkboxes() {
+        document.querySelectorAll('.binding-cb').forEach(function(cb) {
+            var nid = parseInt(cb.dataset.nodeId, 10);
+            var bid = parseInt(cb.dataset.bindingId, 10);
+            cb.checked = !!(selectedBindings[nid] && selectedBindings[nid][bid]);
+        });
+        document.querySelectorAll('.node-cb').forEach(function(cb) {
+            var nid = parseInt(cb.value, 10);
+            cb.checked = selectedNodes[nid] !== undefined;
+        });
+        var allCbs = document.querySelectorAll('.node-cb:not(:disabled)');
+        var allChecked = allCbs.length > 0 && Array.prototype.every.call(allCbs, function(c) { return c.checked; });
+        var selectAll = document.getElementById('selectAllNodes');
+        if (selectAll) selectAll.checked = allChecked;
     }
 
     // 全量发布
@@ -1304,6 +1420,9 @@
                     if (task.status === 'success') {
                         document.getElementById('progressBar').classList.add('bg-success');
                         document.getElementById('progressText').textContent = '全部发布成功';
+                        // 成功后从确认清单剔除本次已发布项
+                        removePublishedFromSelection(lastPublishedBindingIds);
+                        lastPublishedBindingIds = [];
                     } else {
                         document.getElementById('progressBar').classList.add('bg-warning');
                         document.getElementById('progressText').textContent = '部分任务失败，请查看详情';

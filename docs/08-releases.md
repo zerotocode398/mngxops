@@ -91,10 +91,10 @@ sequenceDiagram
 对**同一节点**一次 SSH 会话内：
 
 1. **备份**：`{release.backup_dir}/{hostname}/filename.timestamp`；远程不存在则跳过（Q48/Q61）。  
-2. **上传**：SFTP 至临时路径再落到 `remote_path`；大小/MD5 校验。  
+2. **上传**：SFTP 至临时中转 `/tmp/{filename}.mngxops_tmp.{task_id}`，复制到 `remote_path` 并做大小/MD5 校验后**删除中转文件**（Q101）；与备份目录无关。  
 3. **nginx -t**：每配置校验；本阶段不 reload。  
 4. **统一 reload**：`_finalize_node_reload` → `utils/nginx_ops`。  
-5. **失败**：回滚本节点本批已上传（有备份则还原，首发失败则 rm）。  
+5. **失败**：回滚本节点本批已上传（有备份则还原，首发失败则 rm）；已上传的中转文件尽力清理。  
 6. **成功**：绑定 `sync_status=synced`，更新 `synced_version`、`remote_content_hash`、时间。
 
 跨节点并行：`release.max_parallel_tasks`；节点内串行配置。
