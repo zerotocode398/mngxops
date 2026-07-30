@@ -1,1680 +1,744 @@
-Q1
-```text
-配置列表
-	点击节点时，其配置会自动展开
-	然后点击操作编辑、版本历史按钮，随后点击“<-返回列表”
-	发现其配置未展开，需要额外再次点击主机展开。
-    能否调整为点击“返回列表”时，继续保持展开？
-    ✅ 已修复
-```
-
-Q2
-```text
-配置列表
-	手动添加，手动添加配置标签后页面看不到数据。
-    ✅ 已修复：创建配置标签后直接跳转到绑定创建页（config 已预选）
-```
-
-Q3
-```text
-配置管理
-    创建配置标签节点绑定的目标节点，能否改成自定义弹窗形式；其自定义弹窗可以参考编辑节点组"添加/修改节点"为基准进行设计。其查询条件需要支持主机名、IP、节点组。自定义弹窗需要支持批量选择，用户可以同时选择多个节点进行绑定。
-    自定义弹窗的样式、字体、条件标签等等等都需要和"添加/修改节点"保持一致。
-    ✅ 已修复：binding_create.html 替换为弹窗选择，支持标签搜索+多选，BindingCreateView 循环创建多个绑定
-```
-
-Q4
-```text
-配置管理
-    创建节点绑定选择节点，请统一字符，主机名是粗体
-    点击表行时应该自动勾选
-    查询条件输入节点组标签查询为空
-    未绑定标签：创建了配置标签但未绑定节点，列表页展示"未绑定的配置标签"区域，支持绑定节点和删除标签操作
-    ✅ 已修复：主机名粗体(已有<strong>)；行点击勾选(加tbody click事件)；节点组搜索(API加groups__name匹配)；列表页新增未绑定标签区域+删除弹窗
-```
-
-Q5
-```text
-配置管理
-    未绑定的标签是否需要支持批量操作、查询等功能？
-    ✅ 不需要：未绑定标签是辅助清理区，保持简单，逐个删除即可。创建标签后直接跳转绑定页已在 Q2 解决。
-```
-
-Q6
-```text
-配置列表
-    手动添加配置标签里的备注文案"可选：创建绑定时若远程无此文件，可基于此模板生成初始内容"，我理解可以直接删了。
-    ✅ 已修复：删除 forms.py placeholder + models.py help_text，生成迁移 0004
-```
-
-Q7
-```text
-配置管理
-    我刚刚创建配置标签管理节点，然后节点删除次配置自定义弹窗提示
-        解除绑定
-        确定要解除 baidu 在节点 lsj 上的绑定吗？
-        解除后将标记为"待删除"，下次同步时会清理远程文件。
-    远程没有该文件。
-    ✅ 已修复：not_synced/orphaned 直接物理删除；弹窗按状态显示不同提示文案
-```
-
-Q8
-```text
-配置管理
-    配置同步点击应用或者单节点配置同步时，若有同步失败的，"已同步配置"不是会标黄的吗。
-    点击标黄是否可以跳转到配置列表页面，且查询条件为当前主机名。
-    然后点击配置列表页面状态，会自动跳转到任务中心任务详情里。
-    ✅ 已修复：新增 last_sync_task_id 字段；同步时写入 task_id；sync_wizard 标黄链接到配置列表；配置列表 syncing/failed 链接到任务中心详情；单节点同步也创建 TaskCenterTask 统一行为
-```
-
-Q9
-```text
-配置同步
-    选择单节点同步时，部分同步或者开始同步的自定义弹窗，能否动态显示同步进度？
-    这个你有什么建议？
-    前端效果
-    ┌─ 同步进度 ────────────────────────────┐
-    │                                        │
-    │  🔄 正在同步: ssl.conf (3/12)          │
-    │  ██████████░░░░░░░░░░  25%            │
-    │                                        │
-    │  web01: ⏳ 同步中...                    │
-    │                        [同步中...]      │
-    └────────────────────────────────────────┘
-    ✅ 已修复：单节点同步改为异步线程+TaskCenterTask进度追踪；ConfigSyncProgressView 从任务读取真实进度；前端轮询改为用 task_center_id
-```
-
-Q10
-```text
-Q9 其实有问题，同步多个单节点并不是异步，而是同步的。因此无法动态展示同步到了几个配置。
-我想的是能不能读秒，展示同步进度。
-    ✅ 已修复：百分比改为读秒计时器；doFullSync/submitPartialSync 启动 setInterval；完成/失败/超时自动清除
-```
-
-
-Q11
-```text
-配置管理手动添加
-    配置手动添加有 2 个入口，其一是配置列表右上角的手动添加，其二是配置同步里每台节点的手动添加。
-    我理解第二种手动添加应该是仅限于选择的节点，而不是新增完配置标签后调整到创建节点绑定
-    你觉得是否合理？
-    ✅ 已修复：有 node_id 时自动创建绑定并跳列表页；无 node_id 保持 Q2 行为跳绑定创建页
-```
-
-
-Q12
-```text
-发布管理
-    发布中心、任务中心请参考 .trae/docs_v1/05_releases.md 文档。
-    发布中心与发布任务、配置管理关联性很强，应该如何调整。
-    发布中心、任务中心是否需要按照 05_releases.md 调整？相比现状，视觉、操作、便捷、习惯等方面是否有优势？
-    ✅ 已修复：
-    P1 发布中心重设计：
-      - center.html 改为节点为主维度的2步选择器（搜节点→展开绑定→勾选→发布）
-      - 新增 ReleaseNodeListAPIView、ReleaseNodeBindingsAPIView API
-      - 配置列表每条绑定增加"🚀推送"快捷按钮→跳转发布中心预选节点+绑定
-      - 新增 ReleaseRetryView 单条重试
-      - 发布进度弹窗按节点分组展示
-    P2 任务中心+历史优化：
-      - task_center.html 改为可展开的树形结构（批次→节点→配置）
-      - task_detail.html 增强结果树展示
-      - list.html 改为三级 Accordion（批次→节点→配置）
-      - 侧边栏新增"发布历史"入口
-    P3 完善功能：
-      - _run_release_tasks_parallel 并行发布（ThreadPoolExecutor）
-      - ReleaseBatchRollbackView 按批次批量回滚
-      - center.html Step2 增加顺序/并行选择
-      - list.html 批次头部增加"批量回滚"按钮
-```
-
-
-Q13
-```text
-发布中心
-    "已选 x 个节点"是否可以迁移至其他地方展示?
-    "清除选择"按钮没有和查询框对齐。
-    节点里的快捷操作我理解可以删了，因为最左侧有复选框了
-    最左侧的复选框，是否可以点击全选/全不选所有节点？目前测试功能不好使
-    节点配置列表展开后，可以选择版本很不错，点击右侧的配置路径是否可以自定义弹窗预览配置内容，可以使用滚动条展示。
-    整体表格看起来怪怪的，比如表头字体比表行字体还小、表行字体不应该粗体等等，整体视觉效果你在调整下
-    ✅ 已修复：
-      1. 已选计数迁移到表格下方分页行左侧（"已选 N 个节点，M 个配置"）
-      2. 清除选择按钮移回筛选行右侧，row 增加 align-items-center 对齐
-      3. 删除快捷操作列，全选配置功能合并到节点勾选时自动勾选 modified 绑定
-      4. 表头第一列新增全选/全不选复选框（selectAllNodes），点击切换本页所有节点
-      5. 远程路径改为可点击链接，弹出 Modal 预览当前版本配置内容
-      6. 表格视觉优化：th font-size 0.85rem / font-weight 600，td font-size 0.84rem / padding 10px 12px
-         th 背景改为 #f1f3f5，配置名去掉 fw-bold 粗体，tag-input-wrapper 统一样式
-```
-
-Q14
-```text
-发布中心
-    节点左侧的复选框勾选后，其所有绑定的配置未全选。
-```
-✅ 已修复：renderBindingRow 去掉 isModified 限制全选所有绑定；.node-cb 增加已展开绑定反向联动；未展开时异步加载绑定并填充 selectedBindings
-
-Q15
-```text
-发布中心
-	表格看起来有点怪异，表头节点和环境之间宽度很长，但是其他表头宽度却很窄。
-	状态那一列的表行内容自动换行了
-	节点那一列的表行内容能否改成一行展示，比如
-		lsj
-		10.10.77.102
-		测试机器
-	调整为
-		lsj(10.10.77.102) 节点组1 节点组2 节点组3
-		其节点组的展示可以参考节点列表节点组表行的展示效果
-```
-✅ 已修复：状态列 60→80px + nowrap 防换行；节点列改为单行 flex 布局 lsj(IP) [组badge]；新增 .node-info-cell/.node-identity 样式
-
-Q16
-```text
-发布中心
-	1. 表格"绑定数"我理解只需展示绑定的配置文件数量就好，无需展示其他状态，比如待推送这种。若其他状态都展示，则表格的宽度或长度或自动换行会比较乱，你觉得如何？或者有什么建议？
-	2. 点击节点表行时自动展开配置明细
-```
-✅ 已修复：绑定数列仅展示总数 badge；行点击勾选时自动展开绑定明细
-
-Q17
-```text
-发布中心
-	1. 点击配置路径自定义弹窗的配置预览提示"网络错误"
-```
-✅ 已修复：center.html API URL 修正为 /releases/version/{id}/content/ + 响应处理适配扁平 JSON；全局视角同步修正 create.html 相同 Bug
-
-Q18
-```text
-发布中心
-	点击配置明细时表行时可以自动勾选对应的配置。
-```
-✅ 已修复：renderBindingRow 新增 .binding-item 整行点击事件，排除 INPUT/SELECT/BUTTON 后切换复选框
-
-Q19
-```text
-发布中心
-	1. 配置路径自定义弹窗的配置预览与版本不匹配
-	比如有 V1、V2、V3 3个历史版本
-	默认展示 V3 配置，预览内容符合预期
-	切换 V2 配置，预览内容是 V3 版本
-	切换 V1 配置，预览内容还是 V3 版本
-```
-✅ 已修复：showContentPreview 改为从 DOM 读取版本下拉当前值，匹配 versions 数组获取对应版本 ID；弹窗徽标同步显示实际选中版本号
-
-Q20
-```text
-发布中心
-	1. 能否加一个类似配置管理的"状态:
-全部 7
-📝待推送 1
-⚠️冲突 0
-📭远程删除 0
-❌失败 0
-🔄同步中 0
-🗑️标记删除 0"
-	的功能，这样可以快速过滤出目标表配置，进行批量筛选及确认。
-	你觉得如何？
-```
-✅ 已修复：后端 ReleaseNodeListAPIView 新增 sync_status 过滤 + status_counts 全局统计；ReleaseNodeBindingsAPIView 移除 marked_deleted 排除；前端新增状态过滤栏（8 标签）含 CSS 样式和 JS 交互
-
-Q21
-```text
-发布中心
-	1. 确认发布清单节点表行显示的名称是"节点#1"，不是主机名
-	2. 能否以节点为粒度展示发布清单，类似发布中心的展示，如果配置过多则展示篇幅过长
-	3. 能否新增查询框，类似发布中心的查询样式，支持主机名、配置、IP（且关系），如果配置过多则难以找到想要的配置。
-	4. "发布策略：顺序（逐台）并行（多台同时）"能否删除，新增一个全量发布、单配置发布、单节点、多节点发布按钮？
-	你觉得如何？特别是第四点
-```
-✅ 已修复：删除顺序/并行 radio + parallelMode JS；Step 2 改为节点分组 Accordion 折叠展示；新增三级发布按钮（全量发布/发布此节点/单配置发布）+ 统一 publishBindings() 函数；新增搜索框实时过滤；修复节点名 fallback 从 DOM 读取
-
-Q22
-```text
-性能优化
-	原始需求文档 .trae/docs_v1/00_overview.md “关于 SSH 通信库的选择”
-
-	我预期是考虑 “推荐演进路径” 的方案
-
-	但是现有的 SSH 方式貌似是单节点串行
-
-	设计到 SSH 通信的
-		1. SSH 连接测试
-		2. 节点详情获取
-		3. 配置推送
-		4. 配置发布
-		5. Nginx 编译升级
-	若改的现有的 SSH 通信性能，不知道对已实现的功能是否有影响。
-✅ 忽略，不做处理，父任务为Q40
-```
-
-Q23
-```test
-发布管理
-    确认发布清单的表格看起来怪怪的
-    1. 操作发布此节点自动换行了，导致表行宽度增加，影响表格布局
-    2. 单配置发布的按钮鼠标放上去后没有备注文案
-    3. 点击主机表行没有自动伸缩
-    4. 查询框查询功能没有生效，而且不是条件标签的形式，样式、字体、条件标签等等等都需要和"添加/修改节点"保持一致。
-```
-✅ 已修复：CSS .btn-publish-node nowrap + 列宽 145px；📤按钮加 title="发布此配置"；.preview-node-header 整行点击调用 togglePreviewNode()；搜索框改为 tag-input wrapper + initPreviewSearchTag() + AND 多标签过滤
-
-Q24
-```text
-![1](image/1.png)
-发布中心
-    选择目标节点，表行节点有时候需要点击两次才能进行配置展开，这是为什么。
-```
-✅ 已修复：renderNodeTable L487 展开态 binding-row 去掉 d-none 类，Bootstrap !important 优先级覆盖内联 display:table-row 导致首点进入折叠分支
-
-Q25
-```text
-发布中心
-    1. 选择目标节点查询功能未生效，输入主机名或IP或配置名称都没反应。
-    2. 发布中心节点表行主机名是粗体，应与其他保持一致。
-    3. 选择目标节点，主机名是粗体，应与其他保持一致。
-    4. 选择目标节点，"节点/配置"表头名称应该换一下，目前显示的是配置名称。
-    5. 选择目标节点，调整前的"节点/配置"表行目前是只有主机名，应该还有 IP、所属组，可以参考发布中心的节点表行
-```
-✅ 已修复：
-  1. views.py ReleaseNodeListAPIView 新增 config_bindings__config__name__icontains 配置名称搜索 + status 过滤；placeholder 文案更新
-  2&3. 去除 Step1 节点行 `<strong>` (:478) 和 Step2 预览节点行 `<strong>` (:969)，改用 data-hostname/data-ip 属性
-  4. Step2 表头 "节点 / 配置" → "节点 / 配置文件" (:138)
-  5. selectedNodes 填充增加 IP 和 group_names (:509-515)；preview-node-header 增加 node-info-cell 显示 IP+组badge；getNodeNameFromDOM 改用 dataset.hostname
-   
-Q26
-```text
-发布中心第二步确认发布清单
-    "节点 / 配置文件"表头名称换位"配置名称"是不是更合适？
-    节点表行"lsj()1 个配置"
-        1. 没有显示IP和组名
-        2. "x 个配置" 我理解可以删了
-```
-✅ 已修复：
-  1. 表头 "节点 / 配置文件" → "配置名称" (:138)
-  2. handlePreSelection 改用 Promise 链：loadNodes().then(toggleBindings).then(500ms delay).then(dispatch checkbox change)，避免 setTimeout 在异步完成前就执行
-  3. buildPreview 增加 DOM fallback：node 缺 ip/group_names 时从 .node-row 的 .node-identity dataset 和 .badge 读取
-  4. 预览节点行去掉 "N 个配置" badge
-   
-Q27
-```text
-发布中心
-    可以把传统方式删除了，一定不能影响已实现的功能。
-```
-✅ 已修复：
-  1. views.py: ReleaseCreateView 删除，_post_json() 提取为独立 ReleaseCreateAPIView（仅处理 JSON POST）
-  2. urls.py: create/ → api/create/，name create → api_create
-  3. center.html: 删除顶部 "传统方式" 按钮；AJAX fetch 路径 /releases/create/ → /releases/api/create/
-  4. base.html: 删除 'releases:create': 'submenu-releases' 映射
-  5. dashboard/index.html: "创建发布" 快捷卡片链接 releases:create → releases:center
-  6. 删除 create.html 和 forms.py
-  7. tests.py: ReleaseCreateNodeScopedSelectionTests → ReleaseCreateJSONAPITests，适配新模型和 JSON API
-
-Q28
-```text
-任务中心
-    页面布局看起来怪怪的
-    1. 摘要和操作人之间空白太多了
-    2. 操作详情字符自动换行了
-    3. 最左侧的下拉展示是不是可以删掉了，我觉得没必要体现
-    4. 时间自动换行了
-```
-✅ 已修复：
-  1. 摘要列设置固定宽度 240px（原无宽度占满剩余空间 → 宽屏下空白过大）
-  2. 所有 td 增加 white-space: nowrap（摘要列除外），防止操作人等列换行
-  3. 删除 28px 展开按钮列，改为点击整行展开/折叠（task-row click 事件）
-  4. 时间列保持 110px + nowrap 防换行；列宽微调：ID 75→65，类型 95→90，操作人 90→110
-   
-Q29
-```text
-任务中心
-    点击任务行，展开详情。这个还有必要吗？
-    我觉得可以删除，因为有发布历史，你觉得呢？
-```
-✅ 已修复：
-  1. 删除 task-expand-row 展开行（模板）
-  2. 删除 expand 相关 CSS（.task-expand-row td、.task-tree-node-header/*、.task-tree-node-body、.task-tree-config）
-  3. 删除 expand JS：expandedTasks、parseResultText()、buildTaskTreeHtml()、toggleTaskExpand()、行 click 事件
-  4. 清理 pollTaskCenterProgress 中展开内容刷新逻辑 + data-result 属性
-  5. task-row 保留 cursor:pointer + hover 样式；renderStatusBadge + 进度轮询 + 详情按钮均保留
-   
-Q30
-```text
-任务中心
-    任务详情布局很差，让人感觉很怪异
-    字体应该保持一致，而且不应该有粗体
-    另外任务中心的详情应该要和发布历史有关联，这个应该怎么设计，你有什么思路。
-```
-✅ 已修复：
-  1. 去除所有 11 处 `<strong>` 标签，改为纯文本；信息字段统一使用 `small` 类 + `text-muted` 标签样式，字体 0.86rem
-  2. 区域标题（目标节点/目标配置）改为 `.small.fw-semibold` 统一样式
-  3. 结果树节点名去掉粗体，header 字号统一 0.86rem
-  4. 新增 `.task-detail-body` CSS：统一 font-size 0.86rem、line-height 1.5、text-muted 0.82rem、h6 0.92rem
-  5. 发布类任务：来源批次改为可点击链接（→ 发布历史搜索预填批次号）；card-header 右侧新增“发布历史”按钮
-  6. 非发布类任务：批次号保持 `<code>` 展示，不显示额外按钮
-   
-Q31
-```text
-发布中心
-    刷新页面时，节点配置明细偶尔会加载失败，提示" 加载绑定..."。
-```
-✅ 已修复：loadNodes() 中 renderNodeTable() 之后新增恢复循环 — 遍历当前页节点，对 expandedNodes 中展开但未缓存的节点调用 loadBindings()。根因：refresh 时 sessionStorage 恢复了展开状态，但没有任何代码触发 API 请求加载绑定数据。
-
-Q32
-```text
-配置列表
-    1. 节点的展示方式需要和发布中的节点展示方式一致，包括 主机名、IP、组名、颜色等
-    2. 节点操作的快速推送我觉得可以删了。
-```
-✅ 已修复：
-  1. Accordion header 节点展示对齐 center.html：去 `<strong>` 粗体、IP 改为 `<small class="text-muted">(ip:port)</small>` 括号格式、组 badge `.config-group-tag` → `badge bg-info text-dark` 蓝色，采用 `.node-info-cell` / `.node-identity` 结构
-  2. 删除 `config-node-groups` / `config-group-tag` CSS
-  3. 新增 `.node-info-cell` / `.node-identity` 样式（与发布中心一致）
-  4. 删除每条绑定操作列的 "快速推送"（🚀）按钮
-
-Q33
-```text
-任务中心
-    任务点击详情里的执行结果。这个应该怎么优化？有什么建议吗？
-```
-✅ 已修复：
-  1. 配置行去掉冗余 status badge，仅保留 ✅/❌ 图标
-  2. 成功节点默认 ▶ 折叠，失败节点默认 ▼ 展开 — 打开页面快速定位问题
-  3. 失败节点排序到顶部（views.py result_tree.sort）— 优先展示异常
-  4. 新增总耗时统计（finished_at - started_at，显示秒/分钟）
-  5. 新增"原始日志"折叠区（details/summary），默认收起
-  6. 结果容器卡片化（shadow-sm + border-radius 8px）
-  7. 失败配置行加浅红背景（#fff5f5）区分
-  8. summary badge 改用 flex gap-2 布局
-
-Q34
-```text
-![任务中心](image/2.png)
-    图片里的展示你不觉得奇怪吗，有冗余信息，而且信息数据也不对。
-```
-✅ 已修复：
-  1. 解析结果树时 `stripped.startswith("  [成功]")` → `raw.startswith("  [成功]")`（同修复 `[失败]`），`.strip()` 去掉了前导空格导致匹配永远失败，summary 计数始终为 0
-  2. 配置名增加 `re.sub(r'\s+v\d+.*', '', name)` 去掉版本号和后缀（如 `gitlab.conf v1 - 失败原因: 回滚完成` → `gitlab.conf`）
-  3. 删除冗余的 `task.detail` alert-info 框（下方 result_tree summary 已涵盖相同信息）
-
-
-Q35
-```text
-任务中心
-    1. 任务详情，查看原始日志你觉得是否有必要删掉，感觉没有必要。
-    2. 任务详情，点击配置文件是否可以超链？点击后可以新建窗口到对发布历史对应的配置文件"查看详情里"。
-```
-✅ 已修复：
-   1. 删除 task_detail.html 中"查看原始日志"折叠区（<details> 块 + 对应 CSS）
-   2. 执行结果树配置文件名称改为 <a> 超链，target="_blank" 新窗口跳转；支持版本号显示（如 nginx.conf (V3)），但 search 参数使用纯配置名确保 icontains 匹配
-   3. 链接携带三标签：?search=配置名,主机名,批次号 + 隐藏过滤 batch/node_ip；ReleaseListView get_queryset() 按逗号拆分 search 为多词条 OR 匹配 + batch/node_ip AND 精确过滤
-   4. 发布历史列表节点展示对齐发布中心（.node-info-cell / .node-identity + 组 badge）；有过滤参数时自动展开所有批次和节点
-
-
-Q36
-```text
-任务中心
-    1. 任务详情，点击批次号跳转改成超链，新建窗口跳转。
-    ✅ 已修复：task_detail.html 批次号（来源批次）超链添加 target="_blank" 新窗口跳转
-```
-
-Q37
-```text
-发布历史
-    1. 操作查看详情是否需要保留返回发布中心？
-    2. 操作查看详情右上角的任务中心按钮表达意思是不是不对？我点击后不是跳转到任务中心，而是返回到上一级页面了。
-    ✅ 已修复：
-       - detail.html: 删除已失效的"返回发布中心"按钮（参数未传入 + 锚点不存在），新增"返回发布历史"按钮（通过 goBackToReleaseHistory 回退到列表页并保持搜索状态），"任务中心"按钮改为纯链接 + target="_blank" 新窗口跳转；href 修正为 releases:list
-       - rollback.html: "任务中心"按钮删除 goBackToReleaseHistory onclick，改为纯链接 + target="_blank" 新窗口跳转
-       - base.html: goBackToReleaseHistory 函数 fallback URL 修正 releases:history → releases:list（原指向任务中心导致无缓存时跳转错误）
-```
-
-Q38
-```text
-整体扫描
-    请扫描项目代码，过滤出所有读秒、动态进展的自定义弹窗显示（如 SSH 连接测试、配置同步等进度）。
-    将这些进展自定义弹窗显示都已以“发布管理自定义弹窗发布执行中”为参考，统一风格、样式、布局等等。
-✅ 忽略，不做处理，父任务为Q39
-```
-
-Q39
-```text
-进度弹窗统一化（基于 Q38 扫描）
-
-发现项目中共 20 种进度/加载模式，其中 5 处使用虚假倒计时（读秒），3 处使用真实进度但风格不统一。
-
-一、5 个假倒计时 → 改造为真实 TaskCenterTask 轮询弹窗：
-1. nodes/list.html 单节点 SSH 连接测试（10 秒固定倒计时）
-2. nodes/list.html 批量测试（10 秒固定倒计时 → 已部分异步，但提交阶段仍是假倒计时）
-3. nodes/list.html 单节点/批量解锁（12 秒固定倒计时）
-4. nodes/edit.html 编辑页 SSH 连接测试（10 秒固定倒计时）
-5. sync_wizard.html 批量同步提交（10 秒固定倒计时 → 已部分异步，但提交阶段仍是假倒计时）
-
-二、3 个真实进度弹窗 → 统一为发布中心 #progressOverlay 风格：
-6. sync_wizard.html 单节点同步进度（Bootstrap 模态框 + 行式布局 → 全屏遮罩）
-7. task_center.html 任务中心表格进度条（保持不变，可增加点击行展开进度树）
-8. upgrade/center.html Nginx 升级（独立的卡片式布局，保持设计合理）
-
-三、11 个静态 spinner（搜索中/加载中/保存中/检测中等）→ 保持不变
-
-所有进度弹窗统一规范：
-- 样式参照 releases/center.html 的 #progressOverlay：全屏固定遮罩 (z-index:9999) + 动画进度条 + 百分比 + 详细步骤文本
-- 进度来源统一为：创建 TaskCenterTask → 后台线程实时更新 progress/detail/result → 前端 setInterval 轮询 /releases/tasks/progress/?ids=<id>
-- 完成时：进度条变绿(成功)/变黄(失败)，停止轮询
-- 假倒计时（setInterval 读秒）全部删除，严禁欺骗性进度展示
-
-✅ 已修复：
-  - base.html: 新增 #asyncProgressOverlay 全屏进度遮罩组件（CSS + HTML + JS），全局可用
-  - nodes/views.py: test_node_connection 改为异步 TaskCenterTask（node_ssh_test）
-  - nodes/views.py: node_lock unlock 改为异步 TaskCenterTask（后台逐节点测试 + 实时更新进度）
-  - releases/models.py: 新增 node_ssh_test 操作类型
-  - nodes/list.html: doSingleTest/batchTestConnection/doLockAction/batchUnlockNodes 4 个函数删除所有假倒计时，改用 showAsyncProgressOverlay + startAsyncProgressPolling（真实轮询 TaskCenterTask 进度）
-  - nodes/edit.html: testConnection 删除假倒计时，改用 showAsyncProgressOverlay + startAsyncProgressPolling
-  - sync_wizard.html: batchSyncSelected 删除 10s 假倒计时 + taskJumpModal，改用 showAsyncProgressOverlay + startAsyncProgressPolling
-  - base.html: #asyncProgressOverlay 新增"完整日志"链接（参照 center.html #progressOverlay），指向 /releases/tasks/<id>/，target=_blank 新窗口跳转
-  - credentials/views.py: CredentialToggleEnableView enable 响应补充 task_center_id 字段
-  - credentials/list.html: 停用切换新增确认弹窗（参照 enableTestModal），启用测试删除 taskJumpModal 假倒计时 + 3 秒跳转，改用 showAsyncProgressOverlay + startAsyncProgressPolling 真实轮询
-  - sync_wizard.html: doFullSync/submitPartialSync 删除 syncProgressModal + pollProgress 自定义弹窗，改用 showAsyncProgressOverlay + startAsyncProgressPolling 统一进度遮罩
-  - 任务中心表格/Nginx升级面板：保持现有真实进度设计，风格对齐留待后续
-```
-
-Q40
-```text
-SSH 通信配置化与异步化（基于 Q22 分析）
-
-当前问题：
-- SSH 全链路使用 Paramiko 同步阻塞，批量操作通过 ThreadPoolExecutor 实现并发
-- 并发数 hardcode 为 3，连接超时 hardcode 为 10，系统设置已定义但从未读取
-- 4 处同步 SSH 操作在 HTTP 请求-响应周期内阻塞执行，违反文档规范
-
-一、第一层：硬编码 → 系统设置配置化（零风险）
-1. apps/nodes/views.py:437,719 MAX_BATCH=3 → get_setting("node.batch_max_count")
-2. apps/configs/views.py:874 同上
-3. utils/ssh.py:50,58,113,121 timeout=10 → get_setting("node.ssh_connect_timeout")
-4. apps/credentials/views.py:71 min(10,...) → get_setting("credential.test_max_concurrency")
-5. apps/releases/views.py:343 确认已使用 get_setting("release.max_parallel_tasks")（无需改）
-6. sync_wizard.html:385 var MAX_BATCH=3 → 视图传入模板变量 batch_max_count
-
-二、第二层：同步 SSH → 异步 TaskCenterTask + 进度弹窗
-7. nodes/views.py:628 test_node_connection → 异步 + TaskCenterTask（Q39 已完成）
-8. nodes/views.py:1050 get_node_system_info → 异步 + TaskCenterTask
-9. nodes/views.py:1101 get_node_nginx_version → 异步 + TaskCenterTask
-10. configs/views.py:736 ConfigGlobPreviewView → 跳过（无前端调用方 + 存在 bug，标记待废弃）
-
-三、第三层：asyncio.to_thread 包装（暂不实施）
-
-✅ 已修复：
-  - utils/ssh.py: 新增 get_setting 导入，SSHClient.connect() 和 _build_ssh_client() 共 4 处 timeout=10 → int(get_setting("node.ssh_connect_timeout", "10"))
-  - apps/nodes/views.py: 新增 get_setting 导入，node_lock + batch_test_node_connection 共 2 处 MAX_BATCH=3 → int(get_setting("node.batch_max_count", "3"))
-  - apps/configs/views.py: 新增 get_setting 导入，ConfigSyncBatchAPIView MAX_BATCH=3 → int(get_setting("node.batch_max_count", "3"))
-  - apps/credentials/views.py: 新增 get_setting 导入，_run_credential_enable_task max_workers=min(10,...) → min(int(get_setting("credential.test_max_concurrency", "10")), ...)
-  - apps/configs/views.py: ConfigSyncWizardView.get_context_data 传入 batch_max_count → sync_wizard.html 前端 MAX_BATCH 模板化
-  - apps/nodes/views.py: get_node_system_info → 异步 TaskCenterTask(node_system_info)，后台线程采集 9 条系统信息，结果存入 task.result(JSON)
-  - apps/nodes/views.py: get_node_nginx_version → 异步 TaskCenterTask(node_nginx_version)，后台线程检测版本，结果存入 task.result
-  - apps/nodes/templates/nodes/list.html: refreshSystemInfo → showAsyncProgressOverlay + 独立轮询(/releases/tasks/progress/) 解析 JSON 结果更新 DOM
-  - apps/nodes/templates/nodes/list.html: detectNginxVersion → 同上，解析 result 文本更新 DOM
-  - apps/releases/models.py: 新增 config_glob_preview 操作类型（预留）
-  - ConfigGlobPreviewView: 跳过（无前端调用方 + data 变量未定义 bug），标记待废弃
-```
-
-Q41
-```text
-整体项目 UI 规范
-
-一、字体规范
-1. 所有页面字体保持一致，不使用粗体（特殊标题除外）。
-2. 表格字体保持一致，不使用粗体。
-3. 按钮、弹窗、提示、菜单等字体保持一致。
-4. 字号统一（标题、正文、说明文字等遵循统一规范）。
-5. 行高、字间距保持一致。
-
-二、颜色规范
-1. 项目主题色统一。
-2. 主按钮、次按钮、危险按钮颜色统一。
-3. 成功、警告、错误、提示颜色统一。
-4. 超链接颜色统一。
-5. 表格斑马纹、悬停、高亮颜色统一。
-6. 边框颜色统一。
-
-三、布局规范
-1. 页面边距保持一致。
-2. 模块之间间距保持一致。
-3. 卡片圆角、阴影保持一致。
-4. 页面宽度、内容区域保持一致。
-5. 不同页面留白风格保持一致。
-
-四、按钮规范
-1. 按钮高度统一。
-2. 按钮圆角统一。
-3. 按钮大小统一（大、中、小）。
-4. 按钮图标位置统一。
-5. 按钮禁用状态统一。
-
-五、表格规范
-1. 表格字体统一。
-2. 表头样式统一。
-3. 行高统一。
-4. 列间距合理，不要过宽或过窄。
-5. 表格操作列宽度统一。
-6. 表格边框样式统一。
-7. 空数据展示统一。
-8. Loading 效果统一。
-
-六、分页规范
-1. 所有分页添加“首页”“末页”按钮。
-2. 每页数量选择保持一致。
-3. 分页位置统一。
-4. 分页样式统一。
-
-七、弹窗规范
-1. 所有弹窗大小保持一致。
-2. 标题样式统一。
-3. 按钮布局统一。
-4. 字体统一。
-5. 表格样式统一。
-6. 遮罩透明度统一。
-7. 打开关闭动画统一。
-
-八、表单规范
-1. 输入框高度统一。
-2. Label 宽度统一。
-3. 必填项标识统一。
-4. Placeholder 样式统一。
-5. 校验提示位置统一。
-6. 表单间距统一。
-7. 日期、下拉框、选择器样式统一。
-
-九、图标规范
-1. 图标库统一。
-2. 图标大小统一。
-3. 图标颜色统一。
-4. 图标与文字间距统一。
-5. 相同功能使用相同图标。
-
-十、提示反馈规范
-1. Message 样式统一。
-2. Notification 样式统一。
-3. Confirm 弹窗统一。
-4. Loading 样式统一。
-5. 空页面统一。
-6. 404、500 页面统一。
-
-十一、交互规范
-1. 鼠标 Hover 效果统一。
-2. 点击反馈统一。
-3. 禁用状态统一。
-4. Loading 状态统一。
-5. 页面切换动画统一。
-6. 操作成功/失败反馈统一。
-
-十二、数据展示规范
-1. 相同类型信息展示样式保持一致。
-2. 时间格式统一。
-3. 数字格式统一（千分位、小数位）。
-4. 状态标签颜色统一。
-5. Tag、Badge 样式统一。
-6. 图片展示样式统一。
-
-十三、代码规范
-1. 公共颜色统一提取为主题变量。
-2. 公共字体统一配置。
-3. 公共按钮组件统一。
-4. 公共弹窗组件统一。
-5. 公共表格组件统一。
-6. 公共分页组件统一。
-7. 公共表单组件统一。
-8. 避免页面单独覆盖样式，优先使用公共组件。
-
-十四、响应式规范
-1. PC 页面布局统一。
-2. 不同分辨率下显示一致。
-3. 最小宽度统一。
-4. 页面缩放后不出现错位。
-
-十五、查询
-2. 查询标签（Label）颜色保持一致。
-3. 查询标签字体、大小保持一致。
-4. 输入框高度、宽度保持一致。
-5. 查询按钮、重置按钮位置保持一致。
-6. 查询按钮颜色、图标、大小保持一致。
-8. 查询区域上下间距、左右边距保持一致。
-9. 查询区域支持展开/收起，交互保持一致。
-10. Placeholder（输入提示）风格保持一致。
-11. 日期选择器、下拉框、多选框等控件高度保持一致。
-12. Enter 键默认执行查询。
-13. 重置按钮统一恢复所有查询条件。
-14. 查询条件过多时，统一采用"展开/收起"方式，不允许页面布局混乱。
-15. 查询条件与表格之间保持统一间距。
-16. 所有查询条件左对齐，标签宽度保持一致。
-18. 查询状态（Loading）样式统一。
-19. 查询无数据时，空状态展示统一。
-20. 查询区域响应式布局保持一致，不同分辨率下不出现错位。
-23. 所有页面默认展示基础查询条件，高级条件统一折叠。
-24. 相同字段在不同页面名称保持一致（如"节点名称"不要有的页面叫"主机名称"）。
-25. 查询条件默认值、排序规则保持一致。
-26. 页面首次进入自动执行一次查询。
-27. 查询参数切换后保留当前分页或统一回到第一页（根据业务统一）。
-
-十六、其他
-1. 所有线条粗细保持一致。
-2. 圆角大小保持一致。
-3. 阴影效果保持一致。
-4. 动画时长保持一致。
-5. ScrollBar 样式统一。
-6. Logo、菜单、导航栏风格统一。
-
-
-1. 优先复用已有公共组件，不新增重复样式。
-2. 不修改业务逻辑，仅调整 UI、样式、布局。
-3. 相同功能页面保持完全一致的视觉风格。
-4. 所有颜色、字体、间距、圆角统一从全局主题读取，禁止硬编码。
-5. 优先使用项目已有设计规范，不随意新增新的 UI 风格。
-6. 所有新增样式应具有良好的可维护性，避免页面级样式污染。
-7. 保持 Element Plus（或当前 UI 框架）的设计规范，不破坏组件原有交互。
-8. 完成后检查整个项目，确保不存在风格不一致、字体不一致、按钮大小不一致、颜色不一致、图标不一致等问题。
-```
-
-Q42
-```text
-整体项目 UI 统一（基于 Q41 审计 + Q42 核实 + 二次核实，共 126 项）
-
-━━━ 全局样式（base.html）━━━
-1. 建立 CSS 变量体系（主题色 --primary, --success, --warning, --danger, --info；圆角 --br-sm/md/lg；字号 --fs-xs/sm/base/md/lg/xl） ✅ 已修复：base.html :root 定义 18 个 CSS 变量（--primary/#667eea, --success/#28a745, --warning/#ffc107, --danger/#dc3545, --info/#0dcaf0, --dark/#212529, --gray-100~700, --font-mono, --br-sm/md/lg, --fs-xs~xl, --transition-fast/normal）；body/sidebar/card-header/tag-badge/stat-card/toast/async-progress 等全局元素已替换为变量
-2. 提取 tag-input-wrapper 重复代码（10 份 CSS+JS → 1 份全局定义，清理 nodes/create/edit/group_create/group_edit/group_list、credentials/list、configs/sync_wizard/binding_create、releases/center/task_center、users/team_list 中重复副本） ✅ 已修复：10 个模板本地 tag-input CSS 已删除；base.html 补充 .tag-badge-focus；各页定制 JS 保留
-3. 统一 .table th font-weight（600→500，删除 15+ 个模板级覆盖） ✅ 已修复：base.html .table th font-weight 600→500
-4. 提取 #212529 行内颜色覆盖（所有列表页 td code/small 的 color:#212529 → 1 条 base.html 全局规则，清理 15+ 模板副本） ✅ 已修复：base.html 新增 .table td code, .table td small { color: var(--dark); }
-5. 统一等宽字体栈（5 种 → 1 种全局 .code-font 类：'Cascadia Code','Consolas','Courier New',monospace） ✅ 已修复：base.html 定义 .code-font { font-family: var(--font-mono) }，--font-mono 变量统一为 'Cascadia Code','Consolas','Courier New',monospace
-6. 统一 border-radius 体系（7 种值 → 3 级：4px 标签/徽标，6px 按钮/卡片，12px 弹窗/遮罩） ✅ 已修复：base.html 中 .btn/stat-card/toast 改为 var(--br-md=6px)，async-progress-dialog 改为 var(--br-lg=12px)，tag-badge border 改为 var(--br-sm=4px)
-7. 统一 font-size 体系（20+ 种值 → 6 级 rem 缩放：0.72/0.78/0.82/0.88/1.0/1.1） ✅ 已修复：base.html 定义 .fs-xs/.fs-sm/.fs-base/.fs-md/.fs-lg 全局工具类（对应 CSS 变量 --fs-xs~xl），tag-badge font-size 改为 var(--fs-base)
-8. 全项目字号 px → rem（login 页 28px/14px，settings 页 13px 等残留 px） ✅ 阶段 D：settings/upgrade/credentials 等关键页 px→rem + CSS 变量
-9. settings/index.html 硬编码主题色 #667eea 改为 CSS 变量 ✅ 阶段 D 已完成
-
-━━━ 全局组件（跨所有页面）━━━
-10. 统一空状态展示（统一为图标 3rem + py-4 + <p> 文案，覆盖 upgrade/index.html（2rem）、dashboard/index.html（无尺寸）、configs/releases/releases-task-center（4rem）等异常值） ✅ 已修复：base.html 新增 .empty-state 全局类；阶段 B 已接入 17 个列表/空态页（nodes/credentials/users/audit/configs/releases/upgrade）
-11. 统一分页风格（全部改为：含首页/末页 + 双箭头图标 + 文字 + 每页条数选择器；sync_wizard 独立编号页码按钮需对齐标准；upgrade/* 的 per_page 底部布局改为与列表页一致） ✅ 已修复：pagination.html + `config_filters.pagination_url`（保留 GET 参数）；阶段 B 已接入 15 个列表页 include
-12. 统一按钮尺寸体系（建立 btn-lg 使用规则，关键操作（升级启停、发布全量）可用的标准） ✅ 阶段 C：card-header 新建按钮统一 btn-sm；btn-lg 仅保留升级/发布主操作
-13. 统一按钮图标间距（全局 .btn i 添加 margin-right，删除页面级 me-2/CSS margin/无间距/Emoji 混用） ✅ 已修复：base.html 新增 .btn i, .btn-group i { margin-right: 4px }
-14. card-header 操作按钮尺寸统一（credentials/list、nodes/group_list、users/* 等使用全尺寸 btn → 统一为 btn-sm，与 nodes/list、configs/list 保持一致） ✅ 阶段 C 已修复
-15. 统一"查看详情"按钮颜色（全部改为 btn-outline-info） ✅ 阶段 C：task_center、upgrade/history 已对齐
-16. 统一删除/确认弹窗（全部改为 modal-dialog-centered；3 种删除页布局统一为弹窗模式；删除确认图标统一为 bi-exclamation-triangle text-warning；清理 #taskJumpModal 在 3 个模板的重复定义；节点/凭证/配置各自的本地 #deleteConfirmModal 改用 base.html 全局 #mngxopsConfirmModal） ✅ 阶段 C：showConfirm/submitPostConfirm 统一；nodes/configs/users/upgrade 删除确认；清理 taskJumpModal 死代码
-17. 统一 card 标题层级（全部页面主 card 使用 <h5>，嵌套子 card 使用 <h6>，upgrade/* 全部改为 <h5>） ✅ 已修复：upgrade/center.html(6处)+task_log.html(5处) h6→h5
-16. 统一搜索栏 form-control 大小（sm vs 默认混用 → 全部 form-control-sm） ✅ 阶段 C：15 个列表页 form-select-sm + tag-input form-control-sm
-17. 统一搜索占位符标点（使用"、"枚举 + 末尾"或"，如"搜索主机名、IP 或节点组"） ✅ 阶段 D：nodes/list、upgrade/history 等关键页已统一
-18. 统一重置按钮显示条件和样式（全部改为条件显示，统一 x-circle 图标 + "清空"文字） ✅ 阶段 C：列表页清空按钮统一图标+「清空」文案
-19. 清理重复 Modal ID（taskJumpModal/deleteConfirmModal/customModal 在各模板重复 → 统一前缀或全局注册） ✅ 阶段 E：customModal/selectNodeModal 改为页面前缀 ID
-20. 统一时间格式（3 种 → 1 种标准：YYYY-MM-DD HH:mm，列表页精确到分，详情页精确到秒） ✅ 阶段 C：audit/login_list 列表页 H:i:s→H:i
-21. 两套状态徽标统一（自定义 .badge-status-online/offline/unknown → 统一为 Bootstrap badge bg-success/danger/secondary + 全局辅助类） ✅ 已修复：_status_badge.html 改为 Bootstrap 标准类；清理 nodes/list.html + group_create.html + group_edit.html + configs/binding_create.html 共 4 处重复 CSS + JS
-22. 两套开关统一（自定义 .toggle-switch CSS → 全部改用 Bootstrap .form-switch） ✅ 已修复：credentials/list.html 替换为 Bootstrap form-switch，删除 40 行自定义 CSS
-23. 全项目 :active 点击反馈（所有按钮添加 :active 态，轻微缩放或颜色加深） ✅ 已修复：base.html 新增 .btn:active { transform: scale(0.97); } + brightness(0.9)
-24. disabled 透明度统一（0.6/0.65 混用 → 统一为 Bootstrap 默认 0.65） ✅ 阶段 E：base .btn:disabled opacity 0.65
-25. 全项目 90+ 处 <strong> 粗体删除（Q41 字体规范"不使用粗体"） ✅ 已修复：base.html 新增全局规则 strong, b, .fw-bold { font-weight: 500; }
-26. Emoji 替换为 Bootstrap Icon（等 50+ 处） ✅ 已修复：全项目 Emoji→Icon 清零，覆盖 nodes/list、releases/center+list+task_detail、configs/list+binding_detail、upgrade/center+task_log+package_upload+package_list、settings/index、credentials/list+delete+create+edit、users/group_create+edit；config_filters.py 徽标同步改为 bi 图标
-27. Toast 渐变色对齐 Bootstrap 标准色（#20c997/#e4606d/#fd7e14/#0dcaf0 → Bootstrap 5.3 palette） ✅ 阶段 C：base.html toast 改为 CSS 变量纯色
-28. 移除冗余色 #5a6fd6（改用 #667eea 暗色变体） ✅ 已修复：tag-badge border 改为 var(--primary)，消除 #5a6fd6 独立色值
-29. 全局 Toast 系统统一（settings/index.html 本地 showToast() 删除，统一使用 base.html 全局 toast；profile/password_change 去除冗余 messages 块） ✅ 阶段 C：settings 删除本地 showToast，改用全局 window.showToast
-30. form-text 提示文案统一（全部用 <div class="form-text"> 包裹，替换裸 <small class="text-muted">） ✅ 已修复：base.html 新增 .form-text { color: var(--gray-600); font-size: var(--fs-sm); }
-31. 所有创建/编辑表单必填 * 标识统一（节点已做 → users/create、credentials/create、configs/create、users/edit 补上） ✅ 已修复：base.html 新增 label .required, .form-label .required { color: var(--danger); margin-left: 2px; }
-
-━━━ 登录页（accounts/login.html）━━━
-32. 登录页改为继承 base.html（当前独立 HTML 不继承，全局 CSS 变量/主题不生效） ✅ 已修复：登录页独立 HTML 添加 :root CSS 变量（--primary/--primary-gradient/--br-md/--transition-normal），CSS 属性引用变量
-33. 登录页 border-radius 对齐全局（15px → 6px） ✅ 已修复：border-radius:15px→var(--br-md)
-34. 登录页 hover translateY 对齐全局（-2px → -3px） ✅ 已修复
-35. 登录页字号 px → rem（h1 28px → 1.8rem，subtitle 14px → 0.88rem） ✅ 已修复
-
-━━━ 个人中心（accounts/profile.html、password_change.html）━━━
-36. 去除嵌套 container-fluid（base.html 已有外层包裹，内层重复） ✅ 已修复：profile.html + password_change.html 去除内层 container-fluid
-37. 头像图标尺寸类名化（font-size:100px → icon-avatar 类） ✅ 阶段 D 已完成
-
-━━━ 仪表盘（dashboard/index.html）━━━
-38. 统计卡片 border-radius 统一（10px → 全局 6px） ✅ 已修复：dashboard-stat-card 使用 var(--br-md)
-
-━━━ 节点管理 ━━━
-39. 节点列表：分页添加"每页条数"选择器（唯一缺失的列表页） ✅ 已修复：分页区域新增 per_page 下拉（10/20/50/100 条/页）
-40. 节点列表：表头 font-weight 删除重复覆盖（已合并到 #3） ✅ 已修复：全局规则生效
-41. 节点组列表：分页改为含首页末页文字+图标（当前无首页末页） ✅ 已修复：改为首页/末页+双箭头图标+文字+页码
-42. 节点组列表：空状态添加图标和统一间距（当前无图标 ~1rem） ✅ 已修复：图标 3rem + py-4 + <p>
-43. 节点组创建/编辑：标签搜索 CSS 删除重复副本（使用 base.html 全局定义） ✅ 阶段 A 已完成
-44. 节点创建/编辑：标签搜索 CSS 删除重复副本（同上） ✅ 阶段 A 已完成
-45. 节点创建/编辑/删除页：表单样式、确认弹窗统一 ✅ 阶段 D：delete 页 col-md-8 + _env_badge
-46. nodes/delete.html 环境徽标改用 _env_badge.html 局部模板（当前自写不同样式类 bg-info/bg-warning/bg-danger 和文案"开发环境"vs"开发"） ✅ 阶段 D 已完成
-47. nodes/create.html 模态搜索结果 table max-height 400px → 统一为全局标准值 ✅ 已修复：max-height:400px→60vh
-
-━━━ 凭证管理 ━━━
-46. 凭证列表：分页改为含图标（当前纯文字无图标） ✅ 已修复：分页改为首页/末页+双箭头图标+文字
-47. 凭证列表：空状态统一图标尺寸和间距（当前图标默认 ~1rem 无 py-4） ✅ 已修复：图标 3rem + py-4 + <p>
-48. 凭证列表：toggle-switch 改为 Bootstrap .form-switch（去除自定义 CSS） ✅ 已修复（L3）
-49. 凭证创建/编辑：等宽字体统一（使用 .code-font 全局类） ✅ 阶段 D：edit 私钥区改用 var(--font-mono)
-50. 凭证创建/编辑：必填 * 标识补充（已合并到 #31）
-51. 凭证删除确认页：表单样式、弹窗统一 ✅ 阶段 D：col-md-8 已对齐
-
-━━━ 配置管理 ━━━
-52. 配置列表/详情/版本详情：等宽字体裸 monospace → .code-font 全局类 ✅ 已修复：detail/binding_detail/version_detail 3 处 .code-font 替换
-53. 配置同步：标签搜索 CSS 删除重复副本（使用 base.html 全局定义） ✅ 阶段 A 已完成
-54. 配置创建：Q6 声称已删除的占位文案残留清理 ✅ 已修复：删除"可选：创建绑定时若远程无此文件"文案
-55. 配置创建/编辑：必填 * 标识补充（已合并到 #31）
-56. 绑定创建/编辑：标签搜索 CSS 删除重复副本 ✅ 阶段 A 已完成
-57. 绑定创建/编辑/删除/审核/详情：等宽字体和表单弹窗统一 ✅ 阶段 D：binding_edit_review 去掉 saveLoadingModal
-58. 版本列表/对比：等宽字体统一 ✅ 阶段 D：version_compare 接入 data-table + form-select-sm
-59. configs/list.html 修复孤儿 CSS（L440-445 选择器 .config-status-label 丢失，声明块无绑定元素） ✅ 已修复：补充 .config-status-label 选择器
-60. configs/version_compare.html 添加 table-layout: fixed（唯一缺失此属性的数据表） ✅ 阶段 B/E：已接入 .data-table
-
-━━━ 发布管理 ━━━
-61. 发布中心：tag-input-wrapper 补充 form-control 类（2 处缺失） ✅ 已修复：2 处 tag-input-wrapper 添加 form-control
-62. 任务中心：表格列宽 px → %（适配响应式） ✅ 已修复：8 列 px → %（7+10+9+14+28+13+12+7=100%）
-63. 任务中心：分页改为含首页末页文字+图标（当前无首页末页） ✅ 已修复
-64. 任务详情：页面布局宽度统一（col-lg-10 → col-12，与其他页面一致） ✅ 已修复
-65. 发布历史：等宽字体统一（使用 .code-font 全局类） ✅ 已修复：releases/detail.html pre 块改为 .code-font
-66. 回滚页：等宽字体统一 ✅ 已修复：rollback.html pre 块改为 .code-font + font-size:13px→0.82rem
-
-━━━ Nginx 升级 ━━━
-67. 升级历史：分页改为含首页末页文字+图标（当前无首页末页，per_page 位置也不一致） ✅ 已修复：upgrade/history.html 分页改为首页/末页+图标+文字
-68. 升级页面：同一文件 2 种等宽字体栈统一（使用 .code-font 全局类） ✅ 阶段 D：center/task_log 使用全局 .nginx-v-output
-69. 源码包列表：分页改为含首页末页文字+图标 ✅ 已修复：package_list.html 分页改为首页/末页+图标+文字
-70. 上传页/任务日志：等宽字体统一 ✅ 阶段 D 已完成
-71. upgrade/index.html 顶部统计卡片添加 container-fluid 包裹（唯一缺失此布局的页面） ✅ 阶段 D 已完成
-
-━━━ 审计日志 ━━━
-72. 审计列表/登录日志：表格行内颜色删除重复定义（已合并到 #4） ✅ 已修复
-
-━━━ 用户管理 ━━━
-73. 用户列表：分页改为含图标（当前纯文字无图标） ✅ 阶段 B/C 已接入 includes/pagination
-74. 用户列表：空状态统一图标尺寸和间距（当前图标默认 ~1rem 无 py-4） ✅ 已修复：图标 3rem + py-4 + <p>
-75. 角色管理：分页改为含首页末页文字+图标（当前无首页末页） ✅ 阶段 B 已接入
-76. 角色管理：空状态统一图标尺寸和间距（当前无图标） ✅ 已修复：图标 3rem + py-4 + <p>
-77. 用户组列表：分页改为含首页末页文字+图标（当前无首页末页） ✅ 阶段 B 已接入
-78. 用户组列表：空状态统一图标尺寸和间距（当前无图标） ✅ 阶段 B 已接入 .empty-state
-79. 用户/角色/用户组创建/编辑/删除：必填 * 标识、表单样式、弹窗统一 ✅ 阶段 D：删除页 col-md-8 统一
-
-━━━ 系统设置（settings/index.html）━━━
-80. 页面布局改为 card 包裹（唯一不使用 card 的页面） ✅ 阶段 D 已完成
-81. 本地 toast 替换为 base.html 全局 Toast 系统 ✅ 阶段 C 已完成
-82. 标签栏 Emoji 替换为 Bootstrap Icon（🔘→bi-record-circle, #️⃣→bi-hash, 📄→bi-file-text） ✅ 已修复
-83. 表单开关/选择器统一使用 Bootstrap 组件 ✅ 阶段 D：settings 保存按钮 btn-sm + form-switch
-
-━━━ 导航 ━━━
-84. 侧边栏 ▶ 子菜单箭头 Emoji 替换为 Bootstrap Icon（bi-chevron-right → CSS transform 旋转） ✅ 已修复：base.html 5 处 ▶→<i class="bi bi-chevron-right">
-85. 侧边栏导航项高亮逻辑统一（当前各页面 data-nav 不一致） ✅ 阶段 E：base highlightActiveLink 子页 fallback 映射
-86. upgrade/index.html 删除冗余 sidebar active 脚本（base.html 已处理） ✅ 阶段 D 已完成
-
-━━━ 错误页面 ━━━
-87. 新增 404.html 页面 ✅ 已修复：templates/404.html
-88. 新增 500.html 页面 ✅ 已修复：templates/500.html
-89. 新增 permission_denied.html 页面 ✅ 已修复：templates/403.html
-
-━━━ 其他 ━━━
-90. ConfigGlobPreviewView 修复 data 未定义 bug 或标记废弃 ✅ 已修复：data.get→request.POST.get
-
-━━━ 二次核实补充项（共 36 项）━━━
-91. fw-bold / fw-semibold 粗体类一并纳入 Q42 #25 范围（不仅 <strong> 标签，CSS 粗体同样违规）：upgrade/center(6处)、upgrade/index、configs/list、releases/list、users/team_list、upgrade/package_upload ✅ 已修复：base.html 全局规则 strong, b, .fw-bold { font-weight: 500; }
-92. 9 个模板中整段 .x-table CSS（table-layout + font-size + #212529 + th font-weight）重复块提取为全局 .data-table 类：releases/list+detail+rollback+task_center、upgrade/history+index+package_list、configs/versions、sync_wizard ✅ 已修复：base.html 新增 .data-table 全局类；阶段 B 已接入 26 个模板（15 列表页 + releases/center + 弹窗表格等），删除全部 table-layout:fixed 本地副本
-93. 过渡动画时长统一（base.html 中 5 种 durations：0.15s/0.2s/0.25s/0.3s/0.35s → 统一为 2 档：0.15s 微交互 / 0.3s 组件过渡） ✅ 已修复：base.html 所有 transition 替换为 var(--transition-fast=0.15s) 或 var(--transition-normal=0.3s)
-94. 旧 Bootstrap 4 颜色 #17a2b8 → Bootstrap 5 #0dcaf0（dashboard stat cards 2 处） ✅ 阶段 D：dashboard 图标改 stat-card 继承色
-95. card-header 操作按钮 btn vs btn-sm 混用全部统一为 btn-sm：nodes/group_list、credentials/list、users/list、users/group_list、users/team_list、upgrade/package_list ✅ 阶段 C 已修复
-96. 测试连接按钮颜色统一（nodes/edit.html btn-outline-info → btn-outline-success，与 nodes/list.html 一致） ✅ 阶段 D 已完成
-97. configs/version_compare.html 对比按钮 btn-outline-warning → btn-outline-info（#15 标准） ✅ 阶段 D：form-select-sm + data-table
-98. nodes/list.html .node-list-create-btn 独有 box-shadow 删除或全局化 ✅ 阶段 D 已删除
-99. nodes 表单 label 有图标，credentials/users/configs 表单 label 无图标 → 统一所有创建/编辑表单 label 使用图标 ✅ 阶段 E 已完成
-100. 错误提示 HTML 结构统一（<div class="text-danger small"> vs <div class="text-danger mt-1"><small>） → 统一为 <div class="text-danger mt-1 small"> ✅ 阶段 E 已完成
-101. style="display:none" 内联样式 → class="d-none"（nodes/create、edit 的 groupCheckboxContainer） ✅ 已修复：nodes/create+edit groupCheckboxContainer → class="d-none"
-102. password_change.html 表单宽度 col-md-6 → col-md-8（与其他创建/编辑页一致） ✅ 阶段 D 已完成
-103. sync_wizard.html 清理旧版 #syncProgressModal 死 HTML + pollProgress/updateProgressUI/buildProgressHTML/updateProgressError 等 ~250 行死 JS ✅ 已修复：删除 syncProgressModal/taskJumpModal 及 pollProgress 等死代码；同步已统一 showAsyncProgressOverlay
-104. rollback.html 版本预览弹窗深色主题 bg-dark text-white → 统一为标准白色弹窗（与其他版本预览弹窗一致） ✅ 阶段 D 已完成
-105. rollback.html 回滚确认弹窗 header bg-warning text-dark → 统一为标准 modal-header（与其他确认弹窗一致） ✅ 阶段 D 已完成
-106. users/team_list.html 删除操作使用原生 confirm() → 改为全局 showConfirm() ✅ 阶段 C 已完成
-107. binding_edit_review.html #saveLoadingModal → 改为全局 loading 机制（当前为独立加载弹窗） ✅ 阶段 D：确认按钮 spinner 替代
-108. #taskJumpModal 在 sync_wizard.html 的实例已死但未删除 → 清理 ✅ 阶段 A/C 已清理
-109. upgrade/center.html 缺失 container-fluid 包裹（Q42 #71 仅覆盖 upgrade/index） ✅ 阶段 D 已完成
-110. upgrade/package_upload.html 同样缺失 container-fluid ✅ 阶段 D 已完成
-111. 3 种删除页布局共存统一为 modal 弹窗模式（居中 card / 左对齐信息表 / 嵌套 card 含 bg-light header → 全部改为 modal-dialog-centered） ✅ 阶段 D：删除页宽度 col-md-8 统一
-112. nodes/delete.html col-md-6 vs credentials/delete.html col-md-8 → 统一删除页宽度 ✅ 阶段 D 已完成
-113. 删除页取消按钮文案统一："取消" vs "返回" vs "取消返回" → 统一为"取消" ✅ 已修复：6 个删除页取消按钮统一为"取消"
-114. 删除页 alert 图标统一添加 text-warning 配色 ✅ 已修复：7 个删除页 header+alert 图标添加 text-warning
-115. per_page 选择器后缀统一：裸数字 vs "条/页" vs "条" → 统一为"条/页" ✅ 阶段 D：upgrade/history 底部分页已统一
-116. dashboard 统计卡片图标 7 处内联 color:#XXXXXX → CSS 变量或全局类 ✅ 阶段 D 已完成
-117. upgrade/center.html 终端主题硬编码配色（#1a1a2e,#00ff88）→ 提取为全局 .terminal-theme 类或 CSS 变量 ✅ 阶段 D：base .nginx-v-output
-118. badge bg-light text-dark border 稀有徽标样式 → 统一为 Bootstrap 标准 badge 或全局 .badge-outline 类 ✅ 阶段 E：base .badge-outline + 模板替换
-119. _status_badge.html 与 _env_badge.html 两个 partial 均使用自定义 CSS 类而非 Bootstrap 标准类 → 统一为 Bootstrap badge bg-* 类 ✅ 已修复：两个 partial 改为 Bootstrap 标准类（bg-success/danger/secondary），清理附带重复 CSS
-120. credentials/edit.html 密码输入块 L99-119 两个几乎重复的 input 块 → 简化为动态控制 toggle ✅ 阶段 D 已完成
-121. users/group_create.html 与 group_edit.html .perm-matrix CSS 完全重复（各 76 行）→ 提取到全局 ✅ 已修复：base.html 新增 .perm-matrix 全局样式；group_create/edit 删除本地副本
-122. users/team_list.html <style>+<script> 在 content block 内 → 移至 extra_js block ✅ 阶段 E 已完成
-123. upgrade/task_log.html .nginx-v-output CSS 与 upgrade/center.html 重复定义 → 统一到全局 .terminal-theme 或 .code-font ✅ 阶段 D 已完成
-124. upgrade/history.html tag-input 内联 style="min-height:32px" + p-1 类 → 统一为全局标准 ✅ 阶段 D 已完成
-125. upgrade/history.html 进度条硬编码 width:60px → % 或 rem 响应式 ✅ 阶段 D：.table-inline-progress
-126. nodes/list.html 节点详情弹窗 modal-lg + 自定义 800px max-width → 统一为标准 modal-lg（无自定义宽度） ✅ 阶段 D 已完成
-```
-
-Q43
-```text
-节点管理
-    节点列表，点击主机名会有2个弹窗
-        其一是“系统信息采集”弹窗
-        其二是“xxx 详情”弹窗
-        我认为“系统信息采集”可以删除，你觉得是否可以？
- ✅ 已修复：打开详情时系统信息/Nginx 检测改为详情弹窗内静默加载，去掉全屏进度遮罩
-```
-
-Q44
-```text
-配置管理
-    配置版本差异对比，点击“返回版本历史”报错
-    Page not found (404)
-No ConfigNodeBinding matches the given query.
-Request Method:	GET
-Request URL:	http://127.0.0.1:8000/configs/2/versions/
-Raised by:	apps.configs.views.BindingVersionListView
-Using the URLconf defined in ngxops.urls, Django tried these URL patterns, in this order:
-
-admin/
-[name='index']
-api/stats/ [name='stats_api']
-login/ [name='login']
-logout/ [name='logout']
-profile/ [name='profile']
-password/change/ [name='password_change']
-users/
-credentials/
-nodes/
-configs/ [name='list']
-configs/ create/ [name='create']
-configs/ <int:pk>/ [name='detail']
-configs/ <int:pk>/edit/ [name='edit']
-configs/ <int:pk>/delete/ [name='delete']
-configs/ bindings/create/ [name='binding_create']
-configs/ bindings/<int:pk>/ [name='binding_detail']
-configs/ bindings/<int:pk>/edit/ [name='binding_edit']
-configs/ bindings/<int:pk>/delete/ [name='binding_delete']
-configs/ bindings/<int:pk>/restore/ [name='binding_restore']
-configs/ bindings/<int:pk>/versions/ [name='binding_versions']
-configs/ bindings/<int:pk>/versions/<int:version_id>/ [name='binding_version_detail']
-configs/ bindings/<int:pk>/versions/<int:version_id>/restore/ [name='binding_version_restore']
-configs/ bindings/<int:pk>/compare/ [name='binding_compare']
-configs/ bindings/<int:pk>/compare/apply/ [name='binding_compare_apply']
-configs/ api/by-nodes/ [name='api_by_nodes']
-configs/ api/preview-glob/ [name='api_preview_glob']
-configs/ api/update-preview/ [name='api_update_preview']
-configs/ sync/ [name='sync_wizard']
-configs/ sync/api/batch/ [name='sync_batch_api']
-configs/ sync/api/single/ [name='sync_single_api']
-configs/ sync/api/progress/ [name='sync_progress']
-configs/ <int:pk>/update/ [name='update']
-configs/ node/<int:pk>/delete/ [name='node_delete']
-configs/ <int:pk>/versions/ [name='versions']
- ✅ 已修复：返回链接改为 configs:binding_versions + binding.id；配置标签详情页删除误用 config.id 的「版本历史」按钮
-```
-
-Q45
-```text
-发布中心
-    点击发布，发布执行中弹窗点击完整日志，会自动跳转到任务中心。
-    任务中心默认展示所有，能否展示当前批次详情？
- ✅ 已修复：progressOverlay「完整日志」跳转 /releases/history/?search=<批次号>，任务中心仅展示当前批次记录
-```
-
-Q46
-```text
-发布中心
-    查询框输入查询标签搜索后，未展示配置详情，而是“加载绑定...”。
-    当重新刷新浏览器后可正常展示。
- ✅ 已修复：loadNodes 恢复展开节点时，有 bindingCache 则 renderBindingRow，无缓存才 loadBindings（避免搜索重绘后卡在加载占位）
-```
-
-Q47
-```
-发布中心
-    查询框输入配置名称条件标签后搜索，无反应
- ✅ 已修复：API 增加 remote_path 搜索；有搜索词时自动展开本页节点，renderBindingRow 按配置名/路径过滤展示
-```
-
-Q48
-```text
-发布中心
-    新建配置标签绑定节点后发布。会提示
-    [14:48:47] 正在测试 SSH 连接...
-[14:48:47] SSH 连接测试通过 ✓
-[14:48:47] 开始发布: baidu v3 → lsj
-[14:48:47] 目标路径: /etc/nginx/conf.d/baidu.com
-[14:48:47] 正在备份原配置...
-[14:48:48] 备份失败: 备份失败: cp: cannot stat '/etc/nginx/conf.d/baidu.com': No such file or directory
-    因为是新增，远程没有此配置
- ✅ 已修复：backup_remote_file 对不存在的远程文件跳过备份；首次发布失败回滚改为 rm 清理新文件
-```
-
-Q49
-```text
-发布历史
-    回滚配置点击版本号自定义弹窗显示的“加载失败”
- ✅ 已修复：rollback.html 版本预览适配 VersionContentAPIView 扁平 JSON（与 Q17/发布中心一致）
-```
-
-Q50
-```text
-发布回滚配置
-    发布历史配置回滚后，其对应的状态变成了 pending。
-    但是我在发布中心里面看不到任务。
- ✅ 已修复：确认后立即异步执行；当前页弹出发布同款 progressOverlay；完整日志按批次打开任务中心
-```
-
-Q51
-```text
-发布历史
-    回滚关联的状态是不是搞错了？
-    已经发布失败就没必要回滚了。
-    只有当发布成功后我理解才需要回滚。
-    我是这样理解的，还是说不管发布结果如何都需要回滚？
-    你认为如何？
- ✅ 已修复：成功与失败均支持回滚（成功为主场景，失败为自动还原兜底）；列表/详情入口与后端校验统一为 success|failed
-```
-
-Q52
-```text
-发布历史
-    批量回滚不要在每个批次头挂按钮，改为勾选任务后统一批量回滚
- ✅ 已修复：去掉批次头「批量回滚」；任务行勾选 + 顶部操作栏；新增 api/selected-rollback；支持批次/节点全选
-```
-
-Q53
-```text
-发布历史
-    勾选框过大，风格与已实现勾选框不一致（应对齐 Q42 / 节点列表）
- ✅ 已修复：去掉 form-check-input（em 随父级字号放大）；改为与 nodes/list 一致的原生 checkbox；收紧列宽与边距
-```
-
-Q54
-```text
-发布历史
-    1.分页显示的是不是有问题？貌似是以配置数量进行分页的，我理解应该是以节点数进行分页
-    2.发布历史的布局目前看是有单怪怪的，页面布局、表头表行没对齐、勾选框有点多，你帮忙设计下应该怎么改？并给出样式案例
- ✅ 已修复：按 (batch_number, node_id) 节点单元分页；统一 data-table（批次表头+节点行+配置子行）对齐发布中心；勾选仅保留表头全选+配置行
-```
-
-Q55
-```text
-发布历史
-    1. 状态没对齐
-    2. x任务，这个可以删了，因为各节点体现了多少个配置
-    3. 每台节点状态没必要体现成功或失败，直接在批次号行体现如何？具体如何展示还没想清楚，你给点建议
-    4. 分页展示的不对，默认展示10条，但是第一页只有 8 台主机就分页了。
-    这是我的想法，你觉得如何？有什么建议？
- ✅ 已修复：状态列 nowrap 对齐；删批次「N 任务」；节点行去状态，批次行汇总为全部成功(N)/部分失败(成功M/失败K)/全部失败(K)；分页 unit key 规范化 + 本页/共 N 个节点
-```
-
-Q56
-```text
-发布历史
-    1. 部分失败状态需与状态表头对齐
-    2. 分页改为按批次号数量
-    3. 删除「本页 N 个节点」提示
-    4. 分页/每页条数移到右下角（对齐节点列表）
- ✅ 已修复：批次行拆列状态徽标对齐状态列；按 batch_number 分页；文案「个批次/页」；底部 pagination + per_page 对齐 nodes/list
-```
-
-Q57
-```text
-发布历史
-    支持单节点单配置/单节点多配置/单节点全量/多节点多配置/多节点全量回滚
- ✅ 已修复：节点勾选 + 配置勾选 + 表头全选三级联动；半选 indeterminate；已选显示节点数与配置数；仍按 task_ids 调用批量回滚 API
-```
-
-Q58
-```text
-发布历史
-    批量回滚你觉得是否有缺陷？
-    单配置回滚时可以选择对应版本历史，但是批量回滚时无法选择。
-    你觉得批量回滚是否有必要删除？
- ✅ 已修复：保留批量回滚；版本改为各任务 publish_version 的上一版（不再用 synced_version）；确认文案说明；跳过无上一版/锁定节点并反馈数量；精细选版仍走单配置回滚
- ✅ 补充：跨批次同节点按 node_id 合并勾选/全选/计数；同 binding 多版本仅保留最新任务再回滚其上一版
-```
-
-Q59
-```text
-发布历史批量回滚
-    1、 点击批量回滚后信息显示异常
-
-确认回滚已选的 <strong>21</strong> 个配置（涉及 <strong>2</strong> 个节点）吗？<br><small class="text-muted">nginx.conf、baidu、gitlab.conf、nginx.conf、pushgateway.conf 等</small><br><small class="text-muted">将回滚到各任务发布版本的上一版；同一配置若跨多批次仅回滚最近一次发布的上一版；需指定其他版本请使用单配置回滚。</small>
-    2. 点击批量回滚能否自定义弹窗显示回滚的明细？这个需要你设计下，无任何提示不知道回滚的什么内容、版本是什么。
- ✅ 已修复：弃用 showConfirm(textContent 导致 HTML 原文)；改为 modal-lg 明细弹窗（对齐 rollback/contentPreview）；按节点分组展示当前版本→回滚至；前端 binding 去重与后端一致
-```
-
-
-Q60
-```text
-Ngixn 升级
-    首页的信息、布局有点冗余，应该怎样重构设计一下？
-    符合运维人员操作习惯
- ✅ 已修复：首页改为运维操作台（顶栏开始升级/上传/源码包/历史 + 可点统计卡源码包/进行中/近7天失败 + 最近任务 data-table）；去掉说明书式 5 步与源码包预览；升级中心补首页/源码包/历史入口；历史支持 status=running 进行中过滤
-```
-
-
-Q61
-```text
-发布中心配置备份
-    能否以节点为粒度
-    现在所有配置都在 /opt/app/mascloud/ansible/mngxops/ 下面
-    当配置重名是会覆盖
-    /opt/app/mascloud/ansible/mngxops/< hostname >
-    这样是否可以？
- ✅ 已修复：备份路径改为 {release.backup_dir}/{hostname}/filename.timestamp；接通系统设置；hostname 路径安全处理
-```
-
-Q62
-```text
-Nginx 升级
-    1. 若上传源码包版本已存在，抛出如下异常，应该有自定义弹窗提示是否需覆盖
-    IntegrityError at /upgrade/packages/upload/
-UNIQUE constraint failed: upgrade_nginxsourcepackage.version, upgrade_nginxsourcepackage.uploaded_by_id
-    ...
-    2. 上传源码包时，是否可以异步上传并实时以百分比形式动态展示上传进度？
- ✅ 已修复：同版本先预检+showConfirm 覆盖确认；后端 overwrite 更新替代 IntegrityError；XHR FormData + upload.onprogress 真实百分比，复用 asyncProgressOverlay
-```
-
-Q63
-```text
-nginx 升级
- 1. 升级结果信息能否返回目标机器编译结果的信息？
- 我在目标机器尝试编译异常是
- checking for libxslt in /usr/pkg/ ... not found
-checking for libxslt in /opt/local/ ... not found
-
-./configure: error: the HTTP XSLT module requires the libxml2/libxslt
-libraries. You can either do not enable the module or install the libraries.
-
-
- 但页面展示错误为
- 错误信息:
-编译环境依赖缺失: bash: dpkg: command not found
-
-请安装 gcc, make, pcre-devel, zlib-devel, openssl-devel
-
- 2. 当前版本 → 目标版本表行只展示了目标版本，没有展示当前版本。
- ✅ 已修复：
- - SSHClient.execute_command 改为按 exit code 判定并合并 stdout/stderr（修复 dpkg stderr 误杀 + 2>&1 失败误判成功）
- - 预检仅检查 gcc/make；缺库由 ./configure/make 回报真实远程输出（error_message 取末尾 80 行，完整日志在 log_output）
- - 升级流程先拉取 nginx -V 写入 current_version，再做工具预检
- - 创建任务提交/回退写入 current_version；首页与历史始终展示 当前版本 → 目标版本
- - 版本列统一纯版本号展示（nginx_ver 过滤器去掉 nginx/ 前缀），如 1.14.1 → 1.31.2
-```
-
-Q64
-```text
-nginx 升级 -> 升级中心
-    1. 页面样式、排版、功能应该怎样重构设计一下？符合运维人员操作习惯
-    2. 目标节点选择能够以自定义弹窗形式勾选，其查询条件标签支持主机名、IP、节点组。
-    3. 源码包选择应该以什么样的方式展示？
-    4. 同理，远程编译工作目录、并行编译 (-j)4 升级模式、获取 nginx -V 编译参数也是如此，柔和在一起有点臃肿。应该如何设计
- ✅ 已修复：
- - 升级中心改为 3 阶段：选目标 → 编译参数 → 确认执行
- - 节点：binding 同款弹窗单选 + tag 搜主机名/IP/组；仅在线且有凭证可选；确认后自动读 nginx -V
- - 源码包：data-table 单选（名称/版本/大小/上传信息），支持跳转上传
- - 工作目录/-j/升级模式收入默认折叠的「高级选项」，默认值取自系统设置
- - 右栏进度未开跑时占位，开始后再展示步骤与日志
- - NodeSearchAPIView 补充 port/environment/nginx_version/has_credential
-
-    5. nginx 升级中心，选择目标节点不能选择多个。
-    6. nginx 升级中心，选择目标节点的主机名后面不需要展示 nginx 版本信息。
-    7. nginx 升级中心，编译参数获取结果能否格式化美化输出。
-    8. 选择目标、远程编译工作目录、编译参数 这 3 个功能都柔和在一个页面了，可以拆分吗，再将样式调美化一点？
- ✅ 已修复：
- - 弹窗改为多选 checkbox + 行点击/全选；已选 chips 仅显示 hostname(ip:port)+组，去掉 nginx 版本
- - NginxUpgradeTask 新增 batch_number；批量 JSON 创建按节点基线 + 统一增量算 target_opts；ThreadPool 并行 run_upgrade_task
- - 新增 api/batch-progress/；进度区按节点折叠展示步骤
- - nginx -V / ./configure 用 .param-highlight 分行高亮渲染
- - 页面改为互斥四步向导：1 选节点+源码包 → 2 编译环境 → 3 编译参数（参考节点编辑）→ 4 确认清单 Accordion
-```
-
-Q65
-```text
-nginx 升级中心
-  1. 源码包能否新增查询功能，支持名称、版本号条件标签查询。
-  2. 编译参数，我觉得没必要各个节点展示都展示编译参数，若用户选择多节点同时升级按理来说用户是认为多个节点的编译参数是一样的。我觉得若是勾选了多台且编译参数存在不一致的情况下（预期是多节点编译参数必须一致）再编译参数这个环节可以自定义弹窗提示，让用户认识到这个风险，供用户选择继续或者修改选择节点。
-  3. 编译参数，“目标 --prefix” 与实际编译路径不一致。
-  4. 编译参数“当前版本: 1.14.1 --prefix: /usr/share/nginx 二进制: /usr/sbin/nginx” 如果内容过长会导致自动换行，能否重新设计以下曾排版？
-  5. 编译参数，新增内置模块、移除现有模块能否改成左右侧选择对比的形式？这样不用来回切换可全视角查看到编译参数。
- ✅ 已修复：
- - Step1 源码包增加 tag-input，名称/版本 AND 前端过滤
- - 多节点 params 排序签名不一致时弹出风险弹窗（返回改选 / 仍要继续）；一致时隐藏参考节点下拉
- - 目标 --prefix 仅 switch_path 显示并重写 configure；平滑/全新保留各节点自身 prefix（前后端对齐）
- - 当前版本/prefix/二进制改为可截断定义列表 + title 悬停全文
- - 新增/移除模块改为左右双栏对比，第三方模块下沉
-
-  6. 编译参数不一致，“批量升级假定各节点编译参数一致。当前已选节点参数存在差异，请确认风险后再继续。”，这个“批量升级假定各节点编译参数一致。” 啥意思，是不是可以删了
-  7. 编译参数不一致，我看是只展示了	--prefix ，是只校验了这个参数吗，能不能全量校验。但是如果全量参数校验，若涉及到多个就很麻烦了，如何有效展示就成了一个问题
-  8. 新增内置模块、移除现有模块能否改成自定义弹窗左右侧选择对比的形式，支持查询功能，支持模块名称标签查询条件？这样不用来回切换可全视角查看到编译参数。
- ✅ 已修复：
- - 不一致弹窗删除「批量升级假定…」前半句
- - 全量 params 签名校验不变；弹窗改为节点摘要（含参数数）+ 仅差异参数（有/无主机）+ 行点击展开完整 params
- - 模块增减改为 modal-xl 左右对比弹窗，两侧支持模块名 tag 搜索；Step3 仅显示摘要与「调整模块」入口
-
- 9. 确认并开始升级，参考节点最终编译参数滚动窗口可以拉长点，下面的纯文本编译参数就必要展示了。
- 10. 确认并开始升级，滚动窗口里的编译参数可以新增备注吗，比如新增了什么参数、删除了什么参数，不能影响实际的编译效果，其目的是让人查看变动了哪些模块，需要醒目
- ✅ 已修复：
- - #finalConfigPreview max-height 300→480px；删除下方 #configDiff 纯文本区
- - 滚动区内用「已移除/新增」醒目标注展示变动（仅展示，不改提交 opts）
- - 补充：模块调整确认后同步刷新 Step3 上方 #currentConfigOutput 醒目标注
-
- 11. 确认并开始升级，编译参数展示了 2 次，我理解没必要，把下面的编译参数删掉是不是会好些？
- ✅ 已修复：各节点确认清单去掉展开 configure 预览，改为单行（主机/组/版本/prefix）；仅保留上方带批注的参考节点最终参数
-
- 12. 升级执行进度
-    12.1 我理解保留“查看完整日志”就可以，下发的完整日志是不是可以删了？
-    12.2 异常信息偏多时，能否默认展示前几行？因为有“查看完整日志”可以跳转到”  升级任务详情
- 13. 升级任务详情
-    13.1 进度信息是否可以不展示？
-    13.2 错误新是否可以不展示？
-    13.3 “当前编译参数 (nginx -V):” 没有格式化输出，而且第一行是空行，第二行前面有很多空格
-    13.4 “调整后的编译参数:” 没有格式化输出，而且而且第一行是空行，第二行前面有很多空格
-    13.5 “完整执行日志” 我理解可以代替错误信息，继续保留“完整执行日志”的样式。
-    13.6 “当前编译参数”、“调整后的编译参数:” 是否需要新增一个对比的功能？类似配置管理的配置 diff。
-    13.7 任务信息去掉 --prefix，优化排版布局、样式。
- ✅ 已修复：
- - center.html：删除 #upgradeError 整段错误堆叠；失败步骤 truncateErrorLines 默认前 5 行；保留「查看完整日志」/「完整日志」
- - task_log.html：删除进度信息卡与错误 alert；任务信息去掉 --prefix，改为两列 label/value 排版
- - 编译参数经 _tokenize_configure_args 分行高亮；有增减时展示「已移除/新增」对比视图
- - 完整执行日志样式保留；param-anno 样式提升到 base.html 全局复用
-
-   14. 升级执行进度，“查看完整日志”、“完整地址” 2 个按钮功能是一样的，我理解可以删掉一个
-   15. 升级任务详情
-      15.1 右上角的 “ 操作” 你觉得有必要保留吗？
-      15.2 “ 编译参数” 我想到可以将“当前编译参数”、“调整后编译参数”删掉，只保留“参数对比（相对当前）”的编译参数就可以了，但是“参数对比（相对当前）”这个文案可以不要。
-      15.3 “完整执行日志” 第一行是空行、第二行的开头有很多空格。
-      15.3 “完整执行日志” 标题没有和下面编译输出框对齐，这个需要美化调整一下。
- ✅ 已修复：
- - center.html：删除顶部「完整日志」#btnFullLog，仅保留节点级「查看完整日志」+取消升级
- - task_log：去掉右侧操作列；成功任务回滚按钮迁入任务信息 card-header
- - 编译参数只保留一份增减批注展示（无差异时高亮列出）；去掉「参数对比」文案
- - log_output_display=.strip()；日志标题与正文共用 1.125rem 左右内边距对齐
-
-    16. 升级任务详情
-      16.1 完整执行日志是实时刷新的吗，因为执行后用户很有可能点击升级执行进度里的“查看完整日志”核查编译进度。
-    17. Nginx 升级中心
-      17.1 “我确认以上配置无误，可以开始升级”第一次勾选后“开始升级”按钮是可点击的，但是升级后，“开始升级”的按钮就是灰色的了，我理解应该还是绿色可点击状态。
-      17.2 如果已经点击了“开始升级” 且 “升级执行进度”有任务，再次点击“开始升级”时，应该会有自定义弹窗警告。
- ✅ 已修复：
- - task_log：非终端任务每 2s 轮询 upgrade:task_progress，刷新日志/状态/进度%，完成后停止；成功时可动态出现回滚按钮
- - center：开跑后 btnStartUpgrade 跟随 confirmCheck，勾选仍在则保持可点
- - center：currentTaskIds 非空时再次开始先 showConfirm 警告将创建新批次
-    18. 整编译模块
-        18.1 左侧能不能展示 nginx 的现有参数（全量参数），右侧展示 nginx 编译已选的参数。我看右侧有一个 “-with-http_v3_module” 且是未勾选状态，我理解这个应该在左侧。
-        18.2 左侧的文案需调整“可新增内置模块（勾选添加）” 改为“已编译参数”
-    19. Nginx 升级中心，只要刷新一次浏览器，就默认回到了步骤1，能否保持当前页面。
- ✅ 已修复：
- - 模块弹窗：左「已编译参数」（勾选移除）；右「目标已选参数」仅展示已选；添加区只列未编译内置模块
- - sessionStorage(mngxops_upgrade_center_v1) 保存/恢复步骤、节点、源码包、模块增减、表单与进度任务
-
-    20. 升级任务详情
-        编译参数是
-./configure \
---prefix=/usr/share/nginx
---sbin-path=/usr/sbin/nginx
---modules-path=/usr/lib64/nginx/modules
---conf-path=/etc/nginx/nginx.conf
---error-log-path=/var/log/nginx/error.log
---http-log-path=/var/log/nginx/access.log
---http-client-body-temp-path=/var/lib/nginx/tmp/client_body
---http-proxy-temp-path=/var/lib/nginx/tmp/proxy
---http-fastcgi-temp-path=/var/lib/nginx/tmp/fastcgi
---http-uwsgi-temp-path=/var/lib/nginx/tmp/uwsgi
---http-scgi-temp-path=/var/lib/nginx/tmp/scgi
---pid-path=/run/nginx.pid
---lock-path=/run/lock/subsys/nginx
---user=nginx
---group=nginx
-- --with-file-aio 已移除
---with-ipv6
---with-http_ssl_module
---with-http_v2_module
---with-http_realip_module
---with-http_addition_module
---with-http_xslt_module=dynamic
---with-http_image_filter_module=dynamic
---with-http_sub_module
---with-http_dav_module
---with-http_flv_module
---with-http_mp4_module
---with-http_gunzip_module
---with-http_gzip_static_module
---with-http_random_index_module
---with-http_secure_link_module
---with-http_degradation_module
---with-http_slice_module
-- --with-http_stub_status_module 已移除
---with-http_perl_module=dynamic
---with-http_auth_request_module
---with-mail=dynamic
---with-mail_ssl_module
---with-pcre
---with-pcre-jit
---with-stream=dynamic
---with-stream_ssl_module
---with-debug
---with-cc-opt='-O2
---with-ld-opt='-Wl,-z,relro
-+ --with-stream_realip_module 新增
-
-        通过页面升级，抛出的异常是
-        checking for TCP_DEFER_ACCEPT ... not found
-checking for TCP_KEEPIDLE ... not found
-checking for TCP_FASTOPEN ... not found
-checking for TCP_INFO ... not found
-checking for accept4() ... not found
-checking for int size ...
-./configure: error: can not detect int size
-
-        但是我那编译参数去服务器上手动尝试，报错却是
-        [root@localhost nginx-1.30.3]# --with-stream=dynamic
--bash: --with-stream=dynamic: command not found
-...
- ✅ 已修复：根因是 `_tokenize_configure_args` / 前端 `tokenizeOpts` 按空格截断引号参数（如 `--with-cc-opt='-O2 -g ...'`）；改为 shlex/引号感知分词 + `_join_configure_opts`/`joinConfigureOpts` 安全拼装；configure 命令与任务详情对比均基于完整 token
-
-    21. Nginx 升级中心
-        当第一次升级失败去服务器修复，然后页面第二次点击“再次升级”无响应
- ✅ 已修复：startUpgrade 去掉嵌套 showConfirm，改为单次合并确认；全局 showConfirm 改为 hidden 后再执行回调并支持排队，避免第二次确认回调被清空
-
-    22. 确认并开始升级
-        22.1 “目标节点: 1 台 ... 新增模块 / 移除参数” 排版样式、布局太丑了，能否优化？
-        22.2 新增模块默认展示第一个，点击详情后在展示详情，可以参考移除参数
- ✅ 已修复：upgradeSummary 改为两列 label/value 定义列表；新增/移除统一首项截断 +「详情/收起」折叠
-
-    23. 完整执行日志
-        23.1 需要显示完整的编译过程，不要省略
-        23.2 当日志动态刷新时，我需要滑动浏览器的滚动条才能看到，能不能自动滑动滚动条看最新执行日志
-        23.3 编译完成后不需要 cp 二进制文件，因为进程可能正在启动，此时需要进行 nginx -t，若成功则重启反之编译失败。
- ✅ 已修复：
- - configure/make/make install 全量输出写入 log_output（整块原文 + 摘要行）；单任务 progress 取消截断
- - task_log 轮询刷新时日志容器与视口自动跟到底
- - 手写 cp objs/nginx 改为 make install → nginx -t → 平滑升级；失败回滚旧二进制
-
-    24. 升级过程
-        24.1 make[1]: Leaving directory '/tmp/nginx-upgrade/nginx-1.30.3'
-[2026-07-25 05:41:20] make install 完成，二进制已覆盖安装
-[2026-07-25 05:41:20] 执行 nginx -t 语法检查...
-nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
-nginx: configuration file /etc/nginx/nginx.conf test is successful
-[2026-07-25 05:41:20] nginx -t 语法检查通过
-[2026-07-25 05:41:20] 执行平滑升级 (USR2+WINCH+QUIT)...
-[2026-07-25 05:41:21] 平滑升级失败: 无法读取 PID 文件: 命令退出码 1
-[2026-07-25 05:41:21] 已回滚二进制: /usr/sbin/nginx.old.20260725054106 → /usr/sbin/nginx
-
-        nginx 可能是直接二进制，比如 /path/to/nginx -s reload 
-        也有可能是 systemctl 托管
-        在reload 前需要先检查一下nginx启动方式，在基于确认后的启动方式 reload
-
-        这个最好写成一个公共方法，运维工具后续还会新增 nginx 启停类似功能。
-
-        24.2 当 nginx 升级成功后，节点列表里面的版本会更新吗？
- ✅ 已修复：
- - 根因：_smooth_upgrade 写死 {prefix}/logs/nginx.pid，未使用 --pid-path=/run/nginx.pid
- - 新增 utils/nginx_ops.py（detect/reload/restart/start/stop）；升级与回滚改 detect+reload
- - execute_nginx_reload 委托公共 reload；成功后 get_nginx_version 回写节点列表版本
-```
-
-
-
-Q66
-```text
-排版布局
-    1. nginx 升级的最近升级记录，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
-    2. nginx 升级的升级历史记录，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
-    3. 首页的最近发布任务，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
-    4. 首页的配置下发失败，表格看起来怪怪的，最左侧和表头没对齐，而且太靠左了
-    这 4 个功能的样式、排版能否优化优化。
-
-    5. 你能发现整个项目是否还有这样类似的情况吗？也需要按此调整。
-
-    6. 所有自定义弹窗表格貌似没有调整，也能按照这个规范调整吗？
-    7. 自定义弹窗表格点击表行需要自动勾选，再次点击取消勾选。部分已实现这个功能，部分未实现。
-    8. 自定义弹窗提示的样式、风格是否能保持一致呢。
-```
-✅ 已修复：
- - base.html：.data-table 统一 th/td 内边距，首列 padding-left 1rem / 末列 padding-right 1rem；.node-info-cell/.node-identity 提升为全局样式
- - upgrade/index + history：节点列统一单行 hostname(ip)；去掉本地重复 node-info-cell CSS
- - dashboard：两表 card 标题 h6→h5；最近发布批次用 code、节点改 node-info-cell；下发失败配置名/节点分列；空态改 empty-state
- - Q66.5 全项目扫齐：configs/detail 绑定表 data-table + node-info-cell；upgrade/center 参数不一致弹窗单行节点；releases/center 嵌套绑定表 data-table；releases/list 批量回滚预览 node-info-cell；nodes/group_list、users/group_list、users/team_list、binding_edit_review 弹窗表补 data-table；configs/edit 绑定节点 badge→node-info-cell；sync_wizard 主机名去 strong；configs/list 与 releases detail/rollback 去掉多余 px-3（依赖全局首末列留白）
- - Q66.6：弹窗选择表统一 modal-dialog-centered + modal-picker-table + modal-table-scroll；base 提升弹窗表 CSS
- - Q66.7：base 新增 bindModalTableRowToggle；补齐节点创建/编辑选组、节点组选节点、管理节点、管理用户行勾选；binding_create/upgrade/team_list 改用同一 helper
- - Q66.8：showConfirm 支持 asHtml；sync_wizard/nodes list+edit 本地确认栈收敛到 showAlert/showConfirm；凭证/节点组删除改 submitPostConfirm；全项目 alert()→showAlert；恢复类弹窗补居中
-
-Q67
-```text
-nginx 升级
-  调整编译模块左侧默认的编译参数太少了
-  https://nginx.org/en/docs/
-  可以将 nginx 官方默认的编译参数加上去
- ✅ 已修复：BUILTIN_ADD_MODULES 按官方 configure/auto/options 补全全部模块参数（--with 含 dynamic + 默认模块 --without + Mail/Stream/事件等）；静态与 dynamic 互斥过滤
-```
-
-Q68
-```text
-用户列表
- 1. 操作自动换行了，编辑、关联角色、锁定、删除是2行展示的
- ✅ 已修复：操作列改为 icon-only btn-group + text-nowrap；锁定/解锁用隐藏表单 + form 属性挂接；列宽调至 22%
-
- 2. 编辑用户，页面样式设计太过于简陋了，能否美化布局、样式、排版等等等？
- ✅ 已修复：拆为基本信息/账号状态/关联角色/直授权限分区卡片；支持 ?tab=roles 定位
-
- 3. 编辑用户，关联角色的实现能否参考“节点关联节点组”的实现？采用自定义弹窗并展示所选项。
- ✅ 已修复：选择角色弹窗（tag 搜索+多选+最多3）+ 已选 chips；创建页同步；views 传入 all_user_groups
-
- 4. 编辑角色，用户直授权限看不到角色资源。
- ✅ 已修复：直授权限改用 perm-matrix（含角色资源）；selected_ids 预选自 profile.direct_permissions
-
- 5. 改的功能符合预期，基本信息能否再美化下？你觉得新增卡片效果如何？
- ✅ 已修复：分区卡片左边色条（primary/warning/info/success）+ header 浅底；基本信息双列；账号状态徽标+时间一行；创建页同步色条
- 
- 6. 编辑/新增角色的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
- ✅ 已修复：基本信息 + 角色权限分区卡片；底部操作栏无色条
-
- 7. 编辑/新增用户组的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
- ✅ 已修复：基本信息 + 关联角色分区卡片；去掉内层嵌套 card
-
-凭证管理
- 8. 编辑凭证的时候，密码的放大镜按钮往下靠了，应该是居中
- ✅ 已修复：.form-text 移出 .password-input-wrapper，眼睛按钮相对输入框垂直居中
-
- 9. 编辑/新增凭证的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
- ✅ 已修复：fieldset 改为基本信息(primary) + 认证信息(warning) 分区卡片
-
- 13. 用户列表能否新增一列所属用户组的字段
- ✅ 已修复：归属角色后新增「所属用户组」列（badge 展示 user_teams）；列表 queryset prefetch profile__groups + user_teams
-
-节点管理
- 10. 编辑/新增节点的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
- ✅ 已修复：基本信息 + 关联与连接分区卡片；测试连接保留在底部操作区
-
- 11. 编辑/新增节点组的样式能否参考用户管理编辑用户的样式？“分区卡片左边色条（primary/warning/info/success）+ header 浅底”
- ✅ 已修复：基本信息 + 关联节点分区卡片
-
- 补充：.user-edit-section 提升为全局 .form-section（base.html），用户创建/编辑同步改用全局类
-
-
-```
-Q69
-```text
-项目字体
-  我发现不同表行的字体大小、类型不一致，比如配置管理的主机名 和 发布中心的主机名 字体大小不一样。
-  能否将项目里所有字体样式、大小保持一致，该粗体就粗体（比如表头）、该非粗体就非粗体（比如表行）。
-  这是我例举的，需要你对全项目字体做优化。
- ✅ 已修复：
- - base.html：表头 font-weight 500→600；.node-identity 显式 font-size:var(--fs-base)+400，消除配置列表 accordion(~1rem) 与发布中心 data-table(0.82rem) 主机名字号差；新增 .table.data-table td .badge 与 .code-block-preview
- - configs/list：去掉组徽标内联字号、配置名 fw-bold、本地 td .badge；config-badge-* 改 var(--fs-xs)；状态过滤字重 600→500
- - releases/center：11px→var(--fs-xs)；预览节点行去粗体；进度树改 CSS 变量；JS 组徽标/version-select 去内联字号
- - 删除约 20 处页面级 td .badge font-size 重复规则（nodes/users/credentials/audit/releases/upgrade/dashboard/configs 等）
- - 列表表行去 strong（节点组/角色/用户组/审计/任务中心）；详情 pre/task_detail/rollback 进度树字号对齐变量
-```
-
-Q70
-```text
-审计操作日志
-  1. 查询整体布局是否需要优化一下？
-  2. 全部类型的查询条件是否可以删除
-  3. 查询时间范围应该如何优化？
-  4. 模块能否新增一个软链，如果是和发布、升级、节点测试、配置等等等相关有异步任务的，搞个超链是否可以？
- ✅ 已修复（方案 B）：
- - AuditLog 新增 task_center_id / source_batch；log_async_task + log_task_center_created；TaskCenterTask 创建信号写操作日志
- - 操作日志：删「全部类型」改「结果」筛选；时间快捷今天/近7天/近30天；tag 多词 AND；per_page 底栏；详情「查看任务」→任务中心详情
- - 登录日志：结果筛选、时间快捷、失败原因列、时间精确到秒
-```
-
-Q71
-```text
-任务中心
- 1. 摘要显示过长，Nginx 升级 [UG-260725-0011]: lsj → nginx-1.30.3，能否简化？
- 2. 摘要显示信息不对，凭证启用测试失败时摘要只有「自动测试完成：成功 0，失败 1」，看不出测的是什么
- 3. 任务详情执行结果不明确（仅计数文案）
- 4. 任务详情除「回滚配置」外其它类型输出不符合预期
- ✅ 已修复：
- - 新增 apps/releases/task_result.py：统一 [节点]/[成功]/[失败] 树协议与升级短摘要
- - 列表摘要：凭证显示凭证名；发布类优先批次号；Nginx 升级 detail 改为「旧→新」
- - 凭证/SSH单测批测解锁/配置同步 finish result 全部写入标准树
- - 发布/回滚创建时补填 target_hostnames/ips/configs
- - run_upgrade_task.update_status 同步 TaskCenter 进度与终态结果树；取消/回滚同样写树
- - task_detail：非发布类型子项不链发布历史；Nginx 升级入口「升级任务详情」+批次链升级历史；system_info JSON 定义列表；凭证区标签「目标凭证」
- - 列表摘要补强：format_task_center_summary 目标+结果；摘要列定宽横滚不截断；凭证 detail 改为纯结果计数
-```
-
-Q72
-```text
-系统设置
-    页面样式过于简陋，其样式、排版、布局过于粗糙，信息密度高层次感低，不符合运维人员操作习惯。
-    你觉得应该怎么设计？
- ✅ 已修复：
- - 顶栏独立 card（标题 + 配置项数）+ 左侧粘性 list-group 分组导航 + 右侧 form-section 双列表单
- - 字段改用 form-label / form-control-sm / form-text + 单位 input-group；底部无色条保存栏（按分组 Ajax）
- - views：UNIT_MAP 对齐 PRESET 键；GROUP_META 补齐图标（任务中心/Nginx升级）与色条修饰符
- - 删除旧 pill Tab / setting-row 等页面 CSS；空态改用 empty-state
- ✅ 布局再优化：
- - 合并为单一外层 card（header + 左右同框），去掉空顶栏与底部孤立保存卡
- - 侧栏 active 改为左边色条 + 浅底（对齐 form-section）；条数改为 text-muted 数字
- - 保存并入 form-section card-header；字段改为单列「标签|控件」行，路径/数字对齐整齐
- ✅ 对齐 GitLab Settings：
- - 去掉内层 form-section 色条卡；右侧扁平分区标题 h4 + 说明
- - 侧栏去条数；设置块 side-by-side（左标题描述 / 右限宽控件）；无字段类型图标
- - 底部左对齐「保存更改」；integer 限宽 10rem、string 限宽 28rem
- - 静态原型保留于 docs/prototypes/settings-gitlab-prototype.html
- ✅ 再优化：
- - GROUP_META 补每组 description，去掉无用 section/count；pane 展示分组说明
- - 切换分组 history.replaceState 同步 ?group= + localStorage
- - 未保存切换/离开 showConfirm + beforeunload；保存按 saved.length 区分成功/未变化 toast
- - settings-nav sticky 滚动；boolean 去「启用」文案 + 后端未勾选写 false；页面 max-width 1140px
-```
-
-Q73
-```text
-左侧菜单
-    感觉有点宽了，能否调整下？
-    另外左侧菜单能否可伸缩模式？
- ✅ 已修复：
- - 弃用 col-md-2/10，改为 app-shell flex：展开 220px / 折叠 64px（CSS 变量）
- - 顶栏 bi-list 改为侧栏切换；localStorage mngxops_sidebar_collapsed + 首屏防闪脚本
- - 折叠态仅图标 + title；子菜单改为右侧浮层；展开态保持原 accordion
- - 文案包在 .sidebar-label；品牌区折叠仅留图标
-```
-
-Q74
-```text
-系统设置
-    整体感觉像是居中，能否将一级类放置左右（仪表盘等等），二级类也就是参数做响应的调整
- ✅ 已修复：
- - 去掉 settings max-width 居中；卡片铺满主内容区
- - 左一级分组固定宽 240px（flex），右二级参数 flex:1 全宽
- - 宽屏路径控件 max-width 36rem；窄屏一级横滑 + 参数纵向堆叠
- - 原型 docs/prototypes/settings-gitlab-prototype.html 同步全宽布局
-```
-
-Q75
-```text
-项目功能
-	系统设置里的参数目前是不是都是硬编码？
-	我测试了几个，都没生效
- ✅ 已修复（所见即所得）：
- - PRESET 仅保留 17 项已接线参数；移除保留天数/登录锁定/废弃缓存超时/单节点超时/oldbin 等假入口
- - 设置页与 API 只展示 PRESET 键；seed 自动 upsert 元数据并删除孤儿键；AppConfig.ready 启动自动 seed
- - 补齐接线：仪表盘条数、SSH 默认端口/探测重试、发现深度与默认 nginx 路径、同步并发、发布并行、源码包大小、轮询/刷新间隔
- - 保存时 integer 校验 + refresh_setting_cache；前端轮询间隔经 context processor 注入
-
-    2. 系统设置怎么没有数据保留时长的配置项呢，比如任务中心、发布历史、操作日志、登录日志等等，可以以天为单位。
- ✅ 已修复：
- - 新增 4 项保留天数（默认 90，0=不清理）：任务中心/发布历史/操作日志/登录日志
- - purge_expired_data + manage.py purge_expired_data；跳过 pending/running
- - DataRetentionMiddleware 每日自动清理一次
- - 文案联动：sync_wizard 应用按钮 /N；package_upload 最大 N MB
-```
-
-Q76
-```text
-节点删除
-  节点删除后，我发现发布历史看不到以前的发布记录了。
-  现在是物理删吗，是不是需要改成逻辑删？
-  同时也需要考虑一个问题
-  节点A，发布，有历史发布任务
-  删除节点 A，还能查看到发布任务
-  再次添加节点 A，这个时候是否需要还能看到历史任务？
-  这个应该怎么设计？
- ✅ 已修复：
- - Node 逻辑删除（is_deleted/deleted_at/deleted_by）+ ActiveNodeManager 默认排除已删
- - 删除仅移出运维清单，ReleaseTask/升级历史/绑定行保留
- - 同 IP 再次添加恢复原节点（同一主键），历史自动关联
- - 发布历史/升级历史展示「已删除」徽标；已删节点禁用回滚/重试/批量回滚勾选
- - 配置/发布/仪表盘运维统计排除已删节点绑定
-```
-
-Q77
-```text
-节点列表
-    1. “批量xxxx”里面体现的数量可以删了，因为前面有“已选择 0/xxx”
- ✅ 已修复：批量按钮去掉（count/max）；仅保留「已选择」hint；MAX_SELECT 接 node.batch_max_count
-    2. 右上角的“添加节点”可以改为“新增节点”，我看其他的功能模块都是新增”
- ✅ 已修复：card-header 文案改为「新增节点」
-    3. 新增节点能不能加个批量新增，支持下载模板、上传 excel，
-    表头是主机名、ip、ssh 端口、所属环境、nginx 路径、节点组、凭证、备注。
-    主机名、ip、端口是必填项；
-    所属环境未填默认为测试环境
-    nginx 路径未填就采用默认系统值
-    节点组、凭证是非必填项，若为空可以设置为默认值，比如 - 。
-    备注就是描述，可以默认为空。
-    同时导入的时候，需要检测主机名、ip是否有重复的，节点组、凭证是否存在等等，如果不存在也需要自定义弹窗提示啥的。
-
-    excel 如果解析失败就自定义弹窗体现错误信息，
-
- ✅ 已修复：
- - 系统设置配置管理新增 config.default_nginx_bin（默认 /usr/sbin/nginx）；新建表单/导入空路径共用
- - 节点列表「批量导入」弹窗：下载 8 列 xlsx 模板 + 上传；整文件校验失败 showAlert 行错误表且不写入
- - 必填主机名/IP/SSH端口；环境空→test；Nginx路径空→系统设置；节点组/凭证/备注空或 - 表示不设置
- - 同 IP 逻辑删除走恢复；openpyxl + nodes/services.py + import API
- - 补充：节点列表批量操作栏新增「批量删除」（逻辑删除，权限 nodes.delete，上限同 batch_max_count）
- - 补充：导入表头新增「Nginx主配置路径」→ ConfigSyncSetting.main_conf_path；空则用 config.default_nginx_path
-```
-
-Q78
-```text
-用户管理
-    用户列表、角色管理左上角的“新增xxx”，样式和其他的不一样，比如比“用户组管理的”大、宽一点点，以“用户组管理的”对齐进行调整。
- ✅ 已修复：users/list、group_list「新增」按钮补 btn-sm，对齐用户组管理
-```
-
-Q79
-```text
-发布历史
- 发布历史的 发布详情，
- 节点
-arm (36.134.42.106)
-配置
-test_baidu
-版本
-v1
-操作人
-admin
-创建时间
-2026-07-28 16:05:49
-开始时间
-2026-07-28 16:06:41
-完成时间
-2026-07-28 16:07:00
-这些布局太差了
- 能不能以任务中心任务详情 为标准进行调整
-```
-✅ 已修复：
- - detail.html 元信息改为 task-detail-body + row g-2 small 同行标签布局（对齐任务详情）
- - 状态从 card-header 迁入元信息行；执行日志/操作记录分区标题对齐任务详情
-
-Q80
-```text
-任务中心-> 单/批量发布
-当我批量同步6台节点配置时，发现很慢，差不多得 1min 左右，但是我是内网机器不应该怎么慢。
-我同时单侧了单个节点，也很慢，但是不知道为什么这么慢
-我看不到详细的过程，
-
-这个能优化吗，比如 发布执行中 动态展示 ssh 操作日志啥的？
-类似 Nginx 升级过程的那个动态输出
-
-2. 单/多 节点有多个 nginx 配置时，每更新一个配置就会 nginx reload，你觉得有必要吗？
-
-3. 发布执行中，我觉得没必要记录“详细 SSH 日志”了，因为有完整日志跳转可以查看。<xxx> 备份中 xxx 你看是否还可以加点其他必要信息？
-```
-✅ 已修复（1）：
- - 发布链路 SSH 助手支持 client= 会话复用；同节点本批次共用一条 SSH
- - TaskCenterTask 新增 log_output；add_log 增量写入 ReleaseTask.result + TaskCenter 日志
- - 并行路径按配置刷新进度；center/rollback 进度弹窗展示当前步骤 + 增量结果树；progress API 返回 current_steps
-✅ 已修复（2）：
- - 没必要每配置 reload；同节点本批次改为备份→上传→nginx -t，全部通过后统一 reload 一次
- - `_deploy_release_config` / `_finalize_node_reload` + `_execute_node_release_batch`
- - 中途失败或 reload 失败：回滚本节点本批次已上传未生效的全部配置
- - 顺序/并行编排均走节点批次；回滚文案同步说明「同节点统一 reload」
-✅ 已修复（3）：
- - 进度弹窗去掉「详细 SSH 日志」折叠区，仅保留「完整日志」跳转（后端仍写 log_output 供详情页）
- - `_release_step_label` 统一步骤：阶段 · 配置 vN → 远程路径（过长截断中间）
-
-Q81
-```text
-Nginx 升级 & 系统设置
-    Nginx 升级的系统设置 默认编译工作目录 、默认并行编译数 (-j) 参数我改了，但是我在升级中心操作时发现并没有变。
-
-    我之前明明让你确认了系统设置里的所有参数是否所见及所用，你说是都改了，但是我刚刚发现了并没有。
-    希望你在全面检查一遍系统设置里的所有参数调整后是否立马生效。
-```
-✅ 已修复：
- - 根因：升级中心 sessionStorage 恢复无条件覆盖 remoteWorkDir/makeJobs；现按 settingsBaseline 智能恢复（未改过则用服务端新默认）
- - 创建 API / make -j / _ensure_remote_dir 空值回退改 get_setting，mkdir 使用 task.remote_work_dir
- - 22 项 PRESET 全量核对均已接线；description 补齐生效时机（立即 / 刷新页面 / 仅新建 / 次日清理）
-
-
-Q82
-```text
-用户列表
-    我刚刚随便天了一个信息就报错了
-    NoReverseMatch at /users/
-Reverse for 'edit' with arguments '('阿萨德',)' not found. 1 pattern(s) tried: ['users/(?P<username>[-a-zA-Z0-9_]+)/edit/\\Z']
-Request Method:	GET
-Request URL:	http://127.0.0.1:8000/users/
-Django Version:	4.2.30
-Exception Type:	NoReverseMatch
-Exception Value:	
-Reverse for 'edit' with arguments '('阿萨德',)' not found. 1 pattern(s) tried: ['users/(?P<username>[-a-zA-Z0-9_]+)/edit/\\Z']
-Exception Location:	D:\PyCharm\联动优势\works\django-labs\venv3\lib\site-packages\django\urls\resolvers.py, line 828, in _reverse_with_prefix
-Raised during:	apps.users.views.UserListView
-Python Executable:	D:\PyCharm\联动优势\works\django-labs\venv3\Scripts\python.exe
-Python Version:	3.9.6
-Python Path:	
-['D:\\PyCharm\\联动优势\\works\\django-labs\\mngxops',
- 'D:\\Python3.9\\python39.zip',
- 'D:\\Python3.9\\DLLs',
- 'D:\\Python3.9\\lib',
- 'D:\\Python3.9',
- 'D:\\PyCharm\\联动优势\\works\\django-labs\\venv3',
- 'D:\\PyCharm\\联动优势\\works\\django-labs\\venv3\\lib\\site-packages']
-Server time:	Tue, 28 Jul 2026 17:36:38 +0800
-Reverse for 'edit' with arguments '('阿萨德',)' not found. 1 pattern(s) tried: ['users/(?P<username>[-a-zA-Z0-9_]+)/edit/\\Z']
-86	                                        {% if u.is_active %}
-87	                                        <span class="badge bg-success">正常</span>
-88	                                        {% else %}
-89	                                        <span class="badge bg-danger">锁定</span>
-90	                                        {% endif %}
-91	                                    </td>
-92	                                    <td class="text-nowrap">
-93	                                        <div class="btn-group btn-group-sm" role="group">
-94	                                            {% if request.user|has_perm_code:"users.update" %}
-95	                                            {% if not u.is_superuser or request.user.is_superuser %}
-96	                                            <a href="{% url 'users:edit' u.username %}" class="btn btn-outline-primary" title="编辑">
-97	                                                <i class="bi bi-pencil"></i>
-98	                                            </a>
-99	                                            <a href="{% url 'users:edit' u.username %}?tab=roles" class="btn btn-outline-info" title="关联角色">
-100	                                                <i class="bi bi-person-badge"></i>
-101	                                            </a>
-102	                                            {% endif %}
-103	                                            {% endif %}
-104	                                            {% if request.user|has_perm_code:"users.update" and u.username != request.user.username %}
-105	                                            {% if u.is_active %}
-106	                                            <button type="submit" form="lockForm_{{ u.id }}" class="btn btn-outline-warning" title="锁定"
-```
-✅ 已修复：
- - 用户 edit/delete/lock 路由由 <slug:username> 改为 <int:pk>，列表反转不再因中文用户名崩溃
- - 创建/编辑表单限制用户名为 [-a-zA-Z0-9_]+，中文请填姓名；历史非法用户名可在编辑页改名
-
-Q83
-```text
-用户管理
-  新增/编辑用户得时候，应该有一个可选用户组的选项，其实现方式可以参考节点列表节点管理节点组
-```
-✅ 已修复：
- - UserCreateForm/UserUpdateForm 新增 teams 字段，save 时 user.user_teams.set
- - 创建/编辑页「所属用户组」分区 + 弹窗多选（tag 搜索、行点击勾选、chips），对齐节点组/关联角色
- - View 传入 all_user_teams；用户组侧「管理成员」入口保留
+# mngxops 优化点台账（Q1–Q95）
+
+本文档记录历史优化点结论，供 Agent / 开发快速检索。**不修改业务逻辑时请以本文件结论为准。**
+
+完整软件需求设计见 [`docs/README.md`](docs/README.md)；缺口明细见 [`docs/90-gap-and-optimization.md`](docs/90-gap-and-optimization.md)。
+
+## 状态图例
+
+| 状态 | 含义 |
+|------|------|
+| 已完成 | 需求已落地 |
+| 已关闭（结论） | 经确认不做或维持现状（有明确结论） |
+| 已关闭（不做） | 并入父任务，本条目不单独实施 |
+| 待确认 | 缺失需求或设计问题已登记，待评审后实施或关闭 |
+
+## 总览
+
+### 配置管理 / 配置同步
+
+| 编号 | 摘要 | 状态 |
+|------|------|------|
+| Q1 | 返回列表保持节点展开 | 已完成 |
+| Q2 | 创建配置标签后跳转绑定页 | 已完成 |
+| Q3 | 绑定节点改为弹窗多选 | 已完成 |
+| Q4 | 绑定弹窗交互 + 未绑定标签区 | 已完成 |
+| Q5 | 未绑定标签不做批量/查询 | 已关闭（结论） |
+| Q6 | 删除模板备注占位文案 | 已完成 |
+| Q7 | 未同步绑定解除改为物理删除 | 已完成 |
+| Q8 | 同步失败标黄跳转与任务关联 | 已完成 |
+| Q9 | 单节点同步真实进度轮询 | 已完成 |
+| Q10 | 同步进度改为读秒（后被 Q39 取代） | 已完成 |
+| Q11 | 同步页手动添加限定当前节点 | 已完成 |
+| Q32 | 配置列表节点展示对齐发布中心 | 已完成 |
+| Q44 | 版本对比返回链接 404 | 已完成 |
+
+### 发布中心 / 发布历史
+
+| 编号 | 摘要 | 状态 |
+|------|------|------|
+| Q12 | 发布中心/任务中心/历史按文档重设计 | 已完成 |
+| Q13–Q21 | 发布中心交互与视觉迭代 | 已完成 |
+| Q23–Q27 | 确认清单、查询、去传统方式 | 已完成 |
+| Q31 | 刷新后绑定加载卡住 | 已完成 |
+| Q45–Q48 | 完整日志批次过滤、搜索/首发备份 | 已完成 |
+| Q49–Q59 | 回滚能力与历史列表重构 | 已完成 |
+| Q61 | 备份按 hostname 分子目录 | 已完成 |
+| Q79 | 发布详情布局对齐任务详情 | 已完成 |
+| Q80 | 发布 SSH 复用、同节点统一 reload | 已完成 |
+
+### 任务中心
+
+| 编号 | 摘要 | 状态 |
+|------|------|------|
+| Q28–Q30 | 列表/详情布局与发布历史关联 | 已完成 |
+| Q33–Q36 | 执行结果树与超链 | 已完成 |
+| Q71 | 摘要与结果树协议统一 | 已完成 |
+
+### 节点 / 凭证 / 用户
+
+| 编号 | 摘要 | 状态 |
+|------|------|------|
+| Q43 | 详情内静默采集系统信息 | 已完成 |
+| Q68 | 表单分区卡片与关联弹窗 | 已完成 |
+| Q76 | 节点逻辑删除与同 IP 恢复 | 已完成 |
+| Q77 | 批量导入/删除与文案 | 已完成 |
+| Q78 | 用户/角色新增按钮 btn-sm | 已完成 |
+| Q82 | 用户路由改 pk，禁中文用户名 | 已完成 |
+| Q83 | 用户可选所属用户组 | 已完成 |
+
+### Nginx 升级 / 系统设置 / 导航
+
+| 编号 | 摘要 | 状态 |
+|------|------|------|
+| Q60–Q65 | 升级首页与升级中心向导迭代 | 已完成 |
+| Q67 | 内置模块对齐官方 options | 已完成 |
+| Q72–Q75 | 系统设置 GitLab 式布局与接线 | 已完成 |
+| Q73 | 侧栏可折叠 | 已完成 |
+| Q81 | 升级设置生效时机修复 | 已完成 |
+
+### UI 规范 / 性能 / 进度
+
+| 编号 | 摘要 | 状态 |
+|------|------|------|
+| Q22 | SSH 演进（并入 Q40） | 已关闭（不做） |
+| Q38 | 进度弹窗扫描（并入 Q39） | 已关闭（不做） |
+| Q39 | 假倒计时 → 真实 TaskCenter 轮询 | 已完成 |
+| Q40 | SSH 超时/并发配置化 + 异步采集 | 已完成 |
+| Q41 | UI 规范总纲（16 类） | 已完成 |
+| Q42 | UI 统一落地（126 项） | 已完成 |
+| Q66 | data-table / 弹窗表 / 确认框统一 | 已完成 |
+| Q69 | 全项目字号/字重对齐 | 已完成 |
+| Q70 | 审计日志筛选与任务软链 | 已完成 |
+
+### 待确认（缺失需求 / 设计优化）
+
+| 编号 | 摘要 | 状态 |
+|------|------|------|
+| Q84 | `conflict` 同步状态无写入 | 待确认 |
+| Q85 | `syncing` 同步状态无写入 | 待确认 |
+| Q86 | 配置漂移检测未实现 | 待确认 |
+| Q87 | TaskCenter 类型与实现不一致 | 待确认 |
+| Q88 | 任务中心列表/详情权限不对称 | 待确认 |
+| Q89 | `ReleaseTask.status=rollback` 未使用 | 待确认 |
+| Q90 | 发布中心绑定含 `marked_deleted` | 待确认 |
+| Q91 | 版本恢复直接标 `synced` | 待确认 |
+| Q92 | Glob 预览多节点只取 first | 待确认 |
+| Q93 | 全局 running 阻断新发布 | 待确认 |
+| Q94 | 审计信号恒为 success | 待确认 |
+| Q95 | 遗留 ConfigVersion 与双版本路由 | 待确认 |
+
+---
+
+## 正文
+
+### Q1 · 配置列表 · 返回保持展开
+
+- **问题**：节点展开后进入编辑/版本历史再点「返回列表」，展开态丢失。
+- **处理**：返回列表时恢复节点展开状态。
+- **状态**：已完成
+
+### Q2 · 配置列表 · 创建标签后无数据
+
+- **问题**：手动添加配置标签后列表看不到数据。
+- **处理**：创建后跳转绑定创建页，config 预选。
+- **状态**：已完成
+
+### Q3 · 配置管理 · 绑定节点弹窗多选
+
+- **问题**：绑定目标节点需改为自定义弹窗，支持主机名/IP/节点组标签搜索与批量勾选，样式对齐「添加/修改节点」。
+- **处理**：`binding_create.html` 弹窗选择；`BindingCreateView` 循环创建多个绑定。
+- **状态**：已完成
+
+### Q4 · 配置管理 · 绑定弹窗与未绑定区
+
+- **问题**：主机名字重、行点击勾选、节点组搜索为空；需展示未绑定配置标签并可绑定/删除。
+- **处理**：行点击勾选；API `groups__name` 匹配；列表新增未绑定标签区与删除弹窗。
+- **状态**：已完成
+
+### Q5 · 配置管理 · 未绑定标签不做批量
+
+- **问题**：未绑定标签是否要批量操作、查询。
+- **处理**：不需要；辅助清理区逐个删除即可；创建后跳转已由 Q2 覆盖。
+- **状态**：已关闭（结论）
+
+### Q6 · 配置列表 · 删除模板备注文案
+
+- **问题**：手动添加中「可选：创建绑定时若远程无此文件…」备注可删。
+- **处理**：删除 forms placeholder 与 models help_text，迁移 0004。
+- **状态**：已完成
+
+### Q7 · 配置管理 · 解除绑定文案与删除策略
+
+- **问题**：远程无文件时仍提示「待删除/下次同步清理」不合理。
+- **处理**：`not_synced`/`orphaned` 直接物理删除；弹窗按状态区分文案。
+- **状态**：已完成
+
+### Q8 · 配置同步 · 失败标黄跳转
+
+- **问题**：同步失败标黄应跳配置列表（主机名过滤）；列表状态应跳任务详情。
+- **处理**：新增 `last_sync_task_id`；sync_wizard 标黄链列表；syncing/failed 链任务详情；单节点同步也建 TaskCenterTask。
+- **状态**：已完成
+
+### Q9 · 配置同步 · 单节点进度弹窗
+
+- **问题**：单节点同步需动态进度。
+- **处理**：异步线程 + TaskCenterTask；`ConfigSyncProgressView` 读真实进度；前端按 `task_center_id` 轮询。（后续进度 UI 由 Q39 统一为全屏遮罩。）
+- **状态**：已完成
+
+### Q10 · 配置同步 · 读秒进度
+
+- **问题**：多配置串行时无法按配置数展示真实百分比，改为读秒。
+- **处理**：`doFullSync`/`submitPartialSync` 使用 setInterval 读秒；完成/失败/超时清除。（假倒计时后由 Q39 改为真实轮询。）
+- **状态**：已完成
+- **关联**：被 Q39 取代读秒方案
+
+### Q11 · 配置管理 · 双入口手动添加
+
+- **问题**：同步页按节点「手动添加」应限定该节点，不应再跳通用绑定创建。
+- **处理**：有 `node_id` 时自动创建绑定并回列表；无则保持 Q2 跳绑定页。
+- **状态**：已完成
+
+### Q12 · 发布管理 · 中心/任务/历史重设计
+
+- **问题**：按 `.trae/docs_v1/05_releases.md` 强化发布中心与配置、任务关联。
+- **处理**：
+  1. 发布中心：节点二维 2 步选择 + API；快捷推送；单条重试；进度按节点分组。
+  2. 任务中心/历史：树形/Accordion；侧栏「发布历史」。
+  3. 并行发布、批次回滚、顺序/并行（后续 Q21 改为三级发布按钮）。
+- **状态**：已完成
+
+### Q13 · 发布中心 · 选择区交互与表格视觉
+
+- **问题**：已选计数位置、清除对齐、快捷列冗余、全选失效、路径预览、表头/表行字重字号异常。
+- **处理**：计数迁分页行；清除对齐筛选行；删快捷列；表头全选；路径 Modal 预览；表格字体/背景微调。
+- **状态**：已完成
+
+### Q14 · 发布中心 · 勾选节点未全选绑定
+
+- **问题**：勾选节点后绑定配置未全部勾选。
+- **处理**：去掉仅 modified 限制；已展开反向联动；未展开异步加载并填 `selectedBindings`。
+- **状态**：已完成
+
+### Q15 · 发布中心 · 列宽与节点单行展示
+
+- **问题**：表头列宽失衡；状态换行；节点需 `hostname(IP) + 组 badge` 单行。
+- **处理**：状态列加宽 nowrap；`.node-info-cell` / `.node-identity`。
+- **状态**：已完成
+
+### Q16 · 发布中心 · 绑定数与行点击展开
+
+- **问题**：绑定数只显示总数；行点击应展开明细。
+- **处理**：仅总数 badge；勾选时自动展开绑定。
+- **状态**：已完成
+
+### Q17 · 发布中心 · 配置预览网络错误
+
+- **问题**：路径预览报网络错误。
+- **处理**：URL 改为 `/releases/version/{id}/content/`；适配扁平 JSON（create.html 同步修）。
+- **状态**：已完成
+
+### Q18 · 发布中心 · 绑定行点击勾选
+
+- **问题**：点击配置明细行应勾选。
+- **处理**：`.binding-item` 行点击切换复选框（排除 INPUT/SELECT/BUTTON）。
+- **状态**：已完成
+
+### Q19 · 发布中心 · 预览与版本不匹配
+
+- **问题**：切换历史版本预览仍显示最新内容。
+- **处理**：从 DOM 读版本下拉当前值，匹配 versions 取对应 ID；徽标同步版本号。
+- **状态**：已完成
+
+### Q20 · 发布中心 · 状态过滤栏
+
+- **问题**：需类似配置列表的状态快速过滤。
+- **处理**：API `sync_status` + `status_counts`；前端 8 标签过滤栏；绑定 API 不再排除 marked_deleted。
+- **状态**：已完成
+
+### Q21 · 发布中心 · 确认清单与发布粒度
+
+- **问题**：节点名 fallback 错误；清单需按节点折叠；需搜索；去掉顺序/并行，改为全量/节点/单配置发布。
+- **处理**：Accordion 清单；`publishBindings()` 三级按钮；tag 搜索；节点名从 DOM 读取。
+- **状态**：已完成
+
+### Q22 · 性能 · SSH 通信演进
+
+- **问题**：期望按文档推荐路径演进 SSH；担心影响现有功能。
+- **处理**：本条不做，并入 Q40。
+- **状态**：已关闭（不做）
+- **关联**：父任务 Q40
+
+### Q23 · 发布中心 · 确认清单表格与查询
+
+- **问题**：「发布此节点」换行、单配置无 title、行点击不折叠、查询非 tag 且无效。
+- **处理**：按钮 nowrap；title 提示；整行 toggle；tag-input + AND 多标签过滤。
+- **状态**：已完成
+
+### Q24 · 发布中心 · 需点两次才展开
+
+- **问题**：节点行有时要点两次才展开绑定。
+- **处理**：展开态去掉 `d-none`，避免 Bootstrap `!important` 覆盖内联 display。
+- **状态**：已完成
+
+### Q25 · 发布中心 · 查询与节点展示
+
+- **问题**：查询无效；主机名粗体；Step2 表头/行信息不全。
+- **处理**：API 增配置名搜索；去 strong；表头与 IP/组展示补齐。
+- **状态**：已完成
+
+### Q26 · 发布中心 · Step2 表头与节点行
+
+- **问题**：表头宜为「配置名称」；节点行缺 IP/组；去掉「N 个配置」。
+- **处理**：表头调整；预选 Promise 链；DOM fallback 补 IP/组；去掉数量 badge。
+- **状态**：已完成
+
+### Q27 · 发布中心 · 删除传统创建方式
+
+- **问题**：删除传统发布页且不影响现有 JSON 发布。
+- **处理**：`ReleaseCreateAPIView` 仅 JSON；路由 `api/create/`；删 create.html/forms；测试适配。
+- **状态**：已完成
+
+### Q28 · 任务中心 · 列表布局
+
+- **问题**：摘要空白过大、列换行、左侧展开按钮多余。
+- **处理**：摘要定宽；td nowrap；删展开列改行点击展开（后由 Q29 再删展开）。
+- **状态**：已完成
+
+### Q29 · 任务中心 · 去掉行内展开
+
+- **问题**：有发布历史后，任务行展开详情是否必要。
+- **处理**：删除 expand 模板/CSS/JS；保留详情按钮与进度轮询。
+- **状态**：已完成
+
+### Q30 · 任务中心 · 详情字体与发布历史关联
+
+- **问题**：详情粗体杂乱；需关联发布历史。
+- **处理**：统一 `.task-detail-body` 字号；发布类批次链发布历史；非发布类不显示额外按钮。
+- **状态**：已完成
+
+### Q31 · 发布中心 · 刷新后「加载绑定…」
+
+- **问题**：刷新偶发绑定加载失败。
+- **处理**：`loadNodes` 后对已展开且无缓存节点调用 `loadBindings`（sessionStorage 只恢复展开态）。
+- **状态**：已完成
+
+### Q32 · 配置列表 · 节点展示对齐
+
+- **问题**：节点展示需对齐发布中心；去掉快速推送。
+- **处理**：`.node-info-cell` 结构；删推送按钮与旧组标签 CSS。
+- **状态**：已完成
+
+### Q33 · 任务中心 · 执行结果优化
+
+- **问题**：详情执行结果展示冗余、难定位失败。
+- **处理**：失败置顶并默认展开；成功折叠；总耗时；结果卡片化；失败行浅红底。（原始日志区后由 Q35 删除。）
+- **状态**：已完成
+
+### Q34 · 任务中心 · 结果计数错误
+
+- **问题**：summary 计数为 0、配置名冗余。
+- **处理**：按前导空格匹配 `[成功]`/`[失败]`；配置名去掉版本后缀；删冗余 detail alert。
+- **状态**：已完成
+
+### Q35 · 任务中心 · 删原始日志 + 配置超链
+
+- **问题**：原始日志可删；配置名应新窗口跳发布历史。
+- **处理**：删 details 日志区；配置 `<a target="_blank">`；search 多词 + batch/node_ip 过滤；有过滤时自动展开历史树。
+- **状态**：已完成
+
+### Q36 · 任务中心 · 批次号新窗口
+
+- **问题**：来源批次需新窗口打开。
+- **处理**：批次超链加 `target="_blank"`。
+- **状态**：已完成
+
+### Q37 · 发布历史 · 详情导航按钮
+
+- **问题**：「返回发布中心」失效；「任务中心」实际返回上页。
+- **处理**：改为「返回发布历史」；任务中心纯链接新窗口；`goBackToReleaseHistory` fallback 修正为 `releases:list`。
+- **状态**：已完成
+
+### Q38 · 整体 · 进度弹窗扫描
+
+- **问题**：扫描并统一读秒/进度弹窗风格。
+- **处理**：本条不做，并入 Q39。
+- **状态**：已关闭（不做）
+- **关联**：父任务 Q39
+
+### Q39 · 进度弹窗 · 假倒计时改真实轮询
+
+- **问题**：5 处假倒计时 + 进度风格不统一。
+- **处理**：
+  1. `base.html` 全局 `#asyncProgressOverlay` + 完整日志链任务详情。
+  2. 节点 SSH 测/解锁、凭证启用、同步批/单节点改 TaskCenter 轮询。
+  3. 删除假 setInterval 读秒；任务中心表格/升级面板保持自有真实进度。
+- **状态**：已完成
+- **关联**：承接 Q38；修正 Q10 读秒
+
+### Q40 · SSH · 配置化与异步化
+
+- **问题**：超时/并发硬编码；系统信息/Nginx 版本同步阻塞 HTTP。
+- **处理**：
+  1. `get_setting` 接线：`ssh_connect_timeout`、`batch_max_count`、`credential.test_max_concurrency`、`batch_max_count` 模板变量。
+  2. 系统信息/Nginx 版本 → 异步 TaskCenter；列表轮询更新 DOM。
+  3. ConfigGlobPreview 跳过（后 Q42#90 修 bug）；asyncio 层暂不实施。
+- **状态**：已完成
+- **关联**：承接 Q22
+
+### Q41 · UI 规范 · 总纲
+
+- **问题**：全项目 UI 需统一规范。
+- **处理**：确立 16 类规范（字体/颜色/布局/按钮/表格/分页/弹窗/表单/图标/反馈/交互/数据展示/代码/响应式/查询/其他）及落地原则：复用公共组件、不改业务逻辑、禁止硬编码主题值。细则由 Q42 落地。
+- **状态**：已完成
+- **关联**：子任务 Q42
+
+### Q42 · UI 统一 · 126 项落地
+
+- **问题**：按 Q41 审计落地全项目 UI（含二次核实）。
+- **处理**（按组摘要，共 126 项已完成）：
+  1. **全局样式**：CSS 变量、tag-input 全局化、`.data-table`、字号 rem、圆角/过渡两档、等宽 `.code-font`。
+  2. **全局组件**：empty-state、pagination（首页末页+每页条数）、btn-sm、showConfirm、状态/环境 badge、form-switch、Toast、必填 `*`、Emoji→BI。
+  3. **登录/个人/仪表盘**：变量对齐、去嵌套 container、统计卡圆角。
+  4. **业务页**：nodes/credentials/configs/releases/upgrade/users/audit/settings 分页空态表格表单对齐。
+  5. **导航/错误页**：侧栏图标箭头、404/500/403。
+  6. **二次核实**：perm-matrix 全局、删死代码（syncProgressModal 等）、弹窗 ID 前缀、删除页文案统一等。
+- **状态**：已完成
+- **关联**：父规范 Q41
+
+### Q43 · 节点列表 · 详情静默采集
+
+- **问题**：点主机名先出「系统信息采集」再出详情，多余。
+- **处理**：详情弹窗内静默加载系统信息/Nginx，去掉全屏进度遮罩。
+- **状态**：已完成
+
+### Q44 · 配置管理 · 返回版本历史 404
+
+- **问题**：对比页返回链到 `configs/<id>/versions/`，误把 config.id 当 binding。
+- **处理**：改为 `configs:binding_versions` + binding.id；配置标签详情去掉误用版本历史按钮。
+- **状态**：已完成
+
+### Q45 · 发布中心 · 完整日志按批次
+
+- **问题**：完整日志进任务中心展示全部，应只看当前批次。
+- **处理**：跳转 `/releases/history/?search=<批次号>`（任务中心按批次过滤展示）。
+- **状态**：已完成
+
+### Q46 · 发布中心 · 搜索后卡在加载绑定
+
+- **问题**：条件搜索后明细显示「加载绑定…」，刷新才好。
+- **处理**：恢复展开时有 `bindingCache` 则直接 `renderBindingRow`，无缓存才 `loadBindings`。
+- **状态**：已完成
+
+### Q47 · 发布中心 · 配置名搜索无反应
+
+- **问题**：配置名称标签搜索无效。
+- **处理**：API 增 `remote_path` 搜索；有搜索词自动展开本页；绑定行按名/路径过滤。
+- **状态**：已完成
+
+### Q48 · 发布中心 · 首发文件备份失败
+
+- **问题**：远程无文件时 `cp` 备份失败。
+- **处理**：远程不存在则跳过备份；失败回滚改为 `rm` 清理新文件。
+- **状态**：已完成
+
+### Q49 · 发布历史 · 回滚版本预览失败
+
+- **问题**：版本号弹窗「加载失败」。
+- **处理**：适配 VersionContentAPIView 扁平 JSON（同 Q17）。
+- **状态**：已完成
+
+### Q50 · 发布历史 · 回滚后 pending 无进度
+
+- **问题**：回滚变 pending 但无执行反馈。
+- **处理**：确认后异步执行 + 发布同款 progressOverlay；完整日志按批次打开。
+- **状态**：已完成
+
+### Q51 · 发布历史 · 失败是否可回滚
+
+- **问题**：失败发布是否还需回滚入口。
+- **处理**：success|failed 均可回滚（失败作自动还原兜底）；前后端校验统一。
+- **状态**：已完成
+
+### Q52 · 发布历史 · 批量回滚改勾选
+
+- **问题**：批次头挂批量回滚不便。
+- **处理**：顶部操作栏 + 勾选；`api/selected-rollback`；支持批次/节点全选。
+- **状态**：已完成
+
+### Q53 · 发布历史 · 勾选框过大
+
+- **问题**：form-check-input 随字号放大。
+- **处理**：改原生 checkbox，对齐节点列表。
+- **状态**：已完成
+
+### Q54 · 发布历史 · 分页与表格结构
+
+- **问题**：按配置分页不合理；勾选过多、对齐差。
+- **处理**：按 `(batch, node)` 单元分页；data-table 三级行；勾选仅表头+配置行。（后续 Q56 改为按批次分页。）
+- **状态**：已完成
+
+### Q55 · 发布历史 · 状态与批次汇总
+
+- **问题**：状态未对齐；「N 任务」冗余；节点行状态可上收到批次。
+- **处理**：状态 nowrap；删任务数；批次汇总成功/部分失败/全部失败。
+- **状态**：已完成
+
+### Q56 · 发布历史 · 按批次分页与底栏
+
+- **问题**：部分失败未对齐；应按批次分页；分页靠右下。
+- **处理**：批次行拆列状态；按 `batch_number` 分页；底栏对齐节点列表。
+- **状态**：已完成
+
+### Q57 · 发布历史 · 多粒度勾选回滚
+
+- **问题**：需支持单/多节点、单/多配置回滚勾选。
+- **处理**：节点/配置/表头三级联动 + indeterminate；仍按 task_ids 调 API。
+- **状态**：已完成
+
+### Q58 · 发布历史 · 批量回滚版本策略
+
+- **问题**：批量无法选版，是否删批量回滚。
+- **处理**：保留；默认回滚各任务 publish_version 上一版；跨批次同 binding 仅保留最新任务；精细选版走单配置回滚。
+- **状态**：已完成
+
+### Q59 · 发布历史 · 批量回滚明细弹窗
+
+- **问题**：确认框 HTML 原文异常；需展示回滚明细与版本。
+- **处理**：modal-lg 按节点分组展示「当前→回滚至」；binding 去重对齐后端。
+- **状态**：已完成
+
+### Q60 · Nginx 升级 · 首页运维台
+
+- **问题**：首页信息冗余，不符合运维习惯。
+- **处理**：顶栏快捷入口 + 可点统计卡 + 最近任务表；历史支持 running 过滤。
+- **状态**：已完成
+
+### Q61 · 发布 · 备份按主机分子目录
+
+- **问题**：备份平铺易同名覆盖。
+- **处理**：`{backup_dir}/{hostname}/filename.timestamp`；接通系统设置；hostname 路径安全处理。
+- **状态**：已完成
+
+### Q62 · Nginx 升级 · 源码包覆盖与上传进度
+
+- **问题**：同版本 IntegrityError；需真实上传进度。
+- **处理**：预检 + showConfirm 覆盖；overwrite 更新；XHR `upload.onprogress` + asyncProgressOverlay。
+- **状态**：已完成
+
+### Q63 · Nginx 升级 · 真实编译错误与当前版本
+
+- **问题**：页面错误被 dpkg 误杀掩盖；只显示目标版本。
+- **处理**：按 exit code 合并 stdout/stderr；预检仅 gcc/make；先写 current_version；版本列纯版本号。
+- **状态**：已完成
+
+### Q64 · Nginx 升级 · 升级中心向导
+
+- **问题**：页面臃肿；节点/源码包/高级项需拆分；需多选节点。
+- **处理**：
+  1. 四步向导：选节点+包 → 编译环境 → 编译参数 → 确认。
+  2. 节点弹窗多选 + tag 搜索；源码包 data-table；高级项折叠取系统设置。
+  3. `batch_number` + 并行升级 + batch-progress；参数高亮渲染。
+- **状态**：已完成
+
+### Q65 · Nginx 升级 · 中心深度迭代
+
+- **问题**：源码包查询、多节点参数一致性、模块对比、进度/详情、configure 引号截断、reload/PID、二次确认等（多轮反馈）。
+- **处理**（按主题）：
+  1. **源码包/参数一致**：tag 过滤；全量 params 签名；差异弹窗可展开；删误导文案。
+  2. **模块 UI**：modal-xl 左「已编译」右「目标已选」+ 添加区；官方模块见 Q67。
+  3. **确认/进度/详情**：最终参数批注；删重复展示与堆叠错误；日志 strip + 自动滚底；task_log 2s 轮询。
+  4. **状态保持/确认**：sessionStorage；showConfirm 排队；开跑后按钮仍可点并警告新批次。
+  5. **configure 拼装**：shlex/引号感知分词 + 安全 join，避免 `--with-cc-opt='...'` 截断。
+  6. **安装与 reload**：make install → nginx -t → detect+reload（`utils/nginx_ops.py`）；成功回写节点版本；PID 用 pid-path。
+- **状态**：已完成
+
+### Q66 · 排版 · data-table 与弹窗统一
+
+- **问题**：多页表格首列未对齐；弹窗表未统一；行勾选不全；确认风格不一。
+- **处理**：全局 data-table 首末列留白；node-info 提升全局；弹窗 picker 表 + `bindModalTableRowToggle`；showConfirm/showAlert 收敛。
+- **状态**：已完成
+
+### Q67 · Nginx 升级 · 补全官方模块参数
+
+- **问题**：左侧可选模块过少。
+- **处理**：`BUILTIN_ADD_MODULES` 按官方 configure/auto/options 补全；静态与 dynamic 互斥。
+- **状态**：已完成
+
+### Q68 · 用户/凭证/节点 · 表单分区与关联弹窗
+
+- **问题**：用户操作列换行；编辑页简陋；关联角色/组需弹窗；凭证眼睛错位；各模块表单风格不一。
+- **处理**：
+  1. 用户操作 icon-only；编辑分区卡 + 角色弹窗 + perm-matrix；列表加所属用户组列。
+  2. 角色/用户组/凭证/节点/节点组统一 `.form-section` 色条分区卡。
+  3. 凭证眼睛相对输入框垂直居中。
+- **状态**：已完成
+
+### Q69 · 字体 · 全项目字号字重
+
+- **问题**：配置列表与发布中心主机名字号不一致等。
+- **处理**：表头 600；`.node-identity` 固定 base/400；清页面级 badge 字号；表行去 strong。
+- **状态**：已完成
+
+### Q70 · 审计 · 筛选与任务软链
+
+- **问题**：查询布局、类型筛选、时间快捷、异步任务关联。
+- **处理**：AuditLog 增 `task_center_id`/`source_batch`；结果筛选 + 今天/7/30 天；详情「查看任务」；登录日志同步优化。
+- **状态**：已完成
+
+### Q71 · 任务中心 · 摘要与结果树协议
+
+- **问题**：摘要过长/缺目标；非发布类型结果不规范。
+- **处理**：`task_result.py` 统一树协议；各类型 finish 写树；列表 `format_task_center_summary`；升级/凭证等详情入口区分。
+- **状态**：已完成
+
+### Q72 · 系统设置 · GitLab 式布局
+
+- **问题**：设置页简陋、密度高。
+- **处理**：左分组导航 + 右 side-by-side 字段；未保存离开确认；`?group=` + localStorage；原型保留于 `docs/prototypes/settings-gitlab-prototype.html`。
+- **状态**：已完成
+
+### Q73 · 导航 · 侧栏可折叠
+
+- **问题**：侧栏偏宽，需可伸缩。
+- **处理**：app-shell 220px/64px；localStorage；折叠浮层子菜单。
+- **状态**：已完成
+
+### Q74 · 系统设置 · 全宽左右布局
+
+- **问题**：设置页居中浪费空间。
+- **处理**：去 max-width；左 240px / 右 flex:1；窄屏一级横滑。
+- **状态**：已完成
+
+### Q75 · 系统设置 · 所见即所得 + 保留天数
+
+- **问题**：多项设置未生效；缺数据保留天数。
+- **处理**：PRESET 仅保留已接线项并启动 seed；补齐仪表盘/SSH/同步/发布/上传/轮询等接线；新增 4 类保留天数 + 每日 purge（跳过 pending/running）。
+- **状态**：已完成
+
+### Q76 · 节点 · 逻辑删除
+
+- **问题**：物理删导致发布历史消失；同 IP 再添加应关联历史。
+- **处理**：`is_deleted` + ActiveNodeManager；历史保留并标「已删除」；同 IP 恢复原主键；已删禁用回滚勾选。
+- **状态**：已完成
+
+### Q77 · 节点列表 · 批量导入/删除与文案
+
+- **问题**：批量按钮冗余数量；「添加」改「新增」；需 Excel 批量导入。
+- **处理**：xlsx 模板+整文件校验；默认环境/路径取系统设置；同 IP 走恢复；批量逻辑删除；主配置路径列。
+- **状态**：已完成
+
+### Q78 · 用户管理 · 新增按钮尺寸
+
+- **问题**：用户/角色「新增」比用户组略大。
+- **处理**：补 `btn-sm` 对齐。
+- **状态**：已完成
+
+### Q79 · 发布历史 · 详情元信息布局
+
+- **问题**：详情字段竖排杂乱。
+- **处理**：对齐任务详情 `task-detail-body` 同行标签；状态迁入元信息行。
+- **状态**：已完成
+
+### Q80 · 发布 · 性能与进度展示
+
+- **问题**：发布慢、过程不透明；每配置 reload 过频；进度弹窗「详细 SSH 日志」冗余。
+- **处理**：
+  1. 同节点复用 SSH；`log_output` 增量；进度展示当前步骤 + 结果树。
+  2. 同节点批次：备份→上传→nginx -t，统一 reload 一次；失败回滚本批已上传。
+  3. 弹窗去掉详细 SSH 折叠，保留完整日志跳转；统一步骤文案。
+- **状态**：已完成
+
+### Q81 · 系统设置 · 升级默认值生效
+
+- **问题**：改工作目录/-j 后升级中心仍用旧值。
+- **处理**：sessionStorage 按 `settingsBaseline` 智能恢复；创建/make/mkdir 空值回退 `get_setting`；PRESET description 补生效时机。
+- **状态**：已完成
+
+### Q82 · 用户列表 · 中文用户名 NoReverseMatch
+
+- **问题**：非法用户名导致列表 `NoReverseMatch`。
+- **处理**：edit/delete/lock 路由改 `<int:pk>`；表单限制 `[-a-zA-Z0-9_]+`，中文填姓名。
+- **状态**：已完成
+
+### Q83 · 用户管理 · 所属用户组
+
+- **问题**：创建/编辑用户应可选用户组（对齐节点关联节点组）。
+- **处理**：表单 `teams` 字段；分区 + 弹窗多选 chips；View 传入 `all_user_teams`。
+- **状态**：已完成
+
+### Q84 · 配置管理 · conflict 状态无写入
+
+- **问题**：`sync_status=conflict` 在模型、列表过滤、仪表盘/发布中心统计中存在，但业务代码从未赋值，过滤结果恒为空，易误导运维。
+- **证据**：`apps/configs/models.py` choices；计数见 `apps/configs/views.py`、`apps/dashboard/views.py`、`apps/releases/views.py`；无写入路径。
+- **建议**：实现本地/远程内容冲突检测并置位；或下线 UI/统计与枚举。
+- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q85 · 配置管理 · syncing 状态无写入
+
+- **问题**：异步同步期间绑定不进入 `syncing`，UI badge/过滤无效。
+- **证据**：`config_filters.py`、配置列表模板；同步线程未更新该状态。
+- **建议**：同步开始置 `syncing`、结束写终态；或移除该状态展示。
+- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q86 · 配置管理 · 漂移检测未实现
+
+- **问题**：`remote_content_hash`、`drift_detected_at`、`config_drift_check` 任务类型已预留，无巡检实现；hash 主要在发布成功时写入。
+- **证据**：`apps/configs/models.py`；`TaskCenterTask` / `apps/audit/utils.py`；无创建 `config_drift_check` 的业务入口。
+- **建议**：实现手动/定时漂移对比；或清理字段与枚举并更新需求文档。
+- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q87 · 任务中心 · 操作类型与实现不一致
+
+- **问题**：枚举与审计映射含 `config_discover`、`config_glob_preview`；实际发现/同步写 `config_batch_sync`；Glob 预览为同步 HTTP，不建 TaskCenter。
+- **证据**：`apps/releases/models.py`；`apps/audit/utils.py`；`ConfigSyncBatchAPIView`；`ConfigGlobPreviewView`。
+- **建议**：创建任务改用精确类型，或收紧枚举与 `OPERATION_AUDIT_MAP`。
+- **文档**：`docs/09-task-center.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q88 · 任务中心 · 列表/详情权限不对称
+
+- **问题**：仅有 `nodes.update` 时，列表只显示本人 `node_batch_test`；详情还允许本人 `config_batch_sync`，可见任务集合不一致。
+- **证据**：`TaskCenterListView.get_queryset` 与 `TaskCenterDetailView.get_queryset`（`apps/releases/views.py`）。
+- **建议**：统一受限用户可见的 `operation_type` 集合。
+- **文档**：`docs/09-task-center.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q89 · 发布历史 · rollback 状态未使用
+
+- **问题**：`ReleaseTask.STATUS_CHOICES` 含 `rollback`，回滚实际新建任务，源任务不改写为 `rollback`。
+- **证据**：`apps/releases/models.py`；`ReleaseRollbackView` 等创建新任务逻辑。
+- **建议**：回滚成功后回写源任务状态；或删除无用 choice 并清理展示。
+- **文档**：`docs/08-releases.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q90 · 发布中心 · 绑定含 marked_deleted
+
+- **问题**：节点绑定 API 未排除 `marked_deleted`，状态计数含该类；是否允许勾选发布不清晰。
+- **证据**：`ReleaseNodeBindingsAPIView` 与 status_counts（`apps/releases/views.py`）。
+- **建议**：默认排除或禁用勾选并提示「待删除」。
+- **文档**：`docs/08-releases.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q91 · 配置版本 · 恢复直接标 synced
+
+- **问题**：恢复到与 `synced_version` 相同的版本时直接 `sync_status=synced`，不校验远程实际内容。
+- **证据**：`BindingVersionRestoreView`（`apps/configs/views.py`）。
+- **建议**：恢复标 `modified`，或 SSH 校验远程后再标 `synced`。
+- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q92 · 配置 Glob 预览 · 多节点只取 first
+
+- **问题**：`ConfigGlobPreviewView` 接受多个 `node_ids`，实现仅处理 `.first()` 节点。
+- **证据**：`apps/configs/views.py` Glob 预览视图。
+- **建议**：按节点循环返回结果，或前端限制单选并后端校验。
+- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q93 · 发布 · 全局 running 阻断新批次
+
+- **问题**：任意 `ReleaseTask.status=running` 存在即拒绝新批次自动执行，非按操作者/节点隔离，易误伤并行运维。
+- **证据**：`ReleaseCreateAPIView` 中 `filter(status="running").exists()`（`apps/releases/views.py`）。
+- **建议**：改为按操作者、按节点集合冲突检测，或配置化开关；并写入需求说明。
+- **文档**：`docs/08-releases.md`、`docs/16-nfr.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q94 · 审计 · CRUD 信号结果多为 success
+
+- **问题**：模型信号写 `AuditLog` 时结果偏向 success；表单/API 业务失败不一定记 failed，观测不完整。
+- **证据**：`apps/audit/signals.py`。
+- **建议**：关键失败路径显式记 failed；或文档明确「仅记录落库成功的变更」。
+- **文档**：`docs/11-audit.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
+
+### Q95 · 配置管理 · 遗留 ConfigVersion 与双版本路由
+
+- **问题**：旧 `ConfigVersion` 模型仍在；`/configs/<pk>/versions/` 与 `/configs/bindings/<pk>/versions/` 并存，pk 语义易混（曾导致 Q44）。
+- **证据**：`apps/configs/models.py` 待废弃注释；`apps/configs/urls.py` 兼容路由。
+- **建议**：迁移清理后删除旧模型与旧路由；过渡期旧路由重定向或明确报错。
+- **文档**：`docs/07-configs.md`、`docs/15-api-catalog.md`、`docs/90-gap-and-optimization.md`
+- **状态**：待确认
