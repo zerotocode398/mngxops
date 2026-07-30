@@ -20,6 +20,7 @@ from .services import (
 )
 from apps.credentials.models import Credential
 from apps.releases.models import TaskCenterTask
+from apps.releases.task_cancel import finish_if_active, is_cancelled, update_if_active
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.ssh import test_ssh_connection, get_nginx_version, get_system_info
 from utils.pagination import PerPagePaginationMixin
@@ -877,7 +878,8 @@ def test_node_connection(request):
                         blocks.append(item_success("SSH连接"))
                     else:
                         blocks.append(item_failed("SSH连接", message))
-                    TaskCenterTask.objects.filter(pk=tid).update(
+                    finish_if_active(
+                        tid,
                         status=status, progress=100, finished_at=timezone.now(),
                         detail=f"连接{'成功' if success else '失败'}",
                         result=build_tree_result(
@@ -892,7 +894,8 @@ def test_node_connection(request):
                         node_header(host, target_hostname),
                         item_failed("SSH连接", str(e)),
                     ]
-                    TaskCenterTask.objects.filter(pk=tid).update(
+                    finish_if_active(
+                        tid,
                         status="failed", progress=100, finished_at=timezone.now(),
                         detail=f"执行异常: {str(e)}",
                         result=build_tree_result(0, 1, 1, blocks),
@@ -1063,6 +1066,8 @@ def batch_test_node_connection(request):
                     executor.submit(_test_one, node): node for node in test_nodes
                 }
                 for future in as_completed(future_to_node):
+                    if is_cancelled(task_id):
+                        break
                     result = future.result()
                     done += 1
                     node_blocks.append(node_header(result.get("ip"), result.get("hostname")))
@@ -1073,16 +1078,19 @@ def batch_test_node_connection(request):
                         fail_count += 1
                         node_blocks.append(item_failed("SSH连接", result.get("message", "")))
 
-                    TaskCenterTask.objects.filter(pk=task_id).update(
+                    update_if_active(
+                        task_id,
                         progress=(
                             int(done * 100 / len(test_nodes)) if test_nodes else 100
                         ),
                         detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{len(test_nodes)}",
-                        updated_at=timezone.now(),
                     )
 
+            if is_cancelled(task_id):
+                return
             status = "success" if fail_count == 0 else "failed"
-            TaskCenterTask.objects.filter(pk=task_id).update(
+            finish_if_active(
+                task_id,
                 status=status,
                 progress=100,
                 finished_at=timezone.now(),
@@ -1090,7 +1098,6 @@ def batch_test_node_connection(request):
                 result=build_tree_result(
                     success_count, fail_count, len(test_nodes), node_blocks
                 ),
-                updated_at=timezone.now(),
             )
 
         thread = threading.Thread(

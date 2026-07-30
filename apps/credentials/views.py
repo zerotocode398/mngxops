@@ -15,6 +15,7 @@ import threading
 from .forms import CredentialForm
 from .models import Credential, CredentialEnableTask
 from apps.releases.models import TaskCenterTask
+from apps.releases.task_cancel import finish_if_active, is_cancelled, update_if_active
 from apps.users.permissions import PermissionRequiredMixin
 from apps.nodes.models import Node
 from utils.ssh import test_ssh_connection
@@ -157,7 +158,8 @@ def _run_credential_enable_task(task_id, credential_id):
             )
             if task.skipped_count:
                 result_text += f"\n锁定跳过 {task.skipped_count} 台"
-            TaskCenterTask.objects.filter(pk=center_task_id).update(
+            finish_if_active(
+                center_task_id,
                 status="success" if task.failed_count == 0 else "failed",
                 progress=100,
                 finished_at=timezone.now(),
@@ -177,7 +179,8 @@ def _run_credential_enable_task(task_id, credential_id):
         try:
             failed_task = CredentialEnableTask.objects.get(pk=task_id)
             if failed_task.task_center_id:
-                TaskCenterTask.objects.filter(pk=failed_task.task_center_id).update(
+                finish_if_active(
+                    failed_task.task_center_id,
                     status="failed",
                     finished_at=timezone.now(),
                     progress=100,

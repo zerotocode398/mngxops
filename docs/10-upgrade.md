@@ -49,7 +49,7 @@
 3. **编译参数**：模块左右栏（已编译 / 目标已选）；`BUILTIN_ADD_MODULES` 对齐官方 options（Q67）；静态/dynamic 互斥；参数差异弹窗；configure 引号感知分词拼接防截断（Q65）。  
 4. **确认**：最终参数批注；showConfirm；创建批次并行升级。
 
-高级项默认：`upgrade.default_work_dir`、`upgrade.make_jobs_default`；sessionStorage 按 `settingsBaseline` 智能恢复（Q81）。
+高级项默认：`upgrade.default_work_dir`、`upgrade.make_jobs_default`（页面以服务端默认渲染，Q81）；**再进入向导一律从第 1 步空白开始**，不恢复节点/包/参数草稿；仅续看进行中批次进度（Q113）。
 
 ## 6. 执行流水线
 
@@ -97,7 +97,7 @@ nodes、task center、settings、audit、nginx_ops。
 
 ## 11. 已落地优化索引
 
-Q60–Q65、Q67、Q81。
+Q60–Q65、Q67、Q81、Q113。
 
 ## 12. 待确认缺口
 

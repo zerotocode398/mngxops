@@ -12,6 +12,7 @@ urlpatterns = [
     # 任务中心
     path("history/", views.TaskCenterListView.as_view(), name="history"),
     path("tasks/<int:pk>/", views.TaskCenterDetailView.as_view(), name="task_center_detail"),
+    path("tasks/<int:pk>/cancel/", views.TaskCenterCancelView.as_view(), name="task_center_cancel"),
     path("tasks/progress/", views.TaskCenterProgressAPIView.as_view(), name="task_center_progress"),
     # 发布历史
     path("list/", views.ReleaseListView.as_view(), name="list"),

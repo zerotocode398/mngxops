@@ -37,6 +37,15 @@ from utils.ssh import (
 )
 
 from .models import ReleaseTask, ReleaseHistory, TaskCenterTask, generate_batch_number
+from .task_cancel import (
+    close_registered_ssh,
+    finish_if_active,
+    is_cancelled,
+    mark_cancelled,
+    register_ssh,
+    unregister_ssh,
+    update_if_active,
+)
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_setting
 
@@ -370,6 +379,9 @@ class ReleaseExecutorMixin:
                 milestone=True,
                 step=_release_step_label("已连接", config_label, task.publish_version, remote_path),
             )
+        if task_center_id and is_cancelled(task_center_id):
+            return _fail("任务已取消")
+
         version_label = f"v{task.publish_version}" if task.publish_version else "latest"
         add_log(
             f"开始发布: {config.name} {version_label} → {node.hostname}",
@@ -387,6 +399,8 @@ class ReleaseExecutorMixin:
             return _fail(f"配置 {config.name} {version_label} 内容为空，无法发布")
 
         # 备份（远程文件不存在时跳过，支持首次发布；按 hostname 分子目录）
+        if task_center_id and is_cancelled(task_center_id):
+            return _fail("任务已取消")
         add_log(
             "正在备份原配置...",
             milestone=True,
@@ -748,6 +762,9 @@ class ReleaseExecutorMixin:
                 milestone=True,
                 step=_release_step_label("已连接"),
             )
+            # 登记 SSH，取消时可关闭打断阻塞
+            if task_center_id:
+                register_ssh(task_center_id, ssh)
             # 将建连日志并入 first 的 result，供后续 deploy 继续追加
             first.result = "\n".join(first_logs)
             first.save(update_fields=["result"])
@@ -755,6 +772,20 @@ class ReleaseExecutorMixin:
 
             abort_reason = None
             for idx, task in enumerate(tasks):
+                # 协作取消：停止本节点后续配置
+                if task_center_id and is_cancelled(task_center_id):
+                    cancel_msg = "任务已取消，跳过后续配置"
+                    for rest in tasks[idx:]:
+                        if rest.status not in ("success", "failed", "cancelled"):
+                            rest.status = "cancelled"
+                            rest.result = cancel_msg
+                            rest.finished_at = datetime.now()
+                            rest.save(update_fields=["status", "result", "finished_at"])
+                        if on_task_done:
+                            on_task_done(rest, False, cancel_msg)
+                        results.append((rest, False))
+                    return results
+
                 if abort_reason:
                     self._fail_task_early(task, action, abort_reason)
                     if on_task_done:
@@ -795,6 +826,22 @@ class ReleaseExecutorMixin:
                     continue
 
             if pending_items:
+                if task_center_id and is_cancelled(task_center_id):
+                    cancel_msg = "任务已取消，跳过统一 reload"
+                    self._rollback_pending_items(
+                        pending_items, step_kwargs, "任务已取消",
+                    )
+                    for item in pending_items:
+                        t = item["task"]
+                        if t.status not in ("cancelled",):
+                            t.status = "cancelled"
+                            t.result = (t.result or "") + f"\n{cancel_msg}"
+                            t.finished_at = datetime.now()
+                            t.save(update_fields=["status", "result", "finished_at"])
+                        if on_task_done:
+                            on_task_done(t, False, cancel_msg)
+                        results.append((t, False))
+                    return results
                 reload_ok = self._finalize_node_reload(
                     node, pending_items, step_kwargs,
                     task_center_id=task_center_id, log_lock=log_lock,
@@ -809,6 +856,8 @@ class ReleaseExecutorMixin:
 
             return results
         finally:
+            if task_center_id and ssh is not None:
+                unregister_ssh(task_center_id, ssh)
             if ssh is not None:
                 try:
                     ssh.close()
@@ -1343,7 +1392,76 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         context["upgrade_task"] = upgrade_task
         context["system_info_rows"] = system_info_rows
         context["nginx_version_text"] = nginx_version_text
+        context["can_cancel"] = task.status in ("pending", "running")
         return context
+
+
+class TaskCenterCancelView(LoginRequiredMixin, View):
+    """协作式取消任务中心任务：标 cancelled、关 SSH、级联发布/升级明细"""
+
+    def dispatch(self, request, *args, **kwargs):
+        self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
+        self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
+        if not (self.can_read_release_tasks or self.can_read_node_tasks):
+            return forbidden_response(request, "当前账号无权限访问该功能")
+        return super().dispatch(request, *args, **kwargs)
+
+    def _get_task(self, pk):
+        """按可见范围获取任务"""
+        qs = TaskCenterTask.objects.filter(pk=pk)
+        if not self.can_read_release_tasks:
+            qs = qs.filter(
+                operation_type__in=["node_batch_test", "config_batch_sync"],
+                trigger_user=self.request.user,
+            )
+        return qs.first()
+
+    def post(self, request, pk):
+        """执行取消：写库 → 级联 → 关闭已登记 SSH"""
+        task = self._get_task(pk)
+        if not task:
+            return JsonResponse({"success": False, "message": "任务不存在或无权操作"}, status=404)
+        if task.status not in ("pending", "running"):
+            return JsonResponse(
+                {"success": False, "message": f"当前状态（{task.get_status_display()}）不可取消"},
+                status=400,
+            )
+
+        detail = "用户手动取消"
+        ok = mark_cancelled(task.id, detail=detail, result=detail)
+        if not ok:
+            return JsonResponse({"success": False, "message": "取消失败，任务状态可能已变更"}, status=409)
+
+        # 级联：同批次发布/回滚明细
+        if task.operation_type in ("release_publish", "release_rollback") and task.source_batch:
+            ReleaseTask.objects.filter(
+                batch_number=task.source_batch,
+                status__in=("pending", "running"),
+            ).update(status="cancelled", result=detail, finished_at=timezone.now())
+
+        # 级联：关联升级任务
+        if task.operation_type in ("nginx_upgrade", "nginx_rollback"):
+            try:
+                from apps.upgrade.models import NginxUpgradeTask
+                terminal = ("success", "failed", "rollback", "cancelled")
+                NginxUpgradeTask.objects.filter(task_center_id=task.id).exclude(
+                    status__in=terminal
+                ).update(
+                    status="cancelled",
+                    error_message=detail,
+                    finished_at=timezone.now(),
+                )
+            except Exception:
+                logger.exception("级联取消升级任务失败 task_center=%s", task.id)
+
+        closed = close_registered_ssh(task.id)
+        _clear_release_progress_state(task.id)
+
+        return JsonResponse({
+            "success": True,
+            "message": "任务已取消",
+            "ssh_closed": closed,
+        })
 
 
 class ReleaseDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
@@ -1544,6 +1662,19 @@ def _run_release_tasks(task_ids, task_center_id=None):
             detail_lines.append(f"[失败] 任务#{task_id} 不存在")
 
     for node_key, tasks in node_tasks.items():
+        if task_center_id and is_cancelled(task_center_id):
+            cancel_msg = "任务已取消，跳过后续节点"
+            for task in tasks:
+                if task.status not in ("success", "failed", "cancelled"):
+                    task.status = "cancelled"
+                    task.result = cancel_msg
+                    task.finished_at = datetime.now()
+                    task.save(update_fields=["status", "result", "finished_at"])
+                failed += 1
+                detail_lines.append(f"  [失败] {task.config.name} - {cancel_msg}")
+            node_results[node_key] = {"success": 0, "failed": len(tasks)}
+            continue
+
         node_success = 0
         node_failed = 0
         detail_lines.append(f"[节点] {node_key}")
@@ -1574,10 +1705,10 @@ def _run_release_tasks(task_ids, task_center_id=None):
             )
             if task_center_id:
                 done = success + failed
-                TaskCenterTask.objects.filter(pk=task_center_id).update(
+                update_if_active(
+                    task_center_id,
                     progress=int(done * 100 / total) if total else 100,
                     detail=f"执行中：成功 {success}，失败 {failed}，共 {total}",
-                    updated_at=timezone.now(),
                 )
 
         executor._execute_node_release_batch(
@@ -1591,13 +1722,17 @@ def _run_release_tasks(task_ids, task_center_id=None):
         node_results[node_key] = {"success": node_success, "failed": node_failed}
 
     if task_center_id:
+        if is_cancelled(task_center_id):
+            _clear_release_progress_state(task_center_id)
+            return
         status = "success" if failed == 0 else "failed"
         result_lines = [f"执行完成：成功 {success}，失败 {failed}，共 {total}"]
         for nk, nr in node_results.items():
             result_lines.append(f"[节点摘要] {nk}: 成功 {nr['success']}, 失败 {nr['failed']}")
         result_lines.extend(detail_lines)
 
-        TaskCenterTask.objects.filter(pk=task_center_id).update(
+        finish_if_active(
+            task_center_id,
             status=status, progress=100, finished_at=timezone.now(),
             result="\n".join(result_lines),
             detail=f"执行完成：成功 {success}，失败 {failed}，共 {total}",
@@ -1642,6 +1777,18 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
 
     def _execute_node(node_key, tasks):
         """执行单个节点的所有配置发布（节点级一次 reload）"""
+        if task_center_id and is_cancelled(task_center_id):
+            cancel_msg = "任务已取消，跳过本节点"
+            for t in tasks:
+                if t.status not in ("success", "failed", "cancelled"):
+                    t.status = "cancelled"
+                    t.result = cancel_msg
+                    t.finished_at = datetime.now()
+                    t.save(update_fields=["status", "result", "finished_at"])
+                with state_lock:
+                    state["failed"] += 1
+            return node_key, 0, len(tasks), [f"[节点] {node_key}", f"  [失败] {cancel_msg}"]
+
         node_success = 0
         node_failed = 0
         node_lines = [f"[节点] {node_key}"]
@@ -1669,13 +1816,13 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
                     )
                 if task_center_id:
                     done = state["success"] + state["failed"]
-                    TaskCenterTask.objects.filter(pk=task_center_id).update(
+                    update_if_active(
+                        task_center_id,
                         progress=int(done * 100 / total) if total else 100,
                         detail=(
                             f"并行执行中：成功 {state['success']}，"
                             f"失败 {state['failed']}，共 {total}"
                         ),
-                        updated_at=timezone.now(),
                     )
             _live_tree_set_done(
                 task_center_id, node_key, task.config.name, ok,
@@ -1694,6 +1841,8 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {}
         for node_key, tasks in node_tasks.items():
+            if task_center_id and is_cancelled(task_center_id):
+                break
             futures[pool.submit(_execute_node, node_key, tasks)] = node_key
 
         for future in futures:
@@ -1708,13 +1857,17 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
     failed = state["failed"]
 
     if task_center_id:
+        if is_cancelled(task_center_id):
+            _clear_release_progress_state(task_center_id)
+            return
         status = "success" if failed == 0 else "failed"
         result_lines = [f"执行完成（并行模式）：成功 {success}，失败 {failed}，共 {total}"]
         for nk, nr in node_results.items():
             result_lines.append(f"[节点摘要] {nk}: 成功 {nr['success']}, 失败 {nr['failed']}")
         result_lines.extend(detail_lines)
 
-        TaskCenterTask.objects.filter(pk=task_center_id).update(
+        finish_if_active(
+            task_center_id,
             status=status, progress=100, finished_at=timezone.now(),
             result="\n".join(result_lines),
             detail=f"执行完成：成功 {success}，失败 {failed}，共 {total}",

@@ -68,7 +68,7 @@
 | `api/nodes/`、`api/node-bindings/<node_id>/` | **JSON** 节点与绑定 |
 | `api/create/` | **JSON** 创建发布任务并可自动执行 |
 | `history/` | **任务中心**列表 |
-| `tasks/<pk>/`、`tasks/progress/` | 任务详情 / **JSON** 进度 |
+| `tasks/<pk>/`、`tasks/<pk>/cancel/`、`tasks/progress/` | 任务详情 / **JSON** 协作取消 / **JSON** 进度 |
 | `list/` | **发布历史** |
 | `<pk>/`、`rollback/`、`retry/` | 单任务详情/回滚/重试 |
 | `api/selected-rollback/` | **JSON** 勾选回滚 |

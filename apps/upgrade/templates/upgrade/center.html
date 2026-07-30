@@ -2353,116 +2353,46 @@ function applyThirdPartyRows(rows) {
     });
 }
 
-/**
- * 按系统设置基线恢复表单字段：用户未改过则保留服务端新默认
- * @param {string} elId 输入框 id
- * @param {*} savedValue session 中保存的值
- * @param {*} oldBaseline 保存时的系统默认
- * @param {string} currentDefault 当前页服务端默认
- * @param {string} legacyHardcode 历史硬编码回退（兼容无 baseline 的旧缓存）
- */
-function applyRestoredSettingField(elId, savedValue, oldBaseline, currentDefault, legacyHardcode) {
-    var el = document.getElementById(elId);
-    if (!el || savedValue == null || savedValue === '') return;
-    var saved = String(savedValue);
-    var baseline = (oldBaseline != null && oldBaseline !== '') ? String(oldBaseline) : null;
-    if (baseline !== null) {
-        // 等于旧系统默认 → 用户未自定义，保留 DOM 上的新默认
-        if (saved === baseline) return;
-        el.value = saved;
-        return;
-    }
-    // 旧缓存无 baseline：等于当前默认或历史硬编码则不覆盖
-    if (saved === String(currentDefault) || saved === String(legacyHardcode)) return;
-    el.value = saved;
-}
-
-/** 保存升级中心向导状态到 sessionStorage */
+/** 保存升级中心状态到 sessionStorage（仅进行中批次，不持久化向导草稿） */
 function saveUpgradeWizardState() {
     if (_skipWizardSave) return;
     try {
-        var pkg = getSelectedPackage();
-        var confirmEl = document.getElementById('confirmCheck');
+        // 节点/包/参数等草稿不跨页保留；仅续看执行中批次进度（Q113）
         var state = {
-            currentStep: currentStep,
-            selectedNodes: selectedNodes,
-            packageId: pkg ? pkg.id : null,
-            refNodeId: refNodeId,
-            pendingRemovedModules: pendingRemovedModules,
-            pendingAddedModules: pendingAddedModules,
-            thirdParty: collectThirdPartyRows(),
-            upgradeMode: getUpgradeMode(),
-            remoteWorkDir: (document.getElementById('remoteWorkDir') || {}).value || '',
-            makeJobs: (document.getElementById('makeJobs') || {}).value || '',
-            // 记录保存时的系统默认，恢复时据此判断用户是否改过
-            settingsBaseline: {
-                workDir: UPGRADE_SETTINGS_WORK_DIR,
-                makeJobs: String(UPGRADE_SETTINGS_MAKE_JOBS),
-            },
-            targetPrefix: (document.getElementById('targetPrefix') || {}).value || '',
             currentTaskIds: currentTaskIds,
             currentBatchNumber: currentBatchNumber,
-            confirmChecked: !!(confirmEl && confirmEl.checked),
         };
-        sessionStorage.setItem(UPGRADE_WIZARD_STORAGE_KEY, JSON.stringify(state));
+        if (currentTaskIds && currentTaskIds.length) {
+            sessionStorage.setItem(UPGRADE_WIZARD_STORAGE_KEY, JSON.stringify(state));
+        } else {
+            sessionStorage.removeItem(UPGRADE_WIZARD_STORAGE_KEY);
+        }
     } catch (e) { /* ignore quota */ }
 }
 
-/** 从 sessionStorage 恢复向导状态 */
+/** 从 sessionStorage 恢复：仅进行中批次进度；向导始终从第 1 步空白开始 */
 function restoreUpgradeWizardState() {
     var raw;
     try {
         raw = sessionStorage.getItem(UPGRADE_WIZARD_STORAGE_KEY);
     } catch (e) {
+        showWizardStep(1);
         return Promise.resolve();
     }
-    if (!raw) return Promise.resolve();
-    var state;
-    try {
-        state = JSON.parse(raw);
-    } catch (e) {
-        return Promise.resolve();
+    var state = null;
+    if (raw) {
+        try {
+            state = JSON.parse(raw);
+        } catch (e) {
+            state = null;
+        }
     }
-    if (!state || !state.currentStep) return Promise.resolve();
 
     _skipWizardSave = true;
-    selectedNodes = state.selectedNodes || {};
-    refNodeId = state.refNodeId || null;
-    pendingRemovedModules = state.pendingRemovedModules || [];
-    pendingAddedModules = state.pendingAddedModules || [];
-    currentTaskIds = state.currentTaskIds || [];
-    currentBatchNumber = state.currentBatchNumber || '';
+    currentTaskIds = (state && state.currentTaskIds) || [];
+    currentBatchNumber = (state && state.currentBatchNumber) || '';
 
-    if (state.packageId) {
-        var radio = document.querySelector('.pkg-radio[value="' + state.packageId + '"]');
-        if (radio) radio.checked = true;
-    }
-    if (state.upgradeMode) {
-        var modeEl = document.querySelector('input[name="upgradeMode"][value="' + state.upgradeMode + '"]');
-        if (modeEl) modeEl.checked = true;
-    }
-    // 工作目录/-j：仅恢复用户相对旧系统默认的自定义值；未改过则保留服务端新默认
-    applyRestoredSettingField('remoteWorkDir', state.remoteWorkDir,
-        (state.settingsBaseline || {}).workDir, UPGRADE_SETTINGS_WORK_DIR, '/tmp/nginx-upgrade');
-    applyRestoredSettingField('makeJobs', state.makeJobs,
-        (state.settingsBaseline || {}).makeJobs, String(UPGRADE_SETTINGS_MAKE_JOBS), '4');
-    if (document.getElementById('targetPrefix') && state.targetPrefix != null) {
-        document.getElementById('targetPrefix').value = state.targetPrefix;
-    }
-    syncTargetPrefixVisibility();
-    applyThirdPartyRows(state.thirdParty);
-    renderSelectedNodes();
-    updateStep1NextBtn();
-    updateModuleSummary();
-
-    var step = parseInt(state.currentStep, 10) || 1;
-    var confirmChecked = !!state.confirmChecked;
-
-    var finish = function () {
-        _skipWizardSave = false;
-        saveUpgradeWizardState();
-    };
-
+    // 进行中批次：续看进度（与向导草稿无关）
     if (currentTaskIds.length) {
         showProgressLive();
         document.getElementById('batchNumberLabel').textContent =
@@ -2471,43 +2401,11 @@ function restoreUpgradeWizardState() {
         document.getElementById('btnCancel').classList.remove('d-none');
     }
 
-    if (step <= 2) {
-        showWizardStep(step);
-        finish();
-        return Promise.resolve();
-    }
-
-    // step 3/4：先拉 nginx -V 再恢复模块增量与面板
-    showWizardStep(step >= 4 ? 3 : step);
-    return fetchAllNginxV(true).then(function (result) {
-        if (!result || !result.ok) {
-            showWizardStep(Math.min(step, 2) || 1);
-            finish();
-            return;
-        }
-        // openConfigEditor 可能清过与基线冲突的 added，重新套用
-        pendingRemovedModules = state.pendingRemovedModules || [];
-        pendingAddedModules = state.pendingAddedModules || [];
-        updateModuleSummary();
-        refreshAnnotatedConfigOutput();
-
-        if (step >= 4) {
-            return previewAndGoStep4(true).then(function () {
-                if (confirmChecked) {
-                    var ck = document.getElementById('confirmCheck');
-                    if (ck) {
-                        ck.checked = true;
-                        document.getElementById('btnStartUpgrade').disabled = false;
-                    }
-                }
-                finish();
-            });
-        }
-        showWizardStep(3);
-        finish();
-    }).catch(function () {
-        finish();
-    });
+    // 再进入：第 1 步且不恢复节点/包/参数草稿
+    showWizardStep(1);
+    _skipWizardSave = false;
+    saveUpgradeWizardState();
+    return Promise.resolve();
 }
 
 document.addEventListener('DOMContentLoaded', function () {

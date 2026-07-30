@@ -331,13 +331,19 @@ def run_upgrade_task(task_id):
             short_error_tail,
             upgrade_detail_short,
         )
+        from apps.releases.task_cancel import finish_if_active, is_cancelled, update_if_active
 
         updates = {"status": status, "progress": progress, "updated_at": timezone.now()}
         updates.update(kwargs)
-        NginxUpgradeTask.objects.filter(pk=task_id).update(**updates)
+        # 升级任务已取消时不再覆盖
+        NginxUpgradeTask.objects.filter(pk=task_id).exclude(
+            status__in=("success", "failed", "rollback", "cancelled")
+        ).update(**updates)
 
         center_id = getattr(task, "task_center_id", None)
         if not center_id:
+            return
+        if is_cancelled(center_id) and status not in ("cancelled",):
             return
 
         if status == "success":
@@ -361,6 +367,8 @@ def run_upgrade_task(task_id):
             tc_updates["detail"] = _STEP_DETAIL.get(status, ver_label)
             if not task.started_at and progress > 0:
                 tc_updates["started_at"] = timezone.now()
+            update_if_active(center_id, **tc_updates)
+            return
         elif tc_status == "success":
             blocks = [
                 node_header(node.ip, node.hostname),
@@ -386,7 +394,10 @@ def run_upgrade_task(task_id):
                 tc_updates["finished_at"] = kwargs["finished_at"]
                 tc_updates["progress"] = 100
 
-        TaskCenterTask.objects.filter(pk=center_id).update(**tc_updates)
+        if tc_status in ("success", "failed", "cancelled"):
+            finish_if_active(center_id, **tc_updates)
+        else:
+            update_if_active(center_id, **tc_updates)
 
     try:
         from apps.nodes.views import _get_node_credential
@@ -402,6 +413,11 @@ def run_upgrade_task(task_id):
             auth_kwargs_copy = {"private_key": auth_kwargs["private_key"]}
 
         # ---- Step 1: 获取 nginx -V（优先写入当前版本，便于失败任务列表展示）----
+        from apps.releases.task_cancel import is_cancelled as _is_cancelled, register_ssh, unregister_ssh
+        if task.task_center_id and _is_cancelled(task.task_center_id):
+            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            return
+
         update_status("fetching_config", 5)
         log("获取当前 Nginx 编译参数...")
         _ensure_remote_dir(
@@ -529,6 +545,9 @@ def run_upgrade_task(task_id):
             log("无第三方模块需要下载")
 
         # ---- Step 6: 备份旧二进制 ----
+        if task.task_center_id and _is_cancelled(task.task_center_id):
+            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            return
         update_status("backing_up", 50)
         binary_path = task.current_binary_path or parsed["binary_path"]
         timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
@@ -543,6 +562,9 @@ def run_upgrade_task(task_id):
         NginxUpgradeTask.objects.filter(pk=task_id).update(old_binary_backup=backup_path)
 
         # ---- Step 7: 执行 configure ----
+        if task.task_center_id and _is_cancelled(task.task_center_id):
+            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            return
         update_status("configuring", 55)
         log("执行 ./configure ...")
         target_opts = task.target_configure_opts or ""
@@ -558,7 +580,13 @@ def run_upgrade_task(task_id):
         configure_cmd = f"cd {work_dir}/{extract_dir} && ./configure {target_opts_single} 2>&1"
         log(f"configure 命令: {configure_cmd}")
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
-            success, output = ssh.execute_command(configure_cmd)
+            if task.task_center_id:
+                register_ssh(task.task_center_id, ssh)
+            try:
+                success, output = ssh.execute_command(configure_cmd)
+            finally:
+                if task.task_center_id:
+                    unregister_ssh(task.task_center_id, ssh)
         log_raw(output)
         if not success:
             log("configure 失败")
@@ -567,12 +595,21 @@ def run_upgrade_task(task_id):
         log("configure 成功")
 
         # ---- Step 8: 执行 make ----
+        if task.task_center_id and _is_cancelled(task.task_center_id):
+            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            return
         update_status("compiling", 65)
         make_jobs = task.make_jobs or int(get_setting("upgrade.make_jobs_default", "4") or 4)
         make_cmd = f"cd {work_dir}/{extract_dir} && make -j{make_jobs} 2>&1"
         log(f"执行 make -j{make_jobs} ...")
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
-            success, output = ssh.execute_command(make_cmd)
+            if task.task_center_id:
+                register_ssh(task.task_center_id, ssh)
+            try:
+                success, output = ssh.execute_command(make_cmd)
+            finally:
+                if task.task_center_id:
+                    unregister_ssh(task.task_center_id, ssh)
         log_raw(output)
         if not success:
             log("make 失败")
@@ -581,6 +618,9 @@ def run_upgrade_task(task_id):
         log("make 编译成功")
 
         # ---- Step 9: make install 覆盖安装（替代手写 cp objs/nginx）----
+        if task.task_center_id and _is_cancelled(task.task_center_id):
+            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            return
         update_status("replacing_binary", 80)
         install_cmd = f"cd {work_dir}/{extract_dir} && make install 2>&1"
         log("执行 make install 安装新版本...")

@@ -25,7 +25,7 @@
                             <input type="hidden" name="search" id="taskCenterSearchHidden" value="{{ search }}">
                         </div>
                         <div class="col-md-3">
-                            <select name="operation_type" class="form-select form-select-sm">
+                            <select name="operation_type" class="form-select form-select-sm" onchange="this.form.submit()">
                                 <option value="">全部类型</option>
                                 {% for value, label in operation_type_choices %}
                                 <option value="{{ value }}" {% if operation_type_filter == value %}selected{% endif %}>{{ label }}</option>
@@ -33,7 +33,7 @@
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <select name="status" class="form-select form-select-sm">
+                            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
                                 <option value="">全部状态</option>
                                 {% for value, label in status_choices %}
                                 <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
@@ -57,26 +57,26 @@
                     </form>
 
                     {% if tasks %}
-                    <div class="table-responsive">
+                    <div class="task-center-table-wrap">
                         <table class="table table-sm table-hover align-middle mb-0 data-table task-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 7%;">ID</th>
-                                    <th style="width: 10%;">类型</th>
-                                    <th style="width: 9%;">状态</th>
-                                    <th style="width: 14%;">进度</th>
-                                    <th style="width: 28%;">摘要</th>
-                                    <th style="width: 13%;">操作人</th>
-                                    <th style="width: 12%;">时间</th>
-                                    <th style="width: 7%;">操作</th>
+                                    <th style="width: 5%;">ID</th>
+                                    <th style="width: 14%;">类型</th>
+                                    <th style="width: 8%;">状态</th>
+                                    <th style="width: 12%;">进度</th>
+                                    <th style="width: 22%;">摘要</th>
+                                    <th style="width: 12%;">操作人</th>
+                                    <th style="width: 15%;">时间</th>
+                                    <th style="width: 12%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for task in tasks %}
-                                <tr class="task-row" data-task-id="{{ task.id }}" data-task-finished="{% if task.status == 'success' or task.status == 'failed' or task.status == 'cancelled' %}true{% else %}false{% endif %}">
+                                <tr class="task-row" data-task-id="{{ task.id }}" data-task-finished="{% if task.status == 'success' or task.status == 'failed' or task.status == 'cancelled' %}true{% else %}false{% endif %}" data-task-type="{{ task.get_operation_type_display }}">
                                     <td><code>#{{ task.id }}</code></td>
-                                    <td><span class="badge badge-outline">{{ task.get_operation_type_display }}</span></td>
-                                    <td id="taskStatus{{ task.id }}">
+                                    <td><span class="badge badge-outline text-truncate d-inline-block" style="max-width: 100%;" title="{{ task.get_operation_type_display }}">{{ task.get_operation_type_display }}</span></td>
+                                    <td class="text-nowrap" id="taskStatus{{ task.id }}">
                                         {% if task.status == 'success' %}
                                         <span class="badge bg-success">成功</span>
                                         {% elif task.status == 'failed' %}
@@ -90,25 +90,36 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <div class="progress" style="height: 6px; min-width: 70px;">
+                                        <div class="progress" style="height: 6px;">
                                             <div class="progress-bar task-progress-bar" id="taskProgressBar{{ task.id }}" style="width: {{ task.progress }}%;"></div>
                                         </div>
                                         <small class="text-muted" id="taskProgressText{{ task.id }}">{{ task.progress }}%</small>
                                     </td>
                                     <td class="task-summary-cell">
                                         <div class="task-summary-scroll">
-                                            <div class="small">{% if task.operation_type == 'release_publish' or task.operation_type == 'release_rollback' %}<code>{{ task.summary_primary|default:"-" }}</code>{% else %}{{ task.summary_primary|default:"-" }}{% endif %}</div>
+                                            <div class="small text-truncate">{% if task.operation_type == 'release_publish' or task.operation_type == 'release_rollback' %}<code>{{ task.summary_primary|default:"-" }}</code>{% else %}{{ task.summary_primary|default:"-" }}{% endif %}</div>
                                             {% if task.summary_secondary %}
-                                            <div class="small text-muted">{{ task.summary_secondary }}</div>
+                                            <div class="small text-muted text-truncate">{{ task.summary_secondary }}</div>
                                             {% endif %}
                                         </div>
                                     </td>
-                                    <td><small>{{ task.trigger_user.username|default:'-' }}</small></td>
-                                    <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
-                                    <td>
-                                        <a href="{% url 'releases:task_center_detail' task.id %}" class="btn btn-sm btn-outline-info" title="详情">
-                                            <i class="bi bi-eye"></i> 详情
-                                        </a>
+                                    <td class="text-truncate" title="{{ task.trigger_user.username|default:'-' }}"><small>{{ task.trigger_user.username|default:'-' }}</small></td>
+                                    <td class="text-nowrap"><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
+                                    <td class="text-nowrap" onclick="event.stopPropagation();">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a href="{% url 'releases:task_center_detail' task.id %}" class="btn btn-outline-info" title="详情">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            {% if task.status == 'pending' or task.status == 'running' %}
+                                            <button type="button" class="btn btn-outline-danger btn-cancel-task"
+                                                    data-cancel-url="{% url 'releases:task_center_cancel' task.id %}"
+                                                    data-task-id="{{ task.id }}"
+                                                    data-task-type="{{ task.get_operation_type_display }}"
+                                                    title="取消">
+                                                <i class="bi bi-stop-circle"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -132,20 +143,33 @@
 
 {% block extra_js %}
 <style>
-    .task-table td { white-space: nowrap; }
+    /* 禁止横向滚动：列宽全百分比 + 单元格裁剪（Q111） */
+    .task-center-table-wrap {
+        width: 100%;
+        overflow-x: hidden;
+    }
+    .task-table {
+        table-layout: fixed;
+        width: 100%;
+        max-width: 100%;
+    }
+    .task-table th,
+    .task-table td {
+        overflow: hidden;
+        vertical-align: middle;
+    }
+    .task-table thead th {
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
     .task-table td.task-summary-cell {
-        max-width: 280px;
-        width: 28%;
-        white-space: normal;
         vertical-align: middle;
     }
     .task-summary-scroll {
         max-width: 100%;
-        overflow-x: auto;
-        white-space: nowrap;
+        overflow: hidden;
     }
     .task-summary-scroll .small {
-        white-space: nowrap;
         line-height: 1.4;
     }
     .task-row { cursor: pointer; }
@@ -260,6 +284,50 @@
         initTaskCenterSearchTagInput();
         pollTaskCenterProgress();
         setInterval(pollTaskCenterProgress, {{ sys_poll_interval_ms|default:2000 }});
+
+        /**
+         * 绑定取消按钮：确认后 POST 取消接口
+         */
+        function bindCancelButtons() {
+            document.querySelectorAll('.btn-cancel-task').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var url = btn.getAttribute('data-cancel-url');
+                    var tid = btn.getAttribute('data-task-id');
+                    var ttype = btn.getAttribute('data-task-type') || '';
+                    var html = '<p>确定取消任务 <code>#' + tid + '</code>（' + ttype + '）吗？</p>'
+                        + '<ul class="mb-0 ps-3">'
+                        + '<li>任务将标记为「已取消」，平台不再执行后续步骤。</li>'
+                        + '<li>将尝试断开该任务当前 SSH 连接，以结束本端等待。</li>'
+                        + '<li>节点上<strong>已在执行</strong>的远程命令（如编译）可能仍会继续，不会自动回滚已变更文件。</li>'
+                        + '</ul>';
+                    showConfirm('确认取消任务', html, function () {
+                        btn.disabled = true;
+                        fetch(url, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRFToken': (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                        }).then(function (res) { return res.json().then(function (data) {
+                            return { ok: res.ok, data: data };
+                        }); }).then(function (r) {
+                            if (r.data && r.data.success) {
+                                window.location.reload();
+                            } else {
+                                btn.disabled = false;
+                                alert((r.data && r.data.message) || '取消失败');
+                            }
+                        }).catch(function () {
+                            btn.disabled = false;
+                            alert('取消请求失败');
+                        });
+                    }, true, 'md');
+                });
+            });
+        }
+        bindCancelButtons();
     })();
 </script>
 {% endblock %}

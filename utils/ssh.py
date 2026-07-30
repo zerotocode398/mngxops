@@ -269,8 +269,12 @@ def discover_nginx_configs(
     private_key=None,
     nginx_conf_path="",
     max_include_depth=3,
+    cancel_check=None,
 ):
-    """递归发现远程节点的Nginx配置文件（包括include引入的配置）"""
+    """递归发现远程节点的Nginx配置文件（包括include引入的配置）
+
+    cancel_check: 可选无参回调，返回 True 时中止发现（协作取消）
+    """
     import posixpath
     import re
 
@@ -312,6 +316,9 @@ def discover_nginx_configs(
     depth_limited = set()
 
     while pending:
+        if cancel_check and cancel_check():
+            errors.append("任务已取消，中止配置发现")
+            break
         current_path, current_depth = pending.pop(0)
         if current_path in seen:
             continue

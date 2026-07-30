@@ -147,6 +147,20 @@ def _shorten_nginx_secondary(detail):
     return text
 
 
+def _shorten_hostnames(hosts_str, limit=3):
+    """列表摘要主机名最多展示 limit 台，超出则「前N台 等总数台」"""
+    text = (hosts_str or "").strip()
+    if not text:
+        return ""
+    names = [n.strip() for n in text.split(",") if n.strip()]
+    if not names:
+        return ""
+    if len(names) <= limit:
+        return ",".join(names)
+    shown = ",".join(names[:limit])
+    return f"{shown} 等{len(names)}台"
+
+
 def _credential_primary(task):
     """凭证任务主行：凭证名"""
     name = (task.target_configs or "").strip()
@@ -163,7 +177,7 @@ def _default_primary(task):
     """通用主行：主机 → 批次 → 配置"""
     hosts = (task.target_hostnames or "").strip()
     if hosts:
-        return hosts
+        return _shorten_hostnames(hosts)
     batch = (task.source_batch or "").strip()
     if batch:
         return batch
@@ -185,7 +199,8 @@ def format_task_center_summary(task):
     status = task.status or ""
 
     if op == "nginx_upgrade":
-        primary = (task.target_hostnames or "").strip() or (task.source_batch or "").strip()
+        hosts = (task.target_hostnames or "").strip()
+        primary = _shorten_hostnames(hosts) if hosts else (task.source_batch or "").strip()
         secondary = _shorten_nginx_secondary(detail)
         if not secondary and status in ("success", "failed", "cancelled"):
             secondary = _extract_success_fail(result) or detail
@@ -206,7 +221,9 @@ def format_task_center_summary(task):
         return primary, secondary
 
     if op in ("release_publish", "release_rollback"):
-        primary = (task.source_batch or "").strip() or (task.target_hostnames or "").strip()
+        batch = (task.source_batch or "").strip()
+        hosts = (task.target_hostnames or "").strip()
+        primary = batch or (_shorten_hostnames(hosts) if hosts else "")
         secondary = _extract_success_fail(detail) or _extract_success_fail(result)
         if not secondary:
             # 保留短 detail（如「回滚：cfg → host vN」「执行中…」）

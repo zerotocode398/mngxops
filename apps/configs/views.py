@@ -26,6 +26,12 @@ from .services import (
     _cleanup_marked_deleted_bindings,
 )
 from apps.users.permissions import PermissionRequiredMixin
+from apps.releases.models import TaskCenterTask
+from apps.releases.task_cancel import (
+    finish_if_active,
+    is_cancelled,
+    update_if_active,
+)
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_setting
 
@@ -939,17 +945,23 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 _set_current_step(task_center.id, hostname, "连接远程")
                 depth = discover_max_depth()
                 _set_current_step(task_center.id, hostname, "发现配置")
+                if is_cancelled(task_center.id):
+                    result["message"] = "任务已取消"
+                    return result
+                cancel_check = lambda: is_cancelled(task_center.id)
                 if credential.auth_type == "password":
                     discovered, errors = discover_nginx_configs(
                         node.ip, node.port, credential.username,
                         password=credential.get_password(), nginx_conf_path=nginx_conf_path,
                         max_include_depth=depth,
+                        cancel_check=cancel_check,
                     )
                 else:
                     discovered, errors = discover_nginx_configs(
                         node.ip, node.port, credential.username,
                         private_key=credential.get_private_key(), nginx_conf_path=nginx_conf_path,
                         max_include_depth=depth,
+                        cancel_check=cancel_check,
                     )
 
                 if errors:
@@ -1022,9 +1034,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 """刷入进行中结果树供进度遮罩展示"""
                 with live_lock:
                     text = "\n".join(live_blocks) if live_blocks else ""
-                TaskCenterTask.objects.filter(pk=task_id).update(
-                    result=text, updated_at=timezone.now(),
-                )
+                update_if_active(task_id, result=text)
 
             try:
                 TaskCenterTask.objects.filter(pk=task_id).update(
@@ -1040,6 +1050,8 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
                     future_to_node = {executor.submit(_sync_one, node): node for node in sync_nodes}
                     for future in as_completed(future_to_node):
+                        if is_cancelled(task_id):
+                            break
                         node = future_to_node[future]
                         header = node_header(node.ip, node.hostname)
                         node_blocks.append(header)
@@ -1055,10 +1067,10 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                             with live_lock:
                                 live_blocks.extend(chunk)
                             _flush_live()
-                            TaskCenterTask.objects.filter(pk=task_id).update(
+                            update_if_active(
+                                task_id,
                                 progress=int(done * 100 / total) if total else 100,
                                 detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{total}",
-                                updated_at=timezone.now(),
                             )
                             continue
                         done += 1
@@ -1106,21 +1118,25 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                         with live_lock:
                             live_blocks.extend(chunk)
                         _flush_live()
-                        TaskCenterTask.objects.filter(pk=task_id).update(
+                        update_if_active(
+                            task_id,
                             progress=int(done * 100 / total) if total else 100,
                             detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{total}",
-                            updated_at=timezone.now(),
                         )
 
+                if is_cancelled(task_id):
+                    return
                 status = "success" if fail_count == 0 else "failed"
-                TaskCenterTask.objects.filter(pk=task_id).update(
+                finish_if_active(
+                    task_id,
                     status=status, progress=100, finished_at=timezone.now(),
                     result=build_tree_result(success_count, fail_count, total, node_blocks),
                     detail=f"执行完成：成功 {success_count}，失败 {fail_count}，共 {total}",
                 )
             except Exception as exc:
                 # 兜底：避免任务永久停在 running 导致进度遮罩卡住
-                TaskCenterTask.objects.filter(pk=task_id).update(
+                finish_if_active(
+                    task_id,
                     status="failed",
                     progress=100,
                     finished_at=timezone.now(),
@@ -1129,7 +1145,6 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                         [item_failed("同步", f"批量同步异常: {str(exc)[:200]}")],
                     ),
                     detail=f"同步异常: {str(exc)[:120]}",
-                    updated_at=timezone.now(),
                 )
             finally:
                 _clear_release_progress_state(task_id)
@@ -1247,8 +1262,12 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                     node.ip, node.port, credential.username,
                     nginx_conf_path=nginx_conf_path,
                     max_include_depth=discover_max_depth(),
+                    cancel_check=lambda: is_cancelled(task.id),
                     **auth_kwargs,
                 )
+
+                if is_cancelled(task.id):
+                    return
 
                 if is_partial:
                     selected_set = set(selected_paths)
@@ -1356,7 +1375,8 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                     node_blocks.append(item_success(f"共发现 {total} 个配置文件"))
                     item_ok = 1
 
-                TaskCenterTask.objects.filter(pk=task.id).update(
+                finish_if_active(
+                    task.id,
                     status="success" if success else "failed",
                     progress=100,
                     finished_at=timezone.now(),
@@ -1365,11 +1385,11 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                         f"同步{'完成' if success else '失败'}: "
                         f"{len(created)} 新增, {len(updated)} 更新, {len(deleted)} 删除"
                     ),
-                    updated_at=timezone.now(),
                 )
             except Exception as exc:
                 # 兜底：避免任务永久停在 running 导致进度遮罩卡住
-                TaskCenterTask.objects.filter(pk=task.id).update(
+                finish_if_active(
+                    task.id,
                     status="failed",
                     progress=100,
                     finished_at=timezone.now(),
@@ -1381,7 +1401,6 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                         ],
                     ),
                     detail=f"同步异常: {str(exc)[:120]}",
-                    updated_at=timezone.now(),
                 )
             finally:
                 _clear_release_progress_state(task.id)
