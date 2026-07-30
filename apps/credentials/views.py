@@ -342,61 +342,72 @@ class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, Vi
                 f"凭证 {credential.name} 已禁用，{affected} 个关联节点状态已更新为离线",
             )
         else:
-            # 启用凭证：设为启用，关联非锁定节点标记为未知，启动后台测试
+            # 启用凭证：设为启用；有关联节点时再触发后台测试
             credential.is_enabled = True
             credential.save(update_fields=["is_enabled", "updated_at"])
 
-            Node.objects.filter(credential=credential, is_locked=False).update(status="unknown")
+            has_related_nodes = Node.objects.filter(credential=credential).exists()
+            if not has_related_nodes:
+                messages.success(request, f"凭证 {credential.name} 已启用")
+                if is_ajax:
+                    return JsonResponse(
+                        {
+                            "success": True,
+                            "message": f"凭证 {credential.name} 已启用",
+                        }
+                    )
+            else:
+                Node.objects.filter(credential=credential, is_locked=False).update(status="unknown")
 
-            # 关联可测节点，供任务中心摘要/详情展示
-            related_nodes = list(
-                Node.objects.filter(credential=credential, is_locked=False)
-                .order_by("id")
-                .values_list("hostname", "ip")
-            )
-            center_task = TaskCenterTask.objects.create(
-                operation_type="credential_enable_test",
-                status="pending",
-                detail="后台测试已创建",
-                target_configs=credential.name,
-                target_hostnames=",".join(hn for hn, _ in related_nodes if hn),
-                target_ips=",".join(ip for _, ip in related_nodes if ip),
-                trigger_user=request.user,
-            )
-
-            # 创建凭证启用测试任务记录
-            task = CredentialEnableTask.objects.create(
-                credential=credential,
-                status="pending",
-                message="任务已创建，等待执行",
-                task_center_id=center_task.id,
-            )
-
-            # 启动后台线程执行测试
-            worker = threading.Thread(
-                target=_run_credential_enable_task,
-                args=(task.id, credential.id),
-                daemon=True,
-            )
-            worker.start()
-
-            messages.info(
-                request,
-                f"凭证 {credential.name} 已启用，后台测试已创建，可在任务中心查看详情",
-            )
-
-            if is_ajax:
-                return JsonResponse(
-                    {
-                        "success": True,
-                        "message": f"凭证 {credential.name} 已启用，后台测试任务已创建",
-                        "task_center_id": center_task.id,
-                        "task_center_detail_url": reverse(
-                            "releases:task_center_detail", args=[center_task.id]
-                        ),
-                        "task_center_home_url": reverse("releases:history"),
-                    }
+                # 关联可测节点，供任务中心摘要/详情展示
+                related_nodes = list(
+                    Node.objects.filter(credential=credential, is_locked=False)
+                    .order_by("id")
+                    .values_list("hostname", "ip")
                 )
+                center_task = TaskCenterTask.objects.create(
+                    operation_type="credential_enable_test",
+                    status="pending",
+                    detail="后台测试已创建",
+                    target_configs=credential.name,
+                    target_hostnames=",".join(hn for hn, _ in related_nodes if hn),
+                    target_ips=",".join(ip for _, ip in related_nodes if ip),
+                    trigger_user=request.user,
+                )
+
+                # 创建凭证启用测试任务记录
+                task = CredentialEnableTask.objects.create(
+                    credential=credential,
+                    status="pending",
+                    message="任务已创建，等待执行",
+                    task_center_id=center_task.id,
+                )
+
+                # 启动后台线程执行测试
+                worker = threading.Thread(
+                    target=_run_credential_enable_task,
+                    args=(task.id, credential.id),
+                    daemon=True,
+                )
+                worker.start()
+
+                messages.info(
+                    request,
+                    f"凭证 {credential.name} 已启用，后台测试已创建，可在任务中心查看详情",
+                )
+
+                if is_ajax:
+                    return JsonResponse(
+                        {
+                            "success": True,
+                            "message": f"凭证 {credential.name} 已启用，后台测试任务已创建",
+                            "task_center_id": center_task.id,
+                            "task_center_detail_url": reverse(
+                                "releases:task_center_detail", args=[center_task.id]
+                            ),
+                            "task_center_home_url": reverse("releases:history"),
+                        }
+                    )
 
         if is_ajax:
             return JsonResponse(

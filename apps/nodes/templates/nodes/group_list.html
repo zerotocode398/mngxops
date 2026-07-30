@@ -74,7 +74,7 @@
                                             </a>
                                             <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
                                                 onclick="openGroupDeleteModal(this)"
-                                                data-group-name="{{ group.name|escapejs }}"
+                                                data-group-name="{{ group.name }}"
                                                 data-delete-url="{% url 'nodes:group_delete' group.id %}" title="删除">
                                                 <i class="bi bi-trash"></i>
                                             </button>
