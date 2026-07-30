@@ -92,9 +92,12 @@
                     {% elif nginx_version_text %}
                     <div class="border rounded px-3 py-2 small">{{ nginx_version_text }}</div>
                     {% elif result_tree %}
-                    <div class="d-flex gap-2 mb-3">
+                    <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
                         <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> 成功 {{ result_summary.success }}</span>
                         <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> 失败 {{ result_summary.failed }}</span>
+                        {% if is_config_sync_type and task.detail %}
+                        <span class="small text-muted">{{ task.detail }}</span>
+                        {% endif %}
                     </div>
                     <div class="border rounded shadow-sm" id="resultTreeContainer">
                         {% for node in result_tree %}
@@ -102,12 +105,12 @@
                             <div class="result-node-header d-flex align-items-center gap-2 px-3 py-2 cursor-pointer"
                                  style="background: {% if node.failed > 0 %}#f8d7da{% else %}#d4edda{% endif %};"
                                  onclick="var b=this.nextElementSibling;b.classList.toggle('d-none');var i=this.querySelector('.toggle-icon');i.textContent=i.textContent==='▶'?'▼':'▶';">
-                                <span class="toggle-icon">{% if node.failed > 0 %}▼{% else %}▶{% endif %}</span>
+                                <span class="toggle-icon">{% if node.failed > 0 or is_config_sync_type %}▼{% else %}▶{% endif %}</span>
                                 {% if node.failed > 0 %}<i class="bi bi-x-circle-fill text-danger"></i>{% else %}<i class="bi bi-check-circle-fill text-success"></i>{% endif %}
                                 {{ node.name }}
                                 <span class="ms-2 small text-muted">{{ node.success }} 成功{% if node.failed > 0 %} / {{ node.failed }} 失败{% endif %}</span>
                             </div>
-                            <div class="result-node-body px-3 py-2{% if node.failed == 0 %} d-none{% endif %}">
+                            <div class="result-node-body px-3 py-2{% if node.failed == 0 and not is_config_sync_type %} d-none{% endif %}">
                                 {% for cfg in node.configs %}
                                 <div class="result-config-item d-flex align-items-center gap-2 py-1 small{% if cfg.status == 'failed' %} bg-failed-light{% endif %}">
                                     {% if cfg.status == 'success' %}

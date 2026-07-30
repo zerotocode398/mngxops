@@ -115,7 +115,7 @@ stateDiagram-v2
 2. `ConfigSyncBatchAPIView` / `Single`：线程池 SSH `discover_nginx_configs`（深度 `config.discover_max_depth`）。  
 3. `apps/configs/services.py`：`sync_discovered_configs` 创建/更新 Config 与 Binding、版本；**跳过** `marked_deleted` 绑定（避免 unique 冲突再导入），结束后 `_cleanup_marked_deleted_bindings` 远程 rm + 物理删并返回已删名单；无发现结果时亦执行清理（Q103）。  
 4. 全量同步可标记 orphaned；写 `last_sync_task_id` → TaskCenter `config_batch_sync`。  
-5. 进度：TaskCenter 轮询（Q9/Q39）；遮罩展示精简阶段 `hostname · 阶段` 与实时结果树（Q104）；完成摘要 `detail` 为「N 新增, M 更新, D 删除」，结果树含新建/更新/删除项；失败标黄跳配置列表主机名过滤；状态链任务详情（Q8）；同步线程异常时任务标 `failed`，避免遮罩卡住（Q103）。
+5. 进度：TaskCenter 轮询（Q9/Q39）；遮罩展示精简阶段 `hostname · 阶段` 与实时结果树（Q104）；完成摘要 `detail` 为「N 新增, M 更新, D 删除」，**最终结果树**含新建/更新/删除/**跳过**项（Q105）；任务详情对 `config_batch_sync` 默认展开结果树；失败标黄跳配置列表主机名过滤；状态链任务详情（Q8）；同步线程异常时任务标 `failed`，避免遮罩卡住（Q103）。
 
 ### 6.7 Glob 预览
 

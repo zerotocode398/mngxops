@@ -919,7 +919,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "success": False, "message": "", "created": 0, "updated": 0,
                 "orphaned": 0, "deleted": 0, "errors": [],
                 "created_names": [], "updated_names": [], "orphaned_names": [],
-                "deleted_names": [],
+                "deleted_names": [], "skipped_names": [],
             }
             hostname = node.hostname
             try:
@@ -977,6 +977,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     result["updated_names"] = updated
                     result["orphaned_names"] = orphaned
                     result["deleted_names"] = deleted
+                    result["skipped_names"] = skipped
                 else:
                     _set_current_step(task_center.id, hostname, "清理标记删除")
                     deleted = _cleanup_marked_deleted_bindings(node, request.user)
@@ -1066,6 +1067,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                             created_names = list(result.get("created_names") or [])
                             updated_names = list(result.get("updated_names") or [])
                             deleted_names = list(result.get("deleted_names") or [])
+                            skipped_names = list(result.get("skipped_names") or [])
                             has_items = False
                             for name in created_names:
                                 line = item_success(f"{name} (新建)")
@@ -1079,6 +1081,11 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                                 has_items = True
                             for name in deleted_names:
                                 line = item_success(f"{name} (删除)")
+                                node_blocks.append(line)
+                                chunk.append(line)
+                                has_items = True
+                            for name in skipped_names:
+                                line = item_success(f"{name} (跳过)")
                                 node_blocks.append(line)
                                 chunk.append(line)
                                 has_items = True
@@ -1338,6 +1345,9 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                     item_ok += 1
                 for name in deleted or []:
                     node_blocks.append(item_success(f"{name} (删除)"))
+                    item_ok += 1
+                for name in skipped or []:
+                    node_blocks.append(item_success(f"{name} (跳过)"))
                     item_ok += 1
                 for err in errors or []:
                     node_blocks.append(item_failed("同步", err))

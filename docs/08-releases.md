@@ -110,13 +110,14 @@ sequenceDiagram
 - 按 `batch_number` 分页（Q56）；树：批次 → 节点 → 配置。  
 - 批次汇总：成功 / 部分失败 / 全部失败（Q55）。  
 - 已删节点展示且禁用勾选（Q76）。  
-- 详情元信息对齐任务详情布局（Q79）。
+- 详情元信息对齐任务详情布局（Q79）。  
+- 版本徽标可点击预览该次发布对应 `BindingVersion` 内容（Q106；API 同回滚页扁平 JSON）。
 
 ### 6.2 单条回滚
 
 - `success|failed` 均可回滚（Q51）。  
 - 选 `BindingVersion` → 新 `ReleaseTask` + TaskCenter `release_rollback`；异步 + overlay（Q50）。  
-- 版本预览适配扁平 JSON（Q49）。
+- 版本预览适配扁平 JSON（Q49）；发布详情元信息/操作记录版本同样可预览（Q106）。
 
 ### 6.3 勾选 / 批量回滚
 

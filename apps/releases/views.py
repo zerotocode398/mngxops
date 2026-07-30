@@ -1218,6 +1218,8 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         context["target_configs"] = target_configs[:50]
         context["target_configs_count"] = len(target_configs)
         context["is_release_type"] = is_release_type
+        # 配置同步详情默认展开结果树，便于查看新建/更新/删除/跳过明细
+        context["is_config_sync_type"] = op == "config_batch_sync"
         context["target_configs_label"] = (
             "目标凭证" if op == "credential_enable_test" else "目标配置"
         )
@@ -1352,11 +1354,26 @@ class ReleaseDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView)
     permission_action = "read"
 
     def get_queryset(self):
-        return super().get_queryset().select_related("node", "config", "binding", "operator")
+        return super().get_queryset().select_related(
+            "node", "config", "binding", "operator", "version",
+        )
 
     def get_context_data(self, **kwargs):
+        """组装操作记录，并为历史版本号解析 BindingVersion.id 供预览"""
         context = super().get_context_data(**kwargs)
-        context["histories"] = self.object.history.all().select_related("node", "config", "operator")
+        histories = list(
+            self.object.history.all().select_related("node", "config", "operator")
+        )
+        version_id_map = {}
+        if self.object.binding_id:
+            version_id_map = dict(
+                BindingVersion.objects.filter(binding_id=self.object.binding_id)
+                .values_list("version", "id")
+            )
+        for h in histories:
+            # 供模板挂 version-preview-link
+            h.preview_version_id = version_id_map.get(h.version)
+        context["histories"] = histories
         return context
 
 

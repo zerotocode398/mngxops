@@ -6,7 +6,7 @@ __pycache__/
 .trae/desc.md
 optimize.md
 image/
-./media/
+media/
 # C extensions
 *.so
 stand.md

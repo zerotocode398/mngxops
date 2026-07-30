@@ -167,7 +167,20 @@
                                     </td>
                                     {% endif %}
                                     <td class="history-config-name"><code>{{ task.config.name }}</code></td>
-                                    <td><span class="badge bg-info">V{{ task.publish_version|default:'-' }}</span></td>
+                                    <td>
+                                        {% if task.version_id %}
+                                        <a href="javascript:void(0)"
+                                           class="version-preview-link text-decoration-none"
+                                           data-version-id="{{ task.version_id }}"
+                                           data-config-name="{{ task.config.name }}"
+                                           data-remote-path="{{ task.remote_path|default:'' }}"
+                                           title="点击预览该版本配置内容">
+                                            <span class="badge bg-info">V{{ task.publish_version|default:'-' }}</span>
+                                        </a>
+                                        {% else %}
+                                        <span class="badge bg-info">V{{ task.publish_version|default:'-' }}</span>
+                                        {% endif %}
+                                    </td>
                                     <td><small class="text-muted">{{ task.remote_path|default:'-'|truncatechars:48 }}</small></td>
                                     <td class="history-status-col">
                                         {% if task.status == 'success' %}
@@ -272,6 +285,51 @@
     </div>
 </div>
 {% endif %}
+
+<!-- 配置版本内容预览弹窗（对齐 rollback.html） -->
+<div class="modal fade" id="versionPreviewModal" tabindex="-1" aria-labelledby="versionPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0" id="versionPreviewModalLabel">
+                        <i class="bi bi-file-code"></i> <span id="vpConfigName">-</span>
+                    </h5>
+                    <small class="text-muted" id="vpVersionLabel">v-</small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="d-flex flex-wrap align-items-center gap-3 px-3 py-2 bg-light border-bottom small text-muted">
+                    <span><i class="bi bi-folder"></i> <code id="vpConfigPath">-</code></span>
+                    <span class="ms-auto"><i class="bi bi-file-earmark"></i> <span id="vpConfigSize">-</span></span>
+                    <span><i class="bi bi-person"></i> <span id="vpCreatedBy">-</span></span>
+                    <span><i class="bi bi-clock"></i> <span id="vpCreatedAt">-</span></span>
+                    <span id="vpRemark" class="text-warning"></span>
+                </div>
+                <div id="vpContentWrapper" class="position-relative">
+                    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+                        <small class="text-muted">配置内容</small>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="vpCopyBtn" onclick="copyVersionContent()">
+                            <i class="bi bi-clipboard"></i> 复制
+                        </button>
+                    </div>
+                    <pre class="code-font code-block-preview m-0 p-3 bg-light border-0" style="max-height: 60vh; overflow: auto; line-height: 1.5;"><code id="vpContent" style="white-space: pre;">加载中...</code></pre>
+                </div>
+                <div id="vpLoading" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2 text-muted">加载配置内容...</p>
+                </div>
+                <div id="vpError" class="alert alert-danger m-3 d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -609,6 +667,136 @@
         }
 
         refreshSelectionUI();
+
+        // 版本内容预览（点击 Vx badge）
+        var vpModalEl = document.getElementById('versionPreviewModal');
+        var versionPreviewModal = vpModalEl ? new bootstrap.Modal(vpModalEl) : null;
+        var vpContent = document.getElementById('vpContent');
+        var vpLoading = document.getElementById('vpLoading');
+        var vpError = document.getElementById('vpError');
+        var vpContentWrapper = document.getElementById('vpContentWrapper');
+        var vpConfigName = document.getElementById('vpConfigName');
+        var vpVersionLabel = document.getElementById('vpVersionLabel');
+        var vpConfigPath = document.getElementById('vpConfigPath');
+        var vpConfigSize = document.getElementById('vpConfigSize');
+        var vpCreatedBy = document.getElementById('vpCreatedBy');
+        var vpCreatedAt = document.getElementById('vpCreatedAt');
+        var vpRemark = document.getElementById('vpRemark');
+        var vpCopyBtn = document.getElementById('vpCopyBtn');
+        var currentVersionContent = '';
+        var previewConfigName = '';
+        var previewRemotePath = '';
+
+        /** 绑定版本预览点击 */
+        document.querySelectorAll('.version-preview-link').forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var versionId = this.getAttribute('data-version-id');
+                previewConfigName = this.getAttribute('data-config-name') || '';
+                previewRemotePath = this.getAttribute('data-remote-path') || '';
+                loadVersionContent(versionId);
+            });
+        });
+
+        /** 拉取指定 BindingVersion 内容并展示 */
+        function loadVersionContent(versionId) {
+            if (!versionPreviewModal || !versionId) return;
+            vpContentWrapper.classList.add('d-none');
+            vpError.classList.add('d-none');
+            vpLoading.classList.remove('d-none');
+            vpConfigName.textContent = '-';
+            vpVersionLabel.textContent = 'v-';
+            vpConfigPath.textContent = '-';
+            vpConfigSize.textContent = '-';
+            vpCreatedBy.textContent = '-';
+            vpCreatedAt.textContent = '-';
+            vpRemark.textContent = '';
+            versionPreviewModal.show();
+
+            fetch('/releases/version/' + versionId + '/content/')
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function(data) {
+                    vpLoading.classList.add('d-none');
+                    if (data.content !== undefined) {
+                        var content = data.content || '';
+                        vpConfigName.textContent = previewConfigName || '-';
+                        vpVersionLabel.textContent = 'v' + (data.version != null ? data.version : '-');
+                        vpConfigPath.textContent = previewRemotePath || '-';
+                        vpConfigSize.textContent = content.length + ' 字节';
+                        vpCreatedBy.textContent = data.created_by || '-';
+                        vpCreatedAt.textContent = data.created_at || '-';
+                        vpRemark.textContent = data.remark ? ('备注: ' + data.remark) : '';
+                        vpContent.textContent = content || '(空文件)';
+                        currentVersionContent = content;
+                        vpContentWrapper.classList.remove('d-none');
+                    } else {
+                        showVpError('加载失败');
+                    }
+                })
+                .catch(function(err) {
+                    vpLoading.classList.add('d-none');
+                    showVpError('加载失败: ' + err.message);
+                });
+        }
+
+        /** 预览弹窗错误提示 */
+        function showVpError(msg) {
+            vpError.textContent = msg;
+            vpError.classList.remove('d-none');
+        }
+
+        /** 复制当前预览内容到剪贴板 */
+        window.copyVersionContent = function() {
+            if (!currentVersionContent) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(currentVersionContent).then(function() {
+                    showCopyToast();
+                }).catch(function() {
+                    fallbackCopy(currentVersionContent);
+                });
+            } else {
+                fallbackCopy(currentVersionContent);
+            }
+        };
+
+        /** 降级复制 */
+        function fallbackCopy(text) {
+            var textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showCopyToast();
+            } catch (e) {
+                showAlert('提示', '复制失败，请手动复制');
+            }
+            document.body.removeChild(textarea);
+        }
+
+        /** 复制成功按钮反馈 */
+        function showCopyToast() {
+            if (!vpCopyBtn) return;
+            var originalHTML = vpCopyBtn.innerHTML;
+            vpCopyBtn.innerHTML = '<i class="bi bi-check-lg"></i> 已复制';
+            vpCopyBtn.classList.add('btn-success');
+            vpCopyBtn.classList.remove('btn-outline-secondary');
+            vpCopyBtn.disabled = true;
+            setTimeout(function() {
+                vpCopyBtn.innerHTML = originalHTML;
+                vpCopyBtn.classList.remove('btn-success');
+                vpCopyBtn.classList.add('btn-outline-secondary');
+                vpCopyBtn.disabled = false;
+            }, 2000);
+        }
     });
 </script>
 {% endblock %}
