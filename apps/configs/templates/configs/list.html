@@ -361,7 +361,7 @@
 </style>
 <script>
     function openDeleteModal(configName, nodeName, deleteUrl, syncStatus) {
-        var hint = '解除后将标记为"待删除"，下次同步时会清理远程文件。';
+        var hint = '解除后将标记为"已标记删除"，下次同步时会清理远程文件。';
         if (syncStatus === 'not_synced') {
             hint = '该绑定从未同步到远程，删除后不可恢复。';
         } else if (syncStatus === 'orphaned') {
@@ -372,7 +372,7 @@
             var form = document.getElementById('deleteBindingForm');
             form.setAttribute('action', deleteUrl);
             form.submit();
-        });
+        }, false, 'md');
     }
 
     function openUnboundDeleteModal(configName, deleteUrl) {

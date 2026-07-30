@@ -46,9 +46,14 @@ def save_sync_path(node, main_conf_path, user=None):
 def _ensure_binding(config, node, remote_path, content, request_user, source="discovered", task_id=None):
     """确保绑定存在并更新内容，已标记删除的绑定会被跳过"""
     now = timezone.now()
-    existing = ConfigNodeBinding.objects.filter(
-        config=config, node=node
-    ).exclude(sync_status="marked_deleted").first()
+    # 已标记删除：本轮不重建导入，留给末尾 _cleanup_marked_deleted_bindings 清理
+    marked = ConfigNodeBinding.objects.filter(
+        config=config, node=node, sync_status="marked_deleted"
+    ).first()
+    if marked:
+        return "skipped", marked
+
+    existing = ConfigNodeBinding.objects.filter(config=config, node=node).first()
 
     if existing:
         binding = existing
@@ -166,9 +171,12 @@ def sync_discovered_configs(
         discovered_paths = {item["path"] for item in discovered}
         orphaned = _mark_orphaned_bindings(node, discovered_paths)
 
-    _cleanup_marked_deleted_bindings(node, request_user)
+    deleted = _cleanup_marked_deleted_bindings(node, request_user)
+    for name in deleted:
+        if progress_callback:
+            progress_callback("deleted", name)
 
-    return created, updated, skipped, orphaned
+    return created, updated, skipped, orphaned, deleted
 
 
 def _mark_orphaned_bindings(node, discovered_paths):
@@ -187,17 +195,18 @@ def _mark_orphaned_bindings(node, discovered_paths):
 
 
 def _cleanup_marked_deleted_bindings(node, request_user):
-    """清理节点上已标记删除的绑定：SSH删除远程文件后物理删除本地记录"""
+    """清理节点上已标记删除的绑定：SSH删除远程文件后物理删除本地记录，返回已删配置名列表"""
     from utils.ssh import SSHClient
 
+    deleted = []
     marked = ConfigNodeBinding.objects.filter(node=node, sync_status="marked_deleted")
     if not marked:
-        return
+        return deleted
 
     credential = node.credential
     if not credential:
         logger.warning(f"节点 {node.hostname} 无SSH凭证，跳过清理标记删除的绑定")
-        return
+        return deleted
 
     auth_kwargs = {}
     if credential.auth_type == "password":
@@ -210,20 +219,23 @@ def _cleanup_marked_deleted_bindings(node, request_user):
     if not ok:
         logger.warning(f"SSH连接 {node.hostname} 失败，跳过清理: {err}")
         ssh.close()
-        return
+        return deleted
 
     for binding in marked:
         try:
+            name = binding.config.name
             success, output = ssh.execute_command(f"rm -f {binding.remote_path}")
             if success:
                 binding.delete()
-                logger.info(f"已清理标记删除绑定: {binding.config.name} @ {node.hostname}")
+                deleted.append(name)
+                logger.info(f"已清理标记删除绑定: {name} @ {node.hostname}")
             else:
                 logger.warning(f"删除远程文件失败 {binding.remote_path}: {output}")
         except Exception as e:
             logger.error(f"清理绑定异常 {binding.config.name} @ {node.hostname}: {str(e)}")
 
     ssh.close()
+    return deleted
 
 
 def sync_selected_configs(
@@ -235,6 +247,7 @@ def sync_selected_configs(
     progress_callback=None,
     task_id=None,
 ):
+    """按选中路径同步配置，透传五元组结果"""
     selected_set = set(selected_paths)
     filtered = [item for item in discovered if item["path"] in selected_set]
     return sync_discovered_configs(

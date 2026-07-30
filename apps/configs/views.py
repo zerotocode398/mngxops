@@ -23,6 +23,7 @@ from .services import (
     mark_discovery_failed_configs,
     default_nginx_conf_path,
     discover_max_depth,
+    _cleanup_marked_deleted_bindings,
 )
 from apps.users.permissions import PermissionRequiredMixin
 from utils.pagination import PerPagePaginationMixin
@@ -905,7 +906,9 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             result = {
                 "node_id": node.id, "hostname": node.hostname, "ip": node.ip,
                 "success": False, "message": "", "created": 0, "updated": 0,
-                "orphaned": 0, "errors": [],
+                "orphaned": 0, "deleted": 0, "errors": [],
+                "created_names": [], "updated_names": [], "orphaned_names": [],
+                "deleted_names": [],
             }
             if node.is_locked:
                 result["message"] = "节点已锁定"
@@ -939,7 +942,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 result["errors"].extend(errors)
 
             if discovered:
-                created, updated, skipped, orphaned = sync_discovered_configs(
+                created, updated, skipped, orphaned, deleted = sync_discovered_configs(
                     node, discovered, request.user, remark="批量节点全量同步",
                     task_id=task_center.id,
                 )
@@ -947,19 +950,33 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 result["created"] = len(created)
                 result["updated"] = len(updated)
                 result["orphaned"] = len(orphaned)
+                result["deleted"] = len(deleted)
                 result["created_names"] = created
                 result["updated_names"] = updated
                 result["orphaned_names"] = orphaned
+                result["deleted_names"] = deleted
+            else:
+                # 无发现结果时仍清理已标记删除的绑定
+                deleted = _cleanup_marked_deleted_bindings(node, request.user)
+                result["deleted"] = len(deleted)
+                result["deleted_names"] = deleted
 
             if result["errors"]:
                 result["message"] = "; ".join(result["errors"][:3])
                 result["success"] = False
             elif not discovered:
-                result["message"] = "未发现配置文件"
-                result["success"] = False
+                if result["deleted"]:
+                    result["success"] = True
+                    result["message"] = f"已删除 {result['deleted']} 个标记删除配置"
+                else:
+                    result["message"] = "未发现配置文件"
+                    result["success"] = False
             else:
                 result["success"] = True
-                result["message"] = f"已同步 {len(discovered)} 个配置文件"
+                result["message"] = (
+                    f"已同步 {len(discovered)} 个配置文件"
+                    f"（新增 {result['created']}，更新 {result['updated']}，删除 {result['deleted']}）"
+                )
             return result
 
         def _run_batch_sync_task(task_id, sync_nodes):
@@ -971,48 +988,83 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 node_header,
             )
 
-            TaskCenterTask.objects.filter(pk=task_id).update(
-                status="running", started_at=timezone.now(), progress=0,
-                detail=f"执行中：0/{len(sync_nodes)}",
-            )
-            success_count = 0
-            fail_count = 0
-            done = 0
-            node_blocks = []
+            try:
+                TaskCenterTask.objects.filter(pk=task_id).update(
+                    status="running", started_at=timezone.now(), progress=0,
+                    detail=f"执行中：0/{len(sync_nodes)}",
+                )
+                success_count = 0
+                fail_count = 0
+                done = 0
+                node_blocks = []
 
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-            with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
-                future_to_node = {executor.submit(_sync_one, node): node for node in sync_nodes}
-                for future in as_completed(future_to_node):
-                    result = future.result()
-                    done += 1
-                    node = future_to_node[future]
-                    node_blocks.append(node_header(node.ip, node.hostname))
-                    if result["success"]:
-                        success_count += 1
-                        names = list(result.get("created_names") or []) + list(
-                            result.get("updated_names") or []
-                        )
-                        if names:
-                            for name in names:
-                                node_blocks.append(item_success(name))
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                with ThreadPoolExecutor(max_workers=MAX_BATCH) as executor:
+                    future_to_node = {executor.submit(_sync_one, node): node for node in sync_nodes}
+                    for future in as_completed(future_to_node):
+                        node = future_to_node[future]
+                        node_blocks.append(node_header(node.ip, node.hostname))
+                        try:
+                            result = future.result()
+                        except Exception as exc:
+                            fail_count += 1
+                            done += 1
+                            node_blocks.append(item_failed("同步", str(exc)[:200]))
+                            TaskCenterTask.objects.filter(pk=task_id).update(
+                                progress=int(done * 100 / total) if total else 100,
+                                detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{total}",
+                                updated_at=timezone.now(),
+                            )
+                            continue
+                        done += 1
+                        if result["success"]:
+                            success_count += 1
+                            created_names = list(result.get("created_names") or [])
+                            updated_names = list(result.get("updated_names") or [])
+                            deleted_names = list(result.get("deleted_names") or [])
+                            has_items = False
+                            for name in created_names:
+                                node_blocks.append(item_success(f"{name} (新建)"))
+                                has_items = True
+                            for name in updated_names:
+                                node_blocks.append(item_success(f"{name} (更新)"))
+                                has_items = True
+                            for name in deleted_names:
+                                node_blocks.append(item_success(f"{name} (删除)"))
+                                has_items = True
+                            if not has_items:
+                                node_blocks.append(item_success(result.get("message") or "同步"))
                         else:
-                            node_blocks.append(item_success(result.get("message") or "同步"))
-                    else:
-                        fail_count += 1
-                        node_blocks.append(item_failed("同步", result.get("message") or "失败"))
-                    TaskCenterTask.objects.filter(pk=task_id).update(
-                        progress=int(done * 100 / total) if total else 100,
-                        detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{total}",
-                        updated_at=timezone.now(),
-                    )
+                            fail_count += 1
+                            deleted_names = list(result.get("deleted_names") or [])
+                            for name in deleted_names:
+                                node_blocks.append(item_success(f"{name} (删除)"))
+                            node_blocks.append(item_failed("同步", result.get("message") or "失败"))
+                        TaskCenterTask.objects.filter(pk=task_id).update(
+                            progress=int(done * 100 / total) if total else 100,
+                            detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{total}",
+                            updated_at=timezone.now(),
+                        )
 
-            status = "success" if fail_count == 0 else "failed"
-            TaskCenterTask.objects.filter(pk=task_id).update(
-                status=status, progress=100, finished_at=timezone.now(),
-                result=build_tree_result(success_count, fail_count, total, node_blocks),
-                detail=f"执行完成：成功 {success_count}，失败 {fail_count}，共 {total}",
-            )
+                status = "success" if fail_count == 0 else "failed"
+                TaskCenterTask.objects.filter(pk=task_id).update(
+                    status=status, progress=100, finished_at=timezone.now(),
+                    result=build_tree_result(success_count, fail_count, total, node_blocks),
+                    detail=f"执行完成：成功 {success_count}，失败 {fail_count}，共 {total}",
+                )
+            except Exception as exc:
+                # 兜底：避免任务永久停在 running 导致进度遮罩卡住
+                TaskCenterTask.objects.filter(pk=task_id).update(
+                    status="failed",
+                    progress=100,
+                    finished_at=timezone.now(),
+                    result=build_tree_result(
+                        0, 1, 1,
+                        [item_failed("同步", f"批量同步异常: {str(exc)[:200]}")],
+                    ),
+                    detail=f"同步异常: {str(exc)[:120]}",
+                    updated_at=timezone.now(),
+                )
 
         import threading
         thread = threading.Thread(target=_run_batch_sync_task, args=(task_center.id, nodes), daemon=True)
@@ -1079,78 +1131,7 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
             auth_kwargs["private_key"] = credential.get_private_key()
 
         def _run_single_sync_thread():
-            close_old_connections()
-            task = TaskCenterTask.objects.get(pk=task_center.id)
-            task.status = "running"
-            task.started_at = timezone.now()
-            task.progress = 5
-            task.detail = "正在连接远程节点..."
-            task.save(update_fields=["status", "started_at", "progress", "detail", "updated_at"])
-
-            discovered, errors = discover_nginx_configs(
-                node.ip, node.port, credential.username,
-                nginx_conf_path=nginx_conf_path,
-                max_include_depth=discover_max_depth(),
-                **auth_kwargs,
-            )
-
-            if is_partial:
-                selected_set = set(selected_paths)
-                discovered = [item for item in discovered if item["path"] in selected_set]
-
-            if errors:
-                task.progress = 15
-                task.detail = f"发现错误: {errors[0][:80]}"
-                task.save(update_fields=["progress", "detail", "updated_at"])
-                mark_discovery_failed_configs(node, errors, request.user, task_id=task.id)
-
-            if not discovered:
-                from apps.releases.task_result import (
-                    build_tree_result,
-                    item_failed,
-                    node_header,
-                )
-                task.status = "failed"
-                task.progress = 100
-                task.finished_at = timezone.now()
-                reason = "未发现配置文件"
-                if errors:
-                    reason += "；" + "；".join(errors[:3])
-                task.result = build_tree_result(
-                    0, 1, 1,
-                    [node_header(node.ip, node.hostname), item_failed("同步", reason)],
-                )
-                task.detail = "同步失败：未发现配置文件"
-                task.save(update_fields=["status", "progress", "finished_at", "result", "detail", "updated_at"])
-                return
-
-            total = len(discovered)
-            processed = 0
-
-            def progress_callback(status, name):
-                nonlocal processed
-                processed += 1
-                pct = 15 + int(processed * 85 / total)
-                TaskCenterTask.objects.filter(pk=task.id).update(
-                    progress=pct,
-                    detail=f"{'新建' if status == 'created' else '更新' if status == 'updated' else status}: {name} ({processed}/{total})",
-                    updated_at=timezone.now(),
-                )
-
-            if is_partial:
-                created, updated, skipped, orphaned = sync_selected_configs(
-                    node, selected_paths, discovered, request.user,
-                    remark="单节点部分同步", progress_callback=progress_callback,
-                    task_id=task.id,
-                )
-            else:
-                created, updated, skipped, orphaned = sync_discovered_configs(
-                    node, discovered, request.user, remark="单节点全量同步",
-                    progress_callback=progress_callback, task_id=task.id,
-                )
-
-            save_sync_path(node, nginx_conf_path, request.user)
-
+            """单节点同步线程：异常时将任务标为 failed，避免进度遮罩卡住"""
             from apps.releases.task_result import (
                 build_tree_result,
                 item_failed,
@@ -1158,31 +1139,152 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                 node_header,
             )
 
-            success = len(errors) == 0
-            node_blocks = [node_header(node.ip, node.hostname)]
-            item_ok = 0
-            item_fail = 0
-            for name in created or []:
-                node_blocks.append(item_success(f"{name} (新建)"))
-                item_ok += 1
-            for name in updated or []:
-                node_blocks.append(item_success(f"{name} (更新)"))
-                item_ok += 1
-            for err in errors or []:
-                node_blocks.append(item_failed("同步", err))
-                item_fail += 1
-            if item_ok == 0 and item_fail == 0:
-                node_blocks.append(item_success(f"共发现 {total} 个配置文件"))
-                item_ok = 1
+            close_old_connections()
+            task = TaskCenterTask.objects.get(pk=task_center.id)
+            try:
+                task.status = "running"
+                task.started_at = timezone.now()
+                task.progress = 5
+                task.detail = "正在连接远程节点..."
+                task.save(update_fields=["status", "started_at", "progress", "detail", "updated_at"])
 
-            TaskCenterTask.objects.filter(pk=task.id).update(
-                status="success" if success else "failed",
-                progress=100,
-                finished_at=timezone.now(),
-                result=build_tree_result(item_ok, item_fail, item_ok + item_fail, node_blocks),
-                detail=f"同步{'完成' if success else '失败'}: {len(created)} 新增, {len(updated)} 更新",
-                updated_at=timezone.now(),
-            )
+                discovered, errors = discover_nginx_configs(
+                    node.ip, node.port, credential.username,
+                    nginx_conf_path=nginx_conf_path,
+                    max_include_depth=discover_max_depth(),
+                    **auth_kwargs,
+                )
+
+                if is_partial:
+                    selected_set = set(selected_paths)
+                    discovered = [item for item in discovered if item["path"] in selected_set]
+
+                if errors:
+                    task.progress = 15
+                    task.detail = f"发现错误: {errors[0][:80]}"
+                    task.save(update_fields=["progress", "detail", "updated_at"])
+                    mark_discovery_failed_configs(node, errors, request.user, task_id=task.id)
+
+                if not discovered:
+                    # 无发现结果时仍清理已标记删除的绑定
+                    deleted = _cleanup_marked_deleted_bindings(node, request.user)
+                    node_blocks = [node_header(node.ip, node.hostname)]
+                    item_ok = 0
+                    item_fail = 0
+                    for name in deleted:
+                        node_blocks.append(item_success(f"{name} (删除)"))
+                        item_ok += 1
+                    if errors:
+                        reason = "未发现配置文件；" + "；".join(errors[:3])
+                        node_blocks.append(item_failed("同步", reason))
+                        item_fail = 1
+                        task.status = "failed"
+                        task.detail = (
+                            f"同步失败: 0 新增, 0 更新, {len(deleted)} 删除"
+                        )
+                    elif deleted:
+                        task.status = "success"
+                        task.detail = (
+                            f"同步完成: 0 新增, 0 更新, {len(deleted)} 删除"
+                        )
+                    else:
+                        node_blocks.append(item_failed("同步", "未发现配置文件"))
+                        item_fail = 1
+                        task.status = "failed"
+                        task.detail = "同步失败：未发现配置文件"
+                    task.progress = 100
+                    task.finished_at = timezone.now()
+                    task.result = build_tree_result(
+                        item_ok, item_fail, item_ok + item_fail, node_blocks,
+                    )
+                    task.save(update_fields=[
+                        "status", "progress", "finished_at", "result", "detail", "updated_at",
+                    ])
+                    return
+
+                total = len(discovered)
+                processed = 0
+
+                def _progress_label(status):
+                    """进度状态中文文案"""
+                    return {
+                        "created": "新建",
+                        "updated": "更新",
+                        "deleted": "删除",
+                        "skipped": "跳过",
+                    }.get(status, status)
+
+                def progress_callback(status, name):
+                    nonlocal processed
+                    processed += 1
+                    pct = min(99, 15 + int(processed * 85 / max(total, 1)))
+                    TaskCenterTask.objects.filter(pk=task.id).update(
+                        progress=pct,
+                        detail=f"{_progress_label(status)}: {name} ({processed}/{total})",
+                        updated_at=timezone.now(),
+                    )
+
+                if is_partial:
+                    created, updated, skipped, orphaned, deleted = sync_selected_configs(
+                        node, selected_paths, discovered, request.user,
+                        remark="单节点部分同步", progress_callback=progress_callback,
+                        task_id=task.id,
+                    )
+                else:
+                    created, updated, skipped, orphaned, deleted = sync_discovered_configs(
+                        node, discovered, request.user, remark="单节点全量同步",
+                        progress_callback=progress_callback, task_id=task.id,
+                    )
+
+                save_sync_path(node, nginx_conf_path, request.user)
+
+                success = len(errors) == 0
+                node_blocks = [node_header(node.ip, node.hostname)]
+                item_ok = 0
+                item_fail = 0
+                for name in created or []:
+                    node_blocks.append(item_success(f"{name} (新建)"))
+                    item_ok += 1
+                for name in updated or []:
+                    node_blocks.append(item_success(f"{name} (更新)"))
+                    item_ok += 1
+                for name in deleted or []:
+                    node_blocks.append(item_success(f"{name} (删除)"))
+                    item_ok += 1
+                for err in errors or []:
+                    node_blocks.append(item_failed("同步", err))
+                    item_fail += 1
+                if item_ok == 0 and item_fail == 0:
+                    node_blocks.append(item_success(f"共发现 {total} 个配置文件"))
+                    item_ok = 1
+
+                TaskCenterTask.objects.filter(pk=task.id).update(
+                    status="success" if success else "failed",
+                    progress=100,
+                    finished_at=timezone.now(),
+                    result=build_tree_result(item_ok, item_fail, item_ok + item_fail, node_blocks),
+                    detail=(
+                        f"同步{'完成' if success else '失败'}: "
+                        f"{len(created)} 新增, {len(updated)} 更新, {len(deleted)} 删除"
+                    ),
+                    updated_at=timezone.now(),
+                )
+            except Exception as exc:
+                # 兜底：避免任务永久停在 running 导致进度遮罩卡住
+                TaskCenterTask.objects.filter(pk=task.id).update(
+                    status="failed",
+                    progress=100,
+                    finished_at=timezone.now(),
+                    result=build_tree_result(
+                        0, 1, 1,
+                        [
+                            node_header(node.ip, node.hostname),
+                            item_failed("同步", f"同步异常: {str(exc)[:200]}"),
+                        ],
+                    ),
+                    detail=f"同步异常: {str(exc)[:120]}",
+                    updated_at=timezone.now(),
+                )
 
         import threading
         thread = threading.Thread(target=_run_single_sync_thread, daemon=True)
