@@ -26,7 +26,6 @@
             document.getElementById("stat-online-count").textContent = data.online_count;
             document.getElementById("stat-offline-count").textContent = data.offline_count;
             document.getElementById("stat-pending-push").textContent = data.pending_push_count;
-            document.getElementById("stat-conflict").textContent = data.conflict_count;
 
             // 更新离线节点的动态样式
             var offlineEl = document.getElementById("stat-offline-count");
@@ -149,20 +148,6 @@
                             <div>
                                 <div class="stat-number text-info" id="stat-pending-push">{{ pending_push_count }}</div>
                                 <div class="stat-label">待推送</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <!-- 冲突（橙/黄） -->
-                <div class="col-xxl-3 col-lg-4 col-md-6">
-                    <div class="dashboard-stat-card {% if conflict_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}" onclick="window.location.href='{% url 'configs:list' %}'">
-                        <div class="d-flex align-items-center">
-                            <div class="stat-icon me-3">
-                                <i class="bi bi-exclamation-diamond"></i>
-                            </div>
-                            <div>
-                                <div class="stat-number text-warning" id="stat-conflict">{{ conflict_count }}</div>
-                                <div class="stat-label">冲突</div>
                             </div>
                         </div>
                     </div>

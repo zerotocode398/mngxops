@@ -1102,9 +1102,11 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related("trigger_user")
+        # 仅有 nodes.update 时与详情可见范围对齐（本人触发的批量测/配置同步）
         if not self.can_read_release_tasks:
             queryset = queryset.filter(
-                operation_type="node_batch_test", trigger_user=self.request.user,
+                operation_type__in=["node_batch_test", "config_batch_sync"],
+                trigger_user=self.request.user,
             )
         search = self.request.GET.get("search", "")
         status_filter = self.request.GET.get("status", "")
@@ -1137,7 +1139,11 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
         context["status_filter"] = self.request.GET.get("status", "")
         context["operation_type_filter"] = self.request.GET.get("operation_type", "")
         context["status_choices"] = TaskCenterTask.STATUS_CHOICES
-        context["operation_type_choices"] = TaskCenterTask.OPERATION_TYPE_CHOICES
+        # 筛选下拉仅展示实际会创建的任务类型（不含未启用的 discover/drift/glob）
+        context["operation_type_choices"] = [
+            c for c in TaskCenterTask.OPERATION_TYPE_CHOICES
+            if c[0] not in ("config_discover", "config_drift_check", "config_glob_preview")
+        ]
         context["has_any_filter"] = bool(
             context["search"] or context["status_filter"] or context["operation_type_filter"]
         )
@@ -1856,18 +1862,18 @@ class VersionContentAPIView(LoginRequiredMixin, View):
 
 
 def _build_release_status_counts():
-    """构建发布中心绑定状态全局统计（排除已逻辑删除节点）"""
+    """构建发布中心绑定状态全局统计（排除已删节点与标记删除绑定）"""
     from apps.configs.models import ConfigNodeBinding
-    bindings = ConfigNodeBinding.objects.filter(node__is_deleted=False)
+    # 可发布集合：不含 marked_deleted；conflict/syncing 未启用故不统计
+    bindings = ConfigNodeBinding.objects.filter(node__is_deleted=False).exclude(
+        sync_status="marked_deleted",
+    )
     return {
         "total": bindings.count(),
         "pending": bindings.filter(sync_status__in=["not_synced", "modified"]).count(),
         "synced": bindings.filter(sync_status="synced").count(),
-        "conflict": bindings.filter(sync_status="conflict").count(),
         "failed": bindings.filter(sync_status="failed").count(),
-        "syncing": bindings.filter(sync_status="syncing").count(),
         "orphaned": bindings.filter(sync_status="orphaned").count(),
-        "marked_deleted": bindings.filter(sync_status="marked_deleted").count(),
     }
 
 
@@ -1926,6 +1932,7 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
             stats_qs = (
                 ConfigNodeBinding.objects
                 .filter(node_id__in=node_ids)
+                .exclude(sync_status="marked_deleted")
                 .values("node_id")
                 .annotate(
                     total_bindings=Count("id"),
@@ -1969,9 +1976,11 @@ class ReleaseNodeBindingsAPIView(LoginRequiredMixin, View):
     """获取指定节点的所有绑定详情（含版本列表）"""
 
     def get(self, request, node_id):
+        # 标记删除的绑定不可发布，不返回给发布中心勾选
         bindings = (
             ConfigNodeBinding.objects
             .filter(node_id=node_id)
+            .exclude(sync_status="marked_deleted")
             .select_related("config")
             .order_by("config__name")
         )

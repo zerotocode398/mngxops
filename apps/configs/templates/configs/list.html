@@ -72,10 +72,6 @@
                            class="badge config-status-label config-status-pending {% if sync_status == 'pending' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
                             <i class="bi bi-pencil"></i>待推送 {{ status_counts.pending }}
                         </a>
-                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=conflict"
-                           class="badge config-status-label config-status-conflict {% if sync_status == 'conflict' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
-                            <i class="bi bi-exclamation-triangle-fill"></i>冲突 {{ status_counts.conflict }}
-                        </a>
                         <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=orphaned"
                            class="badge config-status-label config-status-orphaned {% if sync_status == 'orphaned' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
                             <i class="bi bi-inbox"></i>远程删除 {{ status_counts.orphaned }}
@@ -83,10 +79,6 @@
                         <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=failed"
                            class="badge config-status-label config-status-failed {% if sync_status == 'failed' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
                             <i class="bi bi-x-circle-fill"></i>失败 {{ status_counts.failed }}
-                        </a>
-                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=syncing"
-                           class="badge config-status-label config-status-syncing {% if sync_status == 'syncing' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
-                            <i class="bi bi-arrow-repeat"></i>同步中 {{ status_counts.syncing }}
                         </a>
                         <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=marked_deleted"
                            class="badge config-status-label config-status-marked {% if sync_status == 'marked_deleted' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
@@ -117,10 +109,8 @@
                                         <span class="ms-auto"></span>
                                         <span class="badge bg-info">{{ stats.total }}配置</span>
                                         {% if stats.pending %}<span class="badge config-badge-pending"><i class="bi bi-pencil"></i>{{ stats.pending }}</span>{% endif %}
-                                        {% if stats.conflict %}<span class="badge config-badge-conflict"><i class="bi bi-exclamation-triangle-fill"></i>{{ stats.conflict }}</span>{% endif %}
                                         {% if stats.orphaned %}<span class="badge config-badge-orphaned"><i class="bi bi-inbox"></i>{{ stats.orphaned }}</span>{% endif %}
                                         {% if stats.failed %}<span class="badge config-badge-failed"><i class="bi bi-x-circle-fill"></i>{{ stats.failed }}</span>{% endif %}
-                                        {% if stats.syncing %}<span class="badge config-badge-syncing"><i class="bi bi-arrow-repeat"></i>{{ stats.syncing }}</span>{% endif %}
                                         {% if stats.marked_deleted %}<span class="badge config-badge-marked"><i class="bi bi-trash"></i>{{ stats.marked_deleted }}</span>{% endif %}
                                     </div>
                                 </button>

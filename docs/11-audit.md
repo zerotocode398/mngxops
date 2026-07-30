@@ -36,7 +36,7 @@
 ### 5.1 模型信号
 
 [`apps/audit/signals.py`](../apps/audit/signals.py)：`TRACKED_MODELS` 的 post_save/post_delete → AuditLog。  
-当前写入 **`result=success` 为主**（Q94）：失败的表单校验/业务拒绝不一定进审计失败。
+当前写入 **`result=success` 为主**（Q94 结论：表示变更已落库；失败表单/API 不一定记 failed）。
 
 ### 5.2 任务中心
 
@@ -70,7 +70,7 @@ accounts 登录成功/失败写 LoginLog（及可选 AuditLog）。
 ## 9. 异常与边界
 
 - 无用户上下文的系统操作可能缺少 user（信号需兜底）。  
-- 信号成功口径与真实业务成败可能不一致（Q94）。
+- 信号成功口径表示落库成功，不等于覆盖全部业务失败（Q94 已关闭结论）。
 
 ## 10. 关联模块
 
@@ -80,6 +80,6 @@ accounts 登录成功/失败写 LoginLog（及可选 AuditLog）。
 
 Q70。
 
-## 12. 待确认缺口
+## 12. 相关优化结论
 
-Q87（映射多余类型）、Q94。
+Q87/Q94 见 [90-gap-and-optimization.md](90-gap-and-optimization.md)。

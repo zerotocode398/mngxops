@@ -69,8 +69,10 @@ stateDiagram-v2
 
 | 状态 | UI | 代码写入 |
 |------|-----|----------|
-| conflict | 有过滤/统计 | **无**（Q84） |
-| syncing | 有 badge/过滤 | **无**（Q85） |
+| conflict | **主推过滤已下线**（Q84）；行内兜底 badge 仍可显示脏数据 | **无**（未启用） |
+| syncing | **主推过滤已下线**（Q85） | **无**（未启用） |
+
+漂移字段 `remote_content_hash` / `drift_detected_at` 与 `config_drift_check`：**现阶段不做**（Q86 关闭）；hash 仍可在发布成功时写入。
 
 ## 5. 页面与路由
 
@@ -100,7 +102,7 @@ stateDiagram-v2
 ### 6.4 版本历史
 
 - 列表/详情/对比/恢复。  
-- 恢复到与 `synced_version` 相同版本时直接标 `synced`（**不校验远程**，Q91）。
+- 恢复后一律 `sync_status=modified`，需再发布才与远程一致（Q91）。
 
 ### 6.5 解除绑定
 
@@ -117,7 +119,7 @@ stateDiagram-v2
 
 ### 6.7 Glob 预览
 
-`ConfigGlobPreviewView`：接受多 `node_ids` 但实现仅 `.first()`（Q92）；同步 HTTP，**不**建 TaskCenter（与枚举 `config_glob_preview` 不一致，Q87）。
+`ConfigGlobPreviewView`：仅支持**单个**节点；多 `node_ids` 返回 400（Q92）。同步 HTTP，不建 TaskCenter。
 
 ## 7. 实现要点
 
@@ -151,4 +153,4 @@ Q1–Q11、Q32、Q44 及同步相关 Q8/Q9/Q39 等（见 AGENTS）。
 
 ## 12. 待确认缺口
 
-Q84、Q85、Q86、Q87、Q91、Q92、Q95。
+相关项已按建议落地或关闭，见 [90-gap-and-optimization.md](90-gap-and-optimization.md)（Q84–Q95）。遗留 `ConfigVersion`/双路由延后（Q95）。

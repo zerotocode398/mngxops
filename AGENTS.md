@@ -91,22 +91,22 @@
 | Q69 | 全项目字号/字重对齐 | 已完成 |
 | Q70 | 审计日志筛选与任务软链 | 已完成 |
 
-### 待确认（缺失需求 / 设计优化）
+### 待确认 / 已处理优化点（Q84–Q95）
 
 | 编号 | 摘要 | 状态 |
 |------|------|------|
-| Q84 | `conflict` 同步状态无写入 | 待确认 |
-| Q85 | `syncing` 同步状态无写入 | 待确认 |
-| Q86 | 配置漂移检测未实现 | 待确认 |
-| Q87 | TaskCenter 类型与实现不一致 | 待确认 |
-| Q88 | 任务中心列表/详情权限不对称 | 待确认 |
-| Q89 | `ReleaseTask.status=rollback` 未使用 | 待确认 |
-| Q90 | 发布中心绑定含 `marked_deleted` | 待确认 |
-| Q91 | 版本恢复直接标 `synced` | 待确认 |
-| Q92 | Glob 预览多节点只取 first | 待确认 |
-| Q93 | 全局 running 阻断新发布 | 待确认 |
-| Q94 | 审计信号恒为 success | 待确认 |
-| Q95 | 遗留 ConfigVersion 与双版本路由 | 待确认 |
+| Q84 | `conflict` 同步状态无写入 → 下线误导 UI | 已完成 |
+| Q85 | `syncing` 同步状态无写入 → 下线误导 UI | 已完成 |
+| Q86 | 配置漂移检测 → 现阶段不做并收起 | 已关闭（结论） |
+| Q87 | TaskCenter 类型与实现不一致 → 筛选收紧 + 注释 | 已完成 |
+| Q88 | 任务中心列表/详情权限不对称 | 已完成 |
+| Q89 | `ReleaseTask.status=rollback` 未使用 | 已关闭（结论） |
+| Q90 | 发布中心排除 `marked_deleted` | 已完成 |
+| Q91 | 版本恢复一律标 `modified` | 已完成 |
+| Q92 | Glob 预览仅单节点 | 已完成 |
+| Q93 | 全局 running 门禁维持并文档化 | 已关闭（结论） |
+| Q94 | 审计信号口径限定为落库成功 | 已关闭（结论） |
+| Q95 | 遗留 ConfigVersion / 双路由 → 延后清理 | 已关闭（结论） |
 
 ---
 
@@ -649,96 +649,72 @@
 
 ### Q84 · 配置管理 · conflict 状态无写入
 
-- **问题**：`sync_status=conflict` 在模型、列表过滤、仪表盘/发布中心统计中存在，但业务代码从未赋值，过滤结果恒为空，易误导运维。
-- **证据**：`apps/configs/models.py` choices；计数见 `apps/configs/views.py`、`apps/dashboard/views.py`、`apps/releases/views.py`；无写入路径。
-- **建议**：实现本地/远程内容冲突检测并置位；或下线 UI/统计与枚举。
-- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：`sync_status=conflict` 在模型与多处 UI 存在但从未赋值，易误导。
+- **处理**：下线配置列表过滤、节点汇总徽章入口、发布中心过滤、仪表盘冲突卡片；model choices 保留防脏数据；行内 badge 兜底仍可显示。
+- **状态**：已完成
 
 ### Q85 · 配置管理 · syncing 状态无写入
 
-- **问题**：异步同步期间绑定不进入 `syncing`，UI badge/过滤无效。
-- **证据**：`config_filters.py`、配置列表模板；同步线程未更新该状态。
-- **建议**：同步开始置 `syncing`、结束写终态；或移除该状态展示。
-- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：异步同步不置 `syncing`，过滤标签恒空。
+- **处理**：与 Q84 一并下线主推过滤/汇总；不实现过程态写入。
+- **状态**：已完成
 
 ### Q86 · 配置管理 · 漂移检测未实现
 
-- **问题**：`remote_content_hash`、`drift_detected_at`、`config_drift_check` 任务类型已预留，无巡检实现；hash 主要在发布成功时写入。
-- **证据**：`apps/configs/models.py`；`TaskCenterTask` / `apps/audit/utils.py`；无创建 `config_drift_check` 的业务入口。
-- **建议**：实现手动/定时漂移对比；或清理字段与枚举并更新需求文档。
-- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：hash/漂移字段与任务类型预留，无巡检。
+- **处理**：现阶段**不做**；任务类型筛选隐藏 `config_drift_check`；字段保留。若未来需要另立项。
+- **状态**：已关闭（结论）
 
 ### Q87 · 任务中心 · 操作类型与实现不一致
 
-- **问题**：枚举与审计映射含 `config_discover`、`config_glob_preview`；实际发现/同步写 `config_batch_sync`；Glob 预览为同步 HTTP，不建 TaskCenter。
-- **证据**：`apps/releases/models.py`；`apps/audit/utils.py`；`ConfigSyncBatchAPIView`；`ConfigGlobPreviewView`。
-- **建议**：创建任务改用精确类型，或收紧枚举与 `OPERATION_AUDIT_MAP`。
-- **文档**：`docs/09-task-center.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：枚举含 discover/glob/drift，实际发现走 `config_batch_sync`，Glob 不建任务。
+- **处理**：任务中心类型下拉隐藏未用三项；同步创建处注释标明统一类型；审计 MAP 保留历史展示兼容。
+- **状态**：已完成
 
 ### Q88 · 任务中心 · 列表/详情权限不对称
 
-- **问题**：仅有 `nodes.update` 时，列表只显示本人 `node_batch_test`；详情还允许本人 `config_batch_sync`，可见任务集合不一致。
-- **证据**：`TaskCenterListView.get_queryset` 与 `TaskCenterDetailView.get_queryset`（`apps/releases/views.py`）。
-- **建议**：统一受限用户可见的 `operation_type` 集合。
-- **文档**：`docs/09-task-center.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：仅 `nodes.update` 时列表与详情可见类型不一致。
+- **处理**：列表与详情统一为本人 `node_batch_test` + `config_batch_sync`。
+- **状态**：已完成
 
 ### Q89 · 发布历史 · rollback 状态未使用
 
-- **问题**：`ReleaseTask.STATUS_CHOICES` 含 `rollback`，回滚实际新建任务，源任务不改写为 `rollback`。
-- **证据**：`apps/releases/models.py`；`ReleaseRollbackView` 等创建新任务逻辑。
-- **建议**：回滚成功后回写源任务状态；或删除无用 choice 并清理展示。
-- **文档**：`docs/08-releases.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：choices 含 `rollback`，回滚实为新建任务。
+- **处理**：维持「回滚=新任务」模型；本轮不改枚举/不回写源任务，避免历史展示扰动。清理 choice 另排期。
+- **状态**：已关闭（结论）
 
 ### Q90 · 发布中心 · 绑定含 marked_deleted
 
-- **问题**：节点绑定 API 未排除 `marked_deleted`，状态计数含该类；是否允许勾选发布不清晰。
-- **证据**：`ReleaseNodeBindingsAPIView` 与 status_counts（`apps/releases/views.py`）。
-- **建议**：默认排除或禁用勾选并提示「待删除」。
-- **文档**：`docs/08-releases.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：待删绑定仍可出现在发布勾选。
+- **处理**：绑定 API 与状态统计排除 `marked_deleted`；发布中心去掉「标记删除」过滤标签。
+- **状态**：已完成
 
 ### Q91 · 配置版本 · 恢复直接标 synced
 
-- **问题**：恢复到与 `synced_version` 相同的版本时直接 `sync_status=synced`，不校验远程实际内容。
-- **证据**：`BindingVersionRestoreView`（`apps/configs/views.py`）。
-- **建议**：恢复标 `modified`，或 SSH 校验远程后再标 `synced`。
-- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：恢复到曾同步版本时直接标 `synced`。
+- **处理**：恢复后一律 `modified`，提示需重新发布。
+- **状态**：已完成
 
 ### Q92 · 配置 Glob 预览 · 多节点只取 first
 
-- **问题**：`ConfigGlobPreviewView` 接受多个 `node_ids`，实现仅处理 `.first()` 节点。
-- **证据**：`apps/configs/views.py` Glob 预览视图。
-- **建议**：按节点循环返回结果，或前端限制单选并后端校验。
-- **文档**：`docs/07-configs.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：多 `node_ids` 仅处理第一个。
+- **处理**：多于 1 个节点返回 400；仅支持单节点预览。
+- **状态**：已完成
 
 ### Q93 · 发布 · 全局 running 阻断新批次
 
-- **问题**：任意 `ReleaseTask.status=running` 存在即拒绝新批次自动执行，非按操作者/节点隔离，易误伤并行运维。
-- **证据**：`ReleaseCreateAPIView` 中 `filter(status="running").exists()`（`apps/releases/views.py`）。
-- **建议**：改为按操作者、按节点集合冲突检测，或配置化开关；并写入需求说明。
-- **文档**：`docs/08-releases.md`、`docs/16-nfr.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：任意 running 发布即挡新批次。
+- **处理**：**维持现状**（进程内线程 + 同节点统一 reload 下更安全）；在需求文档标明为已知约束。并行化另立项。
+- **状态**：已关闭（结论）
 
 ### Q94 · 审计 · CRUD 信号结果多为 success
 
-- **问题**：模型信号写 `AuditLog` 时结果偏向 success；表单/API 业务失败不一定记 failed，观测不完整。
-- **证据**：`apps/audit/signals.py`。
-- **建议**：关键失败路径显式记 failed；或文档明确「仅记录落库成功的变更」。
-- **文档**：`docs/11-audit.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：信号写审计多为 success。
+- **处理**：结论定为「模型落库成功变更记 success」；失败业务路径本轮不扩审计。需要失败审计另立项。
+- **状态**：已关闭（结论）
 
 ### Q95 · 配置管理 · 遗留 ConfigVersion 与双版本路由
 
-- **问题**：旧 `ConfigVersion` 模型仍在；`/configs/<pk>/versions/` 与 `/configs/bindings/<pk>/versions/` 并存，pk 语义易混（曾导致 Q44）。
-- **证据**：`apps/configs/models.py` 待废弃注释；`apps/configs/urls.py` 兼容路由。
-- **建议**：迁移清理后删除旧模型与旧路由；过渡期旧路由重定向或明确报错。
-- **文档**：`docs/07-configs.md`、`docs/15-api-catalog.md`、`docs/90-gap-and-optimization.md`
-- **状态**：待确认
+- **问题**：旧模型与兼容路由并存。
+- **处理**：本轮不删；文档标明废弃，正式入口用 `bindings/<pk>/versions/`。物理清理另排期并回归链接。
+- **状态**：已关闭（结论）

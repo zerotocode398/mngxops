@@ -9,7 +9,7 @@
 ## 2. 角色与权限
 
 - 列表/详情：`releases.read` **或** `nodes.update`。  
-- 仅有 `nodes.update` 时：列表过滤为部分节点类任务；详情 queryset 与列表不完全一致（Q88）。
+- 仅有 `nodes.update` 时：列表与详情均可见本人触发的 `node_batch_test` 与 `config_batch_sync`（Q88 已统一）。
 
 ## 3. 领域模型
 
@@ -24,7 +24,7 @@
 | `node_ssh_test` / `node_batch_test` | 节点测试 |
 | `node_system_info` / `node_nginx_version` | 采集 |
 | `config_batch_sync` | 配置同步（发现也走此类型） |
-| `config_discover` / `config_drift_check` / `config_glob_preview` | 枚举/审计映射存在，**业务少或未创建**（Q86/Q87） |
+| `config_discover` / `config_drift_check` / `config_glob_preview` | 枚举保留兼容；筛选下拉已隐藏；业务不新建（Q86/Q87） |
 | `nginx_upgrade` / `nginx_rollback` | 升级 |
 | `other` | 兜底 |
 
@@ -93,7 +93,7 @@
 ## 10. 异常与边界
 
 - 进程重启后内存实时步骤丢失，以 DB 字段为准。  
-- 权限不对称：列表可能看不到但详情 URL 仍可访问某些类型（Q88）。
+- 窄权限账号列表与详情可见类型已对齐（Q88）。
 
 ## 11. 关联模块
 
@@ -103,6 +103,6 @@
 
 Q28–Q36、Q39、Q45、Q70、Q71、Q80。
 
-## 13. 待确认缺口
+## 13. 相关优化结论
 
-Q87、Q88。
+Q87/Q88 已落地，见 [90-gap-and-optimization.md](90-gap-and-optimization.md)。

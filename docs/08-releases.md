@@ -27,7 +27,7 @@
 | `result` | 执行结果文本 |
 | 时间戳 | started/finished/created |
 
-注意：`status=rollback` 在 choices 中存在，但回滚会**新建**任务，源任务通常不改写为 rollback（Q89）。
+注意：`status=rollback` 在 choices 中存在，但回滚会**新建**任务，源任务通常不改写为 rollback（Q89 已关闭：维持该模型）。
 
 ### ReleaseHistory
 
@@ -61,8 +61,8 @@ sequenceDiagram
 
   UI->>API: bindings[] + auto_execute
   API->>API: 生成 batch_number, 建 ReleaseTask pending
-  alt 存在 running 发布
-    API-->>UI: 拒绝自动执行(Q93)
+  alt 存在任意 running 发布
+    API-->>UI: 拒绝自动执行（全局门禁，Q93 维持）
   end
   API->>TC: release_publish
   API->>EX: 后台线程
@@ -136,7 +136,7 @@ sequenceDiagram
 |------|------|
 | 执行器 | `ReleaseExecutorMixin` |
 | 创建 API | `ReleaseCreateAPIView` |
-| 绑定列表 API | `ReleaseNodeBindingsAPIView`（含 marked_deleted，Q90） |
+| 绑定列表 API | `ReleaseNodeBindingsAPIView`（排除 `marked_deleted`，Q90） |
 | 批次号 | `generate_batch_number` |
 
 ## 8. 前后端约定
@@ -147,7 +147,7 @@ sequenceDiagram
 
 ## 9. 异常与边界
 
-- 全局 running 门禁（Q93）。  
+- 全局 running 门禁（任意批次 running 即挡新自动执行；Q93 维持并文档化）。  
 - 首发无远程文件：跳过备份（Q48）。  
 - binding 为空（节点/配置已删）时展示降级。
 
@@ -159,6 +159,6 @@ configs、nodes、task center、audit、settings、nginx_ops。
 
 Q12–Q27、Q31、Q37、Q45–Q59、Q61、Q79、Q80 等。
 
-## 12. 待确认缺口
+## 12. 相关优化结论
 
-Q89、Q90、Q93。
+Q89/Q90/Q93 等已按建议落地或关闭，见 [90-gap-and-optimization.md](90-gap-and-optimization.md)。

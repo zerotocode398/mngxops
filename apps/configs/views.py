@@ -578,12 +578,13 @@ class BindingVersionRestoreView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 
         binding.content = old_version.content
         binding.current_version = new_version_num
-        binding.sync_status = "synced" if old_version.version == binding.synced_version else "modified"
+        # 恢复仅改本地内容，需再次发布后才与远程一致
+        binding.sync_status = "modified"
         binding.save()
 
         messages.success(
             request,
-            f"已恢复到 v{old_version.version}（生成新版本 v{new_version_num}）",
+            f"已恢复到 v{old_version.version}（生成新版本 v{new_version_num}，状态为本地已修改，需重新发布）",
         )
         return redirect("configs:binding_versions", pk=binding.pk)
 
@@ -737,7 +738,7 @@ class ConfigByNodesAPIView(LoginRequiredMixin, View):
 
 
 class ConfigGlobPreviewView(LoginRequiredMixin, View):
-    """预览 glob 匹配文件（兼容旧接口）"""
+    """预览 glob 匹配文件（仅支持单节点）"""
 
     def post(self, request):
         from apps.nodes.models import Node
@@ -749,6 +750,11 @@ class ConfigGlobPreviewView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "message": "请选择节点"}, status=400)
 
         node_ids = [int(nid) for nid in node_ids_str.split(",") if nid.strip()]
+        if len(node_ids) > 1:
+            return JsonResponse(
+                {"success": False, "message": "Glob 预览仅支持单个节点，请勿多选"},
+                status=400,
+            )
         node = Node.objects.filter(id__in=node_ids).first()
         if not node:
             return JsonResponse({"success": False, "message": "节点不存在"}, status=404)
@@ -884,6 +890,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
         total = len(nodes)
 
+        # 配置发现与批量同步统一记为 config_batch_sync（未再单独创建 config_discover）
         task_center = TaskCenterTask.objects.create(
             operation_type="config_batch_sync",
             status="pending",

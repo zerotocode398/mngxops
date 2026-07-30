@@ -28,10 +28,6 @@ def index(request):
     pending_push_count = ConfigNodeBinding.objects.filter(
         sync_status="modified", node__is_deleted=False
     ).count()
-    # 冲突：本地与远程均被修改产生冲突的绑定数
-    conflict_count = ConfigNodeBinding.objects.filter(
-        sync_status="conflict", node__is_deleted=False
-    ).count()
 
     recent_limit = _dashboard_limit("dashboard.recent_tasks_count", 10)
     failed_limit = _dashboard_limit("dashboard.recent_failed_bindings_count", 10)
@@ -55,7 +51,6 @@ def index(request):
         "node_group_count": node_group_count,
         "release_task_count": release_task_count,
         "pending_push_count": pending_push_count,
-        "conflict_count": conflict_count,
         "recent_tasks": recent_tasks,
         "failed_configs": failed_configs,
     }
@@ -71,14 +66,10 @@ def stats_api(request):
     pending_push_count = ConfigNodeBinding.objects.filter(
         sync_status="modified", node__is_deleted=False
     ).count()
-    conflict_count = ConfigNodeBinding.objects.filter(
-        sync_status="conflict", node__is_deleted=False
-    ).count()
 
     return JsonResponse({
         "node_count": node_count,
         "online_count": online_count,
         "offline_count": offline_count,
         "pending_push_count": pending_push_count,
-        "conflict_count": conflict_count,
     })

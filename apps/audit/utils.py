@@ -46,6 +46,7 @@ def log_async_task(
 
 
 # 任务类型 → (模块名, 动作名)
+# 说明：配置发现/同步统一创建 config_batch_sync；下列 discover/drift/glob 仅兼容历史任务展示
 OPERATION_AUDIT_MAP = {
     "release_publish": ("发布管理", "发布配置"),
     "release_rollback": ("发布管理", "回滚配置"),
