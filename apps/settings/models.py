@@ -46,12 +46,9 @@ class SystemSetting(models.Model):
 # 预置配置项（仅保留已接线、保存后立即生效的参数）
 PRESET_SETTINGS = [
     # 仪表盘
-    {"key": "dashboard.recent_tasks_count", "group": "仪表盘", "type": "integer", "value": "10",
-     "label": "最近发布任务显示条数",
-     "description": "仪表盘首页最近发布任务列表最大行数（刷新仪表盘后生效）", "sort_order": 1},
-    {"key": "dashboard.recent_failed_bindings_count", "group": "仪表盘", "type": "integer", "value": "10",
-     "label": "配置下发失败显示条数",
-     "description": "仪表盘首页同步失败配置告警最大行数（刷新仪表盘后生效）", "sort_order": 2},
+    {"key": "dashboard.recent_tasks_count", "group": "仪表盘", "type": "integer", "value": "20",
+     "label": "最近任务显示条数",
+     "description": "仪表盘首页最近任务（任务中心）列表最大行数（刷新仪表盘后生效）", "sort_order": 1},
     # 节点管理
     {"key": "node.batch_max_count", "group": "节点管理", "type": "integer", "value": "3",
      "label": "批量操作最大节点数",

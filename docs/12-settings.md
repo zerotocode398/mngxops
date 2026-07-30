@@ -34,8 +34,7 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 
 | key | 生效 |
 |-----|------|
-| `dashboard.recent_tasks_count` | 刷新仪表盘 |
-| `dashboard.recent_failed_bindings_count` | 刷新仪表盘 |
+| `dashboard.recent_tasks_count` | 刷新仪表盘（默认 20；任务中心最近记录） |
 
 ### 节点管理
 

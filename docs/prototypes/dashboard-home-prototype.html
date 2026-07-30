@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>首页原型 · 系统概览 - MngxOps</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #667eea;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --info: #0dcaf0;
+            --gray-100: #f8f9fa;
+            --gray-200: #e9ecef;
+            --gray-400: #ced4da;
+            --gray-500: #adb5bd;
+            --gray-600: #6c757d;
+            --br-md: 0.5rem;
+            --transition-normal: 0.2s ease;
+            --fs-base: 0.875rem;
+        }
+        body {
+            background: var(--gray-100);
+            font-size: var(--fs-base);
+            color: #212529;
+        }
+        .proto-banner {
+            background: #fff3cd;
+            border-bottom: 1px solid #ffecb5;
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+            color: #664d03;
+        }
+        .dashboard-stat-card {
+            border-radius: var(--br-md);
+            padding: 20px;
+            transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+            cursor: pointer;
+            background: #fff;
+            border: 1px solid var(--gray-200);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        .dashboard-stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+        }
+        .stat-card-online { border-left: 4px solid var(--success); }
+        .stat-card-offline { border-left: 4px solid var(--danger); }
+        .stat-card-info { border-left: 4px solid var(--info); }
+        .stat-card-primary { border-left: 4px solid var(--primary); }
+        .stat-card-warning { border-left: 4px solid var(--warning); }
+        .stat-card-default { border-left: 4px solid var(--gray-600); }
+        .stat-number { font-size: 2rem; font-weight: 700; line-height: 1.2; }
+        .stat-label { font-size: 0.85rem; color: var(--gray-600); margin-top: 4px; }
+        .stat-icon i { font-size: 2rem; }
+        .stat-card-primary .stat-icon i { color: var(--primary); }
+        .stat-card-online .stat-icon i { color: var(--success); }
+        .stat-card-offline .stat-icon i { color: var(--danger); }
+        .stat-card-info .stat-icon i { color: var(--info); }
+        .stat-card-warning .stat-icon i { color: var(--warning); }
+        .badge-outline {
+            background: var(--gray-100);
+            color: var(--gray-600);
+            border: 1px solid var(--gray-300, #dee2e6);
+            font-weight: 500;
+        }
+        .data-table { table-layout: fixed; width: 100%; }
+        .table.data-table > :not(caption) > * > * {
+            padding: 0.5rem 0.75rem;
+            vertical-align: middle;
+        }
+        .table.data-table thead th { font-weight: 600; white-space: nowrap; }
+        .table.data-table > :not(caption) > * > *:first-child { padding-left: 1rem; }
+        .table.data-table > :not(caption) > * > *:last-child { padding-right: 1rem; }
+        .empty-state { text-align: center; padding: 2rem 1rem; }
+        .empty-state > .bi { font-size: 3rem; color: var(--gray-400); }
+        .empty-state p { margin-top: 0.5rem; color: var(--gray-600); }
+        .task-summary-cell .small { line-height: 1.35; }
+        code { font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+    <div class="proto-banner">
+        <strong>原型预览</strong> · 首页改版（Q108）· 无后端，假数据 · 对齐升级首页顶栏按钮风格 · 去掉「配置下发失败」与大卡片快捷操作
+    </div>
+
+    <div class="container-fluid py-3">
+        <!-- 页头：标题 + 紧凑快捷按钮 -->
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 系统概览</h5>
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="#" class="btn btn-primary btn-sm"><i class="bi bi-rocket-takeoff"></i> 发布中心</a>
+                <a href="#" class="btn btn-outline-primary btn-sm"><i class="bi bi-folder2-open"></i> 配置列表</a>
+                <a href="#" class="btn btn-outline-secondary btn-sm"><i class="bi bi-plus-lg"></i> 新建节点</a>
+                <a href="#" class="btn btn-outline-secondary btn-sm"><i class="bi bi-list-task"></i> 任务中心</a>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="location.reload()" title="刷新">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 统计卡：6 张 -->
+        <div class="row g-2 mb-4">
+            <div class="col-xxl-2 col-lg-4 col-md-6">
+                <div class="dashboard-stat-card stat-card-primary">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon me-3"><i class="bi bi-server"></i></div>
+                        <div>
+                            <div class="stat-number">24</div>
+                            <div class="stat-label">节点总数</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xxl-2 col-lg-4 col-md-6">
+                <div class="dashboard-stat-card stat-card-online">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon me-3"><i class="bi bi-wifi"></i></div>
+                        <div>
+                            <div class="stat-number text-success">21</div>
+                            <div class="stat-label">在线节点</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xxl-2 col-lg-4 col-md-6">
+                <div class="dashboard-stat-card stat-card-offline">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon me-3"><i class="bi bi-exclamation-triangle"></i></div>
+                        <div>
+                            <div class="stat-number text-danger">3</div>
+                            <div class="stat-label">离线节点</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xxl-2 col-lg-4 col-md-6">
+                <div class="dashboard-stat-card stat-card-info">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon me-3"><i class="bi bi-send"></i></div>
+                        <div>
+                            <div class="stat-number text-info">7</div>
+                            <div class="stat-label">待推送</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xxl-2 col-lg-4 col-md-6">
+                <div class="dashboard-stat-card stat-card-warning">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon me-3"><i class="bi bi-hourglass-split"></i></div>
+                        <div>
+                            <div class="stat-number">2</div>
+                            <div class="stat-label">执行中任务</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xxl-2 col-lg-4 col-md-6">
+                <div class="dashboard-stat-card stat-card-offline">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon me-3"><i class="bi bi-x-circle"></i></div>
+                        <div>
+                            <div class="stat-number text-danger">4</div>
+                            <div class="stat-label">近 7 天失败</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 最近任务（TaskCenter） -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-list-task"></i> 最近任务</h5>
+                <a href="#" class="btn btn-sm btn-outline-primary">查看全部</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0 data-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 7%;">ID</th>
+                                <th style="width: 12%;">类型</th>
+                                <th style="width: 9%;">状态</th>
+                                <th style="width: 36%;">摘要</th>
+                                <th style="width: 12%;">操作人</th>
+                                <th style="width: 14%;">时间</th>
+                                <th style="width: 10%;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>#128</code></td>
+                                <td><span class="badge badge-outline">发布配置</span></td>
+                                <td><span class="badge bg-info">执行中</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small"><code>release-260730-0003</code></div>
+                                    <div class="small text-muted">执行中…</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-30 16:58</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#127</code></td>
+                                <td><span class="badge badge-outline">配置批量同步</span></td>
+                                <td><span class="badge bg-info">执行中</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">web-01, web-02</div>
+                                    <div class="small text-muted">发现配置 · nginx.conf</div>
+                                </td>
+                                <td><small>ops</small></td>
+                                <td><small>2026-07-30 16:55</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#126</code></td>
+                                <td><span class="badge badge-outline">回滚配置</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small"><code>release-260730-0001</code></div>
+                                    <div class="small text-muted">成功 2 / 失败 0</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-30 16:40</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#125</code></td>
+                                <td><span class="badge badge-outline">Nginx 编译升级</span></td>
+                                <td><span class="badge bg-danger">失败</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">pay-gw-01</div>
+                                    <div class="small text-muted">configure 失败：缺少 openssl</div>
+                                </td>
+                                <td><small>ops</small></td>
+                                <td><small>2026-07-30 15:12</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#124</code></td>
+                                <td><span class="badge badge-outline">节点SSH测试</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">cache-01 (10.0.1.8)</div>
+                                    <div class="small text-muted">连接成功</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-30 14:50</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#123</code></td>
+                                <td><span class="badge badge-outline">凭证启用测试</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">prod-ssh-key</div>
+                                    <div class="small text-muted">成功 5 / 失败 0</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-30 14:22</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#122</code></td>
+                                <td><span class="badge badge-outline">发布配置</span></td>
+                                <td><span class="badge bg-danger">失败</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small"><code>release-260729-0012</code></div>
+                                    <div class="small text-muted">成功 3 / 失败 1</div>
+                                </td>
+                                <td><small>ops</small></td>
+                                <td><small>2026-07-29 21:05</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#121</code></td>
+                                <td><span class="badge badge-outline">节点批量测试</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">web-01, web-02, web-03</div>
+                                    <div class="small text-muted">成功 3 / 失败 0</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-29 18:30</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#120</code></td>
+                                <td><span class="badge badge-outline">配置批量同步</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">edge-01</div>
+                                    <div class="small text-muted">2 新增, 1 更新, 0 删除</div>
+                                </td>
+                                <td><small>ops</small></td>
+                                <td><small>2026-07-29 17:10</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#119</code></td>
+                                <td><span class="badge badge-outline">Nginx 版本检测</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">pay-gw-02</div>
+                                    <div class="small text-muted">1.24.0</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-29 16:00</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#118</code></td>
+                                <td><span class="badge badge-outline">节点系统信息采集</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">db-proxy-01</div>
+                                    <div class="small text-muted">采集完成</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-29 15:40</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#117</code></td>
+                                <td><span class="badge badge-outline">发布配置</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small"><code>release-260728-0008</code></div>
+                                    <div class="small text-muted">成功 6 / 失败 0</div>
+                                </td>
+                                <td><small>ops</small></td>
+                                <td><small>2026-07-28 20:15</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#116</code></td>
+                                <td><span class="badge badge-outline">回滚配置</span></td>
+                                <td><span class="badge bg-warning text-dark">已取消</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small"><code>release-260728-0005</code></div>
+                                    <div class="small text-muted">用户取消</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-28 19:02</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#115</code></td>
+                                <td><span class="badge badge-outline">Nginx 编译升级</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">web-01, web-02</div>
+                                    <div class="small text-muted">1.24.0 → 1.26.1</div>
+                                </td>
+                                <td><small>ops</small></td>
+                                <td><small>2026-07-28 11:30</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#114</code></td>
+                                <td><span class="badge badge-outline">节点SSH测试</span></td>
+                                <td><span class="badge bg-danger">失败</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">legacy-01 (10.0.9.9)</div>
+                                    <div class="small text-muted">Authentication failed</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-27 22:18</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#113</code></td>
+                                <td><span class="badge badge-outline">配置批量同步</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">web-03</div>
+                                    <div class="small text-muted">0 新增, 0 更新, 1 删除</div>
+                                </td>
+                                <td><small>ops</small></td>
+                                <td><small>2026-07-27 16:45</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#112</code></td>
+                                <td><span class="badge badge-outline">发布配置</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small"><code>release-260726-0002</code></div>
+                                    <div class="small text-muted">成功 1 / 失败 0</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-26 10:08</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#111</code></td>
+                                <td><span class="badge badge-outline">凭证启用测试</span></td>
+                                <td><span class="badge bg-danger">失败</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">old-passwd</div>
+                                    <div class="small text-muted">成功 0 / 失败 2</div>
+                                </td>
+                                <td><small>ops</small></td>
+                                <td><small>2026-07-25 09:30</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#110</code></td>
+                                <td><span class="badge badge-outline">节点批量测试</span></td>
+                                <td><span class="badge bg-secondary">等待中</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small">batch-a, batch-b</div>
+                                    <div class="small text-muted">排队中</div>
+                                </td>
+                                <td><small>admin</small></td>
+                                <td><small>2026-07-25 09:00</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                            <tr>
+                                <td><code>#109</code></td>
+                                <td><span class="badge badge-outline">发布配置</span></td>
+                                <td><span class="badge bg-success">成功</span></td>
+                                <td class="task-summary-cell">
+                                    <div class="small"><code>release-260724-0001</code></div>
+                                    <div class="small text-muted">成功 4 / 失败 0</div>
+                                </td>
+                                <td><small>ops</small></td>
+                                <td><small>2026-07-24 18:20</small></td>
+                                <td><a href="#" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i> 详情</a></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

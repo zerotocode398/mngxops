@@ -16,7 +16,7 @@
 | 方法 | 路径 | name | 说明 |
 |------|------|------|------|
 | GET | `/` | `dashboard:index` | 首页 |
-| GET | `/api/stats/` | `dashboard:stats_api` | **JSON** 统计轮询 |
+| GET | `/api/stats/` | `dashboard:stats_api` | **JSON** 统计轮询（节点/待推送/执行中/近7天失败） |
 
 ## 3. 用户 `users`
 

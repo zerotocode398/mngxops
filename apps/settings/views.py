@@ -44,7 +44,6 @@ GROUP_META = {
 # 配置项单位后缀（与 PRESET_SETTINGS 键一致）
 UNIT_MAP = {
     "dashboard.recent_tasks_count": "条",
-    "dashboard.recent_failed_bindings_count": "条",
     "node.batch_max_count": "台",
     "node.ssh_connect_timeout": "秒",
     "node.ssh_default_port": "",
