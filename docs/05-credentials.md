@@ -50,6 +50,8 @@
 
 创建/编辑分区表单；删除前确认；列表展示启用态与最近测试结果。
 
+密钥认证：支持粘贴私钥，或前端选择本地文件读入 textarea（不上传独立接口）；格式由服务端 paramiko 校验（RSA/DSA/ECDSA/Ed25519）。**不支持**带口令的加密私钥，需先在本地解密后再导入。
+
 ### 5.2 启用
 
 1. 打开启用 → 创建 `CredentialEnableTask` + `TaskCenterTask(operation_type=credential_enable_test)`。  
@@ -92,6 +94,8 @@ nodes（FK credential）、task center、audit、settings。
 | Q39 | 启用测试真实轮询 |
 | Q40 | 并发配置化 |
 | Q68 | 表单与眼睛居中 |
+| Q97 | 无关联节点启用跳过测试任务 |
+| Q98 | 密钥认证切换修复 + 私钥文件导入 |
 
 ## 11. 待确认缺口
 
