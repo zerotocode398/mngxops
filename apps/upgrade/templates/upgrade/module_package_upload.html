@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}上传模块包 - Nginx 编译升级{% endblock %}
+{% block page_title %}<i class="bi bi-upload"></i> 上传第三方模块包{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-sm btn-outline-secondary mb-3">
+            <i class="bi bi-arrow-left"></i> 返回列表
+        </a>
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-upload"></i> 上传第三方模块离线包</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data" id="uploadForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="overwrite" id="id_overwrite" value="">
+
+                    <div class="upload-dropzone mb-4" id="dropZone">
+                        <i class="bi bi-cloud-upload upload-dropzone-icon"></i>
+                        <p class="mt-2 mb-1">点击或拖拽文件到此处上传</p>
+                        <p class="text-muted small mb-0">支持 .tar.gz / .tgz / .zip，最大 {{ package_max_size_mb|default:500 }}MB</p>
+                        <input type="file" name="package_file" id="id_package_file"
+                               accept=".tar.gz,.tgz,.zip" style="display: none;">
+                    </div>
+                    {% if form.package_file.errors %}
+                    <div class="alert alert-danger">{{ form.package_file.errors|join:", " }}</div>
+                    {% endif %}
+
+                    <div id="fileInfo" class="alert alert-info d-none mb-3">
+                        <i class="bi bi-file-earmark-zip"></i>
+                        已选择: <span id="fileName"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">模块名称 <span class="required">*</span></label>
+                        <input type="text" name="name" class="form-control form-control-sm"
+                               id="id_name" placeholder="如：nginx-module-sts" required
+                               value="{{ form.name.value|default:'' }}">
+                        <div class="form-text">对应远程目录名，将用于 --add-module</div>
+                        {% if form.name.errors %}
+                        <div class="text-danger mt-1 small">{{ form.name.errors|join:", " }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">版本/标签</label>
+                        <input type="text" name="version" class="form-control form-control-sm"
+                               id="id_version" placeholder="如：v1.2.1（可选）"
+                               value="{{ form.version.value|default:'' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">描述</label>
+                        <textarea name="description" class="form-control form-control-sm" rows="3"
+                                  id="id_description" placeholder="模块说明（可选）">{{ form.description.value|default:'' }}</textarea>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" id="btnSubmit">
+                            <i class="bi bi-upload"></i> 上传并校验
+                        </button>
+                        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary"><i class="bi bi-x-circle"></i> 取消</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var dropZone = document.getElementById('dropZone');
+    var fileInput = document.getElementById('id_package_file');
+    var fileInfo = document.getElementById('fileInfo');
+    var fileName = document.getElementById('fileName');
+    var versionInput = document.getElementById('id_version');
+    var nameInput = document.getElementById('id_name');
+    var form = document.getElementById('uploadForm');
+    var btnSubmit = document.getElementById('btnSubmit');
+    var overwriteInput = document.getElementById('id_overwrite');
+    var checkUrl = '{% url "upgrade:module_package_check" %}';
+    var uploadUrl = '{% url "upgrade:module_package_upload" %}';
+    var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+    var uploading = false;
+
+    dropZone.addEventListener('click', function() { fileInput.click(); });
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+    });
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            updateFileInfo(e.dataTransfer.files[0]);
+        }
+    });
+    fileInput.addEventListener('change', function() {
+        if (fileInput.files.length) updateFileInfo(fileInput.files[0]);
+    });
+
+    /** 校验扩展名是否为支持的模块包格式 */
+    function isAllowedArchive(name) {
+        var n = (name || '').toLowerCase();
+        return n.endsWith('.tar.gz') || n.endsWith('.tgz') || n.endsWith('.zip');
+    }
+
+    /** 从文件名猜测模块目录名 */
+    function guessModuleName(filename) {
+        var base = filename.replace(/\.(tar\.gz|tgz|zip)$/i, '');
+        base = base.replace(/[-_](v?\d+(\.\d+)*)+$/i, '');
+        return base || filename;
+    }
+
+    /** 更新已选文件信息并自动填充模块名 */
+    function updateFileInfo(file) {
+        if (!isAllowedArchive(file.name)) {
+            if (window.showToast) showToast('仅支持 .tar.gz / .tgz / .zip', 'danger');
+            fileInput.value = '';
+            fileInfo.classList.add('d-none');
+            return;
+        }
+        var sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        var maxMb = {{ package_max_size_mb|default:500 }};
+        if (file.size > maxMb * 1024 * 1024) {
+            if (window.showToast) showToast('文件超过 ' + maxMb + 'MB 限制', 'danger');
+            fileInput.value = '';
+            fileInfo.classList.add('d-none');
+            return;
+        }
+        fileName.textContent = file.name + ' (' + sizeMB + ' MB)';
+        fileInfo.classList.remove('d-none');
+        if (!nameInput.value) nameInput.value = guessModuleName(file.name);
+    }
+
+    /** 更新全局进度遮罩百分比 */
+    function updateUploadProgress(percent, text) {
+        var bar = document.getElementById('asyncProgressBar');
+        var pct = document.getElementById('asyncProgressPercent');
+        var txt = document.getElementById('asyncProgressText');
+        if (bar) bar.style.width = percent + '%';
+        if (pct) pct.textContent = percent;
+        if (txt) txt.textContent = text || ('上传中 ' + percent + '%');
+    }
+
+    /** 标记上传完成态 */
+    function finishUploadProgress(ok, text) {
+        var bar = document.getElementById('asyncProgressBar');
+        if (bar) {
+            bar.classList.remove('progress-bar-animated');
+            bar.classList.add(ok ? 'bg-success' : 'bg-warning');
+            bar.style.width = '100%';
+        }
+        var pct = document.getElementById('asyncProgressPercent');
+        if (pct) pct.textContent = '100';
+        var txt = document.getElementById('asyncProgressText');
+        if (txt) txt.textContent = text || (ok ? '上传完成' : '上传失败');
+    }
+
+    /** 恢复提交按钮 */
+    function resetSubmitBtn() {
+        uploading = false;
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = '<i class="bi bi-upload"></i> 上传并校验';
+    }
+
+    /** XHR 实际上传 */
+    function doUpload(overwrite) {
+        if (!fileInput.files.length) {
+            if (window.showToast) showToast('请选择模块包文件', 'warning');
+            return;
+        }
+        overwriteInput.value = overwrite ? '1' : '';
+        uploading = true;
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 上传中...';
+
+        if (typeof showAsyncProgressOverlay === 'function') {
+            showAsyncProgressOverlay('正在上传模块包');
+            document.getElementById('asyncProgressOverlay').setAttribute('data-no-reload', 'true');
+            updateUploadProgress(0, '准备上传: ' + fileInput.files[0].name);
+        }
+
+        var fd = new FormData(form);
+        if (overwrite) fd.set('overwrite', 'on');
+        else fd.delete('overwrite');
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl);
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.setRequestHeader('X-CSRFToken', csrfToken);
+
+        xhr.upload.onprogress = function(e) {
+            if (!e.lengthComputable) return;
+            var percent = Math.min(99, Math.round((e.loaded / e.total) * 100));
+            updateUploadProgress(percent, '已上传 ' + percent + '%');
+        };
+
+        xhr.onload = function() {
+            var data = null;
+            try { data = JSON.parse(xhr.responseText); } catch (err) { data = null; }
+
+            if (xhr.status >= 200 && xhr.status < 300 && data && data.success) {
+                finishUploadProgress(true, data.message || '上传成功');
+                if (window.showToast) showToast(data.message || '上传成功', 'success');
+                setTimeout(function() {
+                    window.location.href = data.redirect || '{% url "upgrade:module_package_list" %}';
+                }, 600);
+                return;
+            }
+
+            if (data && data.need_overwrite) {
+                if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
+                resetSubmitBtn();
+                showConfirm(
+                    '模块包已存在',
+                    (nameInput.value || '') + ' 已存在，是否覆盖？',
+                    function() { doUpload(true); }
+                );
+                return;
+            }
+
+            finishUploadProgress(false, (data && data.message) || '上传失败');
+            if (window.showToast) showToast((data && data.message) || '上传失败', 'danger');
+            resetSubmitBtn();
+            setTimeout(function() {
+                if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
+            }, {{ sys_poll_interval_ms|default:2000 }});
+        };
+
+        xhr.onerror = function() {
+            finishUploadProgress(false, '网络错误');
+            if (window.showToast) showToast('网络错误', 'danger');
+            resetSubmitBtn();
+            setTimeout(function() {
+                if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
+            }, {{ sys_poll_interval_ms|default:2000 }});
+        };
+
+        xhr.send(fd);
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (uploading) return;
+        if (!fileInput.files.length) {
+            if (window.showToast) showToast('请选择模块包文件', 'warning');
+            return;
+        }
+        var name = (nameInput.value || '').trim();
+        if (!name) {
+            if (window.showToast) showToast('请填写模块名称', 'warning');
+            return;
+        }
+        var version = (versionInput.value || '').trim();
+        var qs = '?name=' + encodeURIComponent(name) + '&version=' + encodeURIComponent(version);
+        fetch(checkUrl + qs, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data && data.exists) {
+                showConfirm(
+                    '模块包已存在',
+                    name + (version ? ' (' + version + ')' : '') + ' 已存在，是否覆盖？',
+                    function() { doUpload(true); }
+                );
+            } else {
+                doUpload(false);
+            }
+        })
+        .catch(function() { doUpload(false); });
+    });
+})();
+</script>
+{% endblock %}

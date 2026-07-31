@@ -31,6 +31,11 @@ def nginx_package_upload_path(instance, filename):
     return f"nginx_packages/{filename}"
 
 
+def nginx_module_package_upload_path(instance, filename):
+    """上传路径：media/nginx_modules/xxx.tar.gz"""
+    return f"nginx_modules/{filename}"
+
+
 class NginxSourcePackage(models.Model):
     """Nginx 源码包 - 平台上传，统一管理"""
 
@@ -65,6 +70,59 @@ class NginxSourcePackage(models.Model):
 
     def __str__(self):
         return f"nginx-{self.version} ({self.name})"
+
+    def save(self, *args, **kwargs):
+        """保存时自动计算文件大小和 MD5"""
+        super().save(*args, **kwargs)
+        if self.package_file and (not self.file_size or not self.file_md5):
+            try:
+                self.package_file.seek(0)
+                content = self.package_file.read()
+                self.file_size = len(content)
+                self.file_md5 = hashlib.md5(content).hexdigest()
+                self.package_file.seek(0)
+                super().save(update_fields=["file_size", "file_md5"])
+            except Exception:
+                pass
+
+
+class NginxThirdPartyModulePackage(models.Model):
+    """第三方 Nginx 模块离线包 - 平台上传，升级时下发到节点"""
+
+    id = models.BigAutoField(primary_key=True, verbose_name="ID")
+    name = models.CharField(
+        max_length=100,
+        verbose_name="模块名称",
+        help_text="对应远程目录名与 --add-module 下目录名，如 nginx-module-sts",
+    )
+    version = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="版本/标签",
+        help_text="展示用，如 v1.2.1",
+    )
+    package_file = models.FileField(
+        upload_to=nginx_module_package_upload_path,
+        verbose_name="模块包文件",
+        help_text="支持 .tar.gz / .tgz / .zip 格式",
+    )
+    file_size = models.BigIntegerField(default=0, verbose_name="文件大小（字节）")
+    file_md5 = models.CharField(max_length=64, blank=True, verbose_name="文件 MD5")
+    description = models.TextField(blank=True, verbose_name="描述")
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="上传人")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="上传时间")
+
+    class Meta:
+        verbose_name = "第三方模块包"
+        verbose_name_plural = verbose_name
+        ordering = ["-created_at"]
+        unique_together = [["name", "version", "uploaded_by"]]
+
+    def __str__(self):
+        """展示模块名与版本"""
+        if self.version:
+            return f"{self.name} ({self.version})"
+        return self.name
 
     def save(self, *args, **kwargs):
         """保存时自动计算文件大小和 MD5"""
@@ -181,7 +239,10 @@ class NginxUpgradeTask(models.Model):
     added_third_party = models.TextField(
         default="[]",
         verbose_name="新增第三方模块",
-        help_text='JSON列表，如 [{"name":"echo-nginx","git_url":"...","branch":"v0.63"}]',
+        help_text=(
+            'JSON列表，在线: {"name","source":"git","git_url","branch"}；'
+            '离线: {"name","source":"package","package_id"}'
+        ),
     )
 
     # 编译选项

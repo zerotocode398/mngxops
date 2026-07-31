@@ -17,6 +17,9 @@
         <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-archive"></i> 源码包
         </a>
+        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-puzzle"></i> 模块包
+        </a>
         <a href="{% url 'upgrade:history' %}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-clock-history"></i> 升级历史
         </a>
@@ -333,11 +336,27 @@
 
                     <div class="mb-3">
                         <label class="form-label"><i class="bi bi-box"></i> 第三方模块</label>
+                        <div class="form-text mb-2">支持在线 Git（目标机需可出网）或离线包（先在「模块包」上传）。</div>
                         <div id="thirdPartyModules">
-                            <div class="row mb-2 tp-module-row">
-                                <div class="col-3"><input type="text" class="form-control form-control-sm tp-name" placeholder="模块名"></div>
-                                <div class="col-6"><input type="text" class="form-control form-control-sm tp-git" placeholder="Git 仓库 URL"></div>
-                                <div class="col-2"><input type="text" class="form-control form-control-sm tp-branch" placeholder="分支"></div>
+                            <div class="row mb-2 g-2 tp-module-row align-items-end">
+                                <div class="col-2">
+                                    <select class="form-select form-select-sm tp-source" onchange="onTpSourceChange(this)">
+                                        <option value="git" selected>在线 Git</option>
+                                        <option value="package">离线包</option>
+                                    </select>
+                                </div>
+                                <div class="col-2"><input type="text" class="form-control form-control-sm tp-name" placeholder="模块名"></div>
+                                <div class="col-5 tp-git-fields">
+                                    <div class="row g-1">
+                                        <div class="col-8"><input type="text" class="form-control form-control-sm tp-git" placeholder="Git 仓库 URL"></div>
+                                        <div class="col-4"><input type="text" class="form-control form-control-sm tp-branch" placeholder="分支" value="master"></div>
+                                    </div>
+                                </div>
+                                <div class="col-5 tp-pkg-fields d-none">
+                                    <select class="form-select form-select-sm tp-package">
+                                        <option value="">选择已上传模块包</option>
+                                    </select>
+                                </div>
                                 <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTpModule(this)">×</button></div>
                             </div>
                         </div>
@@ -937,10 +956,8 @@ function getSelectedNodeList() {
 function getModuleDeltas() {
     var thirdParty = [];
     document.querySelectorAll('.tp-module-row').forEach(function (row) {
-        var name = row.querySelector('.tp-name').value.trim();
-        var git = row.querySelector('.tp-git').value.trim();
-        var branch = row.querySelector('.tp-branch').value.trim();
-        if (name || git) thirdParty.push({ name: name, git_url: git, branch: branch || 'master' });
+        var item = collectOneThirdPartyRow(row);
+        if (item) thirdParty.push(item);
     });
     return {
         addedModules: pendingAddedModules.slice(),

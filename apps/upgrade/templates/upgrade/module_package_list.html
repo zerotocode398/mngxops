@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 {% load permission_tags %}
 
-{% block title %}源码包管理 - Nginx 编译升级{% endblock %}
-{% block page_title %}<i class="bi bi-archive"></i> Nginx 源码包管理{% endblock %}
+{% block title %}第三方模块包 - Nginx 编译升级{% endblock %}
+{% block page_title %}<i class="bi bi-puzzle"></i> 第三方模块包管理{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h5 class="mb-0"><i class="bi bi-box"></i> 源码包列表</h5>
+    <h5 class="mb-0"><i class="bi bi-puzzle"></i> 第三方模块包列表</h5>
     <div class="d-flex gap-2">
-        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-puzzle"></i> 模块包
+        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-archive"></i> 源码包
         </a>
         {% if user|has_perm_code:"upgrade.create" %}
-        <a href="{% url 'upgrade:package_upload' %}" class="btn btn-primary btn-sm">
-            <i class="bi bi-plus-lg"></i> 上传源码包
+        <a href="{% url 'upgrade:module_package_upload' %}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg"></i> 上传模块包
         </a>
         {% endif %}
     </div>
@@ -26,43 +26,37 @@
             <table class="table table-hover table-sm mb-0 data-table upgrade-table">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 18%;">包名称</th>
+                        <th style="width: 18%;">模块名称</th>
                         <th style="width: 20%;">描述</th>
-                        <th style="width: 9%;">版本</th>
-                        <th style="width: 9%;">文件大小</th>
+                        <th style="width: 10%;">版本/标签</th>
+                        <th style="width: 10%;">文件大小</th>
                         <th style="width: 12%;">MD5（前8位）</th>
                         <th style="width: 12%;">上传时间</th>
                         <th style="width: 8%;">上传人</th>
-                        <th style="width: 12%;">操作</th>
+                        <th style="width: 10%;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                 {% for pkg in packages %}
                     <tr>
-                        <td>
-                            {{ pkg.name }}
-                            {% if pkg.is_official %}<span class="badge bg-success ms-1">官方</span>{% endif %}
-                        </td>
+                        <td><code>{{ pkg.name }}</code></td>
                         <td class="text-truncate" {% if pkg.description %}title="{{ pkg.description }}"{% endif %} style="max-width: 0;">
                             {% if pkg.description %}{{ pkg.description }}{% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
-                        <td><code>{{ pkg.version }}</code></td>
+                        <td>{% if pkg.version %}<code>{{ pkg.version }}</code>{% else %}<span class="text-muted">-</span>{% endif %}</td>
                         <td>{{ pkg.file_size|filesizeformat }}</td>
                         <td><code>{{ pkg.file_md5|slice:":8" }}...</code></td>
                         <td>{{ pkg.created_at|date:"m-d H:i" }}</td>
                         <td>{{ pkg.uploaded_by.username }}</td>
                         <td>
-                            <a href="{% url 'upgrade:package_download' pkg.id %}" class="btn btn-sm btn-outline-secondary" title="下载">
+                            <a href="{% url 'upgrade:module_package_download' pkg.id %}" class="btn btn-sm btn-outline-secondary" title="下载">
                                 <i class="bi bi-download"></i>
                             </a>
                             {% if user|has_perm_code:"upgrade.delete" %}
-                            <form method="post" action="{% url 'upgrade:package_delete' pkg.id %}" style="display:inline" id="deletePkgForm{{ pkg.id }}">
-                                {% csrf_token %}
-                                <button type="button" class="btn btn-sm btn-outline-danger" title="删除"
-                                    onclick="submitPostConfirm('确认删除', '确定删除此源码包？', '{% url 'upgrade:package_delete' pkg.id %}')">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-outline-danger" title="删除"
+                                onclick="submitPostConfirm('确认删除', '确定删除此模块包？', '{% url 'upgrade:module_package_delete' pkg.id %}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
                             {% endif %}
                         </td>
                     </tr>
@@ -73,10 +67,10 @@
         {% else %}
         <div class="empty-state">
             <i class="bi bi-inbox"></i>
-            <p>暂无源码包，请先上传 Nginx 源码包后再进行升级操作。</p>
+            <p>暂无第三方模块包。无外网节点升级时可先上传模块压缩包，再在升级中心选择离线引入。</p>
             {% if user|has_perm_code:"upgrade.create" %}
-            <a href="{% url 'upgrade:package_upload' %}" class="btn btn-primary mt-2">
-                <i class="bi bi-upload"></i> 上传源码包
+            <a href="{% url 'upgrade:module_package_upload' %}" class="btn btn-primary mt-2">
+                <i class="bi bi-upload"></i> 上传模块包
             </a>
             {% endif %}
         </div>
@@ -98,9 +92,4 @@
     {% include "includes/pagination.html" %}
 </div>
 {% endif %}
-{% endblock %}
-
-{% block extra_js %}
-<style>
-</style>
 {% endblock %}

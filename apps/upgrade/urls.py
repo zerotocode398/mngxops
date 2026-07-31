@@ -12,6 +12,13 @@ urlpatterns = [
     path("packages/<int:pk>/delete/", views.PackageDeleteView.as_view(), name="package_delete"),
     path("packages/<int:pk>/download/", views.PackageDownloadView.as_view(), name="package_download"),
 
+    # 第三方模块离线包
+    path("modules/", views.ModulePackageListView.as_view(), name="module_package_list"),
+    path("modules/upload/", views.ModulePackageUploadView.as_view(), name="module_package_upload"),
+    path("modules/check/", views.ModulePackageCheckView.as_view(), name="module_package_check"),
+    path("modules/<int:pk>/delete/", views.ModulePackageDeleteView.as_view(), name="module_package_delete"),
+    path("modules/<int:pk>/download/", views.ModulePackageDownloadView.as_view(), name="module_package_download"),
+
     # 升级中心
     path("center/", views.UpgradeCenterView.as_view(), name="center"),
 

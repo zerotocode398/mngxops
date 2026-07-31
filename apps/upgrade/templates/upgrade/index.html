@@ -21,6 +21,9 @@
                 <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-archive"></i> 源码包
                 </a>
+                <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-puzzle"></i> 模块包
+                </a>
                 <a href="{% url 'upgrade:history' %}" class="btn btn-outline-secondary btn-sm">
                     <i class="bi bi-clock-history"></i> 历史
                 </a>
@@ -29,7 +32,7 @@
     </div>
 
     <div class="row mb-3">
-        <div class="col-md-4 mb-2">
+        <div class="col-md-3 mb-2">
             <div class="card dashboard-stat-card stat-card-primary"
                  onclick="window.location.href='{% url 'upgrade:package_list' %}'"
                  style="cursor:pointer;" title="查看源码包">
@@ -37,7 +40,15 @@
                 <div class="stat-label">源码包</div>
             </div>
         </div>
-        <div class="col-md-4 mb-2">
+        <div class="col-md-3 mb-2">
+            <div class="card dashboard-stat-card stat-card-default"
+                 onclick="window.location.href='{% url 'upgrade:module_package_list' %}'"
+                 style="cursor:pointer;" title="查看第三方模块包">
+                <div class="stat-number">{{ module_package_count }}</div>
+                <div class="stat-label">模块包</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
             <div class="card dashboard-stat-card {% if running_count %}stat-card-info{% else %}stat-card-default{% endif %}"
                  onclick="window.location.href='{% url 'upgrade:history' %}?status=running'"
                  style="cursor:pointer;" title="查看进行中任务">
@@ -45,7 +56,7 @@
                 <div class="stat-label">进行中</div>
             </div>
         </div>
-        <div class="col-md-4 mb-2">
+        <div class="col-md-3 mb-2">
             <div class="card dashboard-stat-card {% if failed_7d_count %}stat-card-offline{% else %}stat-card-default{% endif %}"
                  onclick="window.location.href='{% url 'upgrade:history' %}?status=failed'"
                  style="cursor:pointer;" title="查看失败任务">

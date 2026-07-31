@@ -15,12 +15,22 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import ListView, CreateView, TemplateView, DetailView
 
-from .forms import NginxSourcePackageForm, NginxUpgradeTaskForm
-from .models import NginxSourcePackage, NginxUpgradeTask, generate_upgrade_batch_number
+from .forms import (
+    NginxSourcePackageForm,
+    NginxThirdPartyModulePackageForm,
+    NginxUpgradeTaskForm,
+)
+from .models import (
+    NginxSourcePackage,
+    NginxThirdPartyModulePackage,
+    NginxUpgradeTask,
+    generate_upgrade_batch_number,
+)
 from .services import (
     fetch_nginx_v_from_node,
     parse_nginx_v_output,
     compute_target_configure_opts,
+    enrich_third_party_module_paths,
     run_upgrade_task,
     _tokenize_configure_args,
 )
@@ -209,6 +219,187 @@ class PackageDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
         return response
 
 
+# ==================== 第三方模块包管理 ====================
+
+class ModulePackageListView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView):
+    """第三方模块离线包列表"""
+    model = NginxThirdPartyModulePackage
+    template_name = "upgrade/module_package_list.html"
+    context_object_name = "packages"
+    paginate_by = None
+    ordering = ["-created_at"]
+    permission_resource = "upgrade"
+    permission_action = "read"
+
+    def get_queryset(self):
+        """预加载上传人"""
+        return super().get_queryset().select_related("uploaded_by")
+
+    def get_context_data(self, **kwargs):
+        """分页上下文"""
+        context = super().get_context_data(**kwargs)
+        packages = self.get_queryset()
+        per_page = self.get_paginate_by(None)
+        paginator = Paginator(list(packages), per_page)
+        page_num = self.request.GET.get("page", 1)
+        page_obj = paginator.get_page(page_num)
+        context["packages"] = page_obj.object_list
+        context["page_obj"] = page_obj
+        context["is_paginated"] = page_obj.has_other_pages()
+        context["per_page"] = per_page
+        context["per_page_options"] = self.per_page_options
+        return context
+
+
+class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    """上传第三方模块离线包（支持 AJAX、同名同版本覆盖）"""
+    model = NginxThirdPartyModulePackage
+    form_class = NginxThirdPartyModulePackageForm
+    template_name = "upgrade/module_package_upload.html"
+    permission_resource = "upgrade"
+    permission_action = "create"
+
+    def get_form_kwargs(self):
+        """传入当前用户供唯一性校验"""
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        """传入包大小限制"""
+        context = super().get_context_data(**kwargs)
+        try:
+            context["package_max_size_mb"] = max(
+                1, int(get_setting("upgrade.package_max_size_mb", "500") or 500)
+            )
+        except (TypeError, ValueError):
+            context["package_max_size_mb"] = 500
+        return context
+
+    def _wants_json(self):
+        """是否返回 JSON（XHR 上传）"""
+        return (
+            self.request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or "application/json" in self.request.headers.get("Accept", "")
+        )
+
+    def _has_version_exists_error(self, form):
+        """判断是否为同名同版本冲突"""
+        for err in form.non_field_errors().as_data():
+            if getattr(err, "code", None) == "version_exists":
+                return True
+        return False
+
+    def form_valid(self, form):
+        """新建或覆盖已有同名同版本模块包"""
+        user = self.request.user
+        name = form.cleaned_data["name"]
+        version = form.cleaned_data.get("version") or ""
+        overwrite = form.cleaned_data.get("overwrite")
+        existing = NginxThirdPartyModulePackage.objects.filter(
+            name=name,
+            version=version,
+            uploaded_by=user,
+        ).first()
+
+        if existing and overwrite:
+            if existing.package_file:
+                existing.package_file.delete(save=False)
+            existing.description = form.cleaned_data.get("description") or ""
+            existing.package_file = form.cleaned_data["package_file"]
+            existing.file_size = 0
+            existing.file_md5 = ""
+            existing.save()
+            self.object = existing
+            msg = f"模块包 {existing} 已覆盖更新"
+        else:
+            form.instance.uploaded_by = user
+            self.object = form.save()
+            msg = f"模块包 {self.object} 上传成功"
+
+        if self._wants_json():
+            return JsonResponse({
+                "success": True,
+                "message": msg,
+                "redirect": self.get_success_url(),
+            })
+        messages.success(self.request, msg)
+        return redirect(self.get_success_url())
+
+    def form_invalid(self, form):
+        """校验失败：AJAX 返回 JSON"""
+        if self._wants_json():
+            need_overwrite = self._has_version_exists_error(form)
+            message = "模块包已存在，是否覆盖？" if need_overwrite else "上传校验失败"
+            if not need_overwrite and form.errors:
+                for field, errs in form.errors.items():
+                    if errs:
+                        message = errs[0]
+                        break
+            return JsonResponse({
+                "success": False,
+                "need_overwrite": need_overwrite,
+                "message": message,
+                "errors": form.errors,
+            }, status=400)
+        return super().form_invalid(form)
+
+    def get_success_url(self):
+        """上传成功回列表"""
+        return reverse("upgrade:module_package_list")
+
+
+class ModulePackageCheckView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """检查当前用户是否已上传同名同版本模块包"""
+    permission_resource = "upgrade"
+    permission_action = "create"
+
+    def get(self, request):
+        """按 name+version 查询是否已存在"""
+        name = (request.GET.get("name") or "").strip()
+        version = (request.GET.get("version") or "").strip()
+        if not name:
+            return JsonResponse({"exists": False, "name": name, "version": version})
+        exists = NginxThirdPartyModulePackage.objects.filter(
+            name=name,
+            version=version,
+            uploaded_by=request.user,
+        ).exists()
+        return JsonResponse({"exists": exists, "name": name, "version": version})
+
+
+class ModulePackageDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """删除第三方模块离线包"""
+    permission_resource = "upgrade"
+    permission_action = "delete"
+
+    def post(self, request, pk):
+        """删除文件与记录"""
+        package = get_object_or_404(NginxThirdPartyModulePackage, pk=pk)
+        label = str(package)
+        package.package_file.delete(save=False)
+        package.delete()
+        messages.success(request, f"模块包 {label} 已删除")
+        return redirect("upgrade:module_package_list")
+
+
+class ModulePackageDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """下载第三方模块离线包"""
+    permission_resource = "upgrade"
+    permission_action = "read"
+
+    def get(self, request, pk):
+        """附件下载"""
+        from django.http import FileResponse
+        package = get_object_or_404(NginxThirdPartyModulePackage, pk=pk)
+        response = FileResponse(
+            package.package_file.open("rb"),
+            as_attachment=True,
+            filename=package.package_file.name.split("/")[-1],
+        )
+        return response
+
+
 # ==================== 升级中心 ====================
 
 class UpgradeCenterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
@@ -225,6 +416,9 @@ class UpgradeCenterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateVie
         context["nodes"] = Node.objects.filter(is_locked=False).order_by("hostname")
         context["packages"] = (
             NginxSourcePackage.objects.select_related("uploaded_by").order_by("-created_at")
+        )
+        context["module_packages"] = (
+            NginxThirdPartyModulePackage.objects.select_related("uploaded_by").order_by("-created_at")
         )
         context["latest_tasks"] = (
             NginxUpgradeTask.objects.select_related("node", "operator").order_by("-created_at")[:10]
@@ -278,11 +472,18 @@ class ComputeConfigApiView(LoginRequiredMixin, PermissionRequiredMixin, View):
             added_modules = json.loads(request.POST.get("added_modules", "[]"))
             removed_modules = json.loads(request.POST.get("removed_modules", "[]"))
             added_third_party = json.loads(request.POST.get("added_third_party", "[]"))
+            remote_work_dir = (
+                request.POST.get("remote_work_dir")
+                or get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
+                or "/tmp/nginx-upgrade"
+            ).strip()
         except json.JSONDecodeError:
             return JsonResponse({"success": False, "message": "JSON 解析失败"}, status=400)
 
+        added_third_party = enrich_third_party_module_paths(added_third_party, remote_work_dir)
         target_opts = compute_target_configure_opts(
-            current_params, added_modules, removed_modules, added_third_party
+            current_params, added_modules, removed_modules, added_third_party,
+            remote_work_dir=remote_work_dir,
         )
         return JsonResponse({"success": True, "target_opts": target_opts})
 
@@ -415,6 +616,10 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         except (TypeError, ValueError):
             return JsonResponse({"success": False, "message": "请求参数格式错误"}, status=400)
 
+        if not isinstance(added_third_party, list):
+            added_third_party = []
+        added_third_party = enrich_third_party_module_paths(added_third_party, remote_work_dir)
+
         if not node_ids:
             return JsonResponse({"success": False, "message": "请至少选择一个节点"}, status=400)
         if upgrade_mode not in ("upgrade", "install", "switch_path"):
@@ -493,7 +698,8 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 target_prefix = prefix or "/usr/local/nginx"
 
             target_opts = compute_target_configure_opts(
-                params, added_modules, removed_modules, added_third_party
+                params, added_modules, removed_modules, added_third_party,
+                remote_work_dir=remote_work_dir,
             )
             # 仅切换路径模式才重写 configure 中的 --prefix=
             if upgrade_mode == "switch_path" and target_prefix:
@@ -845,6 +1051,7 @@ class UpgradeTaskListView(LoginRequiredMixin, PermissionRequiredMixin, TemplateV
         context = super().get_context_data(**kwargs)
         since_7d = timezone.now() - timedelta(days=7)
         context["package_count"] = NginxSourcePackage.objects.count()
+        context["module_package_count"] = NginxThirdPartyModulePackage.objects.count()
         context["running_count"] = NginxUpgradeTask.objects.exclude(
             status__in=self._TERMINAL_STATUSES
         ).count()

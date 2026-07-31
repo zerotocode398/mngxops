@@ -1,7 +1,7 @@
 """Nginx 升级模块 - 表单"""
 import json
 from django import forms
-from .models import NginxSourcePackage, NginxUpgradeTask
+from .models import NginxSourcePackage, NginxThirdPartyModulePackage, NginxUpgradeTask
 
 
 class NginxSourcePackageForm(forms.ModelForm):
@@ -90,6 +90,98 @@ class NginxSourcePackageForm(forms.ModelForm):
             if exists:
                 raise forms.ValidationError(
                     f"版本 {version} 已存在，是否覆盖？",
+                    code="version_exists",
+                )
+        return cleaned
+
+
+class NginxThirdPartyModulePackageForm(forms.ModelForm):
+    """第三方模块离线包上传表单"""
+
+    overwrite = forms.BooleanField(required=False, initial=False)
+
+    class Meta:
+        model = NginxThirdPartyModulePackage
+        fields = ["name", "version", "package_file", "description"]
+        widgets = {
+            "name": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "如：nginx-module-sts"}
+            ),
+            "version": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "如：v1.2.1（可选）"}
+            ),
+            "package_file": forms.FileInput(attrs={
+                "class": "form-control",
+                "accept": ".tar.gz,.tgz,.zip",
+            }),
+            "description": forms.Textarea(
+                attrs={"class": "form-control", "rows": 3, "placeholder": "模块说明（可选）"}
+            ),
+        }
+        labels = {
+            "name": "模块名称",
+            "version": "版本/标签",
+            "package_file": "模块包文件",
+            "description": "描述",
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        """接收当前用户，用于同名同版本唯一性校验"""
+        self.user = user
+        super().__init__(*args, **kwargs)
+        from utils.setting_service import get_setting
+        try:
+            max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "500") or 500))
+        except (TypeError, ValueError):
+            max_mb = 500
+        self.fields["package_file"].help_text = (
+            f"支持 .tar.gz / .tgz / .zip，最大 {max_mb}MB"
+        )
+
+    def clean_package_file(self):
+        """校验模块包格式与大小"""
+        package_file = self.cleaned_data.get("package_file")
+        if package_file:
+            name = package_file.name.lower()
+            if not (
+                name.endswith(".tar.gz")
+                or name.endswith(".tgz")
+                or name.endswith(".zip")
+            ):
+                raise forms.ValidationError("仅支持 .tar.gz / .tgz / .zip 格式")
+            from utils.setting_service import get_setting
+            try:
+                max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "500") or 500))
+            except (TypeError, ValueError):
+                max_mb = 500
+            if package_file.size > max_mb * 1024 * 1024:
+                raise forms.ValidationError(f"文件大小不能超过 {max_mb}MB")
+        return package_file
+
+    def clean_name(self):
+        """规范化模块目录名"""
+        name = (self.cleaned_data.get("name") or "").strip()
+        if not name:
+            raise forms.ValidationError("请填写模块名称")
+        return name
+
+    def clean(self):
+        """同用户同名同版本未覆盖时拒绝"""
+        cleaned = super().clean()
+        name = cleaned.get("name")
+        version = (cleaned.get("version") or "").strip()
+        cleaned["version"] = version
+        overwrite = cleaned.get("overwrite")
+        if name and self.user and not overwrite:
+            exists = NginxThirdPartyModulePackage.objects.filter(
+                name=name,
+                version=version,
+                uploaded_by=self.user,
+            ).exists()
+            if exists:
+                label = f"{name}" + (f" ({version})" if version else "")
+                raise forms.ValidationError(
+                    f"模块包 {label} 已存在，是否覆盖？",
                     code="version_exists",
                 )
         return cleaned

@@ -218,7 +218,42 @@ def _build_auth_kwargs(credential):
         return {"private_key": credential.get_private_key()}
 
 
-def compute_target_configure_opts(current_params, added_modules, removed_modules, added_third_party):
+def _third_party_modules_dir(remote_work_dir):
+    """第三方模块在远程工作目录下的根路径"""
+    base = (remote_work_dir or "").rstrip("/") or "/tmp/nginx-upgrade"
+    return f"{base}/nginx-modules"
+
+
+def resolve_third_party_module_path(tp, remote_work_dir, idx=0):
+    """解析第三方模块远程目录路径（优先已有 module_path）"""
+    if not isinstance(tp, dict):
+        return ""
+    if tp.get("module_path"):
+        return tp["module_path"]
+    name = (tp.get("name") or f"module-{idx}").strip()
+    if not name:
+        return ""
+    return f"{_third_party_modules_dir(remote_work_dir)}/{name}"
+
+
+def enrich_third_party_module_paths(added_third_party, remote_work_dir):
+    """为第三方模块列表补齐 module_path，供预览与 configure 使用"""
+    result = []
+    for idx, tp in enumerate(added_third_party or []):
+        if not isinstance(tp, dict):
+            result.append(tp)
+            continue
+        item = dict(tp)
+        path = resolve_third_party_module_path(item, remote_work_dir, idx=idx)
+        if path:
+            item["module_path"] = path
+        result.append(item)
+    return result
+
+
+def compute_target_configure_opts(
+    current_params, added_modules, removed_modules, added_third_party, remote_work_dir=None
+):
     """基于当前参数 + 增减生成最终的编译参数
 
     Args:
@@ -226,6 +261,7 @@ def compute_target_configure_opts(current_params, added_modules, removed_modules
         added_modules: 要新增的内置模块列表
         removed_modules: 要移除的参数列表
         added_third_party: 要新增的第三方模块列表
+        remote_work_dir: 远程工作目录，用于推导 --add-module 路径
 
     Returns:
         str: 合并后的 configure 参数字符串
@@ -241,9 +277,9 @@ def compute_target_configure_opts(current_params, added_modules, removed_modules
             existing_set.add(mod)
 
     # 添加第三方模块
-    for tp in added_third_party:
+    for idx, tp in enumerate(added_third_party or []):
         if isinstance(tp, dict):
-            module_path = tp.get("module_path", "")
+            module_path = resolve_third_party_module_path(tp, remote_work_dir, idx=idx)
             if module_path and not any(module_path in r for r in remaining):
                 remaining.append(f"--add-module={module_path}")
         elif isinstance(tp, str) and tp not in existing_set:
@@ -514,35 +550,53 @@ def run_upgrade_task(task_id):
             return
         log(f"源码包解压完成: {work_dir}/{extract_dir}")
 
-        # ---- Step 5: 下载第三方模块 ----
+        # ---- Step 5: 准备第三方模块（在线 Git / 离线包）----
         update_status("downloading_modules", 40)
         third_party = json.loads(task.added_third_party or "[]")
         if third_party:
-            log(f"下载 {len(third_party)} 个第三方模块...")
-            modules_dir = f"{work_dir}/nginx-modules"
+            log(f"准备 {len(third_party)} 个第三方模块...")
+            modules_dir = _third_party_modules_dir(work_dir)
             with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
-                ssh.execute_command(f"mkdir -p {modules_dir}")
+                ssh.execute_command(f"mkdir -p {shlex.quote(modules_dir)}")
                 for idx, tp in enumerate(third_party):
-                    if isinstance(tp, dict):
-                        name = tp.get("name", f"module-{idx}")
-                        git_url = tp.get("git_url", "")
-                        branch = tp.get("branch", "master")
-                        module_path = f"{modules_dir}/{name}"
-                        if git_url:
-                            cmd = f"cd {modules_dir} && git clone --depth 1 --branch {branch} {git_url} {name} 2>&1"
-                            success, output = ssh.execute_command(cmd)
-                            if not success:
-                                log(f"下载第三方模块 {name} 失败: {output}")
-                                update_status("failed", 40, error_message=f"下载第三方模块 {name} 失败: {output}")
-                                return
-                            tp["module_path"] = module_path
-                            log(f"第三方模块 {name} 下载完成: {module_path}")
-            # 更新任务中的第三方模块路径
+                    if not isinstance(tp, dict):
+                        continue
+                    ok, err = _prepare_one_third_party_module(
+                        ssh=ssh,
+                        tp=tp,
+                        idx=idx,
+                        modules_dir=modules_dir,
+                        node=node,
+                        credential=credential,
+                        auth_kwargs=auth_kwargs_copy,
+                        log=log,
+                    )
+                    if not ok:
+                        update_status("failed", 40, error_message=err)
+                        return
+            # 回写路径，并将 --add-module 并入目标 configure
+            third_party = enrich_third_party_module_paths(third_party, work_dir)
+            opt_tokens = _tokenize_configure_args(task.target_configure_opts or "")
+            if not opt_tokens:
+                opt_tokens = [
+                    line.strip().rstrip("\\").strip()
+                    for line in (task.target_configure_opts or "").split("\n")
+                    if line.strip()
+                ]
+            for tp in third_party:
+                if not isinstance(tp, dict):
+                    continue
+                mp = tp.get("module_path") or ""
+                flag = f"--add-module={mp}"
+                if mp and not any(mp in t for t in opt_tokens):
+                    opt_tokens.append(flag)
             NginxUpgradeTask.objects.filter(pk=task_id).update(
-                added_third_party=json.dumps(third_party, ensure_ascii=False)
+                added_third_party=json.dumps(third_party, ensure_ascii=False),
+                target_configure_opts=_join_configure_opts(opt_tokens, multiline=True),
             )
+            task.target_configure_opts = _join_configure_opts(opt_tokens, multiline=True)
         else:
-            log("无第三方模块需要下载")
+            log("无第三方模块需要准备")
 
         # ---- Step 6: 备份旧二进制 ----
         if task.task_center_id and _is_cancelled(task.task_center_id):
@@ -719,6 +773,206 @@ def _ensure_remote_dir(host, port, username, password=None, private_key=None, wo
             ssh.execute_command(f"mkdir -p {target}")
     except Exception:
         pass
+
+
+def _remote_path_exists(ssh, path):
+    """判断远程路径是否存在"""
+    q = shlex.quote(path)
+    success, output = ssh.execute_command(f"test -e {q} && echo EXISTS")
+    return success and "EXISTS" in (output or "")
+
+
+def _prepare_one_third_party_module(
+    ssh, tp, idx, modules_dir, node, credential, auth_kwargs, log
+):
+    """准备单个第三方模块（在线 Git 或离线包），成功返回 (True, None)"""
+    name = (tp.get("name") or f"module-{idx}").strip()
+    if not name:
+        return False, "第三方模块缺少名称"
+    module_path = f"{modules_dir}/{name}"
+    source = (tp.get("source") or "").strip().lower()
+    git_url = (tp.get("git_url") or "").strip()
+    package_id = tp.get("package_id")
+
+    # 兼容旧数据：无 source 但有 git_url → 在线
+    if not source:
+        if package_id:
+            source = "package"
+        elif git_url:
+            source = "git"
+        else:
+            return False, f"第三方模块 {name} 未指定引入方式（在线 Git 或离线包）"
+
+    if source == "package":
+        ok, err = _deploy_third_party_package(
+            ssh=ssh,
+            tp=tp,
+            name=name,
+            module_path=module_path,
+            modules_dir=modules_dir,
+            node=node,
+            credential=credential,
+            auth_kwargs=auth_kwargs,
+            log=log,
+        )
+        if ok:
+            tp["module_path"] = module_path
+            tp["source"] = "package"
+        return ok, err
+
+    if source == "git":
+        ok, err = _sync_third_party_git(
+            ssh=ssh,
+            name=name,
+            git_url=git_url,
+            branch=(tp.get("branch") or "master").strip() or "master",
+            module_path=module_path,
+            modules_dir=modules_dir,
+            log=log,
+        )
+        if ok:
+            tp["module_path"] = module_path
+            tp["source"] = "git"
+        return ok, err
+
+    return False, f"第三方模块 {name} 引入方式无效: {source}"
+
+
+def _sync_third_party_git(ssh, name, git_url, branch, module_path, modules_dir, log):
+    """在线同步第三方模块：不存在则 clone，已存在则校正分支后 pull"""
+    if not git_url:
+        return False, f"第三方模块 {name} 缺少 Git 仓库 URL（无外网请改用离线包）"
+
+    q_modules = shlex.quote(modules_dir)
+    q_name = shlex.quote(name)
+    q_path = shlex.quote(module_path)
+    q_url = shlex.quote(git_url)
+    q_branch = shlex.quote(branch)
+
+    if not _remote_path_exists(ssh, module_path):
+        log(f"克隆第三方模块 {name} ({branch}) ...")
+        cmd = (
+            f"cd {q_modules} && git clone --depth 1 --branch {q_branch} "
+            f"{q_url} {q_name} 2>&1"
+        )
+        success, output = ssh.execute_command(cmd)
+        if not success:
+            hint = ""
+            out = (output or "").lower()
+            if "not found" in out or "command not found" in out or "could not resolve" in out:
+                hint = "；目标机可能未安装 git 或无法访问互联网，请改用离线包"
+            return False, f"下载第三方模块 {name} 失败: {output}{hint}"
+        log(f"第三方模块 {name} 克隆完成: {module_path}")
+        return True, None
+
+    log(f"第三方模块目录已存在，检查分支: {module_path}")
+    success, current_branch = ssh.execute_command(
+        f"git -C {q_path} rev-parse --abbrev-ref HEAD 2>&1"
+    )
+    current_branch = (current_branch or "").strip()
+    if not success:
+        return False, f"第三方模块 {name} 读取当前分支失败: {current_branch}"
+
+    if current_branch != branch:
+        log(f"分支不一致（当前 {current_branch} → 目标 {branch}），执行 checkout ...")
+        success, output = ssh.execute_command(
+            f"git -C {q_path} fetch origin {q_branch} 2>&1"
+        )
+        if not success:
+            success, output = ssh.execute_command(f"git -C {q_path} fetch 2>&1")
+            if not success:
+                return False, f"第三方模块 {name} fetch 失败: {output}"
+        success, output = ssh.execute_command(
+            f"git -C {q_path} checkout {q_branch} 2>&1"
+        )
+        if not success:
+            return False, f"第三方模块 {name} checkout {branch} 失败: {output}"
+        log(f"第三方模块 {name} 已切换到分支 {branch}")
+    else:
+        log(f"第三方模块 {name} 分支已是 {branch}")
+
+    log(f"拉取第三方模块 {name} 最新代码 ...")
+    success, output = ssh.execute_command(f"git -C {q_path} pull 2>&1")
+    if not success:
+        return False, f"第三方模块 {name} git pull 失败: {output}"
+    log(f"第三方模块 {name} 更新完成: {module_path}")
+    return True, None
+
+
+def _deploy_third_party_package(
+    ssh, tp, name, module_path, modules_dir, node, credential, auth_kwargs, log
+):
+    """将平台托管的离线模块包 SFTP 到节点并解压到模块目录"""
+    from .models import NginxThirdPartyModulePackage
+    from utils.ssh import upload_file_via_sftp, check_remote_file_md5
+
+    package_id = tp.get("package_id")
+    try:
+        package_id = int(package_id)
+    except (TypeError, ValueError):
+        return False, f"第三方模块 {name} 离线包 ID 无效"
+
+    package = NginxThirdPartyModulePackage.objects.filter(pk=package_id).first()
+    if not package or not package.package_file:
+        return False, f"第三方模块 {name} 离线包不存在或文件缺失"
+
+    local_path = package.package_file.path
+    filename = os.path.basename(package.package_file.name)
+    remote_archive = f"{modules_dir}/{filename}"
+    q_modules = shlex.quote(modules_dir)
+    q_path = shlex.quote(module_path)
+    q_archive = shlex.quote(remote_archive)
+    q_extract = shlex.quote(f"{module_path}.extract")
+
+    log(f"上传离线模块包 {name} ({filename}) ...")
+    ssh.execute_command(f"mkdir -p {q_modules}")
+    success, msg = upload_file_via_sftp(
+        node.ip, node.port, credential.username,
+        local_path=local_path, remote_path=remote_archive,
+        **auth_kwargs,
+    )
+    if not success:
+        return False, f"上传第三方模块包 {name} 失败: {msg}"
+
+    if package.file_md5:
+        ok_md5, remote_md5 = check_remote_file_md5(
+            node.ip, node.port, credential.username,
+            file_path=remote_archive, **auth_kwargs,
+        )
+        if ok_md5 and remote_md5 != package.file_md5:
+            return False, f"第三方模块包 {name} MD5 校验失败"
+
+    log(f"解压离线模块包到 {module_path} ...")
+    ssh.execute_command(f"rm -rf {q_path} {q_extract}")
+    ssh.execute_command(f"mkdir -p {q_extract}")
+
+    lower = filename.lower()
+    if lower.endswith(".zip"):
+        extract_cmd = f"unzip -q {q_archive} -d {q_extract} 2>&1"
+    elif lower.endswith(".tar.gz") or lower.endswith(".tgz"):
+        extract_cmd = f"tar -xzf {q_archive} -C {q_extract} 2>&1"
+    else:
+        return False, f"第三方模块包 {name} 格式不支持（仅 .tar.gz / .tgz / .zip）"
+
+    success, output = ssh.execute_command(extract_cmd)
+    if not success:
+        return False, f"解压第三方模块包 {name} 失败: {output}"
+
+    normalize_cmd = (
+        f"entries=$(ls -A {q_extract} 2>/dev/null | wc -l); "
+        f"first=$(ls -A {q_extract} 2>/dev/null | head -n 1); "
+        f"if [ \"$entries\" = \"1\" ] && [ -d {q_extract}/\"$first\" ]; then "
+        f"mv {q_extract}/\"$first\" {q_path}; rm -rf {q_extract}; "
+        f"else mv {q_extract} {q_path}; fi; "
+        f"rm -f {q_archive}; "
+        f"test -d {q_path} && echo OK"
+    )
+    success, output = ssh.execute_command(normalize_cmd)
+    if not success or "OK" not in (output or ""):
+        return False, f"整理第三方模块目录 {name} 失败: {output}"
+
+    log(f"第三方模块 {name} 离线包部署完成: {module_path}")
+    return True, None
 
 
 def _extract_package_name(filename):
