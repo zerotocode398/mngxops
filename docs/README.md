@@ -13,6 +13,7 @@
 | 5 | 业务模块 02–12 | 按需查阅各功能需求 |
 | 6 | [13-ui-conventions.md](13-ui-conventions.md) | 已落地 UI/交互约束 |
 | 7 | [16-nfr.md](16-nfr.md) | 非功能需求（基于现状） |
+| — | [packaging.md](packaging.md) | PyInstaller 单二进制：三平台打包步骤、数据目录与 `.fernet_key` |
 | — | [`AGENTS.md`](../AGENTS.md) | 优化点结论台账（仓库根目录，非 docs 编号） |
 
 ## 业务模块索引

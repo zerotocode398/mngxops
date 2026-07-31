@@ -34,5 +34,5 @@ urlpatterns = [
     path("settings/", include("apps.settings.urls")),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# 单机交付无独立静态服务器时始终挂载 media（含冻结包 DEBUG=False）
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -34,7 +34,9 @@ MANIFEST
 #   Usually these files are written by a python script from a template
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
+# 自动生成的 spec 可忽略；仓库内交付用 mngxops.spec 需入库
 *.spec
+!mngxops.spec
 
 # Installer logs
 pip-log.txt

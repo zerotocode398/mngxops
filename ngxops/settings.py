@@ -2,12 +2,30 @@
 Django settings for ngxops project.
 """
 
+import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+from ngxops.runtime_paths import data_dir, is_frozen, resource_dir
 
-SECRET_KEY = "django-insecure-9_o1pzju7e95@4(f_^lyqk(5yt0q-ilq_cjncwvt%vs!rmwz%6"
-DEBUG = True
+# 只读资源（模板等）与可写数据（库/media）分离，兼容 PyInstaller
+RESOURCE_DIR = resource_dir()
+DATA_DIR = data_dir()
+# 兼容旧代码：BASE_DIR 指向可写数据根（db/media）；模板 DIRS 用 RESOURCE_DIR
+BASE_DIR = DATA_DIR
+
+SECRET_KEY = os.environ.get(
+    "MNGXOPS_SECRET_KEY",
+    "django-insecure-9_o1pzju7e95@4(f_^lyqk(5yt0q-ilq_cjncwvt%vs!rmwz%6",
+)
+# 冻结交付默认关闭 DEBUG；可用环境变量打开
+_debug_env = (os.environ.get("MNGXOPS_DEBUG") or "").strip().lower()
+if _debug_env in ("1", "true", "yes", "on"):
+    DEBUG = True
+elif _debug_env in ("0", "false", "no", "off"):
+    DEBUG = False
+else:
+    DEBUG = not is_frozen()
+
 ALLOWED_HOSTS = ["*"]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -54,7 +72,7 @@ ROOT_URLCONF = "ngxops.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],
+        "DIRS": [RESOURCE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -74,7 +92,7 @@ WSGI_APPLICATION = "ngxops.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": DATA_DIR / "db.sqlite3",
     }
 }
 
@@ -91,8 +109,9 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = DATA_DIR / "staticfiles"
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = DATA_DIR / "media"
 
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "dashboard:index"

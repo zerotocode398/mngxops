@@ -115,11 +115,16 @@ mngxops/
 ├── templates/      # 全局布局与错误页
 ├── media/          # 上传文件（源码包、头像等）
 ├── docs/           # 软件需求设计文档
+├── run_server.py   # 二进制入口（Waitress + migrate/createsuperuser）
+├── mngxops.spec    # PyInstaller 规格（目标本机构建）
 ├── manage.py
 ├── requirements.txt
+├── requirements-packaging.txt
 ├── AGENTS.md       # 优化点结论台账（唯一来源）
 └── README.md       # 本手册
 ```
+
+二进制交付见 [`docs/packaging.md`](docs/packaging.md)。
 
 ---
 
@@ -139,6 +144,7 @@ mngxops/
 
 | 文档 | 说明 |
 |------|------|
+| [docs/packaging.md](docs/packaging.md) | PyInstaller 单二进制构建与三平台交付 |
 | [docs/README.md](docs/README.md) | 软件需求设计文档索引（架构、各模块、API、非功能） |
 | [docs/00-overview.md](docs/00-overview.md) | 产品定位、术语表、模块地图 |
 | [AGENTS.md](AGENTS.md) | 优化点结论台账（Q1–Q119+；唯一来源） |
