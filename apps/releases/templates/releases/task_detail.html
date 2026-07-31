@@ -120,16 +120,26 @@
                             </div>
                             <div class="result-node-body px-3 py-2{% if node.failed == 0 and not is_config_sync_type %} d-none{% endif %}">
                                 {% for cfg in node.configs %}
-                                <div class="result-config-item d-flex align-items-center gap-2 py-1 small{% if cfg.status == 'failed' %} bg-failed-light{% endif %}">
-                                    {% if cfg.status == 'success' %}
-                                    <span class="text-success"><i class="bi bi-check-circle-fill"></i></span>
-                                    {% else %}
-                                    <span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>
-                                    {% endif %}
-                                    {% if is_release_type %}
-                                    <a href="{% url 'releases:list' %}?search={{ cfg.search_name|urlencode }},{{ node.node_hostname|urlencode }},{{ task.source_batch|urlencode }}&batch={{ task.source_batch|urlencode }}&node_ip={{ node.node_ip|urlencode }}" target="_blank" class="text-decoration-none">{{ cfg.name }}</a>
-                                    {% else %}
-                                    <span>{{ cfg.name }}</span>
+                                <div class="result-config-item py-1 small{% if cfg.status == 'failed' %} bg-failed-light{% endif %}">
+                                    <div class="d-flex align-items-center gap-2">
+                                        {% if cfg.status == 'success' %}
+                                        <span class="text-success"><i class="bi bi-check-circle-fill"></i></span>
+                                        {% else %}
+                                        <span class="text-danger"><i class="bi bi-x-circle-fill"></i></span>
+                                        {% endif %}
+                                        {% if is_release_type %}
+                                        <a href="{% url 'releases:list' %}?search={{ cfg.search_name|urlencode }},{{ node.node_hostname|urlencode }},{{ task.source_batch|urlencode }}&batch={{ task.source_batch|urlencode }}&node_ip={{ node.node_ip|urlencode }}" target="_blank" class="text-decoration-none">{{ cfg.name }}</a>
+                                        {% else %}
+                                        <span>{{ cfg.name }}</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if cfg.reason_lines %}
+                                    <div class="result-fail-reason ms-4 mt-1 text-muted">
+                                        <div class="fw-medium mb-1">失败原因：</div>
+                                        {% for line in cfg.reason_lines %}
+                                        <div class="code-font" style="white-space: pre-wrap; word-break: break-word;">{{ line }}</div>
+                                        {% endfor %}
+                                    </div>
                                     {% endif %}
                                 </div>
                                 {% endfor %}

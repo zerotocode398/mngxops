@@ -101,6 +101,33 @@ def short_error_tail(text, max_lines=5):
     return " | ".join(lines[-max_lines:])
 
 
+_FAILED_REASON_SEP = " - 失败原因: "
+
+
+def split_failed_item(raw):
+    """将失败明细正文拆成 (label, reason)；无失败原因前缀则 reason 为空"""
+    text = (raw or "").strip()
+    if not text:
+        return "", ""
+    if _FAILED_REASON_SEP in text:
+        label, reason = text.split(_FAILED_REASON_SEP, 1)
+        return label.strip(), reason.strip()
+    return text, ""
+
+
+def split_error_reason_lines(reason):
+    """将折叠的失败原因还原为多行（支持 ' | ' 与真实换行）"""
+    if not reason:
+        return []
+    lines = []
+    for chunk in str(reason).split(" | "):
+        for ln in chunk.splitlines():
+            s = ln.strip()
+            if s:
+                lines.append(s)
+    return lines
+
+
 _RE_SUCCESS_FAIL = re.compile(
     r"成功\s*(\d+).*?失败\s*(\d+)",
     re.DOTALL,

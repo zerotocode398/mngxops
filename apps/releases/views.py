@@ -1292,6 +1292,10 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         )
 
         # 解析结果树（按节点分组 + 成功/失败明细）
+        from apps.releases.task_result import (
+            split_error_reason_lines,
+            split_failed_item,
+        )
         result_tree = []
         success_total = 0
         failed_total = 0
@@ -1323,10 +1327,14 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                     success_total += 1
                 elif raw.startswith("  [失败]") and current_node is not None:
                     raw_name = raw[len("  [失败] "):].strip()
-                    name = re.sub(r'\s+v(\d+).*', r' (V\1)', raw_name)
-                    search_name = re.sub(r'\s+v\d+.*', '', raw_name).strip()
+                    label, reason = split_failed_item(raw_name)
+                    name = re.sub(r'\s+v(\d+).*', r' (V\1)', label)
+                    search_name = re.sub(r'\s+v\d+.*', '', label).strip()
                     current_node["configs"].append({
-                        "name": name, "search_name": search_name, "status": "failed",
+                        "name": name,
+                        "search_name": search_name,
+                        "status": "failed",
+                        "reason_lines": split_error_reason_lines(reason),
                     })
                     current_node["failed"] += 1
                     failed_total += 1
