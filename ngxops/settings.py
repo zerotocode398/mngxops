@@ -63,6 +63,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.settings.context_processors.system_runtime_settings",
+                "apps.users.context_processors.perm_denied_alert",
             ],
         },
     },

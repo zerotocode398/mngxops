@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load permission_tags %}
 
 {% block title %}首页 - MngxOps{% endblock %}
 {% block page_title %}系统概览{% endblock %}
@@ -76,32 +77,41 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <!-- 页头：紧凑快捷入口（对齐升级首页） -->
+            <!-- 页头：紧凑快捷入口（按权限展示） -->
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 系统概览</h5>
                 <div class="d-flex gap-2 flex-wrap">
+                    {% if user|has_perm_code:"releases.create" %}
                     <a href="{% url 'releases:center' %}" class="btn btn-primary btn-sm">
                         <i class="bi bi-rocket-takeoff"></i> 发布中心
                     </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"configs.read" %}
                     <a href="{% url 'configs:list' %}" class="btn btn-outline-primary btn-sm">
                         <i class="bi bi-folder2-open"></i> 配置列表
                     </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"nodes.create" %}
                     <a href="{% url 'nodes:create' %}" class="btn btn-outline-secondary btn-sm">
                         <i class="bi bi-plus-lg"></i> 新建节点
                     </a>
+                    {% endif %}
+                    {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
                     <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary btn-sm">
                         <i class="bi bi-list-task"></i> 任务中心
                     </a>
+                    {% endif %}
                     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="location.reload()" title="手动刷新页面">
                         <i class="bi bi-arrow-clockwise"></i>
                     </button>
                 </div>
             </div>
 
-            <!-- 统计卡片 -->
+            <!-- 统计卡片：保留数字；无权限时不可跳转 -->
             <div class="row g-2 mb-4">
                 <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div class="dashboard-stat-card stat-card-primary" onclick="window.location.href='{% url 'nodes:list' %}'">
+                    <div class="dashboard-stat-card stat-card-primary{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
+                         {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}'"{% endif %}>
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3"><i class="bi bi-server"></i></div>
                             <div>
@@ -112,7 +122,8 @@
                     </div>
                 </div>
                 <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div class="dashboard-stat-card stat-card-online" onclick="window.location.href='{% url 'nodes:list' %}?status=online'">
+                    <div class="dashboard-stat-card stat-card-online{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
+                         {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=online'"{% endif %}>
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3"><i class="bi bi-wifi"></i></div>
                             <div>
@@ -123,7 +134,8 @@
                     </div>
                 </div>
                 <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div id="stat-offline-card" class="dashboard-stat-card {% if offline_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}" onclick="window.location.href='{% url 'nodes:list' %}?status=offline'">
+                    <div id="stat-offline-card" class="dashboard-stat-card {% if offline_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
+                         {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=offline'"{% endif %}>
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3"><i class="bi bi-exclamation-triangle"></i></div>
                             <div>
@@ -134,7 +146,8 @@
                     </div>
                 </div>
                 <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div class="dashboard-stat-card stat-card-info" onclick="window.location.href='{% url 'configs:list' %}?sync_status=modified'">
+                    <div class="dashboard-stat-card stat-card-info{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                         {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=modified'"{% endif %}>
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3"><i class="bi bi-send"></i></div>
                             <div>
@@ -145,7 +158,8 @@
                     </div>
                 </div>
                 <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div id="stat-running-card" class="dashboard-stat-card {% if running_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}" onclick="window.location.href='{% url 'releases:history' %}?status=running'">
+                    <div id="stat-running-card" class="dashboard-stat-card {% if running_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'releases.read' and not user|has_perm_code:'nodes.update' %} stat-card-static{% endif %}"
+                         {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}onclick="window.location.href='{% url 'releases:history' %}?status=running'"{% endif %}>
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3"><i class="bi bi-hourglass-split"></i></div>
                             <div>
@@ -156,7 +170,8 @@
                     </div>
                 </div>
                 <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div id="stat-failed-card" class="dashboard-stat-card {% if failed_7d_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}" onclick="window.location.href='{% url 'releases:history' %}?status=failed'">
+                    <div id="stat-failed-card" class="dashboard-stat-card {% if failed_7d_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'releases.read' and not user|has_perm_code:'nodes.update' %} stat-card-static{% endif %}"
+                         {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}onclick="window.location.href='{% url 'releases:history' %}?status=failed'"{% endif %}>
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3"><i class="bi bi-x-circle"></i></div>
                             <div>
@@ -168,11 +183,13 @@
                 </div>
             </div>
 
-            <!-- 最近任务（TaskCenter） -->
+            <!-- 最近任务（TaskCenter）：有任务中心可见权限时展示入口 -->
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-list-task"></i> 最近任务</h5>
+                    {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
                     <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-primary">查看全部</a>
+                    {% endif %}
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -223,9 +240,13 @@
                                         <small title="{{ task.created_at|date:'Y-m-d H:i:s' }}">{{ task.created_at|date:"Y-m-d H:i" }}</small>
                                     </td>
                                     <td>
+                                        {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
                                         <a href="{% url 'releases:task_center_detail' task.id %}" class="btn btn-sm btn-outline-info" title="详情">
                                             <i class="bi bi-eye"></i> 详情
                                         </a>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% empty %}

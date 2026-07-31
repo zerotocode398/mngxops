@@ -1,17 +1,43 @@
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import JsonResponse
+from django.shortcuts import redirect
 
 from .perm_defs import permission_code, all_permission_items
 from .models import UserProfile, UserGroup
 
+# 无权访问统一文案
+PERM_DENIED_TITLE = "无访问权限"
+PERM_DENIED_MESSAGE = (
+    "当前账号没有使用该功能的权限。请联系管理员分配相应权限后再试。"
+)
+PERM_CONFIG_ERROR_TITLE = "权限配置错误"
+PERM_CONFIG_ERROR_MESSAGE = "系统权限配置异常，请联系管理员检查后再试。"
+SESSION_PERM_DENIED_KEY = "mngxops_perm_denied"
+
 
 def is_ajax_request(request):
+    """判断是否为 AJAX 请求"""
     return request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
 
-def forbidden_response(request, message):
+def _normalize_forbidden_alert(message):
+    """将无权文案规范为 (标题, 正文)"""
+    text = (message or "").strip()
+    # 兼容历史调用文案
+    if not text or text == "当前账号无权限访问该功能":
+        return PERM_DENIED_TITLE, PERM_DENIED_MESSAGE
+    if text == "权限配置错误":
+        return PERM_CONFIG_ERROR_TITLE, PERM_CONFIG_ERROR_MESSAGE
+    return PERM_DENIED_TITLE, text
+
+
+def forbidden_response(request, message=None):
+    """无权访问：AJAX 返回 JSON；页面请求回首页并由前端 showAlert 提示"""
+    title, body = _normalize_forbidden_alert(message)
     if is_ajax_request(request):
-        return JsonResponse({"success": False, "message": message}, status=403)
-    return HttpResponseForbidden(message)
+        return JsonResponse({"success": False, "message": body}, status=403)
+
+    request.session[SESSION_PERM_DENIED_KEY] = {"title": title, "message": body}
+    return redirect("dashboard:index")
 
 
 def _get_user_role_ids(user):
@@ -39,6 +65,7 @@ def _get_user_role_ids(user):
 
 
 def user_has_permission(user, resource, action):
+    """判断用户是否拥有指定资源动作权限"""
     if not user.is_authenticated:
         return False
     if user.is_superuser:
@@ -62,6 +89,7 @@ def user_has_permission(user, resource, action):
 
 
 class PermissionRequiredMixin:
+    """视图级权限校验 Mixin"""
     permission_resource = None
     permission_action = None
 
@@ -75,6 +103,6 @@ class PermissionRequiredMixin:
             return forbidden_response(request, "权限配置错误")
 
         if not user_has_permission(request.user, resource, action):
-            return forbidden_response(request, "当前账号无权限访问该功能")
+            return forbidden_response(request, PERM_DENIED_MESSAGE)
 
         return super().dispatch(request, *args, **kwargs)
