@@ -11,7 +11,7 @@
 | 凭证测试并发 | `credential.test_max_concurrency` |
 | 节点批量探测 | `node.batch_max_count` |
 | SSH 超时 | `node.ssh_connect_timeout`；失败可 `node.detect_retries` |
-| 发布门禁 | **已知约束**：存在任意 `ReleaseTask.status=running` 时阻断新批次自动执行（Q93 维持；并行化另立项） |
+| 发布门禁 | **已知约束**：存在任意 `ReleaseTask.status=running` 时阻断新批次自动执行（Q93 结论：维持） |
 
 进程内线程模型：单机多 Django Worker 时，线程与内存态进度不跨进程共享。
 

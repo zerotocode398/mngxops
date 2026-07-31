@@ -112,5 +112,5 @@ flowchart TB
 | `apps/*` | 业务 Django 应用 |
 | `utils/` | SSH、nginx 启停、设置读取、加密、分页、数据保留 |
 | `templates/base.html` | 全局壳：侧栏、权限菜单、`#asyncProgressOverlay` |
-| `AGENTS.md` | 优化点台账 Q1–Q95 |
+| `AGENTS.md` | 优化点结论台账 Q1–Q118 |
 | `docs/` | 本需求设计文档集 |

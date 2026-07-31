@@ -1,6 +1,6 @@
 # mngxops 软件需求设计文档
 
-本文档集基于**当前代码实现**倒推整理（实现即基线需求），按功能模块拆分。历史交互优化结论见仓库根目录 [`AGENTS.md`](../AGENTS.md)（Q1–Q83 已完成 / Q84+ 待确认）。
+本文档集基于**当前代码实现**倒推整理（实现即基线需求），按功能模块拆分。历史交互优化结论见仓库根目录 [`AGENTS.md`](../AGENTS.md)（Q1–Q118 结论台账）。
 
 ## 阅读顺序
 
@@ -13,7 +13,7 @@
 | 5 | 业务模块 02–12 | 按需查阅各功能需求 |
 | 6 | [13-ui-conventions.md](13-ui-conventions.md) | 已落地 UI/交互约束 |
 | 7 | [16-nfr.md](16-nfr.md) | 非功能需求（基于现状） |
-| 8 | [90-gap-and-optimization.md](90-gap-and-optimization.md) | 缺失需求与设计优化 ↔ AGENTS Q84+ |
+| 8 | [90-gap-and-optimization.md](90-gap-and-optimization.md) | 缺口与结论项 ↔ AGENTS Q84–Q118 |
 
 ## 业务模块索引
 
@@ -34,7 +34,7 @@
 ## 文档与 AGENTS 的关系
 
 - **docs/**：完整软件需求设计（功能、流程、模型、接口、实现锚点）。
-- **AGENTS.md**：优化点台账；已完成项沉淀为 docs 中的「已确认行为」；待确认缺口以 Q84+ 登记，详情见 [90-gap-and-optimization.md](90-gap-and-optimization.md)。
+- **AGENTS.md**：优化点结论台账（Q1–Q118）；已完成项沉淀为 docs 中的「已确认行为」；缺口与关闭结论见 [90-gap-and-optimization.md](90-gap-and-optimization.md)。
 
 ## 写作约定
 
