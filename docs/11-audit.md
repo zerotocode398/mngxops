@@ -82,4 +82,4 @@ Q70。
 
 ## 12. 相关优化结论
 
-Q87/Q94 见 [90-gap-and-optimization.md](90-gap-and-optimization.md)。
+Q87/Q94 见 [`AGENTS.md`](../AGENTS.md)。

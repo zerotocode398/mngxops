@@ -2,7 +2,7 @@
 
 本文档记录历史优化点结论，供 Agent / 开发快速检索。**不修改业务逻辑时请以本文件结论为准。**
 
-完整软件需求设计见 [`docs/README.md`](docs/README.md)；缺口明细见 [`docs/90-gap-and-optimization.md`](docs/90-gap-and-optimization.md)。
+完整软件需求设计见 [`docs/README.md`](docs/README.md)。本文件为优化点结论的**唯一**台账。
 
 ## 状态图例
 

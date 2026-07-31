@@ -112,4 +112,4 @@ Q28–Q36、Q39、Q45、Q70、Q71、Q80、Q105、Q109、Q110、Q111、Q112。
 
 ## 13. 相关优化结论
 
-Q87/Q88 已落地，见 [90-gap-and-optimization.md](90-gap-and-optimization.md)。
+Q87/Q88 已落地，见 [`AGENTS.md`](../AGENTS.md)。

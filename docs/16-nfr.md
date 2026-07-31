@@ -57,5 +57,5 @@
 ## 7. 已知限制（产品层）
 
 - 无分布式任务队列；进程重启可能丢失未落库的内存进度片段（DB 状态以 worker 最后写入为准）。
-- `conflict`/`syncing`/漂移检测等能力不完整（见 [90-gap-and-optimization.md](90-gap-and-optimization.md)）。
+- `conflict`/`syncing`/漂移检测等能力不完整（见 [`AGENTS.md`](../AGENTS.md) Q84–Q86）。
 - 遗留 `ConfigVersion` 与双版本 URL（Q95）。

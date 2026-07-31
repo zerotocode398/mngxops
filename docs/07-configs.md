@@ -153,4 +153,4 @@ Q1–Q11、Q32、Q44 及同步相关 Q8/Q9/Q39 等（见 AGENTS）。
 
 ## 12. 待确认缺口
 
-相关项已按建议落地或关闭，见 [90-gap-and-optimization.md](90-gap-and-optimization.md)（Q84–Q95）。遗留 `ConfigVersion`/双路由延后（Q95）。
+相关项已按建议落地或关闭，见 [`AGENTS.md`](../AGENTS.md)（Q84–Q95）。遗留 `ConfigVersion`/双路由保留兼容（Q95）。

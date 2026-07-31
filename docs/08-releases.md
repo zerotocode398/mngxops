@@ -162,4 +162,4 @@ Q12–Q27、Q31、Q37、Q45–Q59、Q61、Q79、Q80 等。
 
 ## 12. 相关优化结论
 
-Q89/Q90/Q93 等已按建议落地或关闭，见 [90-gap-and-optimization.md](90-gap-and-optimization.md)。
+Q89/Q90/Q93 等已按建议落地或关闭，见 [`AGENTS.md`](../AGENTS.md)。

@@ -13,7 +13,7 @@
 | 5 | 业务模块 02–12 | 按需查阅各功能需求 |
 | 6 | [13-ui-conventions.md](13-ui-conventions.md) | 已落地 UI/交互约束 |
 | 7 | [16-nfr.md](16-nfr.md) | 非功能需求（基于现状） |
-| 8 | [90-gap-and-optimization.md](90-gap-and-optimization.md) | 缺口与结论项 ↔ AGENTS Q84–Q118 |
+| — | [`AGENTS.md`](../AGENTS.md) | 优化点结论台账（仓库根目录，非 docs 编号） |
 
 ## 业务模块索引
 
@@ -34,10 +34,11 @@
 ## 文档与 AGENTS 的关系
 
 - **docs/**：完整软件需求设计（功能、流程、模型、接口、实现锚点）。
-- **AGENTS.md**：优化点结论台账（Q1–Q118）；已完成项沉淀为 docs 中的「已确认行为」；缺口与关闭结论见 [90-gap-and-optimization.md](90-gap-and-optimization.md)。
+- **AGENTS.md**：优化点结论台账（Q1–Q118+）的**唯一**来源；已完成项沉淀为 docs 中的「已确认行为」。
+- 未实现或已关闭能力：记入 `AGENTS.md`（续编 Q119+），不在模块正文写成已交付。
 
 ## 写作约定
 
-- 以代码行为为准；未实现能力不写成已交付，统一记入缺口清单。
+- 以代码行为为准；未实现能力不写成已交付，统一记入 [`AGENTS.md`](../AGENTS.md)。
 - 需求条目尽量带实现路径（如 `apps/releases/views.py` → `ReleaseExecutorMixin`）。
 - 术语见 [00-overview.md](00-overview.md) 术语表，全文统一使用。

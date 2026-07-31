@@ -116,7 +116,7 @@ mngxops/
 ├── docs/           # 软件需求设计文档
 ├── manage.py
 ├── requirements.txt
-├── AGENTS.md       # 优化点台账
+├── AGENTS.md       # 优化点结论台账（唯一来源）
 └── README.md       # 本手册
 ```
 
@@ -140,4 +140,4 @@ mngxops/
 |------|------|
 | [docs/README.md](docs/README.md) | 软件需求设计文档索引（架构、各模块、API、非功能） |
 | [docs/00-overview.md](docs/00-overview.md) | 产品定位、术语表、模块地图 |
-| [AGENTS.md](AGENTS.md) | 历史优化点台账（Q1–Q95；含待确认缺口） |
+| [AGENTS.md](AGENTS.md) | 优化点结论台账（Q1–Q118+；唯一来源） |
