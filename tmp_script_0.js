@@ -1,597 +1,4 @@
-{% extends "base.html" %}
-{% load permission_tags upgrade_filters %}
 
-{% block title %}升级中心 - Nginx 编译升级{% endblock %}
-{% block page_title %}<i class="bi bi-rocket-takeoff"></i> Nginx 升级中心{% endblock %}
-
-{% block content %}
-<div class="container-fluid">
-{% csrf_token %}
-
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h5 class="mb-0"><i class="bi bi-rocket-takeoff"></i> 升级中心</h5>
-    <div class="d-flex gap-2">
-        <a href="{% url 'upgrade:list' %}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-house"></i> 首页
-        </a>
-        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-archive"></i> 源码包
-        </a>
-        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-puzzle"></i> 模块包
-        </a>
-        <a href="{% url 'upgrade:history' %}" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-clock-history"></i> 升级历史
-        </a>
-    </div>
-</div>
-
-<style>
-    .wizard-steps { display: flex; gap: 0; margin-bottom: 1rem; border-radius: var(--br-md); overflow: hidden; border: 1px solid var(--gray-200); }
-    .wizard-step-item {
-        flex: 1; text-align: center; padding: 0.65rem 0.5rem; font-size: var(--fs-base);
-        background: var(--gray-100); color: var(--gray-600); border-right: 1px solid var(--gray-200);
-        cursor: default; transition: background var(--transition-fast), color var(--transition-fast);
-    }
-    .wizard-step-item:last-child { border-right: none; }
-    .wizard-step-item.active { background: var(--primary); color: #fff; }
-    .wizard-step-item.done { background: rgba(102, 126, 234, 0.12); color: var(--primary); }
-    .wizard-step-item .step-num {
-        display: inline-flex; align-items: center; justify-content: center;
-        width: 1.35rem; height: 1.35rem; border-radius: 50%;
-        background: rgba(0,0,0,0.08); font-size: var(--fs-sm); margin-right: 4px;
-    }
-    .wizard-step-item.active .step-num { background: rgba(255,255,255,0.25); }
-    #finalConfigPreview { max-height: 480px; overflow-y: auto; }
-    .upgrade-step { display: flex; align-items: center; padding: 8px 12px; border-radius: var(--br-md); margin-bottom: 4px; font-family: var(--font-mono); font-size: var(--fs-base); }
-    .upgrade-step.success { background: #f0fff4; color: #155724; }
-    .upgrade-step.running { background: #fff8e1; color: #856404; animation: pulse 1.5s infinite; }
-    .upgrade-step.failed { background: #fff5f5; color: #721c24; }
-    .upgrade-step.pending { background: var(--gray-100); color: var(--gray-600); }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-    .module-checkbox-group { max-height: 250px; overflow-y: auto; border: 1px solid var(--gray-200); border-radius: var(--br-md); padding: 10px; }
-    .module-checkbox-group label { display: block; padding: 3px 0; cursor: pointer; }
-    .progress-bar { transition: width var(--transition-normal); }
-    .pkg-table-wrap { max-height: 280px; overflow-y: auto; }
-    .pkg-table-wrap tbody tr { cursor: pointer; }
-    .pkg-table-wrap tbody tr.selected { background: rgba(102, 126, 234, 0.08); }
-    .modal-node-table tbody tr.disabled-row { opacity: 0.55; cursor: not-allowed; }
-    .upgrade-mode-option { border: 1px solid var(--gray-200); border-radius: var(--br-md); padding: 10px 12px; cursor: pointer; }
-    .upgrade-mode-option:has(input:checked) { border-color: var(--primary); background: rgba(102, 126, 234, 0.06); }
-    .progress-placeholder { color: var(--gray-600); font-size: var(--fs-base); padding: 1.5rem 0.5rem; text-align: center; }
-    .selected-node-chip {
-        display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
-        border: 1px solid var(--gray-200); border-radius: var(--br-md); background: #fff;
-        font-size: var(--fs-base); margin: 2px;
-    }
-    .selected-node-chip .chip-remove { cursor: pointer; color: var(--gray-500); line-height: 1; }
-    .selected-node-chip .chip-remove:hover { color: var(--danger); }
-    .selected-node-chip.ref-node { border-color: var(--primary); background: rgba(102, 126, 234, 0.06); }
-    .selected-node-chip.fetch-fail { border-color: var(--danger); background: #fff5f5; }
-    .node-progress-block { border: 1px solid var(--gray-200); border-radius: var(--br-md); margin-bottom: 0.75rem; overflow: hidden; }
-    .node-progress-header {
-        display: flex; justify-content: space-between; align-items: center;
-        padding: 8px 12px; background: var(--gray-100); cursor: pointer; font-size: var(--fs-base);
-    }
-    .node-progress-body { padding: 8px 12px; border-top: 1px solid var(--gray-200); }
-    .confirm-node-block { border: 1px solid var(--gray-200); border-radius: var(--br-md); margin-bottom: 0.5rem; }
-    .confirm-node-header {
-        display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
-        padding: 10px 12px; background: var(--gray-100); font-size: var(--fs-base);
-    }
-    /* Step3/Step4 共用：label/value 信息摘要（冒号由 label::after 统一追加） */
-    .kv-info-box {
-        padding: 12px 14px; background: var(--gray-100); border-radius: var(--br-md);
-        border: 1px solid var(--gray-200); font-size: var(--fs-base);
-    }
-    .kv-info-grid {
-        display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px;
-    }
-    .kv-info-grid.kv-info-grid-1 { grid-template-columns: 1fr; }
-    .kv-info-row {
-        display: flex; align-items: center; gap: 8px; min-width: 0;
-        padding: 5px 0; border-bottom: 1px solid rgba(0, 0, 0, 0.04);
-    }
-    .kv-info-grid.kv-info-grid-1 .kv-info-row:last-child,
-    .kv-info-grid:not(.kv-info-grid-1) .kv-info-row:nth-last-child(-n+2) { border-bottom: none; }
-    .kv-info-label {
-        flex: 0 0 96px; color: var(--gray-600); white-space: nowrap; font-size: var(--fs-sm);
-    }
-    .kv-info-label::after { content: ':'; }
-    .kv-info-value {
-        flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        color: var(--dark); font-size: var(--fs-base);
-    }
-    .kv-info-mod { padding-top: 6px; margin-top: 4px; border-top: 1px solid var(--gray-200); }
-    .kv-info-mod + .kv-info-mod { border-top: none; padding-top: 2px; margin-top: 0; }
-    .kv-info-mod .kv-info-row { border-bottom: none; padding: 5px 0; }
-    .kv-info-mod .kv-info-value.code-font,
-    .kv-info-mod .kv-mod-first {
-        flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--dark);
-    }
-    .kv-mod-toggle {
-        flex: 0 0 auto; cursor: pointer; color: var(--primary); font-size: var(--fs-sm);
-        user-select: none; border: none; background: none; padding: 0; text-decoration: none;
-    }
-    .kv-mod-toggle:hover { text-decoration: underline; }
-    .kv-mod-detail {
-        margin: 0 0 4px 104px; padding: 8px 10px; background: #fff; border: 1px solid var(--gray-200);
-        border-radius: var(--br-sm); max-height: 160px; overflow-y: auto;
-        font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.55;
-        word-break: break-all;
-    }
-    .kv-mod-detail .kv-mod-item { padding: 1px 0; }
-    @media (max-width: 767.98px) {
-        .kv-info-grid { grid-template-columns: 1fr; }
-        .kv-info-grid:not(.kv-info-grid-1) .kv-info-row:nth-last-child(-n+2) {
-            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
-        }
-        .kv-info-grid .kv-info-row:last-child { border-bottom: none; }
-        .kv-mod-detail { margin-left: 0; }
-    }
-    .wizard-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--gray-200); }
-    .module-dual-panel .module-dual-title {
-        font-size: var(--fs-sm); color: var(--gray-600); margin-bottom: 6px;
-    }
-    .module-checkbox-group label.is-disabled { opacity: 0.55; cursor: not-allowed; }
-    .pkg-empty-hint { display: none; }
-    .pkg-empty-hint.show { display: block; }
-    .mismatch-node-row { cursor: pointer; }
-    .mismatch-node-row:hover { background: rgba(102, 126, 234, 0.06); }
-    .mismatch-expand-row td { background: #fafbfc; padding: 8px 12px; }
-    .mismatch-diff-item {
-        border: 1px solid var(--gray-200); border-radius: var(--br-md);
-        padding: 8px 10px; margin-bottom: 6px; font-size: var(--fs-sm);
-    }
-    .mismatch-diff-item .diff-param { font-family: var(--font-mono); word-break: break-all; margin-bottom: 4px; }
-    .module-summary-box {
-        border: 1px solid var(--gray-200); border-radius: var(--br-md);
-        padding: 10px 12px; background: #fff;
-    }
-</style>
-
-<!-- 步骤条 -->
-<div class="wizard-steps" id="wizardSteps">
-    <div class="wizard-step-item active" data-step="1"><span class="step-num">1</span>选择目标</div>
-    <div class="wizard-step-item" data-step="2"><span class="step-num">2</span>编译环境</div>
-    <div class="wizard-step-item" data-step="3"><span class="step-num">3</span>编译参数</div>
-    <div class="wizard-step-item" data-step="4"><span class="step-num">4</span>确认执行</div>
-</div>
-
-<div class="row">
-    <div class="col-md-7">
-        <!-- Step 1：选节点 + 源码包 -->
-        <div class="card mb-3 wizard-panel" id="step1">
-            <div class="card-header">
-                <h5 class="mb-0"><span class="badge bg-primary me-2">1</span> 选择目标节点与源码包</h5>
-            </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label class="form-label"><i class="bi bi-server"></i> 目标节点</label>
-                    <div class="border rounded p-2 mb-2" style="min-height: 48px;">
-                        <div id="selectedNodeDisplay">
-                            <span class="text-muted small" id="noSelectedNode">请选择一个或多个目标节点</span>
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#upgradeSelectNodeModal">
-                        <i class="bi bi-search"></i> <span id="btnSelectNodeLabel">选择节点</span>
-                    </button>
-                </div>
-
-                <div class="mb-0">
-                    <label class="form-label"><i class="bi bi-archive"></i> 源码包</label>
-                    {% if packages %}
-                    <div class="mb-2">
-                        <div class="tag-input-wrapper form-control form-control-sm" id="pkgTagWrapper">
-                            <input type="text" class="tag-input-field" id="pkgSearchField"
-                                placeholder="搜索名称、版本号，回车添加标签" autocomplete="off">
-                        </div>
-                        <input type="hidden" id="pkgSearchHidden">
-                    </div>
-                    <div class="pkg-table-wrap border rounded">
-                        <table class="table table-sm table-hover mb-0 data-table" id="packageTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width: 6%;"></th>
-                                    <th style="width: 34%;">包名称</th>
-                                    <th style="width: 14%;">版本</th>
-                                    <th style="width: 16%;">大小</th>
-                                    <th style="width: 30%;">上传</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            {% for pkg in packages %}
-                                <tr class="pkg-row" data-pkg-id="{{ pkg.id }}" data-version="{{ pkg.version }}" data-name="{{ pkg.name }}">
-                                    <td>
-                                        <input type="radio" name="pkgRadio" class="pkg-radio" value="{{ pkg.id }}"
-                                               data-version="{{ pkg.version }}" data-name="{{ pkg.name }}">
-                                    </td>
-                                    <td>
-                                        {{ pkg.name }}
-                                        {% if pkg.is_official %}<span class="badge bg-success ms-1">官方</span>{% endif %}
-                                    </td>
-                                    <td><code>{{ pkg.version|nginx_ver }}</code></td>
-                                    <td>{{ pkg.file_size|filesizeformat }}</td>
-                                    <td>
-                                        <small>{{ pkg.created_at|date:"m-d H:i" }}</small>
-                                        <small class="text-muted">{{ pkg.uploaded_by.username|default:"-" }}</small>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="empty-state py-3 pkg-empty-hint" id="pkgEmptyHint">
-                        <i class="bi bi-inbox"></i>
-                        <p>无匹配的源码包</p>
-                    </div>
-                    {% else %}
-                    <div class="empty-state py-3">
-                        <i class="bi bi-inbox"></i>
-                        <p>暂无源码包</p>
-                    </div>
-                    {% endif %}
-                    <div class="mt-2">
-                        <a href="{% url 'upgrade:package_upload' %}" class="btn btn-outline-secondary btn-sm" target="_blank">
-                            <i class="bi bi-upload"></i> 上传新包
-                        </a>
-                    </div>
-                </div>
-
-                <div class="wizard-nav">
-                    <span class="text-muted small">已选 <span id="step1NodeCount">0</span> 个节点</span>
-                    <button type="button" class="btn btn-primary btn-sm" id="btnStep1Next" onclick="goStep(2)" disabled>
-                        下一步 <i class="bi bi-chevron-right"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 2：编译环境 -->
-        <div class="card mb-3 wizard-panel d-none" id="step2">
-            <div class="card-header">
-                <h5 class="mb-0"><span class="badge bg-primary me-2">2</span> 编译环境</h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <div class="col-md-8">
-                        <label class="form-label">远程编译工作目录</label>
-                        <input type="text" class="form-control form-control-sm" id="remoteWorkDir"
-                               value="{{ default_work_dir }}" placeholder="/tmp/nginx-upgrade">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">并行编译 (-j)</label>
-                        <input type="number" class="form-control form-control-sm" id="makeJobs"
-                               value="{{ default_make_jobs }}" min="1" max="32">
-                    </div>
-                </div>
-                <label class="form-label">升级模式</label>
-                <div class="d-flex flex-column gap-2 mb-2" id="upgradeModeGroup">
-                    <label class="upgrade-mode-option mb-0">
-                        <input type="radio" name="upgradeMode" value="upgrade" class="form-check-input me-2" checked>
-                        <span>平滑升级（同路径）</span>
-                        <div class="form-text mb-0">替换同路径二进制，按启动方式 reload</div>
-                    </label>
-                    <label class="upgrade-mode-option mb-0">
-                        <input type="radio" name="upgradeMode" value="install" class="form-check-input me-2">
-                        <span>全新安装（无旧版本）</span>
-                        <div class="form-text mb-0">目标机无现成 Nginx 时使用</div>
-                    </label>
-                    <label class="upgrade-mode-option mb-0">
-                        <input type="radio" name="upgradeMode" value="switch_path" class="form-check-input me-2">
-                        <span>切换路径升级</span>
-                        <div class="form-text mb-0">安装到新 prefix，再切换流量</div>
-                    </label>
-                </div>
-                <div class="form-text">
-                    默认值来自系统设置
-                    <a href="{% url 'settings:index' %}" target="_blank">upgrade.default_work_dir / make_jobs_default</a>
-                </div>
-                <div class="wizard-nav">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(1)">
-                        <i class="bi bi-chevron-left"></i> 上一步
-                    </button>
-                    <button type="button" class="btn btn-primary btn-sm" onclick="goStep(3)">
-                        下一步 <i class="bi bi-chevron-right"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 3：编译参数 -->
-        <div class="card mb-3 wizard-panel d-none" id="step3">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><span class="badge bg-primary me-2">3</span> 编译参数</h5>
-                <button class="btn btn-sm btn-outline-primary" id="btnFetchConfig" onclick="fetchAllNginxV()">
-                    <i class="bi bi-download"></i> 重新读取 nginx -V
-                </button>
-            </div>
-            <div class="card-body">
-                <div id="fetchStatus" class="mb-2 small text-muted">进入本步将自动读取各节点编译参数</div>
-                <div id="nodeFetchSummary" class="mb-3"></div>
-                <div id="currentConfigBlock" class="d-none">
-                    <div class="mb-2 small text-muted d-none" id="refNodeSelectWrap">
-                        参考节点（参数不一致时用于编辑基线）：
-                        <select class="form-select form-select-sm d-inline-block w-auto" id="refNodeSelect" onchange="onRefNodeChange()"></select>
-                    </div>
-                    <div id="currentConfigInfo" class="mb-3"></div>
-                    <div class="nginx-v-output mb-3" id="currentConfigOutput">等待获取...</div>
-
-                    <div class="mb-3">
-                        <label class="form-label"><i class="bi bi-sliders"></i> 模块调整</label>
-                        <div class="module-summary-box d-flex justify-content-between align-items-center gap-2 flex-wrap">
-                            <div class="small">
-                                <span class="text-muted">移除</span>
-                                <span class="badge bg-danger" id="moduleRemovedCount">0</span>
-                                <span class="text-muted ms-2">新增</span>
-                                <span class="badge bg-success" id="moduleAddedCount">0</span>
-                                <span class="text-muted ms-2" id="moduleDeltaHint">尚未调整</span>
-                            </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="openModuleAdjustModal()">
-                                <i class="bi bi-arrows-expand"></i> 调整模块
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label"><i class="bi bi-box"></i> 第三方模块</label>
-                        <div class="form-text mb-2">支持在线 Git（目标机需可出网）或离线包（先在「模块包」上传）。</div>
-                        <div id="thirdPartyModules">
-                            <div class="row mb-2 g-2 tp-module-row align-items-end">
-                                <div class="col-2">
-                                    <select class="form-select form-select-sm tp-source" onchange="onTpSourceChange(this)">
-                                        <option value="git" selected>在线 Git</option>
-                                        <option value="package">离线包</option>
-                                    </select>
-                                </div>
-                                <div class="col-2"><input type="text" class="form-control form-control-sm tp-name" placeholder="模块名"></div>
-                                <div class="col-5 tp-git-fields">
-                                    <div class="row g-1">
-                                        <div class="col-8"><input type="text" class="form-control form-control-sm tp-git" placeholder="Git 仓库 URL"></div>
-                                        <div class="col-4"><input type="text" class="form-control form-control-sm tp-branch" placeholder="分支" value="master"></div>
-                                    </div>
-                                </div>
-                                <div class="col-5 tp-pkg-fields d-none">
-                                    <select class="form-select form-select-sm tp-package">
-                                        <option value="">选择已上传模块包</option>
-                                    </select>
-                                </div>
-                                <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTpModule(this)">×</button></div>
-                            </div>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="addTpModule()">
-                            <i class="bi bi-plus"></i> 添加模块
-                        </button>
-                    </div>
-
-                    <div class="mb-3 d-none" id="targetPrefixWrap">
-                        <label class="form-label">目标安装目录 <span class="required">*</span></label>
-                        <input type="text" class="form-control form-control-sm" id="targetPrefix"
-                               placeholder="填写统一新安装路径，如 /usr/local/nginx">
-                        <div class="form-text">切换路径模式将所有节点的安装目录（--prefix）重写为此路径</div>
-                    </div>
-                </div>
-
-                <div class="wizard-nav">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(2)">
-                        <i class="bi bi-chevron-left"></i> 上一步
-                    </button>
-                    <button type="button" class="btn btn-primary btn-sm" id="btnStep3Next" onclick="previewAndGoStep4()" disabled>
-                        预览并下一步 <i class="bi bi-chevron-right"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 4：确认 -->
-        <div class="card mb-3 wizard-panel d-none" id="step4">
-            <div class="card-header">
-                <h5 class="mb-0"><span class="badge bg-success me-2">4</span> 确认并开始升级</h5>
-            </div>
-            <div class="card-body">
-                <div id="upgradeSummary" class="kv-info-box mb-3"></div>
-                <div class="mb-2 small text-muted">参考节点最终编译参数（红色删除 / 绿色新增为展示备注，不影响实际编译）</div>
-                <div class="nginx-v-output nginx-v-output-alt mb-3" id="finalConfigPreview">./configure 等待生成...</div>
-                <div class="mb-3">
-                    <label class="form-label">各节点确认清单</label>
-                    <div id="confirmNodeList"></div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-check-label">
-                        <input type="checkbox" id="confirmCheck" class="form-check-input"> 我确认以上配置无误，可以开始升级
-                    </label>
-                </div>
-                <div class="wizard-nav">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(3)">
-                        <i class="bi bi-chevron-left"></i> 上一步
-                    </button>
-                    <button class="btn btn-success" id="btnStartUpgrade" disabled onclick="startUpgrade()">
-                        <i class="bi bi-rocket-takeoff"></i> 开始升级
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 右列：进度区 -->
-    <div class="col-md-5">
-        <div class="card sticky-top" style="top: 20px;">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 升级执行进度</h5>
-                <span id="progressPercent" class="badge bg-secondary d-none">0%</span>
-            </div>
-            <div class="card-body">
-                <div id="progressPlaceholder" class="progress-placeholder">
-                    <i class="bi bi-hourglass" style="font-size: 1.75rem;"></i>
-                    <p class="mt-2 mb-0">配置完成后在此查看执行进度</p>
-                </div>
-                <div id="progressLive" class="d-none">
-                    <div class="mb-2 small" id="batchNumberLabel"></div>
-                    <div class="progress mb-3" style="height: 8px;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%"></div>
-                    </div>
-                    <div id="upgradeSteps"></div>
-                    <div class="mt-3 d-flex gap-2 flex-wrap">
-                        <button class="btn btn-sm btn-outline-danger d-none" id="btnCancel" onclick="cancelUpgrade()">
-                            <i class="bi bi-stop-circle"></i> 取消升级
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-</div>
-
-<!-- 选择节点弹窗（多选） -->
-<div class="modal fade" id="upgradeSelectNodeModal" tabindex="-1" aria-labelledby="upgradeSelectNodeModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="upgradeSelectNodeModalLabel">
-                    <i class="bi bi-search"></i> 选择目标节点
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <div class="tag-input-wrapper form-control form-control-sm" id="upgradeNodeTagWrapper">
-                        <input type="text" class="tag-input-field" id="upgradeNodeSearchField"
-                            placeholder="搜索主机名、IP 或节点组，回车添加标签" autocomplete="off">
-                    </div>
-                    <input type="hidden" id="upgradeNodeSearchHidden">
-                </div>
-                <div class="table-responsive modal-table-scroll">
-                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table modal-node-table">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width: 6%;">
-                                    <input type="checkbox" id="modalSelectAllNodes" title="全选本页可选节点">
-                                </th>
-                                <th style="width: 26%;">主机名</th>
-                                <th style="width: 22%;">IP</th>
-                                <th style="width: 24%;">节点组</th>
-                                <th style="width: 22%;">状态</th>
-                            </tr>
-                        </thead>
-                        <tbody id="upgradeSearchResultTbody">
-                            <tr>
-                                <td colspan="5" class="text-center text-muted py-4">
-                                    <i class="bi bi-search"></i>
-                                    <p class="mt-1 mb-0">加载中...</p>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mt-2">
-                    <small class="text-muted">共 <span id="upgradeResultCount">0</span> 个结果（最多 50）· 已勾选 <span id="modalPickedCount">0</span></small>
-                    <small class="text-muted">仅可选在线且已配置凭证的节点</small>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="confirmUpgradeNodeBtn" onclick="confirmUpgradeNodeSelection()">
-                    <i class="bi bi-check-lg"></i> 确认选择
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 多节点编译参数不一致风险弹窗 -->
-<div class="modal fade" id="paramsMismatchModal" tabindex="-1" aria-labelledby="paramsMismatchModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="paramsMismatchModalLabel">
-                    <i class="bi bi-exclamation-triangle text-warning"></i> 编译参数不一致
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="small mb-3">当前已选节点参数存在差异，请确认风险后再继续。</p>
-                <div class="mb-2 small text-muted">节点摘要（点击行可展开完整参数）</div>
-                <div class="table-responsive mb-3" style="max-height: 28vh; overflow-y: auto;">
-                    <table class="table table-sm data-table mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width: 26%;">主机名</th>
-                                <th style="width: 14%;">版本</th>
-                                <th style="width: 44%;">安装目录</th>
-                                <th style="width: 16%;">参数数</th>
-                            </tr>
-                        </thead>
-                        <tbody id="paramsMismatchTbody"></tbody>
-                    </table>
-                </div>
-                <div class="mb-1 small text-muted">差异参数（仅非全员共有项）<span id="paramsDiffCount"></span></div>
-                <div id="paramsDiffList" style="max-height: 28vh; overflow-y: auto;"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" id="paramsMismatchBackBtn">
-                    <i class="bi bi-arrow-left"></i> 返回改选节点
-                </button>
-                <button type="button" class="btn btn-warning" id="paramsMismatchContinueBtn">
-                    <i class="bi bi-check-lg"></i> 仍要继续
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 模块增减左右对比弹窗 -->
-<div class="modal fade" id="moduleAdjustModal" tabindex="-1" aria-labelledby="moduleAdjustModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="moduleAdjustModalLabel">
-                    <i class="bi bi-sliders"></i> 调整编译模块
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row g-3 module-dual-panel">
-                    <div class="col-md-6">
-                        <div class="module-dual-title"><i class="bi bi-plus-circle"></i> 可选编译参数</div>
-                        <div class="form-text mb-2">勾选添加尚未启用的参数；已启用项标「已编译」不可勾选，请到右侧移除</div>
-                        <div class="mb-2">
-                            <div class="tag-input-wrapper form-control form-control-sm" id="addModTagWrapper">
-                                <input type="text" class="tag-input-field" id="addModSearchField"
-                                    placeholder="模块名称，回车添加标签" autocomplete="off">
-                            </div>
-                            <input type="hidden" id="addModSearchHidden">
-                        </div>
-                        <div class="module-checkbox-group" id="addModulesGroup" style="max-height: 50vh;"></div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="module-dual-title"><i class="bi bi-list-check"></i> 已编译参数</div>
-                        <div class="form-text mb-2">勾选移除当前节点已启用的参数</div>
-                        <div class="mb-2">
-                            <div class="tag-input-wrapper form-control form-control-sm" id="removeModTagWrapper">
-                                <input type="text" class="tag-input-field" id="removeModSearchField"
-                                    placeholder="模块名称，回车添加标签" autocomplete="off">
-                            </div>
-                            <input type="hidden" id="removeModSearchHidden">
-                        </div>
-                        <div class="module-checkbox-group" id="removeModulesGroup" style="max-height: 50vh;"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="confirmModuleAdjustBtn">
-                    <i class="bi bi-check-lg"></i> 确认
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
 /** 当前向导步骤 1-4 */
 let currentStep = 1;
 /** 已确认选中的节点 map: id -> node */
@@ -739,9 +146,16 @@ const BUILTIN_ADD_MODULES = [
     '--without-pcre2'
 ];
 
-/** 判断基线是否已含该参数（精确匹配，不含静态/dynamic 模糊等价） */
+/** 判断基线是否已含该参数（--with 静态/动态互斥；--without 精确匹配） */
 function isBuiltinModulePresent(paramSet, mod) {
-    return !!(mod && paramSet[mod]);
+    if (!mod) return false;
+    if (paramSet[mod]) return true;
+    // --with-xxx 与 --with-xxx=dynamic 视为同一可选模块
+    if (String(mod).indexOf('--with-') === 0) {
+        var base = String(mod).replace(/=dynamic$/, '');
+        if (paramSet[base] || paramSet[base + '=dynamic']) return true;
+    }
+    return false;
 }
 
 function getCSRFToken() {
@@ -2384,7 +1798,14 @@ function cancelUpgrade() {
 
 function addTpModule() {
     var container = document.getElementById('thirdPartyModules');
-    container.appendChild(buildTpModuleRow({ source: 'git' }));
+    var row = document.createElement('div');
+    row.className = 'row mb-2 tp-module-row';
+    row.innerHTML =
+        '<div class="col-3"><input type="text" class="form-control form-control-sm tp-name" placeholder="模块名"></div>' +
+        '<div class="col-6"><input type="text" class="form-control form-control-sm tp-git" placeholder="Git 仓库 URL"></div>' +
+        '<div class="col-2"><input type="text" class="form-control form-control-sm tp-branch" placeholder="分支"></div>' +
+        '<div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTpModule(this)">×</button></div>';
+    container.appendChild(row);
     saveUpgradeWizardState();
 }
 
@@ -2399,120 +1820,15 @@ var _skipWizardSave = false;
 /** 当前页服务端注入的系统设置默认值（所见即所得） */
 var UPGRADE_SETTINGS_WORK_DIR = "{{ default_work_dir|default:'/tmp/nginx-upgrade'|escapejs }}";
 var UPGRADE_SETTINGS_MAKE_JOBS = {{ default_make_jobs|default:4 }};
-/** 平台已上传的第三方模块离线包 */
-var MODULE_PACKAGES = [
-{% for pkg in module_packages %}
-    { id: {{ pkg.id }}, name: "{{ pkg.name|escapejs }}", version: "{{ pkg.version|escapejs }}", label: "{{ pkg|escapejs }}" }{% if not forloop.last %},{% endif %}
-{% endfor %}
-];
 
-/** 生成离线包下拉 HTML */
-function buildModulePackageOptions(selectedId) {
-    var html = '<option value="">选择已上传模块包</option>';
-    (MODULE_PACKAGES || []).forEach(function (pkg) {
-        var sel = String(pkg.id) === String(selectedId || '') ? ' selected' : '';
-        var label = pkg.label || (pkg.name + (pkg.version ? ' (' + pkg.version + ')' : ''));
-        html += '<option value="' + pkg.id + '" data-name="' + escapeHtml(pkg.name) + '"' + sel + '>' +
-            escapeHtml(label) + '</option>';
-    });
-    return html;
-}
-
-/** 切换第三方模块引入方式显示区 */
-function onTpSourceChange(sel) {
-    var row = sel.closest('.tp-module-row');
-    if (!row) return;
-    var source = sel.value || 'git';
-    var gitFields = row.querySelector('.tp-git-fields');
-    var pkgFields = row.querySelector('.tp-pkg-fields');
-    if (source === 'package') {
-        if (gitFields) gitFields.classList.add('d-none');
-        if (pkgFields) pkgFields.classList.remove('d-none');
-    } else {
-        if (gitFields) gitFields.classList.remove('d-none');
-        if (pkgFields) pkgFields.classList.add('d-none');
-    }
-    saveUpgradeWizardState();
-}
-
-/** 离线包选择后预填模块名 */
-function onTpPackageChange(sel) {
-    var row = sel.closest('.tp-module-row');
-    if (!row) return;
-    var opt = sel.options[sel.selectedIndex];
-    var nameInput = row.querySelector('.tp-name');
-    if (nameInput && opt && opt.dataset.name && !nameInput.value.trim()) {
-        nameInput.value = opt.dataset.name;
-    }
-    saveUpgradeWizardState();
-}
-
-/** 构建一行第三方模块 DOM */
-function buildTpModuleRow(item) {
-    item = item || {};
-    var source = item.source || (item.package_id ? 'package' : 'git');
-    var row = document.createElement('div');
-    row.className = 'row mb-2 g-2 tp-module-row align-items-end';
-    row.innerHTML =
-        '<div class="col-2">' +
-        '<select class="form-select form-select-sm tp-source" onchange="onTpSourceChange(this)">' +
-        '<option value="git"' + (source === 'git' ? ' selected' : '') + '>在线 Git</option>' +
-        '<option value="package"' + (source === 'package' ? ' selected' : '') + '>离线包</option>' +
-        '</select></div>' +
-        '<div class="col-2"><input type="text" class="form-control form-control-sm tp-name" placeholder="模块名"></div>' +
-        '<div class="col-5 tp-git-fields' + (source === 'package' ? ' d-none' : '') + '">' +
-        '<div class="row g-1">' +
-        '<div class="col-8"><input type="text" class="form-control form-control-sm tp-git" placeholder="Git 仓库 URL"></div>' +
-        '<div class="col-4"><input type="text" class="form-control form-control-sm tp-branch" placeholder="分支"></div>' +
-        '</div></div>' +
-        '<div class="col-5 tp-pkg-fields' + (source === 'git' ? ' d-none' : '') + '">' +
-        '<select class="form-select form-select-sm tp-package" onchange="onTpPackageChange(this)">' +
-        buildModulePackageOptions(item.package_id) +
-        '</select></div>' +
-        '<div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTpModule(this)">×</button></div>';
-    row.querySelector('.tp-name').value = item.name || '';
-    var gitInput = row.querySelector('.tp-git');
-    if (gitInput) gitInput.value = item.git || item.git_url || '';
-    var branchInput = row.querySelector('.tp-branch');
-    if (branchInput) branchInput.value = item.branch || 'master';
-    return row;
-}
-
-/** 从单行收集提交用第三方模块对象；无效返回 null */
-function collectOneThirdPartyRow(row) {
-    var sourceSel = row.querySelector('.tp-source');
-    var source = sourceSel ? sourceSel.value : 'git';
-    var name = ((row.querySelector('.tp-name') || {}).value || '').trim();
-    if (source === 'package') {
-        var pkgSel = row.querySelector('.tp-package');
-        var packageId = pkgSel ? pkgSel.value : '';
-        if (!name && !packageId) return null;
-        if (!packageId) return null;
-        if (!name) {
-            var opt = pkgSel.options[pkgSel.selectedIndex];
-            name = (opt && opt.dataset.name) || '';
-        }
-        if (!name) return null;
-        return { name: name, source: 'package', package_id: parseInt(packageId, 10) };
-    }
-    var git = ((row.querySelector('.tp-git') || {}).value || '').trim();
-    var branch = ((row.querySelector('.tp-branch') || {}).value || '').trim();
-    if (!name && !git) return null;
-    if (!git) return null;
-    return { name: name || 'module', source: 'git', git_url: git, branch: branch || 'master' };
-}
-
-/** 收集第三方模块行数据（向导草稿，兼容旧字段） */
+/** 收集第三方模块行数据 */
 function collectThirdPartyRows() {
     var rows = [];
     document.querySelectorAll('.tp-module-row').forEach(function (row) {
-        var sourceSel = row.querySelector('.tp-source');
         rows.push({
-            source: sourceSel ? sourceSel.value : 'git',
             name: (row.querySelector('.tp-name') || {}).value || '',
             git: (row.querySelector('.tp-git') || {}).value || '',
             branch: (row.querySelector('.tp-branch') || {}).value || '',
-            package_id: (row.querySelector('.tp-package') || {}).value || '',
         });
     });
     return rows;
@@ -2523,9 +1839,19 @@ function applyThirdPartyRows(rows) {
     var container = document.getElementById('thirdPartyModules');
     if (!container) return;
     container.innerHTML = '';
-    var list = (rows && rows.length) ? rows : [{ source: 'git', name: '', git: '', branch: 'master' }];
+    var list = (rows && rows.length) ? rows : [{ name: '', git: '', branch: '' }];
     list.forEach(function (item) {
-        container.appendChild(buildTpModuleRow(item));
+        var row = document.createElement('div');
+        row.className = 'row mb-2 tp-module-row';
+        row.innerHTML =
+            '<div class="col-3"><input type="text" class="form-control form-control-sm tp-name" placeholder="模块名"></div>' +
+            '<div class="col-6"><input type="text" class="form-control form-control-sm tp-git" placeholder="Git 仓库 URL"></div>' +
+            '<div class="col-2"><input type="text" class="form-control form-control-sm tp-branch" placeholder="分支"></div>' +
+            '<div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTpModule(this)">×</button></div>';
+        row.querySelector('.tp-name').value = item.name || '';
+        row.querySelector('.tp-git').value = item.git || '';
+        row.querySelector('.tp-branch').value = item.branch || '';
+        container.appendChild(row);
     });
 }
 
@@ -2589,8 +1915,6 @@ document.addEventListener('DOMContentLoaded', function () {
     initPackageTagInput();
     initUpgradeNodeTagInput();
     initModuleAdjustTagInputs();
-    // 初始化第三方模块行（填充离线包下拉，避免 collectOneThirdPartyRow 缺失）
-    applyThirdPartyRows([{ source: 'git', name: '', git: '', branch: 'master' }]);
     upgradeSelectNodeModal = new bootstrap.Modal(document.getElementById('upgradeSelectNodeModal'));
     paramsMismatchModal = new bootstrap.Modal(document.getElementById('paramsMismatchModal'));
     moduleAdjustModal = new bootstrap.Modal(document.getElementById('moduleAdjustModal'));
@@ -2659,5 +1983,3 @@ document.addEventListener('DOMContentLoaded', function () {
 
     restoreUpgradeWizardState();
 });
-</script>
-{% endblock %}

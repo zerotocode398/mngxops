@@ -54,7 +54,7 @@
 
 1. **选节点 + 源码包**：节点弹窗多选 + tag 搜索；包列表 data-table + 过滤。  
 2. **编译环境**：拉取各节点 `nginx -V`（`NginxVApiView` / `fetch_nginx_v_from_node`）；先写 current_version（Q63）。  
-3. **编译参数**：模块左右栏（已编译 / 目标已选）；`BUILTIN_ADD_MODULES` 对齐官方 options（Q67）；静态/dynamic 互斥；参数差异弹窗；configure 引号感知分词拼接防截断（Q65）；第三方模块支持 **在线 Git / 离线包** 双通道（Q120）。  
+3. **编译参数**：模块左右栏；`BUILTIN_ADD_MODULES` 对齐官方 options（Q67）；参数差异弹窗；configure 引号感知分词拼接防截断（Q65）；第三方模块支持 **在线 Git / 离线包** 双通道（Q120）。左侧列出全部官方参数，节点已启用项以「已编译」禁用态展示仍可搜索命中；右侧为当前 `nginx -V` 参数可勾选移除（Q121）；「已编译」判定精确匹配，不含静态/`=dynamic` 模糊等价（Q122）。  
 4. **确认**：最终参数批注；showConfirm；创建批次并行升级。
 
 高级项默认：`upgrade.default_work_dir`、`upgrade.make_jobs_default`（页面以服务端默认渲染，Q81）；**再进入向导一律从第 1 步空白开始**，不恢复节点/包/参数草稿；仅续看进行中批次进度（Q113）。
@@ -111,7 +111,7 @@ nodes、task center、settings、audit、nginx_ops。
 
 ## 11. 已落地优化索引
 
-Q60–Q65、Q67、Q81、Q113、Q118、Q120。
+Q60–Q65、Q67、Q81、Q113、Q118、Q120、Q121、Q122。
 
 ## 12. 待确认缺口
 
