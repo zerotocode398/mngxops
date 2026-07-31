@@ -192,6 +192,9 @@ cython_debug/
 #   option (not recommended) you can uncomment the following to ignore the entire idea folder.
 # .idea/
 
+# Cursor：.cursor/rules/ 应入库；忽略本地会话缓存（若出现在仓库内）
+.cursor/plans/
+
 # Abstra
 #   Abstra is an AI-powered process automation framework.
 #   Ignore directories containing user credentials, local state, and settings.

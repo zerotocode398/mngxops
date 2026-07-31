@@ -1,0 +1,9 @@
+---
+description: 优化点结论以 AGENTS.md 为准
+alwaysApply: true
+---
+
+# 优化点台账
+
+- 不改业务逻辑时，以仓库根目录 [`AGENTS.md`](../../AGENTS.md) 为唯一结论来源。
+- 需求设计见 [`docs/README.md`](../../docs/README.md)。

@@ -141,3 +141,4 @@ mngxops/
 | [docs/README.md](docs/README.md) | 软件需求设计文档索引（架构、各模块、API、非功能） |
 | [docs/00-overview.md](docs/00-overview.md) | 产品定位、术语表、模块地图 |
 | [AGENTS.md](AGENTS.md) | 优化点结论台账（Q1–Q119+；唯一来源） |
+| [.cursor/rules/](.cursor/rules/) | Cursor 项目规则（开发规范；可随仓库共享） |
