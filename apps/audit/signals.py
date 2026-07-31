@@ -39,7 +39,46 @@ def _get_client_ip():
     return req.META.get("REMOTE_ADDR", "0.0.0.0")
 
 
+def _truncate_remark(remark, max_len=40):
+    """截断备注，避免审计 detail 过长。"""
+    text = (remark or "").strip()
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
+def _binding_identity(binding):
+    """拼接绑定可读身份：配置名 @ 主机名。"""
+    try:
+        config_name = getattr(getattr(binding, "config", None), "name", None) or "?"
+        hostname = getattr(getattr(binding, "node", None), "hostname", None) or "?"
+        return f"{config_name} @ {hostname}"
+    except Exception:
+        return str(getattr(binding, "pk", "?"))
+
+
 def _get_instance_label(instance):
+    """生成审计 detail 中的对象标签（绑定/版本用业务身份，其余 name/username/pk）。"""
+    class_name = instance.__class__.__name__
+
+    if class_name == "ConfigNodeBinding":
+        return _binding_identity(instance)
+
+    if class_name == "BindingVersion":
+        try:
+            binding = getattr(instance, "binding", None)
+            identity = _binding_identity(binding) if binding is not None else "?"
+            version_no = getattr(instance, "version", None)
+            label = f"{identity} · V{version_no}" if version_no is not None else identity
+            remark = _truncate_remark(getattr(instance, "remark", ""))
+            if remark:
+                label = f"{label}（{remark}）"
+            return label
+        except Exception:
+            return str(getattr(instance, "pk", "?"))
+
     name = getattr(instance, "name", None)
     if name:
         return name

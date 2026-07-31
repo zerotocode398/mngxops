@@ -36,7 +36,8 @@
 ### 5.1 模型信号
 
 [`apps/audit/signals.py`](../apps/audit/signals.py)：`TRACKED_MODELS` 的 post_save/post_delete → AuditLog。  
-当前写入 **`result=success` 为主**（Q94 结论：表示变更已落库；失败表单/API 不一定记 failed）。
+当前写入 **`result=success` 为主**（Q94 结论：表示变更已落库；失败表单/API 不一定记 failed）。  
+绑定 / 绑定版本的 `detail` 使用可读身份：`配置名 @ 主机名`，版本另含 `· Vn` 与可选 remark（Q119）；**不**记录正文 diff。
 
 ### 5.2 任务中心
 
@@ -78,7 +79,7 @@ accounts 登录成功/失败写 LoginLog（及可选 AuditLog）。
 
 ## 11. 已落地优化索引
 
-Q70。
+Q70、Q119。
 
 ## 12. 相关优化结论
 
