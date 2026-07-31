@@ -65,8 +65,9 @@ Django `User`：`username` 限 `[-a-zA-Z0-9_]+`；中文放姓名字段（Q82）
 
 ## 6. 实现要点
 
-- 权限项 seed：与 `all_permission_items()` 同步（应用启动或迁移逻辑以实现为准）。
+- 权限项 seed：`UsersConfig.ready()` 按 `all_permission_items()` `get_or_create`（Q117）；与 `perm_defs` 同步。
 - 操作列 icon-only + `btn-sm` 新增（Q68/Q78）。
+- 权限矩阵：全局 `initPermMatrix`；空集合不误显「取消」（Q117）。
 
 ## 7. 前后端约定
 
@@ -91,6 +92,7 @@ accounts、audit、全业务 View 鉴权。
 | Q82 | 路由改 pk、禁中文用户名 |
 | Q83 | 用户可选所属用户组 |
 | Q116 | 无权访问回首页 + showAlert |
+| Q117 | 权限矩阵勾选与 PermissionItem 启动 seed |
 
 ## 11. 待确认缺口
 

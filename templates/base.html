@@ -782,6 +782,9 @@
         .perm-matrix-cell:hover {
             background-color: #f0f3ff;
         }
+        .perm-matrix-cell:has(input.perm-cb) {
+            cursor: pointer;
+        }
         .perm-btn-col { white-space: nowrap; }
         .perm-btn-row {
             font-size: 0.7rem;
@@ -1285,6 +1288,99 @@
                     });
                 });
             };
+
+            /**
+             * 初始化权限矩阵全选/取消与格子点击勾选
+             * 空集合不视为「已全选」，避免误显「取消」
+             */
+            window.initPermMatrix = function() {
+                var matrix = document.getElementById('permMatrix');
+                if (!matrix || matrix.dataset.permMatrixBound === '1') return;
+                matrix.dataset.permMatrixBound = '1';
+
+                function rowCheckboxes(resourceKey) {
+                    return matrix.querySelectorAll('input.perm-cb[data-resource="' + resourceKey + '"]');
+                }
+                function colCheckboxes(actionKey) {
+                    return matrix.querySelectorAll('input.perm-cb[data-action="' + actionKey + '"]');
+                }
+                function allCheckboxes() {
+                    return matrix.querySelectorAll('input.perm-cb');
+                }
+                function setAll(cbs, checked) {
+                    cbs.forEach(function(cb) { cb.checked = checked; });
+                }
+                /** 有可勾选项且全部已勾选时才视为全选 */
+                function allChecked(cbs) {
+                    return cbs.length > 0 && Array.from(cbs).every(function(cb) { return cb.checked; });
+                }
+                function updateToggleBtn(btn, cbs) {
+                    if (!btn) return;
+                    btn.disabled = cbs.length === 0;
+                    btn.textContent = allChecked(cbs) ? '取消' : '全选';
+                }
+                function updateRowBtn(resourceKey) {
+                    updateToggleBtn(
+                        matrix.querySelector('.perm-btn-row[data-resource="' + resourceKey + '"]'),
+                        rowCheckboxes(resourceKey)
+                    );
+                }
+                function updateColBtn(actionKey) {
+                    updateToggleBtn(
+                        matrix.querySelector('.perm-btn-col[data-action="' + actionKey + '"]'),
+                        colCheckboxes(actionKey)
+                    );
+                }
+                function updateGlobalBtn() {
+                    updateToggleBtn(matrix.querySelector('.perm-btn-global'), allCheckboxes());
+                }
+                function refreshAll() {
+                    matrix.querySelectorAll('.perm-matrix-row-header[data-resource]').forEach(function(r) {
+                        updateRowBtn(r.getAttribute('data-resource'));
+                    });
+                    matrix.querySelectorAll('.perm-matrix-header[data-action]').forEach(function(c) {
+                        updateColBtn(c.getAttribute('data-action'));
+                    });
+                    updateGlobalBtn();
+                }
+
+                matrix.addEventListener('click', function(e) {
+                    var target = e.target;
+                    if (target.classList.contains('perm-btn-row')) {
+                        var rk = target.getAttribute('data-resource');
+                        var rowCbs = rowCheckboxes(rk);
+                        setAll(rowCbs, !allChecked(rowCbs));
+                        refreshAll();
+                        return;
+                    }
+                    if (target.classList.contains('perm-btn-col')) {
+                        var ak = target.getAttribute('data-action');
+                        var colCbs = colCheckboxes(ak);
+                        setAll(colCbs, !allChecked(colCbs));
+                        refreshAll();
+                        return;
+                    }
+                    if (target.classList.contains('perm-btn-global')) {
+                        var allCbs = allCheckboxes();
+                        setAll(allCbs, !allChecked(allCbs));
+                        refreshAll();
+                        return;
+                    }
+                    // 点击单元格空白处切换勾选（扩大可点区域）
+                    var cell = target.closest('.perm-matrix-cell');
+                    if (!cell || !matrix.contains(cell)) return;
+                    if (target.closest('button')) return;
+                    var cb = cell.querySelector('input.perm-cb');
+                    if (!cb || cb.disabled) return;
+                    if (target === cb) return;
+                    cb.checked = !cb.checked;
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+                matrix.addEventListener('change', function(e) {
+                    if (e.target.classList.contains('perm-cb')) refreshAll();
+                });
+                refreshAll();
+            };
         })();
 
         /* ========== 统一标签搜索组件 ========== */
@@ -1385,6 +1481,10 @@
 
         /* ========== 侧边栏 & 分页 ========== */
         document.addEventListener('DOMContentLoaded', function () {
+            if (typeof window.initPermMatrix === 'function') {
+                window.initPermMatrix();
+            }
+
             const currentUrlName = '{{ request.resolver_match.url_name }}';
             const currentAppName = '{{ request.resolver_match.app_name }}';
 

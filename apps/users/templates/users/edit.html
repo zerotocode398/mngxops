@@ -622,83 +622,11 @@
         wrapper.addEventListener('click', function(e) { if (e.target === wrapper) focusField(); });
     }
 
-    /** 初始化直授权限矩阵全选交互 */
-    function initPermMatrix() {
-        var matrix = document.getElementById('permMatrix');
-        if (!matrix) return;
-
-        function rowCheckboxes(resourceKey) {
-            return matrix.querySelectorAll('input.perm-cb[data-resource="' + resourceKey + '"]');
-        }
-        function colCheckboxes(actionKey) {
-            return matrix.querySelectorAll('input.perm-cb[data-action="' + actionKey + '"]');
-        }
-        function allCheckboxes() {
-            return matrix.querySelectorAll('input.perm-cb');
-        }
-        function setAll(cbs, checked) {
-            cbs.forEach(function(cb) { cb.checked = checked; });
-        }
-        function allChecked(cbs) {
-            return Array.from(cbs).every(function(cb) { return cb.checked; });
-        }
-        function updateRowBtn(resourceKey) {
-            var cbs = rowCheckboxes(resourceKey);
-            var btn = matrix.querySelector('.perm-btn-row[data-resource="' + resourceKey + '"]');
-            if (btn) btn.textContent = allChecked(cbs) ? '取消' : '全选';
-        }
-        function updateColBtn(actionKey) {
-            var cbs = colCheckboxes(actionKey);
-            var btn = matrix.querySelector('.perm-btn-col[data-action="' + actionKey + '"]');
-            if (btn) btn.textContent = allChecked(cbs) ? '取消' : '全选';
-        }
-        function updateGlobalBtn() {
-            var cbs = allCheckboxes();
-            var btn = matrix.querySelector('.perm-btn-global');
-            if (btn) btn.textContent = allChecked(cbs) ? '取消' : '全选';
-        }
-        function refreshAll() {
-            matrix.querySelectorAll('.perm-matrix-row-header[data-resource]').forEach(function(r) {
-                updateRowBtn(r.getAttribute('data-resource'));
-            });
-            matrix.querySelectorAll('.perm-matrix-header[data-action]').forEach(function(c) {
-                updateColBtn(c.getAttribute('data-action'));
-            });
-            updateGlobalBtn();
-        }
-
-        matrix.addEventListener('click', function(e) {
-            var target = e.target;
-            if (target.classList.contains('perm-btn-row')) {
-                var rk = target.getAttribute('data-resource');
-                var cbs = rowCheckboxes(rk);
-                setAll(cbs, !allChecked(cbs));
-                refreshAll();
-            }
-            if (target.classList.contains('perm-btn-col')) {
-                var ak = target.getAttribute('data-action');
-                var cbs = colCheckboxes(ak);
-                setAll(cbs, !allChecked(cbs));
-                refreshAll();
-            }
-            if (target.classList.contains('perm-btn-global')) {
-                var cbs = allCheckboxes();
-                setAll(cbs, !allChecked(cbs));
-                refreshAll();
-            }
-        });
-        matrix.addEventListener('change', function(e) {
-            if (e.target.classList.contains('perm-cb')) refreshAll();
-        });
-        refreshAll();
-    }
-
     document.addEventListener('DOMContentLoaded', function() {
         syncSelectedRolesFromCheckboxes();
         syncSelectedTeamsFromCheckboxes();
         initRoleModalTagSearch();
         initTeamModalTagSearch();
-        initPermMatrix();
 
         document.getElementById('selectRoleModal').addEventListener('shown.bs.modal', function() {
             updateRoleModalCheckboxes();
