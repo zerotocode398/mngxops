@@ -159,9 +159,16 @@
 
                         <div class="text-end mt-3">
                             <a href="{% url 'releases:detail' task.id %}" class="btn btn-secondary">取消</a>
+                            {% if task.node.status == 'online' and not task.node.is_locked and not task.node.is_deleted %}
                             <button type="button" class="btn btn-warning" id="rollbackConfirmBtn">
                                 <i class="bi bi-arrow-counterclockwise"></i> 确认回滚
                             </button>
+                            {% else %}
+                            <button type="button" class="btn btn-warning" disabled
+                                title="节点非在线或已锁定/已删除，无法回滚">
+                                <i class="bi bi-arrow-counterclockwise"></i> 确认回滚
+                            </button>
+                            {% endif %}
                         </div>
                     </form>
                 </div>
@@ -447,13 +454,17 @@
 <script>
     /** 回滚确认与进度（不含版本预览） */
     document.addEventListener('DOMContentLoaded', function() {
+        var confirmBtn = document.getElementById('rollbackConfirmBtn');
+        if (!confirmBtn) {
+            return;
+        }
         var rollbackConfirmModal = new bootstrap.Modal(document.getElementById('rollbackConfirmModal'));
         var rollbackInterval = null;
         var csrfToken = document.querySelector('#rollbackForm [name=csrfmiddlewaretoken]').value;
         var rollbackUrl = '{% url "releases:rollback" task.id %}';
         var listUrl = '{% url "releases:list" %}';
 
-        document.getElementById('rollbackConfirmBtn').addEventListener('click', function() {
+        confirmBtn.addEventListener('click', function() {
             var selectedRadio = document.querySelector('input[name="version_radio"]:checked');
             if (!selectedRadio) {
                 showAlert('提示', '请先选择一个版本');

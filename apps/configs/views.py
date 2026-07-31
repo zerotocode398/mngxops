@@ -768,6 +768,11 @@ class ConfigGlobPreviewView(LoginRequiredMixin, View):
 
         if node.is_locked:
             return JsonResponse({"success": False, "message": "节点已锁定"}, status=400)
+        if node.status != "online":
+            return JsonResponse(
+                {"success": False, "message": f"节点 {node.hostname} 非在线状态"},
+                status=400,
+            )
 
         credential = _get_node_credential(node)
         if not credential:
@@ -897,6 +902,14 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
         total = len(nodes)
 
+        # 任选节点非在线则整批拒绝（对齐升级中心）
+        for node in nodes:
+            if node.status != "online":
+                return JsonResponse(
+                    {"success": False, "message": f"节点 {node.hostname} 非在线状态"},
+                    status=400,
+                )
+
         # 配置发现与批量同步统一记为 config_batch_sync（未再单独创建 config_discover）
         task_center = TaskCenterTask.objects.create(
             operation_type="config_batch_sync",
@@ -931,6 +944,9 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             try:
                 if node.is_locked:
                     result["message"] = "节点已锁定"
+                    return result
+                if node.status != "online":
+                    result["message"] = f"节点 {node.hostname} 非在线状态"
                     return result
                 credential = _get_node_credential(node)
                 if not credential:
@@ -1181,6 +1197,11 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         node = get_object_or_404(Node, pk=node_id)
         if node.is_locked:
             return JsonResponse({"success": False, "message": "节点已锁定"})
+        if node.status != "online":
+            return JsonResponse(
+                {"success": False, "message": f"节点 {node.hostname} 非在线状态"},
+                status=400,
+            )
 
         credential = _get_node_credential(node)
         if not credential:

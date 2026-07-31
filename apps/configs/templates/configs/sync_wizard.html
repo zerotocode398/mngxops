@@ -75,10 +75,12 @@
                             </thead>
                             <tbody>
                                 {% for node in nodes %}
-                                <tr class="sync-node-row">
+                                <tr class="sync-node-row{% if node.status != 'online' %} disabled{% endif %}">
                                     <td>
                                         <input class="form-check-input node-checkbox" type="checkbox"
                                             value="{{ node.id }}" data-hostname="{{ node.hostname }}"
+                                            data-status="{{ node.status }}"
+                                            {% if node.status != 'online' %}disabled{% endif %}
                                             onchange="updateBatchCount(this)">
                                     </td>
                                     <td>
@@ -147,16 +149,24 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" style="white-space: nowrap;">
+                                            {% if node.status == 'online' %}
                                             <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal"
                                                 data-bs-target="#syncModal{{ node.id }}" title="从该节点同步配置">
                                                 <i class="bi bi-cloud-download"></i> 同步配置
                                             </button>
+                                            {% else %}
+                                            <button type="button" class="btn btn-outline-secondary" disabled
+                                                title="节点非在线状态，无法同步">
+                                                <i class="bi bi-cloud-download"></i> 同步配置
+                                            </button>
+                                            {% endif %}
                                             <a href="{% url 'configs:create' %}?node_id={{ node.id }}"
                                                 class="btn btn-outline-secondary" title="手动添加配置">
                                                 <i class="bi bi-plus-circle"></i> 手动添加
                                             </a>
                                         </div>
 
+                                        {% if node.status == 'online' %}
                                         <div class="modal fade" id="syncModal{{ node.id }}" tabindex="-1">
                                             <div class="modal-dialog modal-dialog-centered">
                                                 <div class="modal-content">
@@ -246,6 +256,7 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% empty %}
@@ -454,6 +465,10 @@
 
     function submitFullSync(nodeId) {
         var modal = document.getElementById('syncModal' + nodeId);
+        if (!modal) {
+            showCustomModal('提示', '<p class="mb-0"><i class="bi bi-info-circle text-warning"></i> 节点非在线状态，无法同步</p>', true);
+            return;
+        }
         var pathInput = modal.querySelector('input[name="main_conf_path"]');
         var mainConfPath = pathInput.value.trim();
 
@@ -525,12 +540,21 @@
 
         var nodeIds = [];
         var hostnames = [];
+        var offlineHost = null;
         checked.forEach(function(cb) {
+            if (cb.getAttribute('data-status') !== 'online') {
+                offlineHost = cb.getAttribute('data-hostname') || ('节点 #' + cb.value);
+                return;
+            }
             nodeIds.push(parseInt(cb.value));
             var row = cb.closest('tr');
             var nameEl = row ? row.querySelector('.sync-wizard-hostname') : null;
             hostnames.push(nameEl ? nameEl.textContent.trim() : ('节点 #' + cb.value));
         });
+        if (offlineHost) {
+            showCustomModal('提示', '<p class="mb-0"><i class="bi bi-info-circle text-warning"></i> 节点 ' + offlineHost + ' 非在线状态，无法同步</p>', true);
+            return;
+        }
 
         var confirmContent = '<p>确定要对选中的 <strong>' + checked.length + '</strong> 个节点进行配置同步吗？</p>' +
             '<p class="text-muted">同步将从远程节点拉取 nginx 配置文件并更新本地记录。</p>';
@@ -563,6 +587,10 @@
 
     function submitPartialSync(nodeId) {
         var modal = document.getElementById('syncModal' + nodeId);
+        if (!modal) {
+            showCustomModal('提示', '<p class="mb-0"><i class="bi bi-info-circle text-warning"></i> 节点非在线状态，无法同步</p>', true);
+            return;
+        }
         var sourceChecks = modal.querySelectorAll('input[name="selected_paths"]');
         var pathInput = modal.querySelector('input[name="main_conf_path"]');
         var mainConfPath = pathInput.value.trim();

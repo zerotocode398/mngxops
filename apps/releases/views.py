@@ -684,9 +684,18 @@ class ReleaseExecutorMixin:
 
         node = tasks[0].node
 
-        # 前置：锁定 / 凭证
+        # 前置：锁定 / 在线 / 凭证
         if node.is_locked:
             msg = f"节点 {node.hostname} 已锁定，无法执行发布"
+            for task in tasks:
+                self._fail_task_early(task, action, msg)
+                if on_task_done:
+                    on_task_done(task, False, msg)
+                results.append((task, False))
+            return results
+
+        if node.status != "online":
+            msg = f"节点 {node.hostname} 非在线状态"
             for task in tasks:
                 self._fail_task_early(task, action, msg)
                 if on_task_done:
@@ -952,6 +961,7 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseE
 
         batch_number = generate_batch_number()
         task_ids = []
+        skipped_offline = False
 
         for item in bindings_data:
             binding_id = item.get("binding_id", 0)
@@ -963,6 +973,9 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseE
                 continue
 
             if binding.node.is_locked or binding.node.is_deleted:
+                continue
+            if binding.node.status != "online":
+                skipped_offline = True
                 continue
 
             publish_version = version if version else binding.current_version
@@ -981,7 +994,12 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, ReleaseE
             task_ids.append(task.id)
 
         if not task_ids:
-            return JsonResponse({"success": False, "message": "未找到可发布的配置绑定"}, status=400)
+            msg = (
+                "所选配置绑定均不可发布（含非在线或已锁定/已删除节点）"
+                if skipped_offline
+                else "未找到可发布的配置绑定"
+            )
+            return JsonResponse({"success": False, "message": msg}, status=400)
 
         response_data = {
             "success": True,
@@ -1512,6 +1530,9 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
         if task.node.is_deleted:
             messages.error(request, f"节点 {task.node.hostname} 已删除，无法回滚")
             return redirect("releases:detail", pk=task.pk)
+        if task.node.status != "online":
+            messages.error(request, f"节点 {task.node.hostname} 非在线状态")
+            return redirect("releases:detail", pk=task.pk)
         binding = task.binding
         versions = []
         if binding:
@@ -1543,6 +1564,12 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return redirect("releases:rollback", pk=task.pk)
         if task.node.is_deleted:
             msg = f"节点 {task.node.hostname} 已删除，无法回滚"
+            if is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=400)
+            messages.error(request, msg)
+            return redirect("releases:detail", pk=task.pk)
+        if task.node.status != "online":
+            msg = f"节点 {task.node.hostname} 非在线状态"
             if is_ajax:
                 return JsonResponse({"success": False, "message": msg}, status=400)
             messages.error(request, msg)
@@ -2220,6 +2247,11 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return JsonResponse({"success": False, "message": f"节点 {task.node.hostname} 已锁定"}, status=400)
         if task.node.is_deleted:
             return JsonResponse({"success": False, "message": f"节点 {task.node.hostname} 已删除，无法重试"}, status=400)
+        if task.node.status != "online":
+            return JsonResponse(
+                {"success": False, "message": f"节点 {task.node.hostname} 非在线状态"},
+                status=400,
+            )
 
         task.status = "pending"
         task.result = ""
@@ -2283,6 +2315,9 @@ def _start_rollback_for_release_tasks(tasks, user):
 
     for task in candidates:
         if task.node.is_locked or task.node.is_deleted:
+            skipped += 1
+            continue
+        if task.node.status != "online":
             skipped += 1
             continue
         if not task.binding:

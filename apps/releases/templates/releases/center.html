@@ -331,6 +331,7 @@
     var selectedNodes = {};
     var selectedBindings = {};
     var bindingCache = {};
+    var nodeStatusMap = {}; // nodeId -> status，用于发布前在线校验
     var expandedNodes = {};
     var publishInterval = null;
     var contentPreviewModal = null;
@@ -507,9 +508,15 @@
         } else {
             var html = '';
             nodes.forEach(function(n) {
+                nodeStatusMap[n.id] = n.status || 'unknown';
                 var noCred = !n.has_credential;
                 var isLocked = n.is_locked;
-                var canSelect = !isLocked;
+                var canSelect = !isLocked && n.status === 'online';
+                // 节点变为不可选时，从已选中剔除
+                if (!canSelect && selectedNodes[n.id] !== undefined) {
+                    delete selectedNodes[n.id];
+                    delete selectedBindings[n.id];
+                }
                 var rowClass = canSelect ? 'node-row' : 'node-row disabled';
                 var envLabel = n.environment === 'prod' ? '生产' : (n.environment === 'test' ? '测试' : '开发');
                 var envCls = 'env-badge env-badge-' + n.environment;
@@ -525,7 +532,7 @@
                     }).join(' ');
                 }
 
-                html += '<tr class="' + rowClass + '" data-node-id="' + n.id + '">';
+                html += '<tr class="' + rowClass + '" data-node-id="' + n.id + '" data-status="' + (n.status || '') + '">';
                 html += '<td class="text-center"><input type="checkbox" class="form-check-input node-cb" value="' + n.id + '" ' + isChecked + ' ' + disabledAttr + '></td>';
                 html += '<td class="text-center"><button type="button" class="btn btn-sm btn-link text-muted p-0 toggle-expand" data-node-id="' + n.id + '" title="展开绑定"><i class="bi bi-chevron-right"></i></button></td>';
                 html += '<td><div class="node-info-cell">' +
@@ -534,7 +541,7 @@
                     (groupBadges ? groupBadges : '') +
                     '</div></td>';
                 html += '<td style="white-space: nowrap;"><span class="' + envCls + '">' + envLabel + '</span></td>';
-                html += '<td style="white-space: nowrap;"><span class="' + statusCls + '">' + statusIcon + ' ' + (n.status === 'online' ? '在线' : '离线') + '</span></td>';
+                html += '<td style="white-space: nowrap;"><span class="' + statusCls + '">' + statusIcon + ' ' + (n.status === 'online' ? '在线' : (n.status === 'unknown' ? '未知' : '离线')) + '</span></td>';
                 html += '<td style="white-space: nowrap;"><span class="badge bg-info">' + n.total_bindings + '</span></td>';
                 html += '</tr>';
 
@@ -566,6 +573,7 @@
                         id: nodeId,
                         hostname: identity ? identity.dataset.hostname : '',
                         ip: identity ? identity.dataset.ip : '',
+                        status: row.getAttribute('data-status') || nodeStatusMap[nodeId] || '',
                         group_names: Array.from(row.querySelectorAll('.node-info-cell .badge')).map(function(b) { return b.textContent.trim(); })
                     };
                     if (!selectedBindings[nodeId]) selectedBindings[nodeId] = {};
@@ -1154,6 +1162,27 @@
     // 统一发布函数
     function publishBindings(bindings, triggerBtn) {
         if (bindings.length === 0) { showToast('请至少选择一个配置绑定', 'warning'); return; }
+
+        // 发布前校验：所选绑定对应节点须在线
+        var offlineName = null;
+        bindings.forEach(function(item) {
+            if (offlineName) return;
+            var bid = parseInt(item.binding_id, 10);
+            Object.keys(selectedBindings).forEach(function(nid) {
+                if (offlineName) return;
+                if (!selectedBindings[nid][bid]) return;
+                var st = (selectedNodes[nid] && selectedNodes[nid].status) || nodeStatusMap[nid] || '';
+                if (st !== 'online') {
+                    offlineName = (selectedNodes[nid] && selectedNodes[nid].hostname)
+                        || getNodeNameFromDOM(nid)
+                        || ('节点#' + nid);
+                }
+            });
+        });
+        if (offlineName) {
+            showToast('节点 ' + offlineName + ' 非在线状态，无法发布', 'warning');
+            return;
+        }
 
         if (triggerBtn) {
             triggerBtn.disabled = true;
