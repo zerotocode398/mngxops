@@ -165,41 +165,6 @@ class BindingVersion(models.Model):
         return f"{self.created_at.strftime('%Y%m%d')} - V{self.version}"
 
 
-# === 保留旧模型以支持平滑迁移 ===
-# 迁移完成后可废弃
-class ConfigVersion(models.Model):
-    """【待废弃】旧版配置版本 - 迁移到 BindingVersion 后可删除"""
-    id = models.BigAutoField(primary_key=True, verbose_name="ID")
-    config = models.ForeignKey(
-        Config,
-        on_delete=models.CASCADE,
-        related_name="legacy_versions",
-        verbose_name="关联配置",
-    )
-    version = models.IntegerField(verbose_name="版本号")
-    content = models.TextField(verbose_name="配置内容")
-    remark = models.TextField(blank=True, verbose_name="备注")
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        verbose_name="修改人",
-    )
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
-
-    class Meta:
-        verbose_name = "配置版本(旧)"
-        verbose_name_plural = verbose_name
-        ordering = ["-version"]
-        unique_together = ("config", "version")
-
-    def __str__(self):
-        return f"{self.config.name} - v{self.version}"
-
-    @property
-    def content_bytes(self):
-        return len(self.content.encode("utf-8"))
-
-
 class ConfigSyncSetting(models.Model):
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
     node = models.OneToOneField(

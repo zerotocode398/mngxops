@@ -58,7 +58,6 @@
 | `bindings/<pk>/compare/…` | 对比与应用 |
 | `api/by-nodes/`、`api/preview-glob/`、`api/update-preview/` | **JSON** |
 | `sync/`、`sync/api/batch|single|progress` | 同步向导与进度 |
-| `<pk>/versions/…` | **遗留兼容路由**（pk 语义易混，Q95） |
 
 ## 7. 发布 / 任务中心 `releases`
 

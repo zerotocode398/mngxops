@@ -41,11 +41,4 @@ urlpatterns = [
     # 兼容旧URL
     path("<int:pk>/update/", views.ConfigUpdateView.as_view(), name="update"),
     path("node/<int:pk>/delete/", views.ConfigNodeDeleteView.as_view(), name="node_delete"),
-
-    # 旧版版本历史（逐步迁移）
-    path("<int:pk>/versions/", views.BindingVersionListView.as_view(), name="versions"),
-    path("<int:pk>/versions/compare/", views.BindingVersionCompareView.as_view(), name="version_compare"),
-    path("<int:pk>/versions/compare/apply/", views.BindingVersionCompareApplyView.as_view(), name="version_compare_apply"),
-    path("<int:pk>/versions/<int:version_id>/", views.BindingVersionDetailView.as_view(), name="version_detail"),
-    path("<int:pk>/versions/<int:version_id>/restore/", views.BindingVersionRestoreView.as_view(), name="restore"),
 ]

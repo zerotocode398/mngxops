@@ -50,7 +50,6 @@ erDiagram
 | `ConfigNodeBinding` | `unique_together (config, node)`；内容与 `sync_status` 在此 |
 | `BindingVersion` | `unique_together (binding, version)` |
 | `ConfigSyncSetting` | 每节点 `main_conf_path` OneToOne |
-| `ConfigVersion` | **遗留待废弃**（Q95） |
 
 绑定 `sync_status` 枚举见 [07-configs.md](07-configs.md)；其中 `conflict`/`syncing` 当前无写入路径（Q84/Q85）。
 

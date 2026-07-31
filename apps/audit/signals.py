@@ -8,7 +8,6 @@ TRACKED_MODELS = {
     "apps.configs.models.Config": "配置管理",
     "apps.configs.models.ConfigNodeBinding": "配置绑定",
     "apps.configs.models.BindingVersion": "绑定版本",
-    "apps.configs.models.ConfigVersion": "配置版本",
     "apps.nodes.models.Node": "节点管理",
     "apps.nodes.models.NodeGroup": "节点分组",
     "apps.releases.models.ReleaseTask": "发布任务",

@@ -131,7 +131,7 @@
 | Q92 | Glob 预览仅单节点 | 已完成 |
 | Q93 | 全局 running 门禁维持并文档化 | 已关闭（结论） |
 | Q94 | 审计信号口径=落库成功变更 | 已关闭（结论） |
-| Q95 | 遗留 ConfigVersion / 双路由保留；正式入口用 bindings | 已关闭（结论） |
+| Q95 | 删除遗留 ConfigVersion 与双版本路由；仅 bindings 版本入口 | 已完成 |
 | Q96 | data-* 去掉 escapejs，名称含 `-` 正常显示 | 已完成 |
 | Q97 | 无关联节点启用凭证不创建测试任务 | 已完成 |
 | Q98 | 密钥认证表单切换与私钥文件导入 | 已完成 |
@@ -763,9 +763,12 @@
 
 ### Q95 · 配置管理 · 遗留 ConfigVersion 与双版本路由
 
-- **问题**：旧模型与兼容路由并存。
-- **处理**：结论：保留兼容；文档标明废弃；正式入口用 `bindings/<pk>/versions/`。
-- **状态**：已关闭（结论）
+- **问题**：旧模型与兼容路由并存；`/configs/<pk>/versions/` 易把 config.id 当 binding（Q44）。
+- **处理**：
+  1. 删除遗留 URL（`versions`/`version_detail`/`restore`/`version_compare*`），仅保留 `/configs/bindings/<pk>/versions/…` 与 compare。
+  2. 删除 `ConfigVersion` 模型 + 迁移 `0002_delete_configversion`（库中无有效数据，不做内容迁移）。
+  3. 审计 TRACKED_MODELS 去掉 ConfigVersion；`base.html` navFallbackMap 改为 `binding_*` 正式路由名。
+- **状态**：已完成
 
 ### Q96 · 凭证/用户/节点组 · data-* 误用 escapejs
 

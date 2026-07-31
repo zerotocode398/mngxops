@@ -39,10 +39,6 @@
 
 节点 `main_conf_path`。
 
-### ConfigVersion
-
-遗留模型，待废弃（Q95）。
-
 ## 4. 同步状态机
 
 ### 4.1 枚举（模型 choices）
@@ -78,9 +74,8 @@ stateDiagram-v2
 
 主列表：`/configs/` 节点可展开 + 未绑定标签区（Q1/Q4）。  
 绑定创建弹窗多选节点（Q3）。  
-版本：`/configs/bindings/<pk>/versions/…`；对比 apply。  
-同步向导：`/configs/sync/`。  
-遗留：`/configs/<pk>/versions/…`（易把 config.id 当 binding，Q44/Q95）。
+版本：仅 `/configs/bindings/<pk>/versions/…` 与 compare/apply（Q95）。  
+同步向导：`/configs/sync/`。
 
 ## 6. 用例
 
@@ -153,4 +148,4 @@ Q1–Q11、Q32、Q44 及同步相关 Q8/Q9/Q39 等（见 AGENTS）。
 
 ## 12. 待确认缺口
 
-相关项已按建议落地或关闭，见 [`AGENTS.md`](../AGENTS.md)（Q84–Q95）。遗留 `ConfigVersion`/双路由保留兼容（Q95）。
+相关项已按建议落地或关闭，见 [`AGENTS.md`](../AGENTS.md)（Q84–Q95）。版本历史仅走 bindings 路由；`ConfigVersion` 与双路由已清理（Q95）。
