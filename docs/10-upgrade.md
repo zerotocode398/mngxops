@@ -16,9 +16,10 @@
 
 ### NginxSourcePackage
 
-`version`+`uploaded_by` 唯一；`package_file`、`file_md5`、`file_size`、`is_official`、`custom_modules_included` JSON。
+`version`+`uploaded_by` 唯一；`package_file`、`file_md5`、`file_size`、`description`、`is_official`、`custom_modules_included` JSON。
 
-同版本冲突：预检 + showConfirm 覆盖（Q62）。
+同版本冲突：预检 + showConfirm 覆盖（Q62）。  
+源码包列表展示 `description`（Q118）。
 
 ### NginxUpgradeTask
 
@@ -36,7 +37,7 @@
 | 功能 | 路径 |
 |------|------|
 | 运维台首页 | `/upgrade/`（任务列表风，Q60） |
-| 源码包 | `/upgrade/packages/` 上传/校验/删除/下载 |
+| 源码包 | `/upgrade/packages/` 上传/校验/删除/下载；列表含描述列（Q118） |
 | 升级中心 | `/upgrade/center/` |
 | API | nginx-v / parse-config / compute-config / batch-progress |
 | 任务 | create / progress / log / cancel / rollback |
@@ -97,7 +98,7 @@ nodes、task center、settings、audit、nginx_ops。
 
 ## 11. 已落地优化索引
 
-Q60–Q65、Q67、Q81、Q113。
+Q60–Q65、Q67、Q81、Q113、Q118。
 
 ## 12. 待确认缺口
 

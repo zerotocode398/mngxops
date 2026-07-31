@@ -21,13 +21,14 @@
             <table class="table table-hover table-sm mb-0 data-table upgrade-table">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 24%;">包名称</th>
-                        <th style="width: 10%;">版本</th>
-                        <th style="width: 10%;">文件大小</th>
-                        <th style="width: 15%;">MD5（前8位）</th>
-                        <th style="width: 15%;">上传时间</th>
-                        <th style="width: 10%;">上传人</th>
-                        <th style="width: 16%;">操作</th>
+                        <th style="width: 18%;">包名称</th>
+                        <th style="width: 20%;">描述</th>
+                        <th style="width: 9%;">版本</th>
+                        <th style="width: 9%;">文件大小</th>
+                        <th style="width: 12%;">MD5（前8位）</th>
+                        <th style="width: 12%;">上传时间</th>
+                        <th style="width: 8%;">上传人</th>
+                        <th style="width: 12%;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -36,6 +37,9 @@
                         <td>
                             {{ pkg.name }}
                             {% if pkg.is_official %}<span class="badge bg-success ms-1">官方</span>{% endif %}
+                        </td>
+                        <td class="text-truncate" {% if pkg.description %}title="{{ pkg.description }}"{% endif %} style="max-width: 0;">
+                            {% if pkg.description %}{{ pkg.description }}{% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td><code>{{ pkg.version }}</code></td>
                         <td>{{ pkg.file_size|filesizeformat }}</td>
