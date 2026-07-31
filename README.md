@@ -72,6 +72,7 @@ python manage.py createsuperuser
 
 ```powershell
 python manage.py runserver
+python manage.py runserver 0.0.0.0:1988
 ```
 
 浏览器访问：
