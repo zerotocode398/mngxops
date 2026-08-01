@@ -260,6 +260,12 @@ class CredentialCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVi
     permission_resource = "credentials"
     permission_action = "create"
 
+    def get_form_kwargs(self):
+        """向表单传入当前用户，用于名称唯一校验"""
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
     def form_valid(self, form):
         """保存凭证并关联创建人"""
         form.instance.created_by = self.request.user
@@ -280,6 +286,12 @@ class CredentialUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVi
     success_url = reverse_lazy("credentials:list")
     permission_resource = "credentials"
     permission_action = "update"
+
+    def get_form_kwargs(self):
+        """向表单传入当前用户，用于名称唯一校验"""
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
 
     def get_context_data(self, **kwargs):
         """传递编辑模式下密码/私钥是否存在的信息"""

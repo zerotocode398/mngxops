@@ -39,6 +39,7 @@ class CredentialForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
         self.fields["password"].required = False
         self.fields["private_key"].required = False
@@ -46,6 +47,18 @@ class CredentialForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             self.fields["password"].widget.attrs["placeholder"] = "留空则不修改密码"
             self.fields["private_key"].widget.attrs["placeholder"] = "留空则不修改私钥"
+
+    def clean_name(self):
+        """校验当前用户下凭证名称唯一，避免落库 IntegrityError"""
+        name = self.cleaned_data.get("name")
+        if not name or not self.user:
+            return name
+        qs = Credential.objects.filter(name=name, created_by=self.user)
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError("该凭证名称已存在，请更换名称")
+        return name
 
     def clean(self):
         """校验认证方式与对应字段的必填逻辑，并验证私钥格式"""
