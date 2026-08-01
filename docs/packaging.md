@@ -235,6 +235,8 @@ mkdir -p "$MNGXOPS_HOME"
 - `createsuperuser` 需要在真实终端里交互输入用户名/密码
 - `.fernet_key` / `db.sqlite3` **不用事先准备**，首次运行会生成
 - 可用 `--no-migrate` 跳过启动前自动迁移
+- 启动后终端默认输出 **HTTP 访问日志**（类似 Apache combined）；可用 `--no-access-log` 关闭
+- 启动别名：`serve` / `run` / `runserver`（不是 `server`）
 
 ```text
 # Windows 示例（空目录）

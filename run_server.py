@@ -2,8 +2,10 @@
 """MngxOps 统一入口：默认启动 Web；支持 migrate / createsuperuser 等管理命令。"""
 
 import argparse
+import logging
 import os
 import sys
+from datetime import datetime
 
 
 # 允许的 Django 管理命令（与交付约定对齐，避免暴露任意 manage 面）
@@ -17,11 +19,23 @@ ALLOWED_MANAGE_COMMANDS = frozenset(
 )
 
 SERVE_ALIASES = frozenset({"serve", "run", "runserver"})
+ACCESS_LOGGER = logging.getLogger("mngxops.access")
 
 
 def _setup_django_env():
     """设置 Django 配置模块。"""
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ngxops.settings")
+
+
+def _configure_logging():
+    """配置控制台 INFO 日志（Waitress + 访问行）。"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout,
+        force=True,
+    )
 
 
 def _run_manage(argv):
@@ -45,6 +59,11 @@ def _parse_serve_args(argv):
         action="store_true",
         help="启动前不自动执行 migrate --noinput",
     )
+    parser.add_argument(
+        "--no-access-log",
+        action="store_true",
+        help="关闭控制台 HTTP 访问日志",
+    )
     return parser.parse_args(argv)
 
 
@@ -55,9 +74,48 @@ def _auto_migrate():
     call_command("migrate", interactive=False, verbosity=1)
 
 
+class _AccessLogMiddleware:
+    """WSGI 访问日志：请求结束后打印一行。"""
+
+    def __init__(self, app):
+        """包装下游 WSGI 应用。"""
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        """记录方法、路径、状态码后转发。"""
+        status_holder = {"code": "-"}
+
+        def _start_response(status, headers, exc_info=None):
+            """捕获响应状态码。"""
+            status_holder["code"] = (status or "-").split(" ", 1)[0]
+            return start_response(status, headers, exc_info)
+
+        try:
+            return self.app(environ, _start_response)
+        finally:
+            remote = environ.get("REMOTE_ADDR") or "-"
+            method = environ.get("REQUEST_METHOD") or "-"
+            path = environ.get("PATH_INFO") or "/"
+            query = environ.get("QUERY_STRING") or ""
+            if query:
+                path = f"{path}?{query}"
+            protocol = environ.get("SERVER_PROTOCOL") or "HTTP/1.0"
+            stamp = datetime.now().strftime("%d/%b/%Y:%H:%M:%S")
+            ACCESS_LOGGER.info(
+                '%s - - [%s] "%s %s %s" %s',
+                remote,
+                stamp,
+                method,
+                path,
+                protocol,
+                status_holder["code"],
+            )
+
+
 def _run_serve(argv):
     """使用 Waitress 启动 WSGI 服务。"""
     args = _parse_serve_args(argv)
+    _configure_logging()
     _setup_django_env()
     import django
 
@@ -69,9 +127,12 @@ def _run_serve(argv):
     from waitress import serve
     from ngxops.wsgi import application
 
+    app = application if args.no_access_log else _AccessLogMiddleware(application)
     print(f"MngxOps 已启动: http://{args.host}:{args.port}/")
     print("管理命令示例: mngxops migrate | mngxops createsuperuser")
-    serve(application, host=args.host, port=args.port)
+    if not args.no_access_log:
+        print("访问日志已开启（可用 --no-access-log 关闭）")
+    serve(app, host=args.host, port=args.port)
 
 
 def main(argv=None):
@@ -98,7 +159,7 @@ def main(argv=None):
         print(
             "用法:\n"
             "  mngxops                 启动 Web 服务（默认 0.0.0.0:8000）\n"
-            "  mngxops serve [--host H] [--port P] [--no-migrate]\n"
+            "  mngxops serve|run|runserver [--host H] [--port P] [--no-migrate] [--no-access-log]\n"
             "  mngxops migrate\n"
             "  mngxops createsuperuser\n"
             "环境变量: MNGXOPS_HOME MNGXOPS_HOST MNGXOPS_PORT MNGXOPS_DEBUG MNGXOPS_SECRET_KEY"
@@ -108,7 +169,8 @@ def main(argv=None):
     if cmd not in ALLOWED_MANAGE_COMMANDS:
         print(
             f"不支持的命令: {cmd}\n"
-            f"允许: {', '.join(sorted(ALLOWED_MANAGE_COMMANDS))}，或无参启动服务",
+            f"允许: {', '.join(sorted(ALLOWED_MANAGE_COMMANDS))}，"
+            f"或 serve/run/runserver / 无参启动服务",
             file=sys.stderr,
         )
         sys.exit(2)
