@@ -28,13 +28,16 @@ def _setup_django_env():
 
 
 def _configure_logging():
-    """配置控制台 INFO 日志（Waitress + 访问行）。"""
+    """配置控制台 INFO 日志（Waitress + 访问行）；兼容 Python 3.6.8 / 3.9.6。"""
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+        handler.close()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         stream=sys.stdout,
-        force=True,
     )
 
 
