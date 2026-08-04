@@ -42,9 +42,9 @@ class NginxSourcePackageForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         from utils.setting_service import get_setting
         try:
-            max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "500") or 500))
+            max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "20") or 20))
         except (TypeError, ValueError):
-            max_mb = 500
+            max_mb = 20
         self.fields["package_file"].help_text = f"支持 .tar.gz / .tgz 格式，最大 {max_mb}MB"
 
     def clean_package_file(self):
@@ -56,9 +56,9 @@ class NginxSourcePackageForm(forms.ModelForm):
             # 按系统设置限制源码包大小
             from utils.setting_service import get_setting
             try:
-                max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "500") or 500))
+                max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "20") or 20))
             except (TypeError, ValueError):
-                max_mb = 500
+                max_mb = 20
             if package_file.size > max_mb * 1024 * 1024:
                 raise forms.ValidationError(f"文件大小不能超过 {max_mb}MB")
         return package_file
@@ -131,9 +131,9 @@ class NginxThirdPartyModulePackageForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         from utils.setting_service import get_setting
         try:
-            max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "500") or 500))
+            max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "20") or 20))
         except (TypeError, ValueError):
-            max_mb = 500
+            max_mb = 20
         self.fields["package_file"].help_text = (
             f"支持 .tar.gz / .tgz / .zip，最大 {max_mb}MB"
         )
@@ -151,9 +151,9 @@ class NginxThirdPartyModulePackageForm(forms.ModelForm):
                 raise forms.ValidationError("仅支持 .tar.gz / .tgz / .zip 格式")
             from utils.setting_service import get_setting
             try:
-                max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "500") or 500))
+                max_mb = max(1, int(get_setting("upgrade.package_max_size_mb", "20") or 20))
             except (TypeError, ValueError):
-                max_mb = 500
+                max_mb = 20
             if package_file.size > max_mb * 1024 * 1024:
                 raise forms.ValidationError(f"文件大小不能超过 {max_mb}MB")
         return package_file

@@ -77,6 +77,9 @@ class Node(models.Model):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="unknown", verbose_name="状态"
     )
+    last_probe_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="上次探测成功时间",
+    )
     is_locked = models.BooleanField(default=False, verbose_name="已锁定")
     description = models.TextField(blank=True, verbose_name="描述")
     is_deleted = models.BooleanField(default=False, db_index=True, verbose_name="已删除")

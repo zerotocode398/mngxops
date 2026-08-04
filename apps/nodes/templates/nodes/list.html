@@ -94,14 +94,15 @@
                                     <th style="width: 4%;">
                                         <input type="checkbox" id="selectAllNodes" title="全选/取消（最多 {{ batch_max_count|default:3 }} 台）" aria-label="全选或取消勾选节点，最多 {{ batch_max_count|default:3 }} 台">
                                     </th>
-                                    <th style="width: 14%;">主机名</th>
-                                    <th style="width: 14%;">IP地址</th>
-                                    <th style="width: 8%;">环境</th>
-                                    <th style="width: 12%;">节点组</th>
-                                    <th style="width: 8%;">凭证</th>
-                                    <th style="width: 8%;">状态</th>
-                                    <th style="width: 14%;">Nginx版本</th>
-                                    <th style="width: 18%;">操作</th>
+                                    <th style="width: 13%;">主机名</th>
+                                    <th style="width: 12%;">IP地址</th>
+                                    <th style="width: 7%;">环境</th>
+                                    <th style="width: 11%;">节点组</th>
+                                    <th style="width: 6%;">凭证</th>
+                                    <th style="width: 7%;">状态</th>
+                                    <th style="width: 12%;">探测时间</th>
+                                    <th style="width: 12%;">Nginx版本</th>
+                                    <th style="width: 16%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -146,6 +147,9 @@
                                         {% endif %}
                                     </td>
                                     <td>{% include "nodes/_status_badge.html" with status=node.status %}</td>
+                                    <td class="text-nowrap small text-muted" title="上次探测成功时间">
+                                        {% if node.last_probe_at %}{{ node.last_probe_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}
+                                    </td>
                                     <td>
                                         <code class="nginx-version-cell"
                                             data-nginx-version="{{ node.nginx_version|default:'' }}">
@@ -298,6 +302,7 @@
                         <p class="small text-muted">创建人: <span id="detailCreatedBy">-</span></p>
                         <p class="small text-muted">创建时间: <span id="detailCreatedAt">-</span></p>
                         <p class="small text-muted">更新时间: <span id="detailUpdatedAt">-</span></p>
+                        <p class="small text-muted">探测时间: <span id="detailLastProbeAt">-</span></p>
                     </div>
                     <!-- 右栏：Nginx信息 + 系统信息 -->
                     <div class="col-md-6 node-detail-right border-start">
@@ -906,6 +911,7 @@
             document.getElementById('detailCreatedBy').textContent = info.created_by;
             document.getElementById('detailCreatedAt').textContent = info.created_at;
             document.getElementById('detailUpdatedAt').textContent = info.updated_at;
+            document.getElementById('detailLastProbeAt').textContent = info.last_probe_at || '-';
             document.getElementById('detailNginxVersion').textContent = formatNginxVersion(info.nginx_version);
             document.getElementById('detailNginxPath').textContent = info.nginx_path;
 

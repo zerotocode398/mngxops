@@ -93,10 +93,10 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
         context = super().get_context_data(**kwargs)
         try:
             context["package_max_size_mb"] = max(
-                1, int(get_setting("upgrade.package_max_size_mb", "500") or 500)
+                1, int(get_setting("upgrade.package_max_size_mb", "20") or 20)
             )
         except (TypeError, ValueError):
-            context["package_max_size_mb"] = 500
+            context["package_max_size_mb"] = 20
         return context
 
     def _wants_json(self):
@@ -270,10 +270,10 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
         context = super().get_context_data(**kwargs)
         try:
             context["package_max_size_mb"] = max(
-                1, int(get_setting("upgrade.package_max_size_mb", "500") or 500)
+                1, int(get_setting("upgrade.package_max_size_mb", "20") or 20)
             )
         except (TypeError, ValueError):
-            context["package_max_size_mb"] = 500
+            context["package_max_size_mb"] = 20
         return context
 
     def _wants_json(self):

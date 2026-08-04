@@ -42,6 +42,11 @@ def refresh_setting_cache(key=None):
         cache.delete_many([f"system_setting:{k}" for k in keys])
 
 
+# 包大小上限：仅当库内仍为旧默认 500 时迁移为新默认 20
+_PACKAGE_MAX_SIZE_LEGACY_DEFAULT = "500"
+_PACKAGE_MAX_SIZE_KEY = "upgrade.package_max_size_mb"
+
+
 def seed_default_settings():
     """初始化预置配置项：upsert 元数据，并删除不在 PRESET 的孤儿键"""
     from apps.settings.models import SystemSetting, PRESET_SETTINGS, preset_key_set
@@ -72,8 +77,18 @@ def seed_default_settings():
                 if getattr(obj, field) != new_val:
                     setattr(obj, field, new_val)
                     update_fields.append(field)
+            # 包上限：旧默认 500 → 新默认 20（已手工改过则保留）
+            if (
+                item["key"] == _PACKAGE_MAX_SIZE_KEY
+                and obj.value == _PACKAGE_MAX_SIZE_LEGACY_DEFAULT
+                and item["value"] != _PACKAGE_MAX_SIZE_LEGACY_DEFAULT
+            ):
+                obj.value = item["value"]
+                update_fields.append("value")
             if update_fields:
                 obj.save(update_fields=update_fields)
+                if "value" in update_fields:
+                    refresh_setting_cache(obj.key)
 
     # 清理已从 PRESET 移除的孤儿配置
     orphan_keys = list(

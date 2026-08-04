@@ -9,14 +9,29 @@ from utils.setting_service import get_setting
 
 logger = logging.getLogger(__name__)
 
-# 进行中任务不清理
+# 进行中任务不清理（任务中心 / 发布历史）
 _ACTIVE_STATUSES = ("pending", "running")
+
+# Nginx 升级任务进行中状态（无独立 running，按阶段排除）
+_UPGRADE_ACTIVE_STATUSES = (
+    "pending",
+    "fetching_config",
+    "uploading_package",
+    "downloading_modules",
+    "configuring",
+    "compiling",
+    "backing_up",
+    "replacing_binary",
+    "upgrading",
+    "verifying",
+)
 
 _RETENTION_KEYS = {
     "task_center": "system.retention_task_center_days",
     "release_history": "system.retention_release_history_days",
     "audit_log": "system.retention_audit_log_days",
     "login_log": "system.retention_login_log_days",
+    "upgrade_task": "system.retention_upgrade_task_days",
 }
 
 
@@ -31,11 +46,12 @@ def _retention_days(key):
 def purge_expired_data():
     """
     按系统设置清理过期历史数据。
-    days<=0 表示不清理该类；pending/running 任务跳过。
+    days<=0 表示不清理该类；进行中任务跳过。
     返回各类删除条数字典。
     """
     from apps.audit.models import AuditLog, LoginLog
     from apps.releases.models import ReleaseTask, TaskCenterTask
+    from apps.upgrade.models import NginxUpgradeTask
 
     now = timezone.now()
     result = {
@@ -43,6 +59,7 @@ def purge_expired_data():
         "release_history": 0,
         "audit_log": 0,
         "login_log": 0,
+        "upgrade_task": 0,
     }
 
     days = _retention_days(_RETENTION_KEYS["task_center"])
@@ -77,14 +94,26 @@ def purge_expired_data():
         deleted, _ = LoginLog.objects.filter(created_at__lt=cutoff).delete()
         result["login_log"] = deleted
 
+    days = _retention_days(_RETENTION_KEYS["upgrade_task"])
+    if days > 0:
+        cutoff = now - timedelta(days=days)
+        deleted, _ = (
+            NginxUpgradeTask.objects.filter(created_at__lt=cutoff)
+            .exclude(status__in=_UPGRADE_ACTIVE_STATUSES)
+            .delete()
+        )
+        result["upgrade_task"] = deleted
+
     total = sum(result.values())
     if total:
         logger.info(
-            "数据保留清理完成: task_center=%s release_history=%s audit_log=%s login_log=%s",
+            "数据保留清理完成: task_center=%s release_history=%s audit_log=%s "
+            "login_log=%s upgrade_task=%s",
             result["task_center"],
             result["release_history"],
             result["audit_log"],
             result["login_log"],
+            result["upgrade_task"],
         )
     return result
 

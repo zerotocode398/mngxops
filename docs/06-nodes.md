@@ -29,6 +29,7 @@
 | `environment` | dev/test/prod |
 | `nginx_version`, `nginx_path` | 版本与二进制；默认路径可来自设置 |
 | `status` | online/offline/unknown |
+| `last_probe_at` | 上次 SSH/采集探测成功时间；失败不清除（Q125） |
 | `is_locked` | 锁定 |
 | `is_deleted` 等 | 逻辑删除 |
 | Managers | `objects`=活跃；`all_objects`=含已删 |
@@ -40,7 +41,7 @@
 ## 4. 页面与路由
 
 见 [15-api-catalog.md](15-api-catalog.md) 节点节。主模板：`nodes/list|create|edit|delete.html`、`group_*`。  
-列表：主配置路径列、批量导入/删除文案（Q77）。
+列表：批量导入/删除文案（Q77）；**探测时间**列展示 `last_probe_at`（Q125）。
 
 ## 5. 用例 / 业务流程
 
@@ -65,7 +66,9 @@
 
 - 单节点 `test/`、批量 `batch-test/`（上限 `node.batch_max_count`）。  
 - 创建 `TaskCenterTask`（`node_ssh_test` / `node_batch_test`），线程执行，更新 `Node.status`。  
-- 进度：全局 overlay 轮询（Q39/Q40）。
+- 探测成功统一经 `mark_node_probe_success`：置 `online` 并写 `last_probe_at`（解锁测、系统信息/Nginx 版本采集、凭证启用测同路径）。  
+- 进度：全局 overlay 轮询（Q39/Q40）。  
+- **不做**周期性自动 SSH（Q126）。
 
 ### 5.5 系统信息 / Nginx 版本
 
@@ -117,6 +120,8 @@ credentials、configs（同步路径）、releases、upgrade、task center、set
 | Q68 | 表单分区 |
 | Q76 | 逻辑删除与同 IP 恢复 |
 | Q77 | 批量导入/删除与文案 |
+| Q125 | 列表探测时间（上次探测成功） |
+| Q126 | 周期性自动 SSH 不做 |
 
 ## 11. 待确认缺口
 

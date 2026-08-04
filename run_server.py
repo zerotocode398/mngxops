@@ -55,7 +55,7 @@ def _parse_serve_args(argv):
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("MNGXOPS_PORT", "8000")),
+        default=int(os.environ.get("MNGXOPS_PORT", "1988")),
     )
     parser.add_argument(
         "--no-migrate",
@@ -161,7 +161,7 @@ def main(argv=None):
     if cmd in ("-h", "--help", "help"):
         print(
             "用法:\n"
-            "  mngxops                 启动 Web 服务（默认 0.0.0.0:8000）\n"
+            "  mngxops                 启动 Web 服务（默认 0.0.0.0:1988）\n"
             "  mngxops serve|run|runserver [--host H] [--port P] [--no-migrate] [--no-access-log]\n"
             "  mngxops migrate\n"
             "  mngxops createsuperuser\n"

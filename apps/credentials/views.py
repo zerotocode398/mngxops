@@ -18,6 +18,7 @@ from apps.releases.models import TaskCenterTask
 from apps.releases.task_cancel import finish_if_active, is_cancelled, update_if_active
 from apps.users.permissions import PermissionRequiredMixin
 from apps.nodes.models import Node
+from apps.nodes.services import mark_node_probe_success
 from utils.ssh import test_ssh_connection
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_setting
@@ -98,8 +99,12 @@ def _run_credential_enable_task(task_id, credential_id):
                         credential.username,
                         private_key=credential.get_private_key(),
                     )
-                node.status = "online" if success else "offline"
-                node.save(update_fields=["status", "updated_at"])
+                if success:
+                    mark_node_probe_success(node)
+                    node.save(update_fields=["status", "last_probe_at", "updated_at"])
+                else:
+                    node.status = "offline"
+                    node.save(update_fields=["status", "updated_at"])
                 return node, success, message or ("连接成功" if success else "连接失败")
             except Exception as exc:
                 node.status = "offline"

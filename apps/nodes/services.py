@@ -5,12 +5,21 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.db import transaction
+from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
 from apps.credentials.models import Credential
 from utils.setting_service import get_setting
 
 from .models import Node, NodeGroup
+
+
+def mark_node_probe_success(node: Node) -> Node:
+    """标记节点探测成功：置 online 并记录上次探测成功时间（不自动 save）。"""
+    node.status = "online"
+    node.last_probe_at = timezone.now()
+    return node
+
 
 # Excel 表头（须与模板完全一致）
 IMPORT_HEADERS = (

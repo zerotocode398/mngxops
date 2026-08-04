@@ -77,6 +77,7 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 | `system.retention_release_history_days` | 同上 |
 | `system.retention_audit_log_days` | 同上 |
 | `system.retention_login_log_days` | 同上 |
+| `system.retention_upgrade_task_days` | 同上（NginxUpgradeTask；跳过进行中阶段） |
 
 ### Nginx 升级
 
@@ -84,14 +85,17 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 |-----|------|
 | `upgrade.default_work_dir` | 升级中心默认；与 sessionStorage baseline（Q81） |
 | `upgrade.make_jobs_default` | 同上 |
-| `upgrade.package_max_size_mb` | 上传校验立即 |
+| `upgrade.package_max_size_mb` | 上传校验立即；源码包与第三方模块包共用；默认 20MB（Q124） |
+
+整数项 PRESET 带 `min_value`/`max_value`，保存 API 与设置页越界拒绝（Q124）。
 
 ## 6. 数据保留
 
 - 中间件：`DataRetentionMiddleware` 触发 `maybe_run_daily_purge`。  
 - 命令：`manage.py purge_expired_data`。  
 - 实现：[`utils/data_retention.py`](../utils/data_retention.py)。  
-- **跳过** pending/running 任务。
+- **跳过** 任务中心/发布历史的 pending/running；升级任务跳过各进行中阶段状态。  
+- 清理对象：TaskCenterTask、ReleaseTask、AuditLog、LoginLog、NginxUpgradeTask。
 
 ## 7. 实现要点
 
@@ -112,7 +116,9 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 ## 9. 异常与边界
 
 - cache TTL 内多进程可能短暂读到旧值；保存侧有 refresh。  
-- 保留 0 天表示关闭清理。
+- 保留 0 天表示关闭清理。  
+- 整数越界：`「{label}」须在 {min} ~ {max} 之间`（Toast）。  
+- `upgrade.package_max_size_mb`：seed 仅当库内仍为旧默认 `500` 时改写为 `20`，已手工修改的值不覆盖。
 
 ## 10. 关联模块
 
@@ -120,7 +126,7 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 
 ## 11. 已落地优化索引
 
-Q40、Q61、Q72–Q75、Q81。
+Q40、Q61、Q72–Q75、Q81、Q123、Q124。
 
 ## 12. 待确认缺口
 

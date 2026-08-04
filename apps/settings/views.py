@@ -6,7 +6,7 @@ from django.shortcuts import render
 from django.views import View
 
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
-from .models import SystemSetting, preset_key_set
+from .models import SystemSetting, preset_by_key, preset_key_set
 from utils.setting_service import refresh_setting_cache
 
 # 分组导航图标与说明文案（仅保留已接线分组）
@@ -37,7 +37,7 @@ GROUP_META = {
     },
     "Nginx升级": {
         "icon": "bi-box-seam",
-        "description": "默认工作目录、并行编译核数与源码包大小限制。",
+        "description": "默认工作目录、并行编译核数与源码包/第三方模块包大小限制。",
     },
 }
 
@@ -61,10 +61,30 @@ UNIT_MAP = {
     "system.retention_release_history_days": "天",
     "system.retention_audit_log_days": "天",
     "system.retention_login_log_days": "天",
+    "system.retention_upgrade_task_days": "天",
     "upgrade.default_work_dir": "",
     "upgrade.make_jobs_default": "核",
     "upgrade.package_max_size_mb": "MB",
 }
+
+
+def _attach_preset_bounds(setting):
+    """从 PRESET 注入整数项 min/max，供模板与保存校验"""
+    preset = preset_by_key().get(setting.key) or {}
+    setting.min_value = preset.get("min_value")
+    setting.max_value = preset.get("max_value")
+    return setting
+
+
+def _validate_integer_range(label, value, min_value, max_value):
+    """校验整数是否在 [min, max]；越界返回错误文案，否则返回 None"""
+    if min_value is None and max_value is None:
+        return None
+    if min_value is not None and value < min_value:
+        return f"「{label}」须在 {min_value} ~ {max_value} 之间"
+    if max_value is not None and value > max_value:
+        return f"「{label}」须在 {min_value} ~ {max_value} 之间"
+    return None
 
 
 def _active_settings_qs(extra_filter=None):
@@ -104,6 +124,7 @@ class SettingsIndexView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 }
                 group_order.append(s.group)
             s.help_unit = UNIT_MAP.get(s.key, "")
+            _attach_preset_bounds(s)
             grouped[s.group]["items"].append(s)
             total_count += 1
 
@@ -151,12 +172,18 @@ class SettingsSaveAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                         "message": f"「{s.label}」不能为空",
                     })
                 try:
-                    int(text)
+                    int_val = int(text)
                 except (TypeError, ValueError):
                     return JsonResponse({
                         "success": False,
                         "message": f"「{s.label}」必须是整数",
                     })
+                _attach_preset_bounds(s)
+                range_err = _validate_integer_range(
+                    s.label, int_val, s.min_value, s.max_value,
+                )
+                if range_err:
+                    return JsonResponse({"success": False, "message": range_err})
                 new_value = text
             if new_value != s.value:
                 s.value = new_value

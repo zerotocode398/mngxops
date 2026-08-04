@@ -15,6 +15,7 @@ from .services import (
     apply_node_import,
     build_import_template_bytes,
     create_or_restore_node,
+    mark_node_probe_success,
     parse_node_import_workbook,
     validate_node_import_rows,
 )
@@ -695,7 +696,7 @@ def node_lock(request):
                                     private_key=credential.get_private_key(),
                                 )
                             if success:
-                                node.status = "online"
+                                mark_node_probe_success(node)
                                 nginx_path = node.nginx_path if node.nginx_path else None
                                 version_success, version_info = get_nginx_version(
                                     node.ip, node.port, credential.username,
@@ -856,7 +857,7 @@ def test_node_connection(request):
 
                     if success and _has_node:
                         _node = Node.objects.get(id=_node_id)
-                        _node.status = "online"
+                        mark_node_probe_success(_node)
                         nginx_path = _node.nginx_path if _node.nginx_path else None
                         version_success, version_info = get_nginx_version(
                             host, ssh_port, credential.username,
@@ -999,7 +1000,7 @@ def batch_test_node_connection(request):
                     )
 
                 if success:
-                    node.status = "online"
+                    mark_node_probe_success(node)
                     nginx_path = node.nginx_path if node.nginx_path else None
                     version_success, version_info = get_nginx_version(
                         node.ip,
@@ -1267,6 +1268,11 @@ def get_node_detail(request):
                 "created_by": node.created_by.username,
                 "created_at": node.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                 "updated_at": node.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "last_probe_at": (
+                    node.last_probe_at.strftime("%Y-%m-%d %H:%M:%S")
+                    if node.last_probe_at
+                    else "-"
+                ),
                 "has_credential": credential is not None and credential.is_enabled,
             }
 
@@ -1327,7 +1333,7 @@ def get_node_system_info(request):
                         )
 
                     if success:
-                        node.status = "online"
+                        mark_node_probe_success(node)
                         node.save()
                     else:
                         node.status = "offline"
@@ -1415,7 +1421,7 @@ def get_node_nginx_version(request):
 
                     if success:
                         node.nginx_version = output
-                        node.status = "online"
+                        mark_node_probe_success(node)
                         node.save()
                     else:
                         node.status = "offline"

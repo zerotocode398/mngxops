@@ -89,7 +89,7 @@
 | 服务 | `apps/upgrade/services.py` |
 | 视图 | `apps/upgrade/views.py` |
 | 内置模块列表 | 主要在 `center.html` / 相关常量 |
-| 包大小限制 | `upgrade.package_max_size_mb`（源码包与模块包共用） |
+| 包大小限制 | `upgrade.package_max_size_mb`（源码包与第三方模块包共用；默认 20MB；label 已标明双通道） |
 
 ## 8. 前后端约定
 

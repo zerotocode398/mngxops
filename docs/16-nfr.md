@@ -46,7 +46,7 @@
 - 默认 SQLite，适合中小规模；生产若换库需自行迁移评估。
 - 保留天数可配；管理命令 `purge_expired_data`。
 - 备份目录：`{release.backup_dir}/{hostname}/`（Q61）。
-- 源码包大小上限：`upgrade.package_max_size_mb`。
+- 源码包/第三方模块包大小上限：`upgrade.package_max_size_mb`（默认 20MB）。
 
 ## 6. 兼容性
 

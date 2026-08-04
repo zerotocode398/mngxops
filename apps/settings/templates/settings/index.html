@@ -258,6 +258,11 @@
                                                    id="id_{{ setting.key }}"
                                                    name="{{ setting.key }}" value="{{ setting.value }}"
                                                    placeholder="{{ setting.placeholder }}"
+                                                   {% if setting.min_value is not None %}min="{{ setting.min_value }}"{% endif %}
+                                                   {% if setting.max_value is not None %}max="{{ setting.max_value }}"{% endif %}
+                                                   data-min="{% if setting.min_value is not None %}{{ setting.min_value }}{% endif %}"
+                                                   data-max="{% if setting.max_value is not None %}{{ setting.max_value }}{% endif %}"
+                                                   data-label="{{ setting.label }}"
                                                    {% if not can_update %}readonly{% endif %}>
                                             {% if setting.help_unit %}
                                             <span class="input-group-text setting-unit-suffix">{{ setting.help_unit }}</span>
@@ -417,6 +422,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
         form.addEventListener('submit', function(e) {
             e.preventDefault();
+            var rangeError = null;
+            form.querySelectorAll('input[type="number"][data-min], input[type="number"][data-max]').forEach(function(inp) {
+                if (rangeError) return;
+                var raw = (inp.value || '').trim();
+                if (raw === '') return;
+                var n = parseInt(raw, 10);
+                if (isNaN(n)) return;
+                var minAttr = inp.getAttribute('data-min');
+                var maxAttr = inp.getAttribute('data-max');
+                var minV = minAttr !== null && minAttr !== '' ? parseInt(minAttr, 10) : null;
+                var maxV = maxAttr !== null && maxAttr !== '' ? parseInt(maxAttr, 10) : null;
+                if (minV !== null && !isNaN(minV) && n < minV) {
+                    rangeError = '「' + (inp.dataset.label || inp.name) + '」须在 ' + minV + ' ~ ' + maxV + ' 之间';
+                } else if (maxV !== null && !isNaN(maxV) && n > maxV) {
+                    rangeError = '「' + (inp.dataset.label || inp.name) + '」须在 ' + minV + ' ~ ' + maxV + ' 之间';
+                }
+            });
+            if (rangeError) {
+                showToast('<i class="bi bi-x-circle-fill"></i> ' + rangeError, 'danger');
+                return;
+            }
             var btn = form.querySelector('button[type="submit"]');
             var originalText = btn ? btn.innerHTML : '';
             if (btn) {
