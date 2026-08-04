@@ -30,7 +30,7 @@
 | `PermissionItem` | `code` 唯一，如 `configs.update` |
 | `UserGroup` | 角色名唯一；M2M permissions |
 | `UserTeam` | 组名唯一；members、roles |
-| `UserProfile` | 1:1 User；mobile、avatar、groups、direct_permissions、remark |
+| `UserProfile` | 1:1 User；avatar、groups、direct_permissions、remark |
 
 Django `User`：`username` 限 `[-a-zA-Z0-9_]+`；中文放姓名字段（Q82）。
 
@@ -49,7 +49,7 @@ Django `User`：`username` 限 `[-a-zA-Z0-9_]+`；中文放姓名字段（Q82）
 
 ### 5.1 用户 CRUD
 
-- 创建：账号、密码、姓名、手机、角色、**所属用户组**（Q83）、直授可选。
+- 创建：账号、密码、姓名、角色、**所属用户组**（Q83）、直授可选。
 - 编辑：同上；路由用 `pk`（Q82）。
 - 删除：确认页。
 - 锁定/解锁：切换 `is_active`。

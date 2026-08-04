@@ -38,15 +38,6 @@
                                 {% endif %}
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label for="{{ form.mobile.id_for_label }}" class="form-label">
-                                    <i class="bi bi-phone"></i> {{ form.mobile.label }}
-                                </label>
-                                {{ form.mobile }}
-                                {% if form.mobile.errors %}
-                                <div class="text-danger mt-1 small">{% for error in form.mobile.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
                                 <label for="{{ form.password1.id_for_label }}" class="form-label">
                                     <i class="bi bi-key"></i> {{ form.password1.label }}
                                 </label>

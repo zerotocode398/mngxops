@@ -6,6 +6,63 @@
 
 ---
 
+## 0. 依赖
+```shell
+Django 3.2 要求 SQLite >= 3.9.0
+1. 先确认当前 Python 使用的 SQLite
+python -c "import sqlite3; print(sqlite3.sqlite_version)"
+
+2. 推荐解决方案：升级系统 SQLite 并重新编译 Python
+wget https://www.sqlite.org/2023/sqlite-autoconf-3420000.tar.gz
+
+tar xf sqlite-autoconf-3420000.tar.gz
+
+cd sqlite-autoconf-3420000
+
+./configure --prefix=/usr/local/sqlite3
+
+make -j4
+
+make install
+
+3. 重新编译 Python 3.6.8
+cd Python-3.6.8
+vim setup.py 
+# 将编译的 sqlite3 添加进去
+        sqlite_inc_paths = [ '/usr/local/sqlite3/include','/usr/include',
+                             '/usr/include/sqlite',
+                             '/usr/include/sqlite3',
+                             '/usr/local/include',
+                             '/usr/local/include/sqlite',
+                             '/usr/local/include/sqlite3',
+                             ]
+
+
+make distclean
+./configure \
+--prefix=/usr/local/python3.6.8 \
+CPPFLAGS="-I/usr/local/sqlite3/include" \
+LDFLAGS="-L/usr/local/sqlite3/lib -Wl,-rpath,/usr/local/sqlite3/lib" \
+--enable-shared
+
+make -j4
+make install
+
+echo "/usr/local/python3.6.8/lib" > /etc/ld.so.conf.d/python3.6.conf
+ldconfig
+
+ldconfig -p | grep python3.6
+...
+libpython3.6m.so.1.0
+...
+
+4. 验证
+[root@5g-005-003 Python-3.6.8]# /usr/local/python3.6.8/bin/python3.6 -c "import sqlite3;print(sqlite3.sqlite_version)"^C
+[root@5g-005-003 Python-3.6.8]# python -c "import sqlite3;print(sqlite3.sqlite_version)"
+3.42.0
+
+```
+
 ## 1. 一页看懂整条链路
 
 ```text

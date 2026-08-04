@@ -36,10 +36,6 @@
                                             <td>{{ object.email|default:"-" }}</td>
                                         </tr>
                                         <tr>
-                                            <th>手机号</th>
-                                            <td>{{ object.profile.mobile|default:"-" }}</td>
-                                        </tr>
-                                        <tr>
                                             <th>超级管理员</th>
                                             <td>
                                                 {% if object.is_superuser %}

@@ -162,12 +162,6 @@ class UserUpdateForm(forms.ModelForm):
         widget=forms.EmailInput(attrs={"class": "form-control"}),
         label="邮箱",
     )
-    mobile = forms.CharField(
-        max_length=20,
-        required=False,
-        widget=forms.TextInput(attrs={"class": "form-control"}),
-        label="手机号",
-    )
     remark = forms.CharField(
         required=False,
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
@@ -244,7 +238,6 @@ class UserUpdateForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             self.fields["teams"].initial = list(self.instance.user_teams.all())
         if self.instance and hasattr(self.instance, "profile"):
-            self.fields["mobile"].initial = self.instance.profile.mobile
             self.fields["remark"].initial = self.instance.profile.remark
             self.fields["email"].initial = self.instance.email
             self.fields["is_superuser"].initial = self.instance.is_superuser
@@ -298,7 +291,6 @@ class UserUpdateForm(forms.ModelForm):
         if commit:
             user.save()
             profile, created = UserProfile.objects.get_or_create(user=user)
-            profile.mobile = self.cleaned_data.get("mobile", "")
             profile.remark = self.cleaned_data.get("remark", "")
             profile.save()
             profile.groups.set(self.cleaned_data.get("groups", []))
