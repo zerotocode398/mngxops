@@ -6,25 +6,21 @@
 
 {% block content %}
 <div class="container-fluid">
-    <div class="card mb-3">
-        <div class="card-header d-flex justify-content-end align-items-center">
-            <div class="d-flex gap-2">
-                {% if user|has_perm_code:"upgrade.create" %}
-                <a href="{% url 'upgrade:center' %}" class="btn btn-primary btn-sm">
-                    <i class="bi bi-rocket-takeoff"></i> 开始升级
-                </a>
-                {% endif %}
-                <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
-                    <i class="bi bi-archive"></i> 源码包
-                </a>
-                <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
-                    <i class="bi bi-puzzle"></i> 模块包
-                </a>
-                <a href="{% url 'upgrade:history' %}" class="btn btn-outline-secondary btn-sm">
-                    <i class="bi bi-clock-history"></i> 历史
-                </a>
-            </div>
-        </div>
+    <div class="d-flex justify-content-end align-items-center mb-3 flex-wrap gap-2">
+        {% if user|has_perm_code:"upgrade.create" %}
+        <a href="{% url 'upgrade:center' %}" class="btn btn-primary btn-sm">
+            <i class="bi bi-rocket-takeoff"></i> 开始升级
+        </a>
+        {% endif %}
+        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-archive"></i> 源码包
+        </a>
+        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-puzzle"></i> 模块包
+        </a>
+        <a href="{% url 'upgrade:history' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-clock-history"></i> 历史
+        </a>
     </div>
 
     <div class="row mb-3">
