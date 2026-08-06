@@ -1,140 +1,263 @@
 {% extends "base.html" %}
+{% load upgrade_filters %}
 
 {% block title %}Nginx 安装中心 - MngxOps{% endblock %}
 {% block page_title %}<i class="bi bi-download"></i> Nginx 安装中心{% endblock %}
 
-{% block extra_css %}
-<style>
-.wizard-steps { display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap; }
-.wizard-steps .step-pill {
-    padding:0.35rem 0.75rem; border-radius:999px; background:var(--bs-light);
-    font-size:0.875rem; color:var(--bs-secondary);
-}
-.wizard-steps .step-pill.active { background:var(--bs-primary); color:#fff; }
-.module-check-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:0.35rem 1rem; }
-.node-chip { display:inline-flex; align-items:center; gap:0.35rem; padding:0.25rem 0.5rem;
-    background:var(--bs-light); border-radius:0.25rem; margin:0.15rem; font-size:0.875rem; }
-</style>
-{% endblock %}
-
 {% block content %}
-{% csrf_token %}
 <div class="container-fluid">
-    <div class="wizard-steps" id="wizardSteps">
-        <span class="step-pill active" data-step="1">1. 节点与源码包</span>
-        <span class="step-pill" data-step="2">2. 编译参数</span>
-        <span class="step-pill" data-step="3">3. 确认安装</span>
-    </div>
+{% csrf_token %}
 
-    <div class="card mb-3 wizard-panel" id="step1">
-        <div class="card-header"><h5 class="mb-0"><span class="badge bg-primary me-2">1</span>选择节点与源码包</h5></div>
-        <div class="card-body">
-            <p class="text-muted small mb-2">目标机应为<strong>尚无可用 Nginx</strong>的在线节点。单次最多 {{ batch_max_count }} 台。</p>
-            <div class="mb-3">
-                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
-                    <i class="bi bi-hdd-network"></i> 选择节点
-                </button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearNodes">清除</button>
-                <div id="selectedChips" class="mt-2"></div>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h5 class="mb-0"><i class="bi bi-download"></i> 安装中心</h5>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'nginx_install:index' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-house"></i> 首页
+        </a>
+        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-archive"></i> 源码包
+        </a>
+        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-puzzle"></i> 模块包
+        </a>
+        <a href="{% url 'nginx_install:history' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-clock-history"></i> 安装历史
+        </a>
+    </div>
+</div>
+
+<style>
+    .wizard-steps { display: flex; gap: 0; margin-bottom: 1rem; border-radius: var(--br-md); overflow: hidden; border: 1px solid var(--gray-200); }
+    .wizard-step-item {
+        flex: 1; text-align: center; padding: 0.65rem 0.5rem; font-size: var(--fs-base);
+        background: var(--gray-100); color: var(--gray-600); border-right: 1px solid var(--gray-200);
+        cursor: default; transition: background var(--transition-fast), color var(--transition-fast);
+    }
+    .wizard-step-item:last-child { border-right: none; }
+    .wizard-step-item.active { background: var(--primary); color: #fff; }
+    .wizard-step-item.done { background: rgba(102, 126, 234, 0.12); color: var(--primary); }
+    .wizard-step-item .step-num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.35rem; height: 1.35rem; border-radius: 50%;
+        background: rgba(0,0,0,0.08); font-size: var(--fs-sm); margin-right: 4px;
+    }
+    .wizard-step-item.active .step-num { background: rgba(255,255,255,0.25); }
+    .wizard-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--gray-200); }
+    .pkg-table-wrap { max-height: 280px; overflow-y: auto; }
+    .pkg-table-wrap tbody tr { cursor: pointer; }
+    .pkg-table-wrap tbody tr.selected { background: rgba(102, 126, 234, 0.08); }
+    .pkg-empty-hint { display: none; }
+    .pkg-empty-hint.show { display: block; }
+    .selected-node-chip {
+        display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+        border: 1px solid var(--gray-200); border-radius: var(--br-md); background: #fff;
+        font-size: var(--fs-base); margin: 2px;
+    }
+    .selected-node-chip .chip-remove { cursor: pointer; color: var(--gray-500); line-height: 1; }
+    .selected-node-chip .chip-remove:hover { color: var(--danger); }
+    .module-checkbox-group {
+        max-height: 250px; overflow-y: auto; border: 1px solid var(--gray-200);
+        border-radius: var(--br-md); padding: 10px;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.25rem 1rem;
+    }
+    .module-checkbox-group label { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; margin: 0; }
+    .kv-info-box {
+        padding: 12px 14px; background: var(--gray-100); border-radius: var(--br-md);
+        border: 1px solid var(--gray-200); font-size: var(--fs-base);
+    }
+    .kv-info-row {
+        display: flex; align-items: flex-start; gap: 8px; min-width: 0;
+        padding: 5px 0; border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    }
+    .kv-info-row:last-child { border-bottom: none; }
+    .kv-info-label {
+        flex: 0 0 96px; color: var(--gray-600); white-space: nowrap; font-size: var(--fs-sm);
+    }
+    .kv-info-label::after { content: ':'; }
+    .kv-info-value {
+        flex: 1; min-width: 0; color: var(--dark); font-size: var(--fs-base);
+        word-break: break-all;
+    }
+    .modal-node-table tbody tr.disabled-row { opacity: 0.55; cursor: not-allowed; }
+</style>
+
+<div class="wizard-steps" id="wizardSteps">
+    <div class="wizard-step-item active" data-step="1"><span class="step-num">1</span>选择目标</div>
+    <div class="wizard-step-item" data-step="2"><span class="step-num">2</span>编译参数</div>
+    <div class="wizard-step-item" data-step="3"><span class="step-num">3</span>确认安装</div>
+</div>
+
+<div class="card mb-3 wizard-panel" id="step1">
+    <div class="card-header">
+        <h5 class="mb-0"><span class="badge bg-primary me-2">1</span> 选择目标节点与源码包</h5>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label"><i class="bi bi-server"></i> 目标节点</label>
+            <div class="border rounded p-2 mb-2" style="min-height: 48px;">
+                <div id="selectedNodeDisplay">
+                    <span class="text-muted small" id="noSelectedNode">请选择一个或多个目标节点</span>
+                </div>
             </div>
-            <div class="table-responsive">
-                <table class="table table-sm data-table mb-0">
+            <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
+                <i class="bi bi-search"></i> <span id="btnSelectNodeLabel">选择节点</span>
+            </button>
+            <div class="form-text mt-2 mb-0">
+                目标机应为<strong>尚无可用 Nginx</strong>的在线节点；单次最多 {{ batch_max_count }} 台。
+            </div>
+        </div>
+
+        <div class="mb-0">
+            <label class="form-label"><i class="bi bi-archive"></i> 源码包</label>
+            {% if packages %}
+            <div class="mb-2">
+                <div class="tag-input-wrapper form-control form-control-sm" id="pkgTagWrapper">
+                    <input type="text" class="tag-input-field" id="pkgSearchField"
+                        placeholder="搜索名称、版本号，回车添加标签" autocomplete="off">
+                </div>
+                <input type="hidden" id="pkgSearchHidden">
+            </div>
+            <div class="pkg-table-wrap border rounded">
+                <table class="table table-sm table-hover mb-0 data-table" id="packageTable">
                     <thead class="table-light">
                         <tr>
-                            <th style="width:40px;"></th>
-                            <th>源码包</th>
-                            <th>版本</th>
-                            <th>描述</th>
+                            <th style="width: 6%;"></th>
+                            <th style="width: 34%;">包名称</th>
+                            <th style="width: 14%;">版本</th>
+                            <th style="width: 16%;">大小</th>
+                            <th style="width: 30%;">上传</th>
                         </tr>
                     </thead>
                     <tbody>
                     {% for pkg in packages %}
-                        <tr class="pkg-row" data-id="{{ pkg.id }}" data-version="{{ pkg.version }}" style="cursor:pointer;">
-                            <td><input type="radio" name="sourcePackage" value="{{ pkg.id }}" class="form-check-input"></td>
-                            <td>{{ pkg.package_file.name|default:pkg.version }}</td>
-                            <td><code>{{ pkg.version }}</code></td>
-                            <td class="text-muted small">{{ pkg.description|default:"-" }}</td>
+                        <tr class="pkg-row" data-id="{{ pkg.id }}" data-version="{{ pkg.version }}"
+                            data-name="{{ pkg.name }}" data-desc="{{ pkg.description|default:'' }}">
+                            <td>
+                                <input type="radio" name="sourcePackage" class="pkg-radio form-check-input"
+                                       value="{{ pkg.id }}" data-version="{{ pkg.version }}">
+                            </td>
+                            <td>
+                                {{ pkg.name }}
+                                {% if pkg.is_official %}<span class="badge bg-success ms-1">官方</span>{% endif %}
+                            </td>
+                            <td><code>{{ pkg.version|nginx_ver }}</code></td>
+                            <td>{{ pkg.file_size|filesizeformat }}</td>
+                            <td>
+                                <small>{{ pkg.created_at|date:"m-d H:i" }}</small>
+                                <small class="text-muted">{{ pkg.uploaded_by.username|default:"-" }}</small>
+                            </td>
                         </tr>
-                    {% empty %}
-                        <tr><td colspan="4" class="text-center text-muted py-4">暂无源码包，请先到升级模块上传</td></tr>
                     {% endfor %}
                     </tbody>
                 </table>
             </div>
-            <div class="d-flex justify-content-end mt-3">
-                <button type="button" class="btn btn-primary btn-sm" onclick="goStep(2)">下一步 <i class="bi bi-chevron-right"></i></button>
+            <div class="empty-state py-3 pkg-empty-hint" id="pkgEmptyHint">
+                <i class="bi bi-inbox"></i>
+                <p>无匹配的源码包</p>
+            </div>
+            {% else %}
+            <div class="empty-state py-3">
+                <i class="bi bi-inbox"></i>
+                <p>暂无源码包，请先上传</p>
+            </div>
+            {% endif %}
+            <div class="mt-2">
+                <a href="{% url 'upgrade:package_upload' %}" class="btn btn-outline-secondary btn-sm" target="_blank">
+                    <i class="bi bi-upload"></i> 上传新包
+                </a>
             </div>
         </div>
-    </div>
 
-    <div class="card mb-3 wizard-panel d-none" id="step2">
-        <div class="card-header"><h5 class="mb-0"><span class="badge bg-primary me-2">2</span>编译参数</h5></div>
-        <div class="card-body">
-            <div class="row g-3 mb-3">
-                <div class="col-md-4">
-                    <label class="form-label">安装路径 (--prefix)</label>
-                    <input type="text" class="form-control form-control-sm" id="targetPrefix" value="{{ default_prefix }}">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">远程工作目录</label>
-                    <input type="text" class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">并行编译 (-j)</label>
-                    <input type="number" class="form-control form-control-sm" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32">
-                </div>
-            </div>
-            <label class="form-label">内置模块</label>
-            <div class="module-check-grid mb-3" id="moduleGrid">
-                {% for mod in default_modules %}
-                <label class="form-check">
-                    <input type="checkbox" class="form-check-input mod-check" value="{{ mod }}" checked>
-                    <code class="small">{{ mod }}</code>
-                </label>
-                {% endfor %}
-            </div>
-            <label class="form-label">额外 configure 参数（可选，每行一个）</label>
-            <textarea class="form-control form-control-sm code-font mb-2" id="extraOpts" rows="3" placeholder="--with-http_gzip_static_module"></textarea>
-            <div class="form-text mb-3">将与 --prefix、已勾选模块合并；无需拉取 nginx -V。</div>
-            <div class="d-flex justify-content-between">
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(1)"><i class="bi bi-chevron-left"></i> 上一步</button>
-                <button type="button" class="btn btn-primary btn-sm" onclick="goStep(3)">下一步 <i class="bi bi-chevron-right"></i></button>
-            </div>
+        <div class="wizard-nav">
+            <span class="text-muted small">已选 <span id="step1NodeCount">0</span> 个节点</span>
+            <button type="button" class="btn btn-primary btn-sm" id="btnStep1Next" onclick="goStep(2)" disabled>
+                下一步 <i class="bi bi-chevron-right"></i>
+            </button>
         </div>
     </div>
+</div>
 
-    <div class="card mb-3 wizard-panel d-none" id="step3">
-        <div class="card-header"><h5 class="mb-0"><span class="badge bg-primary me-2">3</span>确认安装</h5></div>
-        <div class="card-body">
-            <div id="confirmSummary" class="mb-3"></div>
-            <div class="alert alert-info small mb-3">
-                安装成功后将回写节点 Nginx 版本/路径并刷新探测状态，随后<strong>自动执行配置同步</strong>。同步失败不回滚已安装的 Nginx。
+<div class="card mb-3 wizard-panel d-none" id="step2">
+    <div class="card-header">
+        <h5 class="mb-0"><span class="badge bg-primary me-2">2</span> 编译参数</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label class="form-label">安装路径 (--prefix)</label>
+                <input type="text" class="form-control form-control-sm" id="targetPrefix" value="{{ default_prefix }}">
             </div>
-            <div class="d-flex justify-content-between">
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(2)"><i class="bi bi-chevron-left"></i> 上一步</button>
-                <button type="button" class="btn btn-primary btn-sm" id="btnStartInstall">
-                    <i class="bi bi-rocket-takeoff"></i> 开始安装
-                </button>
+            <div class="col-md-4">
+                <label class="form-label">远程工作目录</label>
+                <input type="text" class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">并行编译 (-j)</label>
+                <input type="number" class="form-control form-control-sm" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32">
             </div>
         </div>
-    </div>
+        <label class="form-label">内置模块</label>
+        <div class="module-checkbox-group mb-3" id="moduleGrid">
+            {% for mod in default_modules %}
+            <label>
+                <input type="checkbox" class="form-check-input mod-check" value="{{ mod }}" checked>
+                <code class="small">{{ mod }}</code>
+            </label>
+            {% endfor %}
+        </div>
+        <label class="form-label">额外 configure 参数（可选，每行一个）</label>
+        <textarea class="form-control form-control-sm code-font mb-2" id="extraOpts" rows="3"
+                  placeholder="--with-http_gzip_static_module"></textarea>
+        <div class="form-text mb-0">将与 --prefix、已勾选模块合并；无需拉取 nginx -V。</div>
 
-    <div class="card d-none" id="batchProgressCard">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="bi bi-activity"></i> 安装进度 <small class="text-muted" id="batchNumberLabel"></small></h5>
-            <a href="#" id="batchLogLink" class="btn btn-outline-secondary btn-sm" target="_blank" style="display:none;">
-                <i class="bi bi-journal-text"></i> 完整日志
-            </a>
-        </div>
-        <div class="card-body p-0">
-            <table class="table table-sm mb-0 data-table">
-                <thead class="table-light">
-                    <tr><th>节点</th><th>状态</th><th>进度</th><th>当前步骤</th></tr>
-                </thead>
-                <tbody id="batchProgressBody"></tbody>
-            </table>
+        <div class="wizard-nav">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(1)">
+                <i class="bi bi-chevron-left"></i> 上一步
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="goStep(3)">
+                下一步 <i class="bi bi-chevron-right"></i>
+            </button>
         </div>
     </div>
+</div>
+
+<div class="card mb-3 wizard-panel d-none" id="step3">
+    <div class="card-header">
+        <h5 class="mb-0"><span class="badge bg-primary me-2">3</span> 确认安装</h5>
+    </div>
+    <div class="card-body">
+        <div id="confirmSummary" class="kv-info-box mb-3"></div>
+        <div class="alert alert-info small mb-0">
+            安装成功后将回写节点 Nginx 版本/路径并刷新探测状态，随后<strong>自动执行配置同步</strong>。同步失败不回滚已安装的 Nginx。
+        </div>
+
+        <div class="wizard-nav">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(2)">
+                <i class="bi bi-chevron-left"></i> 上一步
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" id="btnStartInstall">
+                <i class="bi bi-rocket-takeoff"></i> 开始安装
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="card d-none" id="batchProgressCard">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-activity"></i> 安装进度 <small class="text-muted" id="batchNumberLabel"></small></h5>
+        <a href="#" id="batchLogLink" class="btn btn-outline-secondary btn-sm" target="_blank" style="display:none;">
+            <i class="bi bi-journal-text"></i> 完整日志
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0 data-table">
+            <thead class="table-light">
+                <tr><th>节点</th><th>状态</th><th>进度</th><th>当前步骤</th></tr>
+            </thead>
+            <tbody id="batchProgressBody"></tbody>
+        </table>
+    </div>
+</div>
 </div>
 
 <div class="modal fade" id="selectNodeModal" tabindex="-1">
@@ -150,7 +273,7 @@
                     <button class="btn btn-outline-secondary" type="button" id="btnSearchNodes">搜索</button>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm data-table mb-0">
+                    <table class="table table-sm data-table mb-0 modal-node-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width:36px;"><input type="checkbox" id="selectAllNodes"></th>
@@ -182,6 +305,7 @@
     var selected = {};
     var draft = {};
     var pollTimer = null;
+    var pkgSearchTags = [];
 
     function csrfToken() {
         var el = document.querySelector('[name=csrfmiddlewaretoken]');
@@ -198,18 +322,49 @@
 
     function selectedCount() { return Object.keys(selected).length; }
 
+    function updateStep1Next() {
+        var hasPkg = !!document.querySelector('input[name=sourcePackage]:checked');
+        var btn = document.getElementById('btnStep1Next');
+        if (btn) btn.disabled = !(selectedCount() > 0 && hasPkg);
+        var countEl = document.getElementById('step1NodeCount');
+        if (countEl) countEl.textContent = String(selectedCount());
+        var label = document.getElementById('btnSelectNodeLabel');
+        if (label) {
+            label.textContent = selectedCount() ? ('已选 ' + selectedCount() + ' 台，继续选择') : '选择节点';
+        }
+    }
+
     function renderChips() {
-        var box = document.getElementById('selectedChips');
+        var box = document.getElementById('selectedNodeDisplay');
         var ids = Object.keys(selected);
         if (!ids.length) {
-            box.innerHTML = '<span class="text-muted small">未选择节点</span>';
+            box.innerHTML = '<span class="text-muted small" id="noSelectedNode">请选择一个或多个目标节点</span>';
+            updateStep1Next();
             return;
         }
         box.innerHTML = ids.map(function (id) {
             var n = selected[id];
-            return '<span class="node-chip">' + escapeHtml(n.hostname) +
-                ' <small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span>';
+            return '<span class="selected-node-chip" data-id="' + id + '">' +
+                escapeHtml(n.hostname) +
+                ' <small class="text-muted">(' + escapeHtml(n.ip) + ')</small>' +
+                ' <span class="chip-remove" title="移除" data-id="' + id + '">&times;</span></span>';
         }).join('');
+        box.querySelectorAll('.chip-remove').forEach(function (el) {
+            el.addEventListener('click', function (e) {
+                e.stopPropagation();
+                delete selected[el.getAttribute('data-id')];
+                renderChips();
+            });
+        });
+        updateStep1Next();
+    }
+
+    function syncWizardSteps(step) {
+        document.querySelectorAll('#wizardSteps .wizard-step-item').forEach(function (el) {
+            var n = Number(el.getAttribute('data-step'));
+            el.classList.toggle('active', n === step);
+            el.classList.toggle('done', n < step);
+        });
     }
 
     function goStep(step) {
@@ -226,9 +381,7 @@
         }
         document.querySelectorAll('.wizard-panel').forEach(function (el) { el.classList.add('d-none'); });
         document.getElementById('step' + step).classList.remove('d-none');
-        document.querySelectorAll('#wizardSteps .step-pill').forEach(function (el) {
-            el.classList.toggle('active', Number(el.getAttribute('data-step')) === step);
-        });
+        syncWizardSteps(step);
     }
     window.goStep = goStep;
 
@@ -247,30 +400,109 @@
         var pkg = document.querySelector('input[name=sourcePackage]:checked');
         var pkgRow = pkg ? pkg.closest('tr') : null;
         var version = pkgRow ? pkgRow.getAttribute('data-version') : '-';
+        var pkgName = pkgRow ? pkgRow.getAttribute('data-name') : '-';
         var names = Object.keys(selected).map(function (id) { return selected[id].hostname; }).join('、');
         var prefix = document.getElementById('targetPrefix').value.trim() || '/usr/local/nginx';
         var mods = getAddedModules();
         document.getElementById('confirmSummary').innerHTML =
-            '<p><strong>节点（' + selectedCount() + '）</strong>：<code>' + escapeHtml(names) + '</code></p>' +
-            '<p><strong>版本</strong>：<code>' + escapeHtml(version) + '</code></p>' +
-            '<p><strong>安装路径</strong>：<code>' + escapeHtml(prefix) + '</code></p>' +
-            '<p><strong>工作目录</strong>：<code>' + escapeHtml(document.getElementById('remoteWorkDir').value) + '</code></p>' +
-            '<p><strong>make -j</strong>：' + escapeHtml(document.getElementById('makeJobs').value) + '</p>' +
-            '<p class="mb-0"><strong>模块</strong>：<code class="small">' + escapeHtml(mods.join(' ')) + '</code></p>';
+            '<div class="kv-info-row"><span class="kv-info-label">节点（' + selectedCount() + '）</span>' +
+            '<span class="kv-info-value"><code>' + escapeHtml(names) + '</code></span></div>' +
+            '<div class="kv-info-row"><span class="kv-info-label">源码包</span>' +
+            '<span class="kv-info-value">' + escapeHtml(pkgName) + ' <code>' + escapeHtml(version) + '</code></span></div>' +
+            '<div class="kv-info-row"><span class="kv-info-label">安装路径</span>' +
+            '<span class="kv-info-value"><code>' + escapeHtml(prefix) + '</code></span></div>' +
+            '<div class="kv-info-row"><span class="kv-info-label">工作目录</span>' +
+            '<span class="kv-info-value"><code>' + escapeHtml(document.getElementById('remoteWorkDir').value) + '</code></span></div>' +
+            '<div class="kv-info-row"><span class="kv-info-label">make -j</span>' +
+            '<span class="kv-info-value">' + escapeHtml(document.getElementById('makeJobs').value) + '</span></div>' +
+            '<div class="kv-info-row"><span class="kv-info-label">模块</span>' +
+            '<span class="kv-info-value code-font"><code class="small">' + escapeHtml(mods.join(' ')) + '</code></span></div>';
+    }
+
+    function markPkgSelected(row) {
+        document.querySelectorAll('#packageTable .pkg-row').forEach(function (r) {
+            r.classList.remove('selected');
+        });
+        if (row) row.classList.add('selected');
+        updateStep1Next();
     }
 
     document.querySelectorAll('.pkg-row').forEach(function (row) {
         row.addEventListener('click', function (e) {
-            if (e.target.tagName === 'INPUT') return;
+            if (e.target.tagName === 'INPUT') {
+                markPkgSelected(row);
+                return;
+            }
             var radio = row.querySelector('input[type=radio]');
-            if (radio) radio.checked = true;
+            if (radio) {
+                radio.checked = true;
+                markPkgSelected(row);
+            }
         });
+        var radio = row.querySelector('input[type=radio]');
+        if (radio) {
+            radio.addEventListener('change', function () { markPkgSelected(row); });
+        }
     });
 
-    document.getElementById('btnClearNodes').addEventListener('click', function () {
-        selected = {};
-        renderChips();
-    });
+    function filterPackages() {
+        var tags = pkgSearchTags.map(function (t) { return t.toLowerCase(); });
+        var live = (document.getElementById('pkgSearchField').value || '').trim().toLowerCase();
+        var terms = tags.slice();
+        if (live) terms.push(live);
+        var visible = 0;
+        document.querySelectorAll('#packageTable .pkg-row').forEach(function (row) {
+            var name = (row.getAttribute('data-name') || '').toLowerCase();
+            var ver = (row.getAttribute('data-version') || '').toLowerCase();
+            var desc = (row.getAttribute('data-desc') || '').toLowerCase();
+            var ok = !terms.length || terms.every(function (t) {
+                return name.indexOf(t) >= 0 || ver.indexOf(t) >= 0 || desc.indexOf(t) >= 0;
+            });
+            row.style.display = ok ? '' : 'none';
+            if (ok) visible += 1;
+        });
+        var hint = document.getElementById('pkgEmptyHint');
+        var wrap = document.querySelector('.pkg-table-wrap');
+        if (hint) hint.classList.toggle('show', visible === 0);
+        if (wrap) wrap.style.display = visible === 0 ? 'none' : '';
+    }
+
+    function renderPkgTags() {
+        var wrapper = document.getElementById('pkgTagWrapper');
+        var field = document.getElementById('pkgSearchField');
+        if (!wrapper || !field) return;
+        wrapper.querySelectorAll('.tag-badge').forEach(function (b) { b.remove(); });
+        pkgSearchTags.forEach(function (text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = escapeHtml(text) + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+                e.stopPropagation();
+                pkgSearchTags = pkgSearchTags.filter(function (t) { return t !== text; });
+                renderPkgTags();
+                filterPackages();
+            });
+            wrapper.insertBefore(badge, field);
+        });
+        filterPackages();
+    }
+
+    var pkgField = document.getElementById('pkgSearchField');
+    if (pkgField) {
+        pkgField.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = (pkgField.value || '').trim();
+                if (text && pkgSearchTags.indexOf(text) < 0) {
+                    pkgSearchTags.push(text);
+                    pkgField.value = '';
+                    renderPkgTags();
+                }
+            }
+        });
+        pkgField.addEventListener('input', filterPackages);
+    }
 
     function doSearch() {
         var q = document.getElementById('nodeSearch').value.trim();
@@ -287,14 +519,17 @@
                     var checked = draft[String(n.id)] ? ' checked' : '';
                     if (!selectable) checked = '';
                     var nginx = n.nginx_version || '-';
-                    return '<tr class="' + (selectable ? '' : 'table-secondary') + '" data-id="' + n.id + '">' +
-                        '<td><input type="checkbox" class="node-cb" value="' + n.id + '"' + checked +
+                    return '<tr class="' + (selectable ? '' : 'disabled-row table-secondary') + '" data-id="' + n.id + '">' +
+                        '<td><input type="checkbox" class="node-cb form-check-input" value="' + n.id + '"' + checked +
                         (selectable ? '' : ' disabled') +
                         ' data-hostname="' + escapeHtml(n.hostname) + '" data-ip="' + escapeHtml(n.ip) + '"></td>' +
                         '<td>' + escapeHtml(n.hostname) + ' <small class="text-muted">(' + escapeHtml(n.ip) + ')</small></td>' +
                         '<td>' + escapeHtml(n.status) + '</td>' +
                         '<td><code class="small">' + escapeHtml(nginx) + '</code></td></tr>';
                 }).join('') || '<tr><td colspan="4" class="text-center text-muted">无结果</td></tr>';
+                if (typeof bindModalTableRowToggle === 'function') {
+                    bindModalTableRowToggle(body, '.node-cb');
+                }
             });
     }
 
@@ -316,7 +551,11 @@
     document.getElementById('btnConfirmNodes').addEventListener('click', function () {
         draft = {};
         document.querySelectorAll('#nodeSearchBody .node-cb:checked').forEach(function (cb) {
-            draft[cb.value] = { id: Number(cb.value), hostname: cb.getAttribute('data-hostname'), ip: cb.getAttribute('data-ip') };
+            draft[cb.value] = {
+                id: Number(cb.value),
+                hostname: cb.getAttribute('data-hostname'),
+                ip: cb.getAttribute('data-ip')
+            };
         });
         if (Object.keys(draft).length > BATCH_MAX) {
             showAlert('提示', '单次最多选择 ' + BATCH_MAX + ' 台节点');
@@ -339,7 +578,7 @@
             showAsyncProgressOverlay('Nginx 安装');
         }
         if (firstTcId && typeof startAsyncProgressPolling === 'function') {
-            startAsyncProgressPolling(firstTcId, function (task) {
+            startAsyncProgressPolling(firstTcId, function () {
                 afterBatchDone(batch);
             });
         }
@@ -375,7 +614,9 @@
 
     function afterBatchDone(batch, data) {
         data = data || {};
-        var syncFail = (data.tasks || []).some(function (t) { return t.status === 'success' && t.sync_ok === false; });
+        var syncFail = (data.tasks || []).some(function (t) {
+            return t.status === 'success' && t.sync_ok === false;
+        });
         if (syncFail) {
             showConfirm(
                 '安装完成',
