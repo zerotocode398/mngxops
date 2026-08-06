@@ -14,10 +14,10 @@
         <a href="{% url 'nginx_install:index' %}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-house"></i> 首页
         </a>
-        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
+        <a href="{% url 'upgrade:package_list' %}?nav=nginx_install" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-archive"></i> 源码包
         </a>
-        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
+        <a href="{% url 'upgrade:module_package_list' %}?nav=nginx_install" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-puzzle"></i> 模块包
         </a>
         <a href="{% url 'nginx_install:history' %}" class="btn btn-outline-secondary btn-sm">

@@ -8,7 +8,7 @@
 <div class="container-fluid">
 <div class="row">
     <div class="col-md-8 mx-auto">
-        <a href="{% url 'upgrade:package_list' %}" class="btn btn-sm btn-outline-secondary mb-3">
+        <a href="{% url 'upgrade:package_list' %}{{ nav_qs }}" class="btn btn-sm btn-outline-secondary mb-3">
             <i class="bi bi-arrow-left"></i> 返回列表
         </a>
 
@@ -20,6 +20,7 @@
                 <form method="post" enctype="multipart/form-data" id="uploadForm">
                     {% csrf_token %}
                     <input type="hidden" name="overwrite" id="id_overwrite" value="">
+                    {% if sidebar_nav %}<input type="hidden" name="nav" value="{{ sidebar_nav }}">{% endif %}
 
                     <!-- 拖拽上传区域 -->
                     <div class="upload-dropzone mb-4" id="dropZone">
@@ -75,7 +76,7 @@
                         <button type="submit" class="btn btn-primary" id="btnSubmit">
                             <i class="bi bi-upload"></i> 上传并校验
                         </button>
-                        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary"><i class="bi bi-x-circle"></i> 取消</a>
+                        <a href="{% url 'upgrade:package_list' %}{{ nav_qs }}" class="btn btn-outline-secondary"><i class="bi bi-x-circle"></i> 取消</a>
                     </div>
                 </form>
             </div>
@@ -220,7 +221,7 @@
                 finishUploadProgress(true, data.message || '上传成功');
                 if (window.showToast) showToast(data.message || '上传成功', 'success');
                 setTimeout(function() {
-                    window.location.href = data.redirect || '{% url "upgrade:package_list" %}';
+                    window.location.href = data.redirect || '{% url "upgrade:package_list" %}{{ nav_qs }}';
                 }, 600);
                 return;
             }

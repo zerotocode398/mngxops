@@ -8,11 +8,11 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-puzzle"></i> 第三方模块包列表</h5>
     <div class="d-flex gap-2">
-        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
+        <a href="{% url 'upgrade:package_list' %}{{ nav_qs }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-archive"></i> 源码包
         </a>
         {% if user|has_perm_code:"upgrade.create" %}
-        <a href="{% url 'upgrade:module_package_upload' %}" class="btn btn-primary btn-sm">
+        <a href="{% url 'upgrade:module_package_upload' %}{{ nav_qs }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg"></i> 上传模块包
         </a>
         {% endif %}
@@ -54,7 +54,7 @@
                             </a>
                             {% if user|has_perm_code:"upgrade.delete" %}
                             <button type="button" class="btn btn-sm btn-outline-danger" title="删除"
-                                onclick="submitPostConfirm('确认删除', '确定删除此模块包？', '{% url 'upgrade:module_package_delete' pkg.id %}')">
+                                onclick="submitPostConfirm('确认删除', '确定删除此模块包？', '{% url 'upgrade:module_package_delete' pkg.id %}{{ nav_qs }}')">
                                 <i class="bi bi-trash"></i>
                             </button>
                             {% endif %}
@@ -69,7 +69,7 @@
             <i class="bi bi-inbox"></i>
             <p>暂无第三方模块包。无外网节点升级时可先上传模块压缩包，再在升级中心选择离线引入。</p>
             {% if user|has_perm_code:"upgrade.create" %}
-            <a href="{% url 'upgrade:module_package_upload' %}" class="btn btn-primary mt-2">
+            <a href="{% url 'upgrade:module_package_upload' %}{{ nav_qs }}" class="btn btn-primary mt-2">
                 <i class="bi bi-upload"></i> 上传模块包
             </a>
             {% endif %}
@@ -81,8 +81,9 @@
 {% if is_paginated %}
 <div class="d-flex justify-content-between align-items-center mt-3">
     <form method="get" class="d-flex align-items-center gap-2">
+        {% if sidebar_nav %}<input type="hidden" name="nav" value="{{ sidebar_nav }}">{% endif %}
         <label class="form-label mb-0 small">每页</label>
-        <select name="per_page" class="form-select form-select-sm w-auto">
+        <select name="per_page" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
             {% for opt in per_page_options %}
             <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }}</option>
             {% endfor %}

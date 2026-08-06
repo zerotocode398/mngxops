@@ -4,9 +4,11 @@ import logging
 import threading
 
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.paginator import Paginator
+from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
-from django.views.generic import TemplateView, View
+from django.views.generic import ListView, TemplateView, View
 
 from apps.nodes.models import Node
 from apps.releases.models import TaskCenterTask
@@ -19,6 +21,7 @@ from apps.releases.task_result import (
 )
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.nginx_ops import reload_nginx, restart_nginx, start_nginx, stop_nginx
+from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_setting
 
 logger = logging.getLogger(__name__)
@@ -30,7 +33,6 @@ _ACTION_MAP = {
     "reload": ("重载", reload_nginx),
     "restart": ("重启", restart_nginx),
 }
-
 
 def _batch_max_count():
     """读取批量操作最大节点数"""
@@ -59,6 +61,57 @@ class NginxServiceIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         context = super().get_context_data(**kwargs)
         context["batch_max_count"] = _batch_max_count()
         context["can_execute"] = user_has_permission(self.request.user, "nodes", "update")
+        return context
+
+
+class NginxServiceHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView):
+    """Nginx 启停历史（基于 TaskCenterTask）"""
+
+    model = TaskCenterTask
+    template_name = "nginx_service/history.html"
+    context_object_name = "tasks"
+    paginate_by = None
+    ordering = ["-created_at"]
+    permission_resource = "nodes"
+    permission_action = "read"
+
+    def get_queryset(self):
+        """仅 nginx_service_control，支持搜索与状态筛选"""
+        qs = TaskCenterTask.objects.filter(
+            operation_type="nginx_service_control"
+        ).select_related("trigger_user")
+        search = (self.request.GET.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(target_hostnames__icontains=search)
+                | Q(target_ips__icontains=search)
+                | Q(target_configs__icontains=search)
+                | Q(detail__icontains=search)
+            )
+        status = (self.request.GET.get("status") or "").strip()
+        if status == "running":
+            qs = qs.exclude(status__in=["success", "failed", "cancelled"])
+        elif status:
+            qs = qs.filter(status=status)
+        return qs.order_by("-created_at")
+
+    def get_context_data(self, **kwargs):
+        """注入分页、筛选与动作标签"""
+        context = super().get_context_data(**kwargs)
+        tasks = self.get_queryset()
+        per_page = self.get_paginate_by(None)
+        paginator = Paginator(list(tasks), per_page)
+        page_obj = paginator.get_page(self.request.GET.get("page", 1))
+        context["tasks"] = page_obj.object_list
+        context["page_obj"] = page_obj
+        context["is_paginated"] = page_obj.has_other_pages()
+        context["search"] = (self.request.GET.get("search") or "").strip()
+        context["status_filter"] = (self.request.GET.get("status") or "").strip()
+        context["status_choices"] = [("running", "进行中")] + list(
+            TaskCenterTask.STATUS_CHOICES
+        )
+        context["per_page"] = per_page
+        context["per_page_options"] = self.per_page_options
         return context
 
 

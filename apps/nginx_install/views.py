@@ -8,7 +8,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.paginator import Paginator
 from django.db import close_old_connections
+from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.generic import ListView, TemplateView, View
@@ -18,6 +20,7 @@ from apps.nodes.models import Node
 from apps.releases.models import TaskCenterTask
 from apps.upgrade.models import NginxSourcePackage, NginxThirdPartyModulePackage
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
+from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_setting
 
 from .models import NginxInstallTask
@@ -108,27 +111,56 @@ class NginxInstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Templa
         return context
 
 
-class NginxInstallHistoryView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
-    """安装历史列表"""
+class NginxInstallHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView):
+    """安装历史列表（对齐升级历史：搜索/状态/每页条数）"""
 
     model = NginxInstallTask
     template_name = "nginx_install/history.html"
     context_object_name = "tasks"
-    paginate_by = 20
+    paginate_by = None
+    ordering = ["-created_at"]
     permission_resource = "upgrade"
     permission_action = "read"
 
     def get_queryset(self):
-        """按状态筛选安装任务"""
+        """按搜索词与状态筛选安装任务"""
         qs = NginxInstallTask.objects.select_related(
             "node", "operator", "source_package", "task_center"
         )
+        search = (self.request.GET.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(node__hostname__icontains=search)
+                | Q(node__ip__icontains=search)
+                | Q(target_version__icontains=search)
+                | Q(target_prefix__icontains=search)
+                | Q(batch_number__icontains=search)
+            )
         status = (self.request.GET.get("status") or "").strip()
         if status == "running":
             qs = qs.exclude(status__in=["success", "failed", "cancelled"])
         elif status:
             qs = qs.filter(status=status)
         return qs.order_by("-created_at")
+
+    def get_context_data(self, **kwargs):
+        """注入分页与筛选上下文"""
+        context = super().get_context_data(**kwargs)
+        tasks = self.get_queryset()
+        per_page = self.get_paginate_by(None)
+        paginator = Paginator(list(tasks), per_page)
+        page_obj = paginator.get_page(self.request.GET.get("page", 1))
+        context["tasks"] = page_obj.object_list
+        context["page_obj"] = page_obj
+        context["is_paginated"] = page_obj.has_other_pages()
+        context["search"] = (self.request.GET.get("search") or "").strip()
+        context["status_filter"] = (self.request.GET.get("status") or "").strip()
+        context["status_choices"] = [("running", "进行中")] + list(
+            NginxInstallTask.STATUS_CHOICES
+        )
+        context["per_page"] = per_page
+        context["per_page_options"] = self.per_page_options
+        return context
 
 
 class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):

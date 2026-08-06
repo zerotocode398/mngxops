@@ -36,6 +36,7 @@ from .services import (
 )
 
 from apps.users.permissions import PermissionRequiredMixin
+from utils.nav_context import append_nav_query, get_sidebar_nav, nav_context
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_setting
 from apps.nodes.models import Node
@@ -70,6 +71,7 @@ class PackageListView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePagina
         context["is_paginated"] = page_obj.has_other_pages()
         context["per_page"] = per_page
         context["per_page_options"] = self.per_page_options
+        context.update(nav_context(self.request))
         return context
 
 
@@ -97,6 +99,7 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
             )
         except (TypeError, ValueError):
             context["package_max_size_mb"] = 20
+        context.update(nav_context(self.request))
         return context
 
     def _wants_json(self):
@@ -169,7 +172,8 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
         return super().form_invalid(form)
 
     def get_success_url(self):
-        return reverse("upgrade:package_list")
+        """上传成功回列表，保留侧栏 nav 透传"""
+        return append_nav_query(reverse("upgrade:package_list"), get_sidebar_nav(self.request))
 
 
 class PackageVersionCheckView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -200,8 +204,9 @@ class PackageDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         package.package_file.delete(save=False)
         package.delete()
         messages.success(request, f"源码包 {name} 已删除")
-        return redirect("upgrade:package_list")
-
+        return redirect(
+            append_nav_query(reverse("upgrade:package_list"), get_sidebar_nav(request))
+        )
 
 class PackageDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """下载源码包"""
@@ -248,6 +253,7 @@ class ModulePackageListView(LoginRequiredMixin, PermissionRequiredMixin, PerPage
         context["is_paginated"] = page_obj.has_other_pages()
         context["per_page"] = per_page
         context["per_page_options"] = self.per_page_options
+        context.update(nav_context(self.request))
         return context
 
 
@@ -274,8 +280,8 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
             )
         except (TypeError, ValueError):
             context["package_max_size_mb"] = 20
+        context.update(nav_context(self.request))
         return context
-
     def _wants_json(self):
         """是否返回 JSON（XHR 上传）"""
         return (
@@ -345,8 +351,10 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
         return super().form_invalid(form)
 
     def get_success_url(self):
-        """上传成功回列表"""
-        return reverse("upgrade:module_package_list")
+        """上传成功回列表，保留侧栏 nav 透传"""
+        return append_nav_query(
+            reverse("upgrade:module_package_list"), get_sidebar_nav(self.request)
+        )
 
 
 class ModulePackageCheckView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -380,8 +388,11 @@ class ModulePackageDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View)
         package.package_file.delete(save=False)
         package.delete()
         messages.success(request, f"模块包 {label} 已删除")
-        return redirect("upgrade:module_package_list")
-
+        return redirect(
+            append_nav_query(
+                reverse("upgrade:module_package_list"), get_sidebar_nav(request)
+            )
+        )
 
 class ModulePackageDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """下载第三方模块离线包"""

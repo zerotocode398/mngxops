@@ -8,11 +8,11 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0"><i class="bi bi-box"></i> 源码包列表</h5>
     <div class="d-flex gap-2">
-        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
+        <a href="{% url 'upgrade:module_package_list' %}{{ nav_qs }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-puzzle"></i> 模块包
         </a>
         {% if user|has_perm_code:"upgrade.create" %}
-        <a href="{% url 'upgrade:package_upload' %}" class="btn btn-primary btn-sm">
+        <a href="{% url 'upgrade:package_upload' %}{{ nav_qs }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg"></i> 上传源码包
         </a>
         {% endif %}
@@ -56,10 +56,10 @@
                                 <i class="bi bi-download"></i>
                             </a>
                             {% if user|has_perm_code:"upgrade.delete" %}
-                            <form method="post" action="{% url 'upgrade:package_delete' pkg.id %}" style="display:inline" id="deletePkgForm{{ pkg.id }}">
+                            <form method="post" action="{% url 'upgrade:package_delete' pkg.id %}{{ nav_qs }}" style="display:inline" id="deletePkgForm{{ pkg.id }}">
                                 {% csrf_token %}
                                 <button type="button" class="btn btn-sm btn-outline-danger" title="删除"
-                                    onclick="submitPostConfirm('确认删除', '确定删除此源码包？', '{% url 'upgrade:package_delete' pkg.id %}')">
+                                    onclick="submitPostConfirm('确认删除', '确定删除此源码包？', '{% url 'upgrade:package_delete' pkg.id %}{{ nav_qs }}')">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </form>
@@ -75,7 +75,7 @@
             <i class="bi bi-inbox"></i>
             <p>暂无源码包，请先上传 Nginx 源码包后再进行升级操作。</p>
             {% if user|has_perm_code:"upgrade.create" %}
-            <a href="{% url 'upgrade:package_upload' %}" class="btn btn-primary mt-2">
+            <a href="{% url 'upgrade:package_upload' %}{{ nav_qs }}" class="btn btn-primary mt-2">
                 <i class="bi bi-upload"></i> 上传源码包
             </a>
             {% endif %}
@@ -87,8 +87,9 @@
 {% if is_paginated %}
 <div class="d-flex justify-content-between align-items-center mt-3">
     <form method="get" class="d-flex align-items-center gap-2">
+        {% if sidebar_nav %}<input type="hidden" name="nav" value="{{ sidebar_nav }}">{% endif %}
         <label class="form-label mb-0 small">每页</label>
-        <select name="per_page" class="form-select form-select-sm w-auto">
+        <select name="per_page" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
             {% for opt in per_page_options %}
             <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }}</option>
             {% endfor %}

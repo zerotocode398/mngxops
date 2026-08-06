@@ -7,5 +7,6 @@ app_name = "nginx_service"
 
 urlpatterns = [
     path("", views.NginxServiceIndexView.as_view(), name="index"),
+    path("history/", views.NginxServiceHistoryView.as_view(), name="history"),
     path("api/execute/", views.NginxServiceExecuteAPIView.as_view(), name="api_execute"),
 ]

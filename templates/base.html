@@ -1585,10 +1585,13 @@
                     'upgrade:center': 'upgrade',
                     'upgrade:package_list': 'upgrade',
                     'upgrade:package_upload': 'upgrade',
+                    'upgrade:module_package_list': 'upgrade',
+                    'upgrade:module_package_upload': 'upgrade',
                     'upgrade:history': 'upgrade',
                     'upgrade:task_log': 'upgrade',
                     'nginx_service:index': 'nginx_service',
                     'nginx_service:api_execute': 'nginx_service',
+                    'nginx_service:history': 'nginx_service',
                     'nginx_install:index': 'nginx_install',
                     'nginx_install:center': 'nginx_install',
                     'nginx_install:history': 'nginx_install',
@@ -1635,6 +1638,14 @@
                 if (navFallbackMap[exactKey]) {
                     navKey = navFallbackMap[exactKey];
                 }
+                // 共享页（源码包等）可通过 ?nav= 覆盖侧栏高亮
+                try {
+                    var navOverride = new URLSearchParams(window.location.search).get('nav');
+                    var allowedNav = { nginx_install: 1, upgrade: 1, nginx_service: 1 };
+                    if (navOverride && allowedNav[navOverride]) {
+                        navKey = navOverride;
+                    }
+                } catch (e) { /* ignore */ }
                 let matchedLink = document.querySelector('.sidebar .nav-link[data-nav="' + navKey + '"]');
                 if (!matchedLink) {
                     matchedLink = document.querySelector('.sidebar .nav-link[data-nav="' + currentAppName + '"]');

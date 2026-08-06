@@ -52,6 +52,27 @@ class NginxServiceExecuteTests(TestCase):
         resp = self.client.get(reverse("nginx_service:index"))
         self.assertEqual(resp.status_code, 200)
 
+    def test_history_page_ok(self):
+        """启停历史页可访问并仅展示启停任务"""
+        TaskCenterTask.objects.create(
+            operation_type="nginx_service_control",
+            status="success",
+            target_configs="reload",
+            target_hostnames="ngx-1",
+            target_ips="10.0.0.11",
+            trigger_user=self.user,
+        )
+        TaskCenterTask.objects.create(
+            operation_type="nginx_upgrade",
+            status="success",
+            trigger_user=self.user,
+        )
+        resp = self.client.get(reverse("nginx_service:history"))
+        self.assertEqual(resp.status_code, 200)
+        tasks = list(resp.context["tasks"])
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0].operation_type, "nginx_service_control")
+
     def test_invalid_action_rejected(self):
         """非法 action 拒绝"""
         resp = self._post({"node_ids": [self.node.id], "action": "foo"})

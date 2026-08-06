@@ -1,28 +1,28 @@
 {% extends "base.html" %}
 
-{% block title %}Nginx 安装历史 - MngxOps{% endblock %}
-{% block page_title %}<i class="bi bi-clock-history"></i> Nginx 安装历史{% endblock %}
+{% block title %}Nginx 启停历史 - MngxOps{% endblock %}
+{% block page_title %}<i class="bi bi-clock-history"></i> Nginx 启停历史{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h5 class="mb-0">安装历史记录</h5>
-    <a href="{% url 'nginx_install:center' %}" class="btn btn-primary btn-sm">
-        <i class="bi bi-rocket-takeoff"></i> 安装中心
+    <h5 class="mb-0">启停历史记录</h5>
+    <a href="{% url 'nginx_service:index' %}" class="btn btn-primary btn-sm">
+        <i class="bi bi-power"></i> 启停操作
     </a>
 </div>
 
 <div class="card mb-3">
     <div class="card-body py-2">
-        <form method="get" class="row g-2 align-items-end" id="installHistoryForm">
+        <form method="get" class="row g-2 align-items-end" id="serviceHistoryForm">
             <div class="col-md-4">
-                <div class="tag-input-wrapper form-control form-control-sm" id="installHistoryTagWrapper">
+                <div class="tag-input-wrapper form-control form-control-sm" id="serviceHistoryTagWrapper">
                     <input type="text" class="tag-input-field"
-                        placeholder="搜索节点名、IP、版本、路径或批次">
+                        placeholder="搜索主机名、IP 或动作">
                 </div>
-                <input type="hidden" name="search" id="installHistorySearchHidden" value="{{ search }}">
+                <input type="hidden" name="search" id="serviceHistorySearchHidden" value="{{ search }}">
             </div>
             <div class="col-md-3">
-                <select name="status" class="form-select form-select-sm" onchange="document.getElementById('installHistoryForm').submit()">
+                <select name="status" class="form-select form-select-sm" onchange="document.getElementById('serviceHistoryForm').submit()">
                     <option value="">全部状态</option>
                     {% for value, label in status_choices %}
                     <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
@@ -30,7 +30,7 @@
                 </select>
             </div>
             <div class="col-md-2">
-                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('installHistoryForm').submit()">
+                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('serviceHistoryForm').submit()">
                     {% for opt in per_page_options %}
                     <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }} 条/页</option>
                     {% endfor %}
@@ -38,7 +38,7 @@
             </div>
             <div class="col-md-2">
                 {% if search or status_filter %}
-                <a href="{% url 'nginx_install:history' %}" class="btn btn-sm btn-outline-secondary w-100">
+                <a href="{% url 'nginx_service:history' %}" class="btn btn-sm btn-outline-secondary w-100">
                     <i class="bi bi-x-circle"></i> 清空
                 </a>
                 {% endif %}
@@ -54,59 +54,58 @@
             <table class="table table-hover table-sm mb-0 data-table">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 12%;">批次</th>
-                        <th style="width: 18%;">目标节点</th>
-                        <th style="width: 10%;">版本</th>
-                        <th style="width: 14%;">安装路径</th>
+                        <th style="width: 10%;">动作</th>
+                        <th style="width: 28%;">目标节点</th>
                         <th style="width: 10%;">状态</th>
-                        <th style="width: 8%;">同步</th>
-                        <th style="width: 10%;">操作人</th>
-                        <th style="width: 12%;">创建时间</th>
-                        <th style="width: 6%;">操作</th>
+                        <th style="width: 10%;">进度</th>
+                        <th style="width: 12%;">操作人</th>
+                        <th style="width: 18%;">创建时间</th>
+                        <th style="width: 12%;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                 {% for task in tasks %}
                     <tr>
-                        <td><code class="small">{{ task.batch_number }}</code></td>
                         <td>
-                            <div class="node-info-cell">
-                                <span class="node-identity">
-                                    {{ task.node.hostname }}<small class="text-muted">({{ task.node.ip }})</small>
-                                </span>
-                                {% if task.node.is_deleted %}
-                                <span class="badge bg-secondary">已删除</span>
-                                {% endif %}
-                            </div>
+                            {% if task.target_configs == "start" %}
+                            <span class="badge bg-success">启动</span>
+                            {% elif task.target_configs == "stop" %}
+                            <span class="badge bg-danger">停止</span>
+                            {% elif task.target_configs == "reload" %}
+                            <span class="badge bg-primary">重载</span>
+                            {% elif task.target_configs == "restart" %}
+                            <span class="badge bg-warning text-dark">重启</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ task.target_configs|default:"-" }}</span>
+                            {% endif %}
                         </td>
-                        <td><code>{{ task.target_version }}</code></td>
-                        <td><code class="small">{{ task.target_prefix }}</code></td>
+                        <td>
+                            <span class="node-identity" title="{{ task.target_ips }}">
+                                {{ task.target_hostnames|default:"-" }}
+                            </span>
+                        </td>
                         <td>
                             {% if task.status == "success" %}
-                            <span class="badge bg-success">安装成功</span>
+                            <span class="badge bg-success">成功</span>
                             {% elif task.status == "failed" %}
-                            <span class="badge bg-danger">安装失败</span>
+                            <span class="badge bg-danger">失败</span>
                             {% elif task.status == "cancelled" %}
                             <span class="badge bg-secondary">已取消</span>
-                            {% else %}
+                            {% elif task.status == "running" or task.status == "pending" %}
                             <span class="badge bg-info">{{ task.get_status_display }}</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark">{{ task.get_status_display }}</span>
                             {% endif %}
                         </td>
-                        <td>
-                            {% if task.sync_ok == True %}
-                            <span class="badge bg-success">成功</span>
-                            {% elif task.sync_ok == False %}
-                            <span class="badge bg-warning text-dark" title="{{ task.sync_detail }}">失败</span>
-                            {% else %}-{% endif %}
-                        </td>
-                        <td>{{ task.operator.username|default:"-" }}</td>
+                        <td><small>{{ task.progress }}%</small></td>
+                        <td>{{ task.trigger_user.username|default:"-" }}</td>
                         <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
                         <td>
-                            {% if task.task_center_id %}
-                            <a class="btn btn-outline-secondary btn-sm" href="{% url 'releases:task_center_detail' task.task_center_id %}" target="_blank" title="查看详情">
+                            <a class="btn btn-outline-secondary btn-sm"
+                               href="{% url 'releases:task_center_detail' task.id %}"
+                               target="_blank" title="查看详情">
                                 <i class="bi bi-eye"></i>
                             </a>
-                            {% endif %}
                         </td>
                     </tr>
                 {% endfor %}
@@ -139,6 +138,6 @@
 
 {% block extra_js %}
 <script>
-initTagSearch('#installHistoryTagWrapper', '#installHistorySearchHidden', '#installHistoryForm');
+initTagSearch('#serviceHistoryTagWrapper', '#serviceHistorySearchHidden', '#serviceHistoryForm');
 </script>
 {% endblock %}

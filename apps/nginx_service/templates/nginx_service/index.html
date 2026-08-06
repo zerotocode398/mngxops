@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load permission_tags %}
 
 {% block title %}Nginx 启停 - MngxOps{% endblock %}
 {% block page_title %}<i class="bi bi-power"></i> Nginx 启停{% endblock %}
@@ -36,11 +35,9 @@
 {% block content %}
 <div class="container-fluid">
     <div class="d-flex justify-content-end align-items-center mb-3 flex-wrap gap-2">
-        {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
-        <a href="{% url 'releases:history' %}?operation_type=nginx_service_control" class="btn btn-outline-secondary btn-sm" target="_blank">
-            <i class="bi bi-list-task"></i> 任务中心
+        <a href="{% url 'nginx_service:history' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-clock-history"></i> 历史
         </a>
-        {% endif %}
     </div>
 
     <div class="card mb-3">

@@ -12,10 +12,10 @@
             <i class="bi bi-rocket-takeoff"></i> 开始安装
         </a>
         {% endif %}
-        <a href="{% url 'upgrade:package_list' %}" class="btn btn-outline-secondary btn-sm">
+        <a href="{% url 'upgrade:package_list' %}?nav=nginx_install" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-archive"></i> 源码包
         </a>
-        <a href="{% url 'upgrade:module_package_list' %}" class="btn btn-outline-secondary btn-sm">
+        <a href="{% url 'upgrade:module_package_list' %}?nav=nginx_install" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-puzzle"></i> 模块包
         </a>
         <a href="{% url 'nginx_install:history' %}" class="btn btn-outline-secondary btn-sm">
@@ -26,7 +26,7 @@
     <div class="row mb-3">
         <div class="col-md-3 mb-2">
             <div class="card dashboard-stat-card stat-card-primary"
-                 onclick="window.location.href='{% url 'upgrade:package_list' %}'"
+                 onclick="window.location.href='{% url 'upgrade:package_list' %}?nav=nginx_install'"
                  style="cursor:pointer;" title="查看源码包">
                 <div class="stat-number">{{ package_count }}</div>
                 <div class="stat-label">源码包</div>
@@ -34,7 +34,7 @@
         </div>
         <div class="col-md-3 mb-2">
             <div class="card dashboard-stat-card stat-card-default"
-                 onclick="window.location.href='{% url 'upgrade:module_package_list' %}'"
+                 onclick="window.location.href='{% url 'upgrade:module_package_list' %}?nav=nginx_install'"
                  style="cursor:pointer;" title="查看第三方模块包">
                 <div class="stat-number">{{ module_package_count }}</div>
                 <div class="stat-label">模块包</div>
