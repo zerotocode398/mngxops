@@ -10,11 +10,13 @@ from apps.configs.models import ConfigNodeBinding
 from apps.releases.models import TaskCenterTask
 from apps.releases.task_result import format_task_center_summary
 from apps.users.permissions import user_has_permission
-from utils.setting_service import get_setting
+from utils.setting_service import get_recent_tasks_limit, get_setting
 
 
 def _dashboard_limit(key, default=20):
-    """读取仪表盘列表条数上限"""
+    """读取仪表盘列表条数上限（兼容旧调用；最近任务请用 get_recent_tasks_limit）"""
+    if key == "dashboard.recent_tasks_count":
+        return get_recent_tasks_limit(default)
     try:
         return max(1, int(get_setting(key, str(default)) or default))
     except (TypeError, ValueError):

@@ -56,20 +56,27 @@
     .selected-node-chip .chip-remove { cursor: pointer; color: var(--gray-500); line-height: 1; }
     .selected-node-chip .chip-remove:hover { color: var(--danger); }
     .module-checkbox-group {
-        max-height: 250px; overflow-y: auto; border: 1px solid var(--gray-200);
+        max-height: 320px; overflow-y: auto; border: 1px solid var(--gray-200);
         border-radius: var(--br-md); padding: 10px;
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.25rem 1rem;
+        display: grid; grid-template-columns: 1fr; gap: 0.15rem;
     }
     .module-checkbox-group label { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; margin: 0; }
+    .module-dual-title {
+        font-weight: 600; font-size: var(--fs-base); margin-bottom: 0.35rem;
+        display: flex; align-items: center; gap: 6px;
+    }
     .kv-info-box {
         padding: 12px 14px; background: var(--gray-100); border-radius: var(--br-md);
         border: 1px solid var(--gray-200); font-size: var(--fs-base);
+    }
+    .kv-info-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem;
     }
     .kv-info-row {
         display: flex; align-items: flex-start; gap: 8px; min-width: 0;
         padding: 5px 0; border-bottom: 1px solid rgba(0, 0, 0, 0.04);
     }
-    .kv-info-row:last-child { border-bottom: none; }
+    .kv-info-grid .kv-info-row:nth-last-child(-n+2) { border-bottom: none; }
     .kv-info-label {
         flex: 0 0 96px; color: var(--gray-600); white-space: nowrap; font-size: var(--fs-sm);
     }
@@ -78,7 +85,30 @@
         flex: 1; min-width: 0; color: var(--dark); font-size: var(--fs-base);
         word-break: break-all;
     }
+    .kv-info-mod { margin-top: 0.5rem; padding-top: 0.35rem; border-top: 1px solid rgba(0,0,0,0.06); }
+    .kv-mod-toggle {
+        border: none; background: transparent; color: var(--primary); font-size: var(--fs-sm);
+        padding: 0 0 0 8px; cursor: pointer; white-space: nowrap;
+    }
+    .kv-mod-first { flex: 1; min-width: 0; word-break: break-all; font-family: var(--font-mono); font-size: var(--fs-sm); }
+    .kv-mod-detail { padding: 6px 0 0 96px; }
+    .kv-mod-item { font-family: var(--font-mono); font-size: var(--fs-sm); padding: 2px 0; word-break: break-all; }
+    .nginx-v-output {
+        font-family: var(--font-mono); font-size: var(--fs-sm); white-space: pre-wrap; word-break: break-all;
+        background: #1e1e2e; color: #cdd6f4; padding: 12px 14px; border-radius: var(--br-md);
+        max-height: 280px; overflow-y: auto;
+    }
+    .confirm-node-block { border: 1px solid var(--gray-200); border-radius: var(--br-md); margin-bottom: 0.5rem; }
+    .confirm-node-header {
+        display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
+        padding: 10px 12px; background: var(--gray-100); font-size: var(--fs-base);
+    }
     .modal-node-table tbody tr.disabled-row { opacity: 0.55; cursor: not-allowed; }
+    @media (max-width: 767.98px) {
+        .kv-info-grid { grid-template-columns: 1fr; }
+        .kv-info-grid .kv-info-row:nth-last-child(-n+2) { border-bottom: 1px solid rgba(0, 0, 0, 0.04); }
+        .kv-info-grid .kv-info-row:last-child { border-bottom: none; }
+    }
 </style>
 
 <div class="wizard-steps" id="wizardSteps">
@@ -182,33 +212,47 @@
         <h5 class="mb-0"><span class="badge bg-primary me-2">2</span> 编译参数</h5>
     </div>
     <div class="card-body">
-        <div class="row g-3 mb-3">
-            <div class="col-md-4">
-                <label class="form-label">安装路径 (--prefix)</label>
-                <input type="text" class="form-control form-control-sm" id="targetPrefix" value="{{ default_prefix }}">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="module-dual-title"><i class="bi bi-puzzle"></i> 支持模块</div>
+                <div class="form-text mb-2">勾选写入 configure；默认已勾选常用模块。可用标签搜索过滤。</div>
+                <div class="mb-2">
+                    <div class="tag-input-wrapper form-control form-control-sm" id="modTagWrapper">
+                        <input type="text" class="tag-input-field" id="modSearchField"
+                               placeholder="模块名称，回车添加标签" autocomplete="off">
+                    </div>
+                    <input type="hidden" id="modSearchHidden">
+                </div>
+                <div class="module-checkbox-group mb-2" id="moduleGrid"></div>
+                <label class="form-label">额外 configure 参数（可选，每行一个）</label>
+                <textarea class="form-control form-control-sm code-font" id="extraOpts" rows="3"
+                          placeholder="--with-http_gzip_static_module"></textarea>
             </div>
-            <div class="col-md-4">
-                <label class="form-label">远程工作目录</label>
-                <input type="text" class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">并行编译 (-j)</label>
-                <input type="number" class="form-control form-control-sm" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32">
+            <div class="col-md-6">
+                <div class="module-dual-title"><i class="bi bi-sliders"></i> 基础参数</div>
+                <div class="form-text mb-2">缺省取自系统设置「安装管理」，本页可改，仅影响本批次。</div>
+                <div class="mb-3">
+                    <label class="form-label">用户 (--user)</label>
+                    <input type="text" class="form-control form-control-sm" id="nginxUser" value="{{ default_user }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">用户组 (--group)</label>
+                    <input type="text" class="form-control form-control-sm" id="nginxGroup" value="{{ default_group }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">安装路径 (--prefix) <span class="required">*</span></label>
+                    <input type="text" class="form-control form-control-sm" id="targetPrefix" value="{{ default_prefix }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">远程工作目录</label>
+                    <input type="text" class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}">
+                </div>
+                <div class="mb-0">
+                    <label class="form-label">并行编译 (-j)</label>
+                    <input type="number" class="form-control form-control-sm" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32">
+                </div>
             </div>
         </div>
-        <label class="form-label">内置模块</label>
-        <div class="module-checkbox-group mb-3" id="moduleGrid">
-            {% for mod in default_modules %}
-            <label>
-                <input type="checkbox" class="form-check-input mod-check" value="{{ mod }}" checked>
-                <code class="small">{{ mod }}</code>
-            </label>
-            {% endfor %}
-        </div>
-        <label class="form-label">额外 configure 参数（可选，每行一个）</label>
-        <textarea class="form-control form-control-sm code-font mb-2" id="extraOpts" rows="3"
-                  placeholder="--with-http_gzip_static_module"></textarea>
-        <div class="form-text mb-0">将与 --prefix、已勾选模块合并；无需拉取 nginx -V。</div>
 
         <div class="wizard-nav">
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(1)">
@@ -223,19 +267,30 @@
 
 <div class="card mb-3 wizard-panel d-none" id="step3">
     <div class="card-header">
-        <h5 class="mb-0"><span class="badge bg-primary me-2">3</span> 确认安装</h5>
+        <h5 class="mb-0"><span class="badge bg-success me-2">3</span> 确认并开始安装</h5>
     </div>
     <div class="card-body">
         <div id="confirmSummary" class="kv-info-box mb-3"></div>
-        <div class="alert alert-info small mb-0">
+        <div class="mb-2 small text-muted">最终编译参数预览</div>
+        <div class="nginx-v-output mb-3" id="finalConfigPreview">./configure 等待生成...</div>
+        <div class="mb-3">
+            <label class="form-label">各节点确认清单</label>
+            <div id="confirmNodeList"></div>
+        </div>
+        <div class="alert alert-info small mb-3">
             安装成功后将回写节点 Nginx 版本/路径并刷新探测状态，随后<strong>自动执行配置同步</strong>。同步失败不回滚已安装的 Nginx。
+        </div>
+        <div class="mb-3">
+            <label class="form-check-label">
+                <input type="checkbox" id="confirmCheck" class="form-check-input"> 我确认以上配置无误，可以开始安装
+            </label>
         </div>
 
         <div class="wizard-nav">
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(2)">
                 <i class="bi bi-chevron-left"></i> 上一步
             </button>
-            <button type="button" class="btn btn-primary btn-sm" id="btnStartInstall">
+            <button type="button" class="btn btn-success" id="btnStartInstall" disabled>
                 <i class="bi bi-rocket-takeoff"></i> 开始安装
             </button>
         </div>
@@ -319,12 +374,19 @@
     var PROGRESS_URL = "{% url 'nginx_install:api_batch_progress' %}";
     var SEARCH_URL = "{% url 'nodes:api_search_nodes' %}";
     var BATCH_MAX = {{ batch_max_count }};
+    var BUILTIN_MODULES = {{ builtin_modules_json|safe }};
+    var DEFAULT_MODULES = {{ default_modules_json|safe }};
+    var DEFAULT_PREFIX = {{ default_prefix_json|safe }};
     var selected = {};
     var draft = {};
     var pollTimer = null;
     var pkgSearchTags = [];
+    var modSearchTags = [];
     var lastSearchNodes = [];
     var nodeSearchTimer = null;
+    var checkedModules = {};
+
+    DEFAULT_MODULES.forEach(function (m) { checkedModules[m] = true; });
 
     function csrfToken() {
         var el = document.querySelector('[name=csrfmiddlewaretoken]');
@@ -344,6 +406,98 @@
 
     function canSelectNode(node) {
         return node.status === 'online' && !!node.has_credential;
+    }
+
+    function getPrefix() {
+        return (document.getElementById('targetPrefix').value || '').trim() || DEFAULT_PREFIX || '/opt/app';
+    }
+
+    function getNginxUser() {
+        return (document.getElementById('nginxUser').value || '').trim();
+    }
+
+    function getNginxGroup() {
+        return (document.getElementById('nginxGroup').value || '').trim();
+    }
+
+    function renderModuleGrid() {
+        var terms = modSearchTags.map(function (t) { return t.toLowerCase(); });
+        var live = (document.getElementById('modSearchField').value || '').trim().toLowerCase();
+        if (live) terms = terms.concat([live]);
+        var html = '';
+        var visible = 0;
+        BUILTIN_MODULES.forEach(function (mod) {
+            var m = String(mod);
+            var ok = !terms.length || terms.every(function (t) {
+                return m.toLowerCase().indexOf(t) >= 0;
+            });
+            if (!ok) return;
+            visible += 1;
+            var checked = checkedModules[m] ? ' checked' : '';
+            html += '<label data-mod="' + escapeHtml(m) + '">' +
+                '<input type="checkbox" class="form-check-input mod-check" value="' + escapeHtml(m) + '"' + checked + '>' +
+                '<code class="small">' + escapeHtml(m) + '</code></label>';
+        });
+        if (!visible) {
+            html = '<p class="text-muted small mb-0">无匹配模块</p>';
+        }
+        var grid = document.getElementById('moduleGrid');
+        grid.innerHTML = html;
+        grid.querySelectorAll('.mod-check').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                if (cb.checked) checkedModules[cb.value] = true;
+                else delete checkedModules[cb.value];
+            });
+        });
+    }
+
+    function renderModTags() {
+        var wrapper = document.getElementById('modTagWrapper');
+        var field = document.getElementById('modSearchField');
+        if (!wrapper || !field) return;
+        wrapper.querySelectorAll('.tag-badge').forEach(function (b) { b.remove(); });
+        modSearchTags.forEach(function (text) {
+            var badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.setAttribute('data-value', text);
+            badge.innerHTML = escapeHtml(text) + '<span class="tag-remove">&times;</span>';
+            badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+                e.stopPropagation();
+                modSearchTags = modSearchTags.filter(function (t) { return t !== text; });
+                renderModTags();
+            });
+            wrapper.insertBefore(badge, field);
+        });
+        renderModuleGrid();
+    }
+
+    function initModSearch() {
+        var wrapper = document.getElementById('modTagWrapper');
+        var field = document.getElementById('modSearchField');
+        if (!field) return;
+        field.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var text = (field.value || '').trim();
+                if (text && modSearchTags.indexOf(text) < 0) {
+                    modSearchTags.push(text);
+                    field.value = '';
+                    renderModTags();
+                }
+            } else if (e.key === 'Backspace' && !field.value) {
+                if (modSearchTags.length) {
+                    modSearchTags.pop();
+                    renderModTags();
+                }
+            }
+        });
+        field.addEventListener('input', renderModuleGrid);
+        if (wrapper) {
+            wrapper.addEventListener('click', function (e) {
+                if (e.target === wrapper) field.focus();
+            });
+        }
+        renderModuleGrid();
     }
 
     function updateStep1Next() {
@@ -401,7 +555,16 @@
             return;
         }
         if (step === 3) {
+            if (!getPrefix()) {
+                showAlert('提示', '请填写安装路径 (--prefix)');
+                return;
+            }
             buildConfirm();
+            var chk = document.getElementById('confirmCheck');
+            if (chk) {
+                chk.checked = false;
+                document.getElementById('btnStartInstall').disabled = true;
+            }
         }
         document.querySelectorAll('.wizard-panel').forEach(function (el) { el.classList.add('d-none'); });
         document.getElementById('step' + step).classList.remove('d-none');
@@ -410,8 +573,7 @@
     window.goStep = goStep;
 
     function getAddedModules() {
-        var mods = [];
-        document.querySelectorAll('.mod-check:checked').forEach(function (el) { mods.push(el.value); });
+        var mods = Object.keys(checkedModules).filter(function (k) { return checkedModules[k]; });
         var extra = document.getElementById('extraOpts').value.split(/\n+/);
         extra.forEach(function (line) {
             line = line.trim();
@@ -420,27 +582,97 @@
         return mods;
     }
 
+    function buildConfigurePreview() {
+        var parts = ['--prefix=' + getPrefix()];
+        var u = getNginxUser();
+        var g = getNginxGroup();
+        if (u) parts.push('--user=' + u);
+        if (g) parts.push('--group=' + g);
+        getAddedModules().forEach(function (m) { parts.push(m); });
+        return './configure ' + parts.join(' \\\n  ');
+    }
+
+    function renderSummaryInfoRow(label, value) {
+        var text = value == null || value === '' ? '-' : String(value);
+        return '<div class="kv-info-row">' +
+            '<span class="kv-info-label">' + escapeHtml(label) + '</span>' +
+            '<span class="kv-info-value" title="' + escapeHtml(text) + '">' + escapeHtml(text) + '</span>' +
+            '</div>';
+    }
+
+    function renderSummaryModuleLine(label, items, detailId) {
+        var list = (items || []).map(function (x) { return String(x).trim(); }).filter(Boolean);
+        if (!list.length) {
+            return '<div class="kv-info-mod"><div class="kv-info-row">' +
+                '<span class="kv-info-label">' + escapeHtml(label) + '</span>' +
+                '<span class="kv-info-value">无</span></div></div>';
+        }
+        if (list.length === 1) {
+            return '<div class="kv-info-mod"><div class="kv-info-row">' +
+                '<span class="kv-info-label">' + escapeHtml(label) + '</span>' +
+                '<span class="kv-mod-first" title="' + escapeHtml(list[0]) + '">' +
+                escapeHtml(list[0]) + '</span></div></div>';
+        }
+        var detailHtml = list.map(function (p) {
+            return '<div class="kv-mod-item">' + escapeHtml(p) + '</div>';
+        }).join('');
+        return '<div class="kv-info-mod">' +
+            '<div class="kv-info-row">' +
+            '<span class="kv-info-label">' + escapeHtml(label) + '</span>' +
+            '<span class="kv-mod-first" title="' + escapeHtml(list[0]) + '">' + escapeHtml(list[0]) + '</span>' +
+            '<button type="button" class="kv-mod-toggle" data-detail-id="' + escapeHtml(detailId) + '"' +
+            ' onclick="toggleInstallModDetail(this)" aria-expanded="false">详情</button></div>' +
+            '<div id="' + escapeHtml(detailId) + '" class="kv-mod-detail d-none">' + detailHtml + '</div>' +
+            '</div>';
+    }
+
+    window.toggleInstallModDetail = function (btn) {
+        var id = btn.getAttribute('data-detail-id');
+        var el = document.getElementById(id);
+        if (!el) return;
+        var open = el.classList.contains('d-none');
+        el.classList.toggle('d-none', !open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.textContent = open ? '收起' : '详情';
+    };
+
     function buildConfirm() {
         var pkg = document.querySelector('input[name=sourcePackage]:checked');
         var pkgRow = pkg ? pkg.closest('tr') : null;
         var version = pkgRow ? pkgRow.getAttribute('data-version') : '-';
         var pkgName = pkgRow ? pkgRow.getAttribute('data-name') : '-';
-        var names = Object.keys(selected).map(function (id) { return selected[id].hostname; }).join('、');
-        var prefix = document.getElementById('targetPrefix').value.trim() || '/usr/local/nginx';
+        var prefix = getPrefix();
         var mods = getAddedModules();
         document.getElementById('confirmSummary').innerHTML =
-            '<div class="kv-info-row"><span class="kv-info-label">节点（' + selectedCount() + '）</span>' +
-            '<span class="kv-info-value"><code>' + escapeHtml(names) + '</code></span></div>' +
-            '<div class="kv-info-row"><span class="kv-info-label">源码包</span>' +
-            '<span class="kv-info-value">' + escapeHtml(pkgName) + ' <code>' + escapeHtml(version) + '</code></span></div>' +
-            '<div class="kv-info-row"><span class="kv-info-label">安装路径</span>' +
-            '<span class="kv-info-value"><code>' + escapeHtml(prefix) + '</code></span></div>' +
-            '<div class="kv-info-row"><span class="kv-info-label">工作目录</span>' +
-            '<span class="kv-info-value"><code>' + escapeHtml(document.getElementById('remoteWorkDir').value) + '</code></span></div>' +
-            '<div class="kv-info-row"><span class="kv-info-label">make -j</span>' +
-            '<span class="kv-info-value">' + escapeHtml(document.getElementById('makeJobs').value) + '</span></div>' +
-            '<div class="kv-info-row"><span class="kv-info-label">模块</span>' +
-            '<span class="kv-info-value code-font"><code class="small">' + escapeHtml(mods.join(' ')) + '</code></span></div>';
+            '<div class="kv-info-grid">' +
+            renderSummaryInfoRow('目标节点', selectedCount() + ' 台') +
+            renderSummaryInfoRow('源码包', pkgName + ' (' + version + ')') +
+            renderSummaryInfoRow('安装路径', prefix) +
+            renderSummaryInfoRow('工作目录', document.getElementById('remoteWorkDir').value) +
+            renderSummaryInfoRow('并行编译', '-j' + document.getElementById('makeJobs').value) +
+            renderSummaryInfoRow('用户 (--user)', getNginxUser() || '-') +
+            renderSummaryInfoRow('用户组 (--group)', getNginxGroup() || '-') +
+            '</div>' +
+            renderSummaryModuleLine('编译模块', mods, 'installModDetail');
+
+        document.getElementById('finalConfigPreview').textContent = buildConfigurePreview();
+
+        var listHtml = '';
+        Object.keys(selected).forEach(function (id) {
+            var n = selected[id];
+            var groups = (n.group_names || []).map(function (g) {
+                return '<span class="badge bg-info text-dark me-1">' + escapeHtml(g) + '</span>';
+            }).join('');
+            listHtml +=
+                '<div class="confirm-node-block" data-node-id="' + id + '">' +
+                '<div class="confirm-node-header">' +
+                '<span class="node-info-cell"><span class="node-identity">' + escapeHtml(n.hostname) +
+                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span> ' + groups + '</span>' +
+                '<span class="small text-muted text-end code-font">安装目录: ' + escapeHtml(prefix) + '</span>' +
+                '</div></div>';
+        });
+        document.getElementById('confirmNodeList').innerHTML = listHtml ||
+            '<p class="text-muted small mb-0">未选择节点</p>';
     }
 
     function markPkgSelected(row) {
@@ -538,7 +770,8 @@
             draft[key] = {
                 id: node.id,
                 hostname: node.hostname,
-                ip: node.ip
+                ip: node.ip,
+                group_names: (node.groups || []).map(function (g) { return g.name; })
             };
         } else {
             delete draft[key];
@@ -722,6 +955,14 @@
     });
 
     initNodeTagSearch();
+    initModSearch();
+
+    var confirmCheck = document.getElementById('confirmCheck');
+    if (confirmCheck) {
+        confirmCheck.addEventListener('change', function () {
+            document.getElementById('btnStartInstall').disabled = !confirmCheck.checked;
+        });
+    }
 
     function startBatchPoll(batch, firstTcId) {
         document.getElementById('batchProgressCard').classList.remove('d-none');
@@ -791,6 +1032,10 @@
             showAlert('提示', '请选择节点与源码包');
             return;
         }
+        if (!document.getElementById('confirmCheck').checked) {
+            showAlert('提示', '请先勾选确认声明');
+            return;
+        }
         var names = Object.keys(selected).map(function (id) { return selected[id].hostname; }).join('、');
         showConfirm('确认安装 Nginx', '<p>将对以下节点执行全新安装：</p><p><code>' + escapeHtml(names) + '</code></p>', function () {
             fetch(CREATE_URL, {
@@ -803,7 +1048,9 @@
                 body: JSON.stringify({
                     node_ids: Object.keys(selected).map(Number),
                     source_package: Number(pkg.value),
-                    target_prefix: document.getElementById('targetPrefix').value.trim(),
+                    target_prefix: getPrefix(),
+                    nginx_user: getNginxUser(),
+                    nginx_group: getNginxGroup(),
                     remote_work_dir: document.getElementById('remoteWorkDir').value.trim(),
                     make_jobs: Number(document.getElementById('makeJobs').value) || 4,
                     added_modules: getAddedModules(),

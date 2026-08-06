@@ -22,7 +22,7 @@ from apps.releases.task_result import (
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.nginx_ops import reload_nginx, restart_nginx, start_nginx, stop_nginx
 from utils.pagination import PerPagePaginationMixin
-from utils.setting_service import get_setting
+from utils.setting_service import get_recent_tasks_limit, get_setting
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,10 @@ _ACTION_MAP = {
     "reload": ("重载", reload_nginx),
     "restart": ("重启", restart_nginx),
 }
+
+# 动作码 → 展示名（历史/最近任务表）
+ACTION_LABELS = {k: v[0] for k, v in _ACTION_MAP.items()}
+
 
 def _batch_max_count():
     """读取批量操作最大节点数"""
@@ -57,10 +61,20 @@ class NginxServiceIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
     permission_action = "read"
 
     def get_context_data(self, **kwargs):
-        """注入批量上限与执行权限"""
+        """注入批量上限、执行权限与最近启停任务"""
         context = super().get_context_data(**kwargs)
         context["batch_max_count"] = _batch_max_count()
         context["can_execute"] = user_has_permission(self.request.user, "nodes", "update")
+        recent = list(
+            TaskCenterTask.objects.filter(operation_type="nginx_service_control")
+            .select_related("trigger_user")
+            .order_by("-created_at")[: get_recent_tasks_limit()]
+        )
+        for task in recent:
+            task.action_label = ACTION_LABELS.get(
+                (task.target_configs or "").strip(), task.target_configs or "-"
+            )
+        context["recent_tasks"] = recent
         return context
 
 

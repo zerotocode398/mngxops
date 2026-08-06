@@ -49,7 +49,7 @@ PRESET_SETTINGS = [
     # 仪表盘
     {"key": "dashboard.recent_tasks_count", "group": "仪表盘", "type": "integer", "value": "20",
      "label": "最近任务显示条数",
-     "description": "仪表盘首页最近任务（任务中心）列表最大行数（刷新仪表盘后生效）",
+     "description": "仪表盘与 Nginx 升级/安装/启停首页「最近任务」列表最大行数（刷新对应页面后生效）",
      "sort_order": 1, "min_value": 1, "max_value": 100},
     # 节点管理
     {"key": "node.batch_max_count", "group": "节点管理", "type": "integer", "value": "3",
@@ -141,6 +141,19 @@ PRESET_SETTINGS = [
      "label": "源码包/第三方模块包上传大小限制 (MB)",
      "description": "源码包与第三方模块包上传共用此上限；上传校验立即按新限制生效",
      "sort_order": 82, "min_value": 1, "max_value": 2048},
+    # Nginx 全新安装
+    {"key": "install.default_user", "group": "安装管理", "type": "string", "value": "root",
+     "label": "用户 (--user)",
+     "description": "仅作 Nginx 安装向导右栏缺省；向导内可改；保存后刷新安装向导生效",
+     "sort_order": 90},
+    {"key": "install.default_group", "group": "安装管理", "type": "string", "value": "root",
+     "label": "用户组 (--group)",
+     "description": "仅作 Nginx 安装向导右栏缺省；向导内可改；保存后刷新安装向导生效",
+     "sort_order": 91},
+    {"key": "install.default_prefix", "group": "安装管理", "type": "string", "value": "/opt/app",
+     "label": "默认安装路径 (--prefix)",
+     "description": "仅作 Nginx 安装向导右栏缺省；向导内可改；保存后刷新安装向导生效",
+     "sort_order": 92},
 ]
 
 

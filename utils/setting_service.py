@@ -32,6 +32,14 @@ def get_setting(key, default=None):
     return value
 
 
+def get_recent_tasks_limit(default=20):
+    """读取最近任务显示条数（仪表盘与升级/安装/启停首页共用）"""
+    try:
+        return max(1, int(get_setting("dashboard.recent_tasks_count", str(default)) or default))
+    except (TypeError, ValueError):
+        return default
+
+
 def refresh_setting_cache(key=None):
     """保存配置后刷新缓存"""
     if key:

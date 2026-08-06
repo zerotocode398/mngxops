@@ -34,7 +34,7 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 
 | key | 生效 |
 |-----|------|
-| `dashboard.recent_tasks_count` | 刷新仪表盘（默认 20；任务中心最近记录） |
+| `dashboard.recent_tasks_count` | 刷新对应页面（默认 20；仪表盘 + Nginx 升级/安装/启停首页最近任务） |
 
 ### 节点管理
 
@@ -86,6 +86,14 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 | `upgrade.default_work_dir` | 升级中心默认；与 sessionStorage baseline（Q81） |
 | `upgrade.make_jobs_default` | 同上 |
 | `upgrade.package_max_size_mb` | 上传校验立即；源码包与第三方模块包共用；默认 20MB（Q124） |
+
+### 安装管理
+
+| key | 生效 |
+|-----|------|
+| `install.default_user` | 安装向导右栏缺省 `--user`（默认 root；向导可改） |
+| `install.default_group` | 安装向导右栏缺省 `--group`（默认 root；向导可改） |
+| `install.default_prefix` | 安装向导右栏缺省 `--prefix`（默认 `/opt/app`；向导可改） |
 
 整数项 PRESET 带 `min_value`/`max_value`，保存 API 与设置页越界拒绝（Q124）。
 

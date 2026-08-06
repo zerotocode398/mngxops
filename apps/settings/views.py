@@ -13,7 +13,7 @@ from utils.setting_service import refresh_setting_cache
 GROUP_META = {
     "仪表盘": {
         "icon": "bi-bar-chart",
-        "description": "首页最近任务与失败绑定等展示条数。",
+        "description": "仪表盘与运维工具首页最近任务展示条数。",
     },
     "节点管理": {
         "icon": "bi-plug",
@@ -38,6 +38,10 @@ GROUP_META = {
     "Nginx升级": {
         "icon": "bi-box-seam",
         "description": "默认工作目录、并行编译核数与源码包/第三方模块包大小限制。",
+    },
+    "安装管理": {
+        "icon": "bi-download",
+        "description": "Nginx 全新安装向导缺省用户、用户组与安装路径。",
     },
 }
 
@@ -65,6 +69,9 @@ UNIT_MAP = {
     "upgrade.default_work_dir": "",
     "upgrade.make_jobs_default": "核",
     "upgrade.package_max_size_mb": "MB",
+    "install.default_user": "",
+    "install.default_group": "",
+    "install.default_prefix": "",
 }
 
 

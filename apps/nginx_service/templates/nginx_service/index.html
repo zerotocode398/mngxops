@@ -51,7 +51,6 @@
                 <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
                     <i class="bi bi-search"></i> <span id="btnSelectLabel">选择节点</span>
                 </button>
-                <span class="action-hint">仅可选在线且已配置凭证的节点 · 上限 <strong>{{ batch_max_count }}</strong>（系统设置）</span>
             </div>
         </div>
     </div>
@@ -87,7 +86,7 @@
         </div>
     </div>
 
-    <div class="card">
+    <div class="card mb-3">
         <div class="card-header"><i class="bi bi-info-circle"></i> 说明</div>
         <div class="card-body small text-muted">
             <ul class="mb-0 ps-3">
@@ -96,6 +95,74 @@
                 <li>执行结果写入任务中心（类型：Nginx 服务启停）。</li>
                 <li>批量上限取自系统设置「批量操作最大节点数」。</li>
             </ul>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-list-task"></i> 最近启停任务</h5>
+            <a href="{% url 'nginx_service:history' %}" class="btn btn-outline-secondary btn-sm">
+                查看全部 <i class="bi bi-chevron-right"></i>
+            </a>
+        </div>
+        <div class="card-body p-0">
+            {% if recent_tasks %}
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0 data-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>目标节点</th>
+                            <th>动作</th>
+                            <th>状态</th>
+                            <th>操作人</th>
+                            <th>时间</th>
+                            <th style="width:72px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for task in recent_tasks %}
+                        <tr>
+                            <td>
+                                <span class="node-identity" title="{{ task.target_hostnames }}">
+                                    {{ task.target_hostnames|truncatechars:40 }}
+                                </span>
+                                {% if task.target_ips %}
+                                <small class="text-muted d-block">{{ task.target_ips|truncatechars:48 }}</small>
+                                {% endif %}
+                            </td>
+                            <td><span class="badge bg-primary">{{ task.action_label }}</span></td>
+                            <td>
+                                {% if task.status == "success" %}
+                                <span class="badge bg-success">成功</span>
+                                {% elif task.status == "failed" %}
+                                <span class="badge bg-danger">失败</span>
+                                {% elif task.status == "cancelled" %}
+                                <span class="badge bg-secondary">已取消</span>
+                                {% elif task.status == "running" or task.status == "pending" %}
+                                <span class="badge bg-info">{{ task.get_status_display }}</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ task.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ task.trigger_user.username|default:"-" }}</td>
+                            <td><small>{{ task.created_at|date:"m-d H:i" }}</small></td>
+                            <td>
+                                <a class="btn btn-outline-secondary btn-sm" title="任务详情"
+                                   href="{% url 'releases:task_center_detail' task.id %}" target="_blank">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state py-5">
+                <i class="bi bi-inbox"></i>
+                <p>暂无启停任务</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>

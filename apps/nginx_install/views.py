@@ -21,7 +21,9 @@ from apps.releases.models import TaskCenterTask
 from apps.upgrade.models import NginxSourcePackage, NginxThirdPartyModulePackage
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.pagination import PerPagePaginationMixin
-from utils.setting_service import get_setting
+from utils.setting_service import get_recent_tasks_limit, get_setting
+
+from apps.upgrade.builtin_modules import BUILTIN_ADD_MODULES
 
 from .models import NginxInstallTask
 from .services import (
@@ -83,7 +85,7 @@ class NginxInstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         ).count()
         context["recent_tasks"] = (
             NginxInstallTask.objects.select_related("node", "operator", "source_package")
-            .order_by("-created_at")[:20]
+            .order_by("-created_at")[: get_recent_tasks_limit()]
         )
         context["can_create"] = user_has_permission(self.request.user, "upgrade", "create")
         return context
@@ -105,8 +107,18 @@ class NginxInstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Templa
             "upgrade.default_work_dir", "/tmp/nginx-upgrade"
         ) or "/tmp/nginx-upgrade"
         context["default_make_jobs"] = get_setting("upgrade.make_jobs_default", "4") or "4"
-        context["default_prefix"] = "/usr/local/nginx"
+        context["default_prefix"] = (
+            get_setting("install.default_prefix", "/opt/app") or "/opt/app"
+        )
+        context["default_user"] = get_setting("install.default_user", "root") or "root"
+        context["default_group"] = get_setting("install.default_group", "root") or "root"
         context["default_modules"] = DEFAULT_INSTALL_MODULES
+        context["builtin_modules"] = BUILTIN_ADD_MODULES
+        context["builtin_modules_json"] = json.dumps(BUILTIN_ADD_MODULES, ensure_ascii=False)
+        context["default_modules_json"] = json.dumps(DEFAULT_INSTALL_MODULES, ensure_ascii=False)
+        context["default_prefix_json"] = json.dumps(
+            context["default_prefix"], ensure_ascii=False
+        )
         context["batch_max_count"] = _batch_max_count()
         return context
 
@@ -197,7 +209,15 @@ class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):
         except (TypeError, ValueError, NginxSourcePackage.DoesNotExist):
             return JsonResponse({"success": False, "message": "请选择有效源码包"})
 
-        prefix = (data.get("target_prefix") or "/usr/local/nginx").strip() or "/usr/local/nginx"
+        prefix = (data.get("target_prefix") or "").strip() or (
+            get_setting("install.default_prefix", "/opt/app") or "/opt/app"
+        )
+        nginx_user = (data.get("nginx_user") or "").strip() or (
+            get_setting("install.default_user", "root") or "root"
+        )
+        nginx_group = (data.get("nginx_group") or "").strip() or (
+            get_setting("install.default_group", "root") or "root"
+        )
         work_dir = (data.get("remote_work_dir") or "").strip() or get_setting(
             "upgrade.default_work_dir", "/tmp/nginx-upgrade"
         )
@@ -219,7 +239,12 @@ class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):
         configure_opts = (data.get("target_configure_opts") or "").strip()
         if not configure_opts:
             configure_opts = build_install_configure_opts(
-                prefix, added_modules, added_third_party, work_dir
+                prefix,
+                added_modules,
+                added_third_party,
+                work_dir,
+                user=nginx_user,
+                group=nginx_group,
             )
 
         nodes = list(

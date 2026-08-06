@@ -19,10 +19,13 @@
 
 | 路径 | 说明 |
 |------|------|
-| `/nginx-service/` | 启停操作台 |
+| `/nginx-service/` | 启停操作台 + 最近启停任务 |
+| `/nginx-service/history/` | 启停历史 |
 | `POST /nginx-service/api/execute/` | 创建异步任务 |
 
-模板：`nginx_service/index.html`。侧栏：运维工具 → Nginx 启停。
+模板：`nginx_service/index.html`、`history.html`。侧栏：运维工具 → Nginx 启停。
+
+最近任务条数复用 `dashboard.recent_tasks_count`（与升级/安装首页一致）。
 
 ## 4. 业务流程
 
@@ -34,7 +37,8 @@
 
 ## 5. 设置
 
-复用 [`node.batch_max_count`](12-settings.md)「批量操作最大节点数」，不新增独立上限项。
+- 批量上限：复用 [`node.batch_max_count`](12-settings.md)。  
+- 最近任务条数：复用 [`dashboard.recent_tasks_count`](12-settings.md)。
 
 ## 6. 实现锚点
 
@@ -45,4 +49,4 @@
 
 ## 7. 关联结论
 
-- Q131（见 [`AGENTS.md`](../AGENTS.md)）
+- Q131 / Q135 / Q137（见 [`AGENTS.md`](../AGENTS.md)）

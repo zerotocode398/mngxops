@@ -46,9 +46,15 @@ def _tail_output(text, max_lines=80):
     return "\n".join(lines[-max_lines:])
 
 
+def _default_install_prefix():
+    """读取安装缺省 --prefix"""
+    return (get_setting("install.default_prefix", "/opt/app") or "/opt/app").strip() or "/opt/app"
+
+
 def derive_paths_from_prefix(prefix):
     """由 --prefix 推导二进制与主配置路径"""
-    prefix = (prefix or "/usr/local/nginx").rstrip("/") or "/usr/local/nginx"
+    fallback = _default_install_prefix()
+    prefix = (prefix or fallback).rstrip("/") or fallback
     return {
         "prefix": prefix,
         "nginx_path": f"{prefix}/sbin/nginx",
@@ -56,12 +62,21 @@ def derive_paths_from_prefix(prefix):
     }
 
 
-def build_install_configure_opts(prefix, added_modules, added_third_party, remote_work_dir):
+def build_install_configure_opts(
+    prefix, added_modules, added_third_party, remote_work_dir, user=None, group=None
+):
     """组装全新安装的 configure 参数字符串"""
     from apps.upgrade.services import compute_target_configure_opts
 
-    prefix = (prefix or "/usr/local/nginx").rstrip("/") or "/usr/local/nginx"
+    fallback = _default_install_prefix()
+    prefix = (prefix or fallback).rstrip("/") or fallback
     base = [f"--prefix={prefix}"]
+    user = (user or "").strip()
+    group = (group or "").strip()
+    if user:
+        base.append(f"--user={user}")
+    if group:
+        base.append(f"--group={group}")
     modules = list(added_modules or [])
     return compute_target_configure_opts(
         base, modules, [], added_third_party or [], remote_work_dir=remote_work_dir

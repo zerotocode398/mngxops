@@ -36,7 +36,7 @@
 1. 进入首页展示统计卡、页头紧凑快捷入口、最近任务表。
 2. 按 `system.dashboard_refresh_interval` 自动请求 `/api/stats/` 更新数字。
 3. 点击统计卡/链接进入对应模块列表（过滤条件以实现为准）。
-4. 最近任务条数受 `dashboard.recent_tasks_count` 约束（默认 20）。
+4. 最近任务条数受 `dashboard.recent_tasks_count` 约束（默认 20；同设置亦用于 Nginx 升级/安装/启停首页）。
 
 ## 6. 实现要点
 

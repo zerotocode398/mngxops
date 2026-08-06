@@ -38,7 +38,7 @@ from .services import (
 from apps.users.permissions import PermissionRequiredMixin
 from utils.nav_context import append_nav_query, get_sidebar_nav, nav_context
 from utils.pagination import PerPagePaginationMixin
-from utils.setting_service import get_setting
+from utils.setting_service import get_recent_tasks_limit, get_setting
 from apps.nodes.models import Node
 from apps.nodes.views import _get_node_credential
 
@@ -432,7 +432,8 @@ class UpgradeCenterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateVie
             NginxThirdPartyModulePackage.objects.select_related("uploaded_by").order_by("-created_at")
         )
         context["latest_tasks"] = (
-            NginxUpgradeTask.objects.select_related("node", "operator").order_by("-created_at")[:10]
+            NginxUpgradeTask.objects.select_related("node", "operator")
+            .order_by("-created_at")[: get_recent_tasks_limit()]
         )
         context["default_work_dir"] = get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
         context["default_make_jobs"] = int(get_setting("upgrade.make_jobs_default", "4") or 4)
@@ -1073,6 +1074,6 @@ class UpgradeTaskListView(LoginRequiredMixin, PermissionRequiredMixin, TemplateV
         context["recent_tasks"] = (
             NginxUpgradeTask.objects
             .select_related("node", "operator", "source_package")
-            .order_by("-created_at")[:10]
+            .order_by("-created_at")[: get_recent_tasks_limit()]
         )
         return context
