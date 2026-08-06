@@ -77,7 +77,7 @@ sequenceDiagram
 
 ### 5.2 `utils/nginx_ops.py`
 
-检测进程启动方式（systemctl / 直接二进制），执行 reload/restart/stop；发布与升级共用。
+检测进程启动方式（systemctl / 直接二进制），执行 reload/restart/start/stop；发布、升级与启停页共用。
 
 ### 5.3 凭证解密
 

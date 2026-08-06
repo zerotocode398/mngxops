@@ -1187,7 +1187,7 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
         # 仅有 nodes.update 时与详情可见范围对齐（本人触发的批量测/配置同步）
         if not self.can_read_release_tasks:
             queryset = queryset.filter(
-                operation_type__in=["node_batch_test", "config_batch_sync"],
+                operation_type__in=["node_batch_test", "config_batch_sync", "nginx_service_control"],
                 trigger_user=self.request.user,
             )
         search = self.request.GET.get("search", "")
@@ -1250,7 +1250,7 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         if self.can_read_release_tasks:
             return queryset
         return queryset.filter(
-            operation_type__in=["node_batch_test", "config_batch_sync"],
+            operation_type__in=["node_batch_test", "config_batch_sync", "nginx_service_control"],
             trigger_user=self.request.user,
         )
 
@@ -1437,7 +1437,7 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
         qs = TaskCenterTask.objects.filter(pk=pk)
         if not self.can_read_release_tasks:
             qs = qs.filter(
-                operation_type__in=["node_batch_test", "config_batch_sync"],
+                operation_type__in=["node_batch_test", "config_batch_sync", "nginx_service_control"],
                 trigger_user=self.request.user,
             )
         return qs.first()
@@ -1928,7 +1928,7 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
         # 无发布读权限时：仅本人触发的节点测试 / 配置同步（对齐任务中心列表）
         if not self.can_read_release_tasks:
             tasks = tasks.filter(
-                operation_type__in=["node_batch_test", "config_batch_sync"],
+                operation_type__in=["node_batch_test", "config_batch_sync", "nginx_service_control"],
                 trigger_user=request.user,
             )
         data = [

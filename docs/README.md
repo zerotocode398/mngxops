@@ -29,6 +29,7 @@
 | [08-releases.md](08-releases.md) | 发布中心 / 发布历史 / 回滚 | `apps/releases` |
 | [09-task-center.md](09-task-center.md) | 任务中心 | `apps/releases`（TaskCenter） |
 | [10-upgrade.md](10-upgrade.md) | Nginx 编译升级 | `apps/upgrade` |
+| [10b-nginx-service.md](10b-nginx-service.md) | Nginx 启停 | `apps/nginx_service` |
 | [11-audit.md](11-audit.md) | 操作审计 / 登录日志 | `apps/audit` |
 | [12-settings.md](12-settings.md) | 系统设置 | `apps/settings` |
 

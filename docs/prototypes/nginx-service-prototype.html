@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nginx 启停原型 · MngxOps</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #667eea;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --info: #0dcaf0;
+            --gray-100: #f8f9fa;
+            --gray-200: #e9ecef;
+            --gray-400: #ced4da;
+            --gray-500: #adb5bd;
+            --gray-600: #6c757d;
+            --br-md: 0.5rem;
+            --transition-normal: 0.2s ease;
+            --fs-base: 0.875rem;
+        }
+        body { background: var(--gray-100); font-size: var(--fs-base); color: #212529; }
+        .proto-banner {
+            background: #fff3cd; border-bottom: 1px solid #ffecb5;
+            padding: 0.5rem 1rem; font-size: 0.8rem; color: #664d03;
+        }
+        .proto-shell { display: flex; min-height: calc(100vh - 40px); }
+        .proto-sidebar {
+            width: 220px; flex-shrink: 0;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            color: #fff; padding: 1rem 0.75rem;
+        }
+        .proto-sidebar .brand { font-weight: 600; margin-bottom: 1.25rem; padding: 0 0.5rem; }
+        .proto-sidebar .brand small { display: block; opacity: 0.75; font-weight: 400; font-size: 0.75rem; }
+        .proto-sidebar .section-title {
+            font-size: 0.7rem; text-transform: uppercase; opacity: 0.65;
+            padding: 0.75rem 0.5rem 0.35rem; letter-spacing: 0.04em;
+        }
+        .proto-sidebar .nav-link {
+            color: rgba(255,255,255,0.9); border-radius: 0.375rem;
+            padding: 0.45rem 0.65rem; font-size: 0.875rem;
+        }
+        .proto-sidebar .nav-link:hover, .proto-sidebar .nav-link.active {
+            background: rgba(255,255,255,0.15); color: #fff;
+        }
+        .proto-sidebar .submenu { padding-left: 0.5rem; }
+        .proto-sidebar .submenu .nav-link { font-size: 0.8125rem; padding: 0.35rem 0.65rem; }
+        .proto-main { flex: 1; min-width: 0; padding: 1rem 1.25rem 2rem; }
+        .node-identity { font-size: 0.875rem; font-weight: 400; }
+        .node-chip {
+            display: inline-flex; align-items: center; gap: 0.35rem;
+            background: #eef1ff; color: #3d4db8; border: 1px solid #c9d0f8;
+            border-radius: 999px; padding: 0.2rem 0.55rem; font-size: 0.8rem; margin: 0.15rem;
+        }
+        .node-chip .chip-x { cursor: pointer; opacity: 0.7; }
+        .node-chip .chip-x:hover { opacity: 1; }
+        .selected-box {
+            min-height: 56px; border: 1px solid var(--gray-200);
+            border-radius: var(--br-md); background: #fff; padding: 0.65rem 0.75rem;
+        }
+        .action-card { background: #fff; border: 1px solid var(--gray-200); border-radius: var(--br-md); }
+        .action-card .card-header {
+            background: #fff; border-bottom: 1px solid var(--gray-200);
+            font-weight: 600; padding: 0.75rem 1rem;
+        }
+        .action-hint { color: var(--gray-600); font-size: 0.8rem; }
+        .data-table { table-layout: fixed; width: 100%; }
+        .table.data-table > :not(caption) > * > * { padding: 0.5rem 0.75rem; vertical-align: middle; }
+        .table.data-table thead th { font-weight: 600; white-space: nowrap; }
+        .table.data-table > :not(caption) > * > *:first-child { padding-left: 1rem; }
+        .table.data-table > :not(caption) > * > *:last-child { padding-right: 1rem; }
+        .modal-table-scroll { max-height: 360px; overflow-y: auto; }
+        .tag-input-wrapper {
+            display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center;
+            min-height: calc(1.5em + 0.5rem + 2px);
+        }
+        .tag-input-wrapper .tag-input-field {
+            border: 0; outline: 0; flex: 1; min-width: 140px; font-size: 0.875rem; background: transparent;
+        }
+        .status-online { background: #d1e7dd; color: #0f5132; }
+        .status-offline { background: #f8d7da; color: #842029; }
+        .status-unknown { background: #e2e3e5; color: #41464b; }
+        tr.row-disabled { opacity: 0.55; }
+        .fake-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(33,37,41,0.45);
+            z-index: 2000; align-items: center; justify-content: center;
+        }
+        .fake-overlay.show { display: flex; }
+        .fake-overlay-panel {
+            background: #fff; border-radius: 0.5rem; width: min(420px, 92vw);
+            padding: 1.25rem 1.5rem; box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+        }
+        .progress { height: 8px; }
+        code { font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+<div class="proto-banner">
+    <strong>原型预览</strong> · Nginx 启停（运维工具 / 与「Nginx 升级」同级）· 无后端，假数据 ·
+    交互：选节点 → 启停/重启 → 确认 → 假进度遮罩
+</div>
+
+<div class="proto-shell">
+    <aside class="proto-sidebar">
+        <div class="brand">
+            MngxOps
+            <small>Nginx 多节点管理平台</small>
+        </div>
+        <div class="section-title">功能模块</div>
+        <a class="nav-link" href="#"><i class="bi bi-hdd-network"></i> 节点管理</a>
+        <a class="nav-link" href="#"><i class="bi bi-key"></i> 凭证管理</a>
+        <a class="nav-link" href="#"><i class="bi bi-folder2-open"></i> 配置管理</a>
+        <a class="nav-link" href="#"><i class="bi bi-rocket-takeoff"></i> 发布管理</a>
+
+        <div class="section-title">运维工具</div>
+        <a class="nav-link" href="#"><i class="bi bi-tools"></i> 运维工具</a>
+        <div class="submenu">
+            <a class="nav-link" href="#"><i class="bi bi-box-seam"></i> Nginx 升级</a>
+            <a class="nav-link active" href="#"><i class="bi bi-power"></i> Nginx 启停</a>
+        </div>
+    </aside>
+
+    <main class="proto-main">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h5 class="mb-0"><i class="bi bi-power"></i> Nginx 启停</h5>
+            <a href="#" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-list-task"></i> 任务中心
+            </a>
+        </div>
+
+        <div class="action-card mb-3">
+            <div class="card-header"><i class="bi bi-server"></i> 目标节点</div>
+            <div class="card-body">
+                <div class="selected-box mb-2" id="selectedBox">
+                    <span class="text-muted small" id="emptyHint">请选择一个或多个在线节点（最多 3 台）</span>
+                    <div id="chipWrap"></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
+                        <i class="bi bi-search"></i> <span id="btnSelectLabel">选择节点</span>
+                    </button>
+                    <span class="action-hint">仅可选在线且未锁定、已配置凭证的节点 · 上限 <strong>3</strong></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-card mb-3">
+            <div class="card-header"><i class="bi bi-lightning-charge"></i> 服务操作</div>
+            <div class="card-body">
+                <p class="action-hint mb-3 mb-md-2">
+                    按节点 Nginx 启动方式自动选择 <code>systemctl</code> 或二进制命令；
+                    <strong>重载</strong>平滑加载配置，<strong>停止/重启</strong>会短暂中断业务流量。
+                </p>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-success btn-sm" id="btnStart" disabled onclick="runAction('start')">
+                        <i class="bi bi-play-fill"></i> 启动
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" id="btnStop" disabled onclick="runAction('stop')">
+                        <i class="bi bi-stop-fill"></i> 停止
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnReload" disabled onclick="runAction('reload')">
+                        <i class="bi bi-arrow-clockwise"></i> 重载
+                    </button>
+                    <button type="button" class="btn btn-warning btn-sm" id="btnRestart" disabled onclick="runAction('restart')">
+                        <i class="bi bi-arrow-repeat"></i> 重启
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClear" disabled onclick="clearSelection()">
+                        <i class="bi bi-x-circle"></i> 清空已选
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-info-circle"></i> 说明</span>
+            </div>
+            <div class="card-body small text-muted">
+                <ul class="mb-0 ps-3">
+                    <li>节点「在线/离线」表示 SSH 连通性，不等于 Nginx 进程状态。</li>
+                    <li><strong>重载 ≠ 重启</strong>：重载（reload）平滑生效配置；重启（restart）会停掉再拉起进程。</li>
+                    <li>执行结果写入任务中心（类型：Nginx 服务启停），可点右上角查看。</li>
+                    <li>本页为静态原型，确认样式后按此落地正式页面。</li>
+                </ul>
+            </div>
+        </div>
+    </main>
+</div>
+
+<div class="modal fade" id="selectNodeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-search"></i> 选择目标节点</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="tag-input-wrapper form-control form-control-sm" id="searchWrap">
+                        <input type="text" class="tag-input-field" id="searchField"
+                               placeholder="搜索主机名、IP 或节点组" autocomplete="off">
+                    </div>
+                </div>
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th style="width:6%"><input type="checkbox" id="selectAll" title="全选本页可选"></th>
+                            <th style="width:26%">主机名</th>
+                            <th style="width:22%">IP</th>
+                            <th style="width:24%">节点组</th>
+                            <th style="width:22%">状态</th>
+                        </tr>
+                        </thead>
+                        <tbody id="nodeTbody"></tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between mt-2">
+                    <small class="text-muted">共 <span id="resultCount">0</span> · 弹窗已勾 <span id="pickedCount">0</span> · 最终上限 3</small>
+                    <small class="text-muted">离线 / 锁定 / 无凭证不可选</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="confirmSelection()">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmTitle">确认操作</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="confirmBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="confirmOk">确定</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="fake-overlay" id="progressOverlay">
+    <div class="fake-overlay-panel">
+        <div class="d-flex align-items-center mb-2">
+            <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+            <strong id="progressTitle">正在执行…</strong>
+        </div>
+        <div class="progress mb-2"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+        <div class="small text-muted" id="progressDetail">准备中</div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/** 批量上限（对齐 node.batch_max_count 默认） */
+const MAX_BATCH = 3;
+/** 假节点数据 */
+const NODES = [
+    { id: 1, hostname: 'ngx-prod-01', ip: '10.0.1.11', groups: 'prod,edge', status: 'online', locked: false, cred: true },
+    { id: 2, hostname: 'ngx-prod-02', ip: '10.0.1.12', groups: 'prod', status: 'online', locked: false, cred: true },
+    { id: 3, hostname: 'ngx-test-01', ip: '10.0.2.21', groups: 'test', status: 'online', locked: false, cred: true },
+    { id: 4, hostname: 'ngx-test-02', ip: '10.0.2.22', groups: 'test', status: 'offline', locked: false, cred: true },
+    { id: 5, hostname: 'ngx-dev-01', ip: '10.0.3.31', groups: 'dev', status: 'online', locked: true, cred: true },
+    { id: 6, hostname: 'ngx-lab-01', ip: '10.0.4.41', groups: 'lab', status: 'unknown', locked: false, cred: false },
+];
+
+let selected = new Map();
+let draft = new Map();
+
+/** 是否可选 */
+function canSelect(n) {
+    return n.status === 'online' && !n.locked && n.cred;
+}
+
+/** 状态徽标 HTML */
+function statusBadge(n) {
+    const map = { online: 'status-online', offline: 'status-offline', unknown: 'status-unknown' };
+    const label = { online: '在线', offline: '离线', unknown: '未知' };
+    let extra = '';
+    if (n.locked) extra = ' · 锁定';
+    if (!n.cred) extra += ' · 无凭证';
+    return `<span class="badge ${map[n.status] || 'status-unknown'}">${label[n.status] || n.status}${extra}</span>`;
+}
+
+/** 搜索匹配 */
+function matchNode(n, q) {
+    if (!q.length) return true;
+    const hay = (n.hostname + ' ' + n.ip + ' ' + n.groups).toLowerCase();
+    return q.every(t => hay.includes(t.toLowerCase()));
+}
+
+/** 渲染弹窗节点表 */
+function renderTable() {
+    const raw = document.getElementById('searchField').value.trim();
+    const q = raw ? [raw] : [];
+    const rows = NODES.filter(n => matchNode(n, q));
+    const tbody = document.getElementById('nodeTbody');
+    tbody.innerHTML = rows.map(n => {
+        const ok = canSelect(n);
+        const checked = draft.has(n.id) ? 'checked' : '';
+        return `<tr class="${ok ? '' : 'row-disabled'}" data-id="${n.id}">
+            <td><input type="checkbox" class="node-cb" value="${n.id}" ${ok ? '' : 'disabled'} ${checked}></td>
+            <td><span class="node-identity">${n.hostname}${n.locked ? ' <i class="bi bi-lock-fill text-warning"></i>' : ''}</span></td>
+            <td><code>${n.ip}</code></td>
+            <td>${n.groups.split(',').map(g => `<span class="badge bg-info text-dark me-1">${g}</span>`).join('')}</td>
+            <td>${statusBadge(n)}</td>
+        </tr>`;
+    }).join('') || `<tr><td colspan="5" class="text-center text-muted py-4">无匹配节点</td></tr>`;
+    document.getElementById('resultCount').textContent = rows.length;
+    document.getElementById('pickedCount').textContent = draft.size;
+    tbody.querySelectorAll('tr[data-id]').forEach(tr => {
+        tr.addEventListener('click', e => {
+            if (e.target.tagName === 'INPUT') return;
+            const cb = tr.querySelector('.node-cb');
+            if (cb && !cb.disabled) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+        });
+    });
+    tbody.querySelectorAll('.node-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const id = Number(cb.value);
+            const node = NODES.find(x => x.id === id);
+            if (cb.checked) {
+                if (draft.size >= MAX_BATCH && !draft.has(id)) {
+                    cb.checked = false;
+                    alert('最多选择 ' + MAX_BATCH + ' 台节点');
+                    return;
+                }
+                draft.set(id, node);
+            } else {
+                draft.delete(id);
+            }
+            document.getElementById('pickedCount').textContent = draft.size;
+        });
+    });
+}
+
+/** 渲染已选 chips */
+function renderChips() {
+    const wrap = document.getElementById('chipWrap');
+    const hint = document.getElementById('emptyHint');
+    if (!selected.size) {
+        wrap.innerHTML = '';
+        hint.style.display = '';
+    } else {
+        hint.style.display = 'none';
+        wrap.innerHTML = [...selected.values()].map(n =>
+            `<span class="node-chip">${n.hostname} <code class="small">${n.ip}</code>
+             <i class="bi bi-x chip-x" data-id="${n.id}"></i></span>`
+        ).join('');
+        wrap.querySelectorAll('.chip-x').forEach(x => x.addEventListener('click', () => {
+            selected.delete(Number(x.dataset.id));
+            syncActionButtons();
+            renderChips();
+        }));
+    }
+    document.getElementById('btnSelectLabel').textContent =
+        selected.size ? `选择节点（已选 ${selected.size}）` : '选择节点';
+    syncActionButtons();
+}
+
+/** 同步操作按钮可用态 */
+function syncActionButtons() {
+    const on = selected.size > 0;
+    ['btnStart', 'btnStop', 'btnReload', 'btnRestart', 'btnClear'].forEach(id => {
+        document.getElementById(id).disabled = !on;
+    });
+}
+
+/** 打开弹窗时同步草稿勾选 */
+function openModal() {
+    draft = new Map(selected);
+    renderTable();
+}
+
+/** 确认弹窗选择 */
+function confirmSelection() {
+    selected = new Map(draft);
+    renderChips();
+    bootstrap.Modal.getInstance(document.getElementById('selectNodeModal')).hide();
+}
+
+/** 清空已选 */
+function clearSelection() {
+    selected.clear();
+    renderChips();
+}
+
+/** 发起启停确认 */
+function runAction(action) {
+    if (!selected.size) return;
+    const labels = { start: '启动', stop: '停止', reload: '重载', restart: '重启' };
+    const names = [...selected.values()].map(n => n.hostname).join('、');
+    const risky = (action === 'stop' || action === 'restart');
+    document.getElementById('confirmTitle').textContent = '确认' + labels[action] + ' Nginx';
+    let body = `<p>将对以下 <strong>${selected.size}</strong> 台节点执行 <strong>${labels[action]}</strong>：</p>
+         <p class="mb-2"><code>${names}</code></p>`;
+    if (action === 'reload') {
+        body += `<p class="text-muted small mb-0"><i class="bi bi-info-circle"></i> 平滑重载配置，一般不中断已有连接（不等于重启）。</p>`;
+    } else if (risky) {
+        body += `<p class="text-danger small mb-0"><i class="bi bi-exclamation-triangle"></i> 可能导致业务流量中断，请确认窗口期。</p>`;
+    }
+    document.getElementById('confirmBody').innerHTML = body;
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    const ok = document.getElementById('confirmOk');
+    ok.className = 'btn btn-sm ' + (
+        action === 'stop' ? 'btn-danger'
+            : action === 'restart' ? 'btn-warning'
+            : action === 'reload' ? 'btn-primary'
+            : 'btn-success'
+    );
+    ok.onclick = () => { modal.hide(); fakeProgress(labels[action]); };
+    modal.show();
+}
+
+/** 假进度遮罩 */
+function fakeProgress(label) {
+    const ov = document.getElementById('progressOverlay');
+    const bar = document.getElementById('progressBar');
+    const detail = document.getElementById('progressDetail');
+    document.getElementById('progressTitle').textContent = 'Nginx ' + label + '中…';
+    bar.style.width = '0%';
+    ov.classList.add('show');
+    let p = 0;
+    const hosts = [...selected.values()];
+    const timer = setInterval(() => {
+        p = Math.min(100, p + 12);
+        bar.style.width = p + '%';
+        const idx = Math.min(hosts.length - 1, Math.floor(p / 100 * hosts.length));
+        detail.textContent = `执行中：${hosts[idx].hostname}（${idx + 1}/${hosts.length}）`;
+        if (p >= 100) {
+            clearInterval(timer);
+            detail.textContent = `完成：成功 ${hosts.length}，失败 0`;
+            setTimeout(() => ov.classList.remove('show'), 700);
+        }
+    }, 180);
+}
+
+document.getElementById('selectNodeModal').addEventListener('show.bs.modal', openModal);
+document.getElementById('searchField').addEventListener('input', renderTable);
+document.getElementById('selectAll').addEventListener('change', e => {
+    const cbs = [...document.querySelectorAll('.node-cb:not(:disabled)')];
+    if (e.target.checked) {
+        for (const cb of cbs) {
+            if (draft.size >= MAX_BATCH) break;
+            const id = Number(cb.value);
+            if (!draft.has(id)) {
+                draft.set(id, NODES.find(x => x.id === id));
+                cb.checked = true;
+            }
+        }
+    } else {
+        cbs.forEach(cb => { cb.checked = false; draft.delete(Number(cb.value)); });
+    }
+    document.getElementById('pickedCount').textContent = draft.size;
+});
+renderChips();
+</script>
+</body>
+</html>

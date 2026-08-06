@@ -119,6 +119,7 @@ class TaskCenterTask(models.Model):
         ("config_glob_preview", "配置Glob预览"),
         ("nginx_upgrade", "Nginx 编译升级"),
         ("nginx_rollback", "Nginx 升级回滚"),
+        ("nginx_service_control", "Nginx 服务启停"),
         ("other", "其他任务"),
     )
 

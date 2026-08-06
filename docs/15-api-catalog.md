@@ -85,6 +85,13 @@
 | `task/create/`、`task/<pk>/progress|log|cancel|rollback` | 任务 |
 | `history/`、`/` | 历史 / 首页 |
 
+## 8b. Nginx 启停 `nginx-service`
+
+| 路径 | 说明 |
+|------|------|
+| `/nginx-service/` | 启停操作台页 |
+| `api/execute/` | **JSON** 异步 start/stop/reload/restart |
+
 ## 9. 审计 `audit`
 
 | 路径 | 说明 |

@@ -40,7 +40,7 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 
 | key | 生效 |
 |-----|------|
-| `node.batch_max_count` | 后端立即；勾选上限需刷新列表 |
+| `node.batch_max_count` | 后端立即；勾选上限需刷新对应页面（节点列表 / Nginx 启停等） |
 | `node.ssh_connect_timeout` | 下次 SSH |
 | `node.ssh_default_port` | 仅新建/导入默认 |
 | `node.detect_retries` | 下次连接 |

@@ -9,7 +9,7 @@
 ## 2. 角色与权限
 
 - 列表/详情：`releases.read` **或** `nodes.update`。  
-- 仅有 `nodes.update` 时：列表与详情均可见本人触发的 `node_batch_test` 与 `config_batch_sync`（Q88 已统一）。
+- 仅有 `nodes.update` 时：列表与详情均可见本人触发的 `node_batch_test`、`config_batch_sync`、`nginx_service_control`（Q88 / Q131）。
 
 ## 3. 领域模型
 
@@ -26,6 +26,7 @@
 | `config_batch_sync` | 配置同步（发现也走此类型） |
 | `config_discover` / `config_drift_check` / `config_glob_preview` | 枚举保留兼容；筛选下拉已隐藏；业务不新建（Q86/Q87） |
 | `nginx_upgrade` / `nginx_rollback` | 升级 |
+| `nginx_service_control` | Nginx 启停（运维工具） |
 | `other` | 兜底 |
 
 ## 4. 页面与路由

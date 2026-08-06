@@ -54,7 +54,7 @@ PRESET_SETTINGS = [
     # 节点管理
     {"key": "node.batch_max_count", "group": "节点管理", "type": "integer", "value": "3",
      "label": "批量操作最大节点数",
-     "description": "节点批量测试/解锁等操作的最大并发节点数（后端立即生效；列表勾选上限需刷新节点列表）",
+     "description": "节点批量测试/解锁、Nginx 启停等操作的最大节点数（后端立即生效；页面勾选上限需刷新对应页面）",
      "sort_order": 10, "min_value": 1, "max_value": 50},
     {"key": "node.ssh_connect_timeout", "group": "节点管理", "type": "integer", "value": "10",
      "label": "SSH 连接超时（秒）",

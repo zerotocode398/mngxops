@@ -913,6 +913,9 @@
                         <a class="nav-link" href="{% url 'upgrade:list' %}" data-nav="upgrade">
                             <i class="bi bi-box-seam"></i> <span class="sidebar-label">Nginx 升级</span>
                         </a>
+                        <a class="nav-link" href="{% url 'nginx_service:index' %}" data-nav="nginx_service">
+                            <i class="bi bi-power"></i> <span class="sidebar-label">Nginx 启停</span>
+                        </a>
                     </div>
                     </div>
                     {% endif %}
@@ -1509,6 +1512,7 @@
                     'audit:list': 'submenu-audit',
                     'audit:login_list': 'submenu-audit',
                     'upgrade': 'submenu-ops',
+                    'nginx_service': 'submenu-ops',
                 };
                 const fullKey = currentAppName + ':' + currentUrlName;
                 let targetSubmenu = mapping[fullKey] || mapping[currentAppName];
@@ -1579,6 +1583,8 @@
                     'upgrade:package_upload': 'upgrade',
                     'upgrade:history': 'upgrade',
                     'upgrade:task_log': 'upgrade',
+                    'nginx_service:index': 'nginx_service',
+                    'nginx_service:api_execute': 'nginx_service',
                     'configs:sync_wizard': 'configs',
                     'configs:binding_create': 'configs',
                     'configs:binding_edit': 'configs',

@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}Nginx 启停 - MngxOps{% endblock %}
+{% block page_title %}<i class="bi bi-power"></i> Nginx 启停{% endblock %}
+
+{% block extra_css %}
+<style>
+    .selected-box {
+        min-height: 56px;
+        border: 1px solid var(--gray-200, #e9ecef);
+        border-radius: var(--br-md, 0.5rem);
+        background: #fff;
+        padding: 0.65rem 0.75rem;
+    }
+    .node-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: #eef1ff;
+        color: #3d4db8;
+        border: 1px solid #c9d0f8;
+        border-radius: 999px;
+        padding: 0.2rem 0.55rem;
+        font-size: 0.8rem;
+        margin: 0.15rem;
+    }
+    .node-chip .chip-x { cursor: pointer; opacity: 0.7; }
+    .node-chip .chip-x:hover { opacity: 1; }
+    .action-hint { color: var(--gray-600, #6c757d); font-size: 0.8rem; }
+    .modal-table-scroll { max-height: 360px; overflow-y: auto; }
+    tr.disabled-row { opacity: 0.55; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-end align-items-center mb-3 flex-wrap gap-2">
+        {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
+        <a href="{% url 'releases:history' %}?operation_type=nginx_service_control" class="btn btn-outline-secondary btn-sm" target="_blank">
+            <i class="bi bi-list-task"></i> 任务中心
+        </a>
+        {% endif %}
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-server"></i> 目标节点</div>
+        <div class="card-body">
+            <div class="selected-box mb-2" id="selectedBox">
+                <span class="text-muted small" id="emptyHint">请选择一个或多个在线节点（最多 {{ batch_max_count }} 台）</span>
+                <div id="chipWrap"></div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
+                    <i class="bi bi-search"></i> <span id="btnSelectLabel">选择节点</span>
+                </button>
+                <span class="action-hint">仅可选在线且已配置凭证的节点 · 上限 <strong>{{ batch_max_count }}</strong>（系统设置）</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-lightning-charge"></i> 服务操作</div>
+        <div class="card-body">
+            <p class="action-hint mb-3">
+                按节点 Nginx 启动方式自动选择 <code>systemctl</code> 或二进制命令；
+                <strong>重载</strong>为平滑加载配置（一般不中断连接），<strong>停止/重启</strong>会短暂中断业务流量。
+            </p>
+            {% if can_execute %}
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-success btn-sm" id="btnStart" disabled onclick="runAction('start')">
+                    <i class="bi bi-play-fill"></i> 启动
+                </button>
+                <button type="button" class="btn btn-outline-danger btn-sm" id="btnStop" disabled onclick="runAction('stop')">
+                    <i class="bi bi-stop-fill"></i> 停止
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnReload" disabled onclick="runAction('reload')">
+                    <i class="bi bi-arrow-clockwise"></i> 重载
+                </button>
+                <button type="button" class="btn btn-warning btn-sm" id="btnRestart" disabled onclick="runAction('restart')">
+                    <i class="bi bi-arrow-repeat"></i> 重启
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClear" disabled onclick="clearSelection()">
+                    <i class="bi bi-x-circle"></i> 清空已选
+                </button>
+            </div>
+            {% else %}
+            <p class="text-muted small mb-0">当前账号无执行权限（需要节点编辑权限）。</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><i class="bi bi-info-circle"></i> 说明</div>
+        <div class="card-body small text-muted">
+            <ul class="mb-0 ps-3">
+                <li>节点「在线/离线」表示 SSH 连通性，不等于 Nginx 进程状态；停止 Nginx 不会将节点标为离线。</li>
+                <li><strong>重载 ≠ 重启</strong>：重载（reload）平滑生效配置；重启（restart）会停掉再拉起进程。</li>
+                <li>执行结果写入任务中心（类型：Nginx 服务启停）。</li>
+                <li>批量上限取自系统设置「批量操作最大节点数」。</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="selectNodeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-search"></i> 选择目标节点</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="tag-input-wrapper form-control form-control-sm" id="searchWrap">
+                        <input type="text" class="tag-input-field" id="searchField"
+                               placeholder="搜索主机名、IP 或节点组，回车添加标签" autocomplete="off">
+                    </div>
+                    <input type="hidden" id="searchHidden">
+                </div>
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th style="width:6%"><input type="checkbox" id="selectAll" title="全选本页可选"></th>
+                            <th style="width:26%">主机名</th>
+                            <th style="width:22%">IP</th>
+                            <th style="width:24%">节点组</th>
+                            <th style="width:22%">状态</th>
+                        </tr>
+                        </thead>
+                        <tbody id="nodeTbody">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    <i class="bi bi-search"></i>
+                                    <p class="mt-1 mb-0">打开后加载节点…</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between mt-2">
+                    <small class="text-muted">共 <span id="resultCount">0</span> · 已勾 <span id="pickedCount">0</span> · 上限 {{ batch_max_count }}</small>
+                    <small class="text-muted">离线 / 无凭证不可选</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="confirmSelection()">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var MAX_BATCH = {{ batch_max_count|default:3 }};
+    var CAN_EXECUTE = {{ can_execute|yesno:"true,false" }};
+    var EXECUTE_URL = '{% url "nginx_service:api_execute" %}';
+    var SEARCH_URL = '{% url "nodes:api_search_nodes" %}';
+
+    var selected = {};
+    var draft = {};
+    var lastSearchNodes = [];
+    var searchTimer = null;
+
+    function csrfToken() {
+        var m = document.cookie.match(/csrftoken=([^;]+)/);
+        return m ? m[1] : '';
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function canSelect(node) {
+        return node.status === 'online' && !!node.has_credential;
+    }
+
+    function selectedCount() {
+        return Object.keys(selected).length;
+    }
+
+    function draftCount() {
+        return Object.keys(draft).length;
+    }
+
+    function syncActionButtons() {
+        var on = CAN_EXECUTE && selectedCount() > 0;
+        ['btnStart', 'btnStop', 'btnReload', 'btnRestart', 'btnClear'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.disabled = !on;
+        });
+    }
+
+    function renderChips() {
+        var wrap = document.getElementById('chipWrap');
+        var hint = document.getElementById('emptyHint');
+        var ids = Object.keys(selected);
+        if (!ids.length) {
+            wrap.innerHTML = '';
+            hint.style.display = '';
+        } else {
+            hint.style.display = 'none';
+            wrap.innerHTML = ids.map(function (id) {
+                var n = selected[id];
+                return '<span class="node-chip">' + escapeHtml(n.hostname) +
+                    ' <code class="small">' + escapeHtml(n.ip) + '</code>' +
+                    ' <i class="bi bi-x chip-x" data-id="' + id + '"></i></span>';
+            }).join('');
+            wrap.querySelectorAll('.chip-x').forEach(function (x) {
+                x.addEventListener('click', function () {
+                    delete selected[x.getAttribute('data-id')];
+                    renderChips();
+                });
+            });
+        }
+        document.getElementById('btnSelectLabel').textContent =
+            ids.length ? ('选择节点（已选 ' + ids.length + '）') : '选择节点';
+        syncActionButtons();
+    }
+
+    function toggleDraft(node, checked) {
+        var key = String(node.id);
+        if (checked) {
+            if (!draft[key] && draftCount() >= MAX_BATCH) {
+                showAlert('提示', '最多选择 ' + MAX_BATCH + ' 台节点');
+                return false;
+            }
+            draft[key] = node;
+        } else {
+            delete draft[key];
+        }
+        document.getElementById('pickedCount').textContent = String(draftCount());
+        return true;
+    }
+
+    function statusBadge(node) {
+        var html = '';
+        if (node.status === 'online') html = '<span class="badge bg-success">在线</span>';
+        else if (node.status === 'offline') html = '<span class="badge bg-danger">离线</span>';
+        else html = '<span class="badge bg-secondary">未知</span>';
+        if (!node.has_credential) html += ' <span class="badge bg-warning text-dark">无凭证</span>';
+        return html;
+    }
+
+    function renderTable(nodes) {
+        lastSearchNodes = nodes || [];
+        var tbody = document.getElementById('nodeTbody');
+        document.getElementById('resultCount').textContent = String(lastSearchNodes.length);
+        document.getElementById('pickedCount').textContent = String(draftCount());
+        if (!lastSearchNodes.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">' +
+                '<i class="bi bi-inbox"></i><p class="mt-1 mb-0">未找到匹配的节点</p></td></tr>';
+            return;
+        }
+        var html = '';
+        lastSearchNodes.forEach(function (node) {
+            var selectable = canSelect(node);
+            var checked = draft[String(node.id)] ? ' checked' : '';
+            if (!selectable) checked = '';
+            var groups = '';
+            if (node.groups && node.groups.length) {
+                node.groups.forEach(function (g) {
+                    groups += '<span class="badge bg-info text-dark me-1">' + escapeHtml(g.name) + '</span>';
+                });
+            } else {
+                groups = '<span class="text-muted small">-</span>';
+            }
+            html += '<tr class="' + (selectable ? '' : 'disabled-row') + '" data-node-id="' + node.id + '"' +
+                (selectable ? '' : ' data-disabled="1"') + '>' +
+                '<td><input type="checkbox" class="svc-node-cb" value="' + node.id + '"' + checked +
+                (selectable ? '' : ' disabled') + '></td>' +
+                '<td><span class="node-identity">' + escapeHtml(node.hostname) + '</span></td>' +
+                '<td><code>' + escapeHtml(node.ip) + '</code></td>' +
+                '<td>' + groups + '</td>' +
+                '<td>' + statusBadge(node) + '</td></tr>';
+        });
+        tbody.innerHTML = html;
+        tbody.querySelectorAll('.svc-node-cb').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                var node = lastSearchNodes.find(function (n) { return String(n.id) === String(cb.value); });
+                if (!node) return;
+                if (!toggleDraft(node, cb.checked)) cb.checked = false;
+            });
+        });
+        if (typeof bindModalTableRowToggle === 'function') {
+            bindModalTableRowToggle(tbody, '.svc-node-cb');
+        }
+    }
+
+    function doSearch() {
+        var search = document.getElementById('searchHidden').value || '';
+        var tbody = document.getElementById('nodeTbody');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">' +
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div>搜索中...</td></tr>';
+        fetch(SEARCH_URL + '?search=' + encodeURIComponent(search), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (result) {
+                renderTable(result.nodes || []);
+            })
+            .catch(function () {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">加载失败</td></tr>';
+            });
+    }
+
+    function updateSearchHidden() {
+        var wrapper = document.getElementById('searchWrap');
+        var field = document.getElementById('searchField');
+        var hidden = document.getElementById('searchHidden');
+        var base = [];
+        wrapper.querySelectorAll('.tag-badge').forEach(function (b) {
+            base.push(b.getAttribute('data-value'));
+        });
+        var live = (field.value || '').trim();
+        if (live) base.push(live);
+        hidden.value = base.join(',');
+    }
+
+    function createSearchBadge(text) {
+        var wrapper = document.getElementById('searchWrap');
+        var field = document.getElementById('searchField');
+        if (!text || wrapper.querySelector('.tag-badge[data-value="' + text + '"]')) return;
+        var badge = document.createElement('span');
+        badge.className = 'tag-badge';
+        badge.setAttribute('data-value', text);
+        badge.innerHTML = text + '<span class="tag-remove">&times;</span>';
+        badge.querySelector('.tag-remove').addEventListener('click', function (e) {
+            e.stopPropagation();
+            badge.remove();
+            updateSearchHidden();
+            doSearch();
+        });
+        wrapper.insertBefore(badge, field);
+        updateSearchHidden();
+    }
+
+    function initTagSearch() {
+        var wrapper = document.getElementById('searchWrap');
+        var field = document.getElementById('searchField');
+        field.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var val = field.value.trim();
+                if (val) {
+                    createSearchBadge(val);
+                    field.value = '';
+                    doSearch();
+                }
+            } else if (e.key === 'Backspace' && !field.value) {
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length) {
+                    badges[badges.length - 1].remove();
+                    updateSearchHidden();
+                    doSearch();
+                }
+            }
+        });
+        field.addEventListener('input', function () {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function () {
+                updateSearchHidden();
+                doSearch();
+            }, 300);
+        });
+        wrapper.addEventListener('click', function (e) {
+            if (e.target === wrapper) field.focus();
+        });
+    }
+
+    window.confirmSelection = function () {
+        selected = Object.assign({}, draft);
+        renderChips();
+        var modal = bootstrap.Modal.getInstance(document.getElementById('selectNodeModal'));
+        if (modal) modal.hide();
+    };
+
+    window.clearSelection = function () {
+        selected = {};
+        renderChips();
+    };
+
+    window.runAction = function (action) {
+        if (!CAN_EXECUTE || !selectedCount()) return;
+        var labels = { start: '启动', stop: '停止', reload: '重载', restart: '重启' };
+        var names = Object.keys(selected).map(function (id) { return selected[id].hostname; }).join('、');
+        var risky = (action === 'stop' || action === 'restart');
+        var msg = '<p>将对以下 <strong>' + selectedCount() + '</strong> 台节点执行 <strong>' +
+            labels[action] + '</strong>：</p><p class="mb-2"><code>' + escapeHtml(names) + '</code></p>';
+        if (action === 'reload') {
+            msg += '<p class="text-muted small mb-0"><i class="bi bi-info-circle"></i> 平滑重载配置，一般不中断已有连接（不等于重启）。</p>';
+        } else if (risky) {
+            msg += '<p class="text-danger small mb-0"><i class="bi bi-exclamation-triangle"></i> 可能导致业务流量中断，请确认窗口期。</p>';
+        }
+        showConfirm('确认' + labels[action] + ' Nginx', msg, function () {
+            if (typeof showAsyncProgressOverlay === 'function') {
+                showAsyncProgressOverlay('Nginx ' + labels[action]);
+            }
+            fetch(EXECUTE_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    action: action,
+                    node_ids: Object.keys(selected).map(function (id) { return Number(id); })
+                })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (result) {
+                    if (!result.success) {
+                        if (typeof closeAsyncProgressOverlay === 'function') {
+                            closeAsyncProgressOverlay();
+                        }
+                        showAlert('执行失败', result.message || '操作失败');
+                        return;
+                    }
+                    if (result.async && result.task_center_id && typeof startAsyncProgressPolling === 'function') {
+                        startAsyncProgressPolling(result.task_center_id);
+                    } else {
+                        if (typeof closeAsyncProgressOverlay === 'function') {
+                            closeAsyncProgressOverlay();
+                        }
+                        showAlert('已提交', result.message || '任务已创建');
+                    }
+                })
+                .catch(function () {
+                    if (typeof closeAsyncProgressOverlay === 'function') {
+                        closeAsyncProgressOverlay();
+                    }
+                    showAlert('执行失败', '网络错误');
+                });
+        }, true, risky ? 'md' : 'sm');
+    };
+
+    document.getElementById('selectNodeModal').addEventListener('show.bs.modal', function () {
+        draft = Object.assign({}, selected);
+        document.getElementById('selectAll').checked = false;
+        doSearch();
+    });
+
+    document.getElementById('selectAll').addEventListener('change', function (e) {
+        var cbs = document.querySelectorAll('.svc-node-cb:not(:disabled)');
+        if (e.target.checked) {
+            cbs.forEach(function (cb) {
+                if (draftCount() >= MAX_BATCH && !draft[String(cb.value)]) return;
+                var node = lastSearchNodes.find(function (n) { return String(n.id) === String(cb.value); });
+                if (!node) return;
+                if (toggleDraft(node, true)) cb.checked = true;
+            });
+        } else {
+            cbs.forEach(function (cb) {
+                cb.checked = false;
+                delete draft[String(cb.value)];
+            });
+            document.getElementById('pickedCount').textContent = '0';
+        }
+    });
+
+    initTagSearch();
+    renderChips();
+})();
+</script>
+{% endblock %}

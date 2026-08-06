@@ -16,6 +16,7 @@
 - 发布中心（节点×绑定勾选）、发布/回滚执行、发布历史
 - 统一任务中心与全屏进度遮罩轮询
 - Nginx 源码包管理与多节点编译升级向导
+- Nginx 服务启停（start/stop/reload/restart，运维工具独立页）
 - RBAC（用户 / 角色 / 用户组）、操作审计、登录日志
 - 系统设置（已接线 PRESET）与数据保留清理
 
@@ -75,6 +76,7 @@ flowchart TB
   end
   subgraph platform [平台能力]
     Upgrade[upgrade]
+    NginxService[nginx_service]
     Settings[settings]
     Audit[audit]
     Dashboard[dashboard]
@@ -87,6 +89,8 @@ flowchart TB
   Releases --> TC
   Upgrade --> Nodes
   Upgrade --> TC
+  NginxService --> Nodes
+  NginxService --> TC
   Nodes --> TC
   Creds --> TC
   Audit --> TC
@@ -104,6 +108,7 @@ flowchart TB
 3. 编辑绑定内容产生新版本（`modified`）→ 发布中心勾选推送 → 成功后 `synced`。
 4. 失败或变更后可通过发布历史单条/勾选回滚。
 5. 需要换版本 Nginx 时走升级中心：选节点与源码包 → 调整模块参数 → 远程编译安装 reload。
+6. 需要启停 Nginx 时走运维工具「Nginx 启停」：多选在线节点 → start/stop/reload/restart。
 
 ## 7. 仓库与文档入口
 

@@ -30,7 +30,7 @@ def _task_center_queryset_for_user(user):
     # 仅有 nodes.update 时：本人触发的批量测/配置同步
     if user_has_permission(user, "nodes", "update"):
         return qs.filter(
-            operation_type__in=["node_batch_test", "config_batch_sync"],
+            operation_type__in=["node_batch_test", "config_batch_sync", "nginx_service_control"],
             trigger_user=user,
         )
     return qs.none()

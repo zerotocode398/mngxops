@@ -61,6 +61,7 @@ OPERATION_AUDIT_MAP = {
     "config_glob_preview": ("配置管理", "配置Glob预览"),
     "nginx_upgrade": ("Nginx升级", "Nginx编译升级"),
     "nginx_rollback": ("Nginx升级", "Nginx升级回滚"),
+    "nginx_service_control": ("运维工具", "Nginx服务启停"),
     "other": ("任务中心", "其他任务"),
 }
 
