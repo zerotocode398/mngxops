@@ -32,6 +32,7 @@ urlpatterns = [
     path("audit/", include("apps.audit.urls")),
     path("upgrade/", include("apps.upgrade.urls")),
     path("nginx-service/", include("apps.nginx_service.urls")),
+    path("nginx-install/", include("apps.nginx_install.urls")),
     path("settings/", include("apps.settings.urls")),
 ]
 

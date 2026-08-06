@@ -274,15 +274,13 @@
                         <div class="form-text mb-0">替换同路径二进制，按启动方式 reload</div>
                     </label>
                     <label class="upgrade-mode-option mb-0">
-                        <input type="radio" name="upgradeMode" value="install" class="form-check-input me-2">
-                        <span>全新安装（无旧版本）</span>
-                        <div class="form-text mb-0">目标机无现成 Nginx 时使用</div>
-                    </label>
-                    <label class="upgrade-mode-option mb-0">
                         <input type="radio" name="upgradeMode" value="switch_path" class="form-check-input me-2">
                         <span>切换路径升级</span>
                         <div class="form-text mb-0">安装到新 prefix，再切换流量</div>
                     </label>
+                    <div class="form-text text-muted">
+                        目标机尚无 Nginx 时请使用侧栏「运维工具 → Nginx 安装」。
+                    </div>
                 </div>
                 <div class="form-text">
                     默认值来自系统设置

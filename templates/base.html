@@ -913,6 +913,9 @@
                         <a class="nav-link" href="{% url 'upgrade:list' %}" data-nav="upgrade">
                             <i class="bi bi-box-seam"></i> <span class="sidebar-label">Nginx 升级</span>
                         </a>
+                        <a class="nav-link" href="{% url 'nginx_install:index' %}" data-nav="nginx_install">
+                            <i class="bi bi-download"></i> <span class="sidebar-label">Nginx 安装</span>
+                        </a>
                         <a class="nav-link" href="{% url 'nginx_service:index' %}" data-nav="nginx_service">
                             <i class="bi bi-power"></i> <span class="sidebar-label">Nginx 启停</span>
                         </a>
@@ -1512,6 +1515,7 @@
                     'audit:list': 'submenu-audit',
                     'audit:login_list': 'submenu-audit',
                     'upgrade': 'submenu-ops',
+                    'nginx_install': 'submenu-ops',
                     'nginx_service': 'submenu-ops',
                 };
                 const fullKey = currentAppName + ':' + currentUrlName;
@@ -1585,6 +1589,12 @@
                     'upgrade:task_log': 'upgrade',
                     'nginx_service:index': 'nginx_service',
                     'nginx_service:api_execute': 'nginx_service',
+                    'nginx_install:index': 'nginx_install',
+                    'nginx_install:center': 'nginx_install',
+                    'nginx_install:history': 'nginx_install',
+                    'nginx_install:api_create': 'nginx_install',
+                    'nginx_install:api_batch_progress': 'nginx_install',
+                    'nginx_install:api_task_log': 'nginx_install',
                     'configs:sync_wizard': 'configs',
                     'configs:binding_create': 'configs',
                     'configs:binding_edit': 'configs',

@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "apps.settings.apps.SettingsConfig",
     "apps.upgrade",
     "apps.nginx_service",
+    "apps.nginx_install",
 ]
 
 MIDDLEWARE = [

@@ -1,4 +1,4 @@
-# mngxops 优化点台账（Q1–Q131）
+# mngxops 优化点台账（Q1–Q132）
 
 本文档记录历史优化点结论，供 Agent / 开发快速检索。**不修改业务逻辑时请以本文件结论为准。**
 
@@ -113,6 +113,7 @@
 | Q129 | 升级首页去掉与 page_title 重复的卡片标题 | 已完成 |
 | Q130 | 升级首页操作条改为内容区紧凑按钮行 | 已完成 |
 | Q131 | 运维工具 Nginx 启停独立页 | 已完成 |
+| Q132 | 运维工具 Nginx 全新安装独立页 | 已完成 |
 
 ### UI 规范 / 性能 / 进度
 
@@ -181,6 +182,7 @@
 | Q129 | 升级首页去掉与 page_title 重复的卡片标题 | 已完成 |
 | Q130 | 升级首页操作条改为内容区紧凑按钮行 | 已完成 |
 | Q131 | 运维工具 Nginx 启停独立页 | 已完成 |
+| Q132 | 运维工具 Nginx 全新安装独立页 | 已完成 |
 
 ---
 
@@ -1066,4 +1068,15 @@
   3. 权限：看页 `nodes.read`、执行 `nodes.update`；批量上限复用 `node.batch_max_count`。
   4. 门禁：online、未锁定、启用凭证；stop 不改节点 SSH status；重载 ≠ 重启（文案区分）。
   5. 执行走全局 `#asyncProgressOverlay` 轮询（串行逐节点刷 `current_steps` + 活结果树）；「完整日志」跳任务详情。
+- **状态**：已完成
+
+### Q132 · 运维工具 · Nginx 全新安装
+
+- **问题**：目标机无 Nginx 时需独立安装入口，且不能影响已落地的升级流水线。
+- **处理**：
+  1. 侧栏新增「Nginx 安装」；独立应用 `apps/nginx_install` + `run_install_task`（**不**调用/修改 `run_upgrade_task`）。
+  2. 三步向导：选节点+源码包 → 编译参数（无 `-V`）→ 确认；复用升级源码包/模块包。
+  3. 流水线：configure/make/make install → `nginx -t` → **start**；回写 `nginx_version`/`nginx_path` + `mark_node_probe_success`；写 `main_conf_path` 后自动配置同步。
+  4. 同步失败不否定安装、不回滚；历史/弹窗引导手动同步。
+  5. 升级向导隐藏「全新安装」选项，引导至本模块。
 - **状态**：已完成

@@ -1187,7 +1187,12 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
         # 仅有 nodes.update 时与详情可见范围对齐（本人触发的批量测/配置同步）
         if not self.can_read_release_tasks:
             queryset = queryset.filter(
-                operation_type__in=["node_batch_test", "config_batch_sync", "nginx_service_control"],
+                operation_type__in=[
+                    "node_batch_test",
+                    "config_batch_sync",
+                    "nginx_service_control",
+                    "nginx_install",
+                ],
                 trigger_user=self.request.user,
             )
         search = self.request.GET.get("search", "")
@@ -1250,7 +1255,12 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         if self.can_read_release_tasks:
             return queryset
         return queryset.filter(
-            operation_type__in=["node_batch_test", "config_batch_sync", "nginx_service_control"],
+            operation_type__in=[
+                "node_batch_test",
+                "config_batch_sync",
+                "nginx_service_control",
+                "nginx_install",
+            ],
             trigger_user=self.request.user,
         )
 
@@ -1437,7 +1447,12 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
         qs = TaskCenterTask.objects.filter(pk=pk)
         if not self.can_read_release_tasks:
             qs = qs.filter(
-                operation_type__in=["node_batch_test", "config_batch_sync", "nginx_service_control"],
+                operation_type__in=[
+                    "node_batch_test",
+                    "config_batch_sync",
+                    "nginx_service_control",
+                    "nginx_install",
+                ],
                 trigger_user=self.request.user,
             )
         return qs.first()
@@ -1915,7 +1930,13 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
         self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
         self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
         self.can_sync_configs = user_has_permission(request.user, "configs", "update")
-        if not (self.can_read_release_tasks or self.can_read_node_tasks or self.can_sync_configs):
+        self.can_read_upgrade = user_has_permission(request.user, "upgrade", "read")
+        if not (
+            self.can_read_release_tasks
+            or self.can_read_node_tasks
+            or self.can_sync_configs
+            or self.can_read_upgrade
+        ):
             return forbidden_response(request, "当前账号无权限访问该功能")
         return super().dispatch(request, *args, **kwargs)
 
@@ -1925,10 +1946,18 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
         if not id_list:
             return JsonResponse({"success": True, "tasks": []})
         tasks = TaskCenterTask.objects.filter(id__in=id_list).order_by("-created_at")
-        # 无发布读权限时：仅本人触发的节点测试 / 配置同步（对齐任务中心列表）
+        # 无发布读权限时：仅本人触发的节点测试 / 配置同步 / 启停 / 安装
         if not self.can_read_release_tasks:
+            allowed = [
+                "node_batch_test",
+                "config_batch_sync",
+                "nginx_service_control",
+                "nginx_install",
+            ]
+            if self.can_read_upgrade:
+                allowed = list(set(allowed + ["nginx_install", "nginx_upgrade", "nginx_rollback"]))
             tasks = tasks.filter(
-                operation_type__in=["node_batch_test", "config_batch_sync", "nginx_service_control"],
+                operation_type__in=allowed,
                 trigger_user=request.user,
             )
         data = [

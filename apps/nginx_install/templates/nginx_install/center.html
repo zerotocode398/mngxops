@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+
+{% block title %}Nginx 安装中心 - MngxOps{% endblock %}
+{% block page_title %}<i class="bi bi-download"></i> Nginx 安装中心{% endblock %}
+
+{% block extra_css %}
+<style>
+.wizard-steps { display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap; }
+.wizard-steps .step-pill {
+    padding:0.35rem 0.75rem; border-radius:999px; background:var(--bs-light);
+    font-size:0.875rem; color:var(--bs-secondary);
+}
+.wizard-steps .step-pill.active { background:var(--bs-primary); color:#fff; }
+.module-check-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:0.35rem 1rem; }
+.node-chip { display:inline-flex; align-items:center; gap:0.35rem; padding:0.25rem 0.5rem;
+    background:var(--bs-light); border-radius:0.25rem; margin:0.15rem; font-size:0.875rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="container-fluid">
+    <div class="wizard-steps" id="wizardSteps">
+        <span class="step-pill active" data-step="1">1. 节点与源码包</span>
+        <span class="step-pill" data-step="2">2. 编译参数</span>
+        <span class="step-pill" data-step="3">3. 确认安装</span>
+    </div>
+
+    <div class="card mb-3 wizard-panel" id="step1">
+        <div class="card-header"><h5 class="mb-0"><span class="badge bg-primary me-2">1</span>选择节点与源码包</h5></div>
+        <div class="card-body">
+            <p class="text-muted small mb-2">目标机应为<strong>尚无可用 Nginx</strong>的在线节点。单次最多 {{ batch_max_count }} 台。</p>
+            <div class="mb-3">
+                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
+                    <i class="bi bi-hdd-network"></i> 选择节点
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearNodes">清除</button>
+                <div id="selectedChips" class="mt-2"></div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm data-table mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:40px;"></th>
+                            <th>源码包</th>
+                            <th>版本</th>
+                            <th>描述</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for pkg in packages %}
+                        <tr class="pkg-row" data-id="{{ pkg.id }}" data-version="{{ pkg.version }}" style="cursor:pointer;">
+                            <td><input type="radio" name="sourcePackage" value="{{ pkg.id }}" class="form-check-input"></td>
+                            <td>{{ pkg.package_file.name|default:pkg.version }}</td>
+                            <td><code>{{ pkg.version }}</code></td>
+                            <td class="text-muted small">{{ pkg.description|default:"-" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">暂无源码包，请先到升级模块上传</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-end mt-3">
+                <button type="button" class="btn btn-primary btn-sm" onclick="goStep(2)">下一步 <i class="bi bi-chevron-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3 wizard-panel d-none" id="step2">
+        <div class="card-header"><h5 class="mb-0"><span class="badge bg-primary me-2">2</span>编译参数</h5></div>
+        <div class="card-body">
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">安装路径 (--prefix)</label>
+                    <input type="text" class="form-control form-control-sm" id="targetPrefix" value="{{ default_prefix }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">远程工作目录</label>
+                    <input type="text" class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">并行编译 (-j)</label>
+                    <input type="number" class="form-control form-control-sm" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32">
+                </div>
+            </div>
+            <label class="form-label">内置模块</label>
+            <div class="module-check-grid mb-3" id="moduleGrid">
+                {% for mod in default_modules %}
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input mod-check" value="{{ mod }}" checked>
+                    <code class="small">{{ mod }}</code>
+                </label>
+                {% endfor %}
+            </div>
+            <label class="form-label">额外 configure 参数（可选，每行一个）</label>
+            <textarea class="form-control form-control-sm code-font mb-2" id="extraOpts" rows="3" placeholder="--with-http_gzip_static_module"></textarea>
+            <div class="form-text mb-3">将与 --prefix、已勾选模块合并；无需拉取 nginx -V。</div>
+            <div class="d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(1)"><i class="bi bi-chevron-left"></i> 上一步</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="goStep(3)">下一步 <i class="bi bi-chevron-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3 wizard-panel d-none" id="step3">
+        <div class="card-header"><h5 class="mb-0"><span class="badge bg-primary me-2">3</span>确认安装</h5></div>
+        <div class="card-body">
+            <div id="confirmSummary" class="mb-3"></div>
+            <div class="alert alert-info small mb-3">
+                安装成功后将回写节点 Nginx 版本/路径并刷新探测状态，随后<strong>自动执行配置同步</strong>。同步失败不回滚已安装的 Nginx。
+            </div>
+            <div class="d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(2)"><i class="bi bi-chevron-left"></i> 上一步</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnStartInstall">
+                    <i class="bi bi-rocket-takeoff"></i> 开始安装
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card d-none" id="batchProgressCard">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-activity"></i> 安装进度 <small class="text-muted" id="batchNumberLabel"></small></h5>
+            <a href="#" id="batchLogLink" class="btn btn-outline-secondary btn-sm" target="_blank" style="display:none;">
+                <i class="bi bi-journal-text"></i> 完整日志
+            </a>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0 data-table">
+                <thead class="table-light">
+                    <tr><th>节点</th><th>状态</th><th>进度</th><th>当前步骤</th></tr>
+                </thead>
+                <tbody id="batchProgressBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="selectNodeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">选择节点</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group input-group-sm mb-2">
+                    <input type="text" class="form-control" id="nodeSearch" placeholder="主机名 / IP / 节点组">
+                    <button class="btn btn-outline-secondary" type="button" id="btnSearchNodes">搜索</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm data-table mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:36px;"><input type="checkbox" id="selectAllNodes"></th>
+                                <th>节点</th>
+                                <th>状态</th>
+                                <th>Nginx</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nodeSearchBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnConfirmNodes">确定</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var CREATE_URL = "{% url 'nginx_install:api_create' %}";
+    var PROGRESS_URL = "{% url 'nginx_install:api_batch_progress' %}";
+    var SEARCH_URL = "{% url 'nodes:api_search_nodes' %}";
+    var BATCH_MAX = {{ batch_max_count }};
+    var selected = {};
+    var draft = {};
+    var pollTimer = null;
+
+    function csrfToken() {
+        var el = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (el) return el.value;
+        var m = document.cookie.match(/csrftoken=([^;]+)/);
+        return m ? m[1] : '';
+    }
+
+    function escapeHtml(s) {
+        return String(s || '').replace(/[&<>"']/g, function (c) {
+            return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+        });
+    }
+
+    function selectedCount() { return Object.keys(selected).length; }
+
+    function renderChips() {
+        var box = document.getElementById('selectedChips');
+        var ids = Object.keys(selected);
+        if (!ids.length) {
+            box.innerHTML = '<span class="text-muted small">未选择节点</span>';
+            return;
+        }
+        box.innerHTML = ids.map(function (id) {
+            var n = selected[id];
+            return '<span class="node-chip">' + escapeHtml(n.hostname) +
+                ' <small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span>';
+        }).join('');
+    }
+
+    function goStep(step) {
+        if (step === 2 && !selectedCount()) {
+            showAlert('提示', '请先选择至少一个节点');
+            return;
+        }
+        if (step === 2 && !document.querySelector('input[name=sourcePackage]:checked')) {
+            showAlert('提示', '请选择源码包');
+            return;
+        }
+        if (step === 3) {
+            buildConfirm();
+        }
+        document.querySelectorAll('.wizard-panel').forEach(function (el) { el.classList.add('d-none'); });
+        document.getElementById('step' + step).classList.remove('d-none');
+        document.querySelectorAll('#wizardSteps .step-pill').forEach(function (el) {
+            el.classList.toggle('active', Number(el.getAttribute('data-step')) === step);
+        });
+    }
+    window.goStep = goStep;
+
+    function getAddedModules() {
+        var mods = [];
+        document.querySelectorAll('.mod-check:checked').forEach(function (el) { mods.push(el.value); });
+        var extra = document.getElementById('extraOpts').value.split(/\n+/);
+        extra.forEach(function (line) {
+            line = line.trim();
+            if (line && mods.indexOf(line) < 0) mods.push(line);
+        });
+        return mods;
+    }
+
+    function buildConfirm() {
+        var pkg = document.querySelector('input[name=sourcePackage]:checked');
+        var pkgRow = pkg ? pkg.closest('tr') : null;
+        var version = pkgRow ? pkgRow.getAttribute('data-version') : '-';
+        var names = Object.keys(selected).map(function (id) { return selected[id].hostname; }).join('、');
+        var prefix = document.getElementById('targetPrefix').value.trim() || '/usr/local/nginx';
+        var mods = getAddedModules();
+        document.getElementById('confirmSummary').innerHTML =
+            '<p><strong>节点（' + selectedCount() + '）</strong>：<code>' + escapeHtml(names) + '</code></p>' +
+            '<p><strong>版本</strong>：<code>' + escapeHtml(version) + '</code></p>' +
+            '<p><strong>安装路径</strong>：<code>' + escapeHtml(prefix) + '</code></p>' +
+            '<p><strong>工作目录</strong>：<code>' + escapeHtml(document.getElementById('remoteWorkDir').value) + '</code></p>' +
+            '<p><strong>make -j</strong>：' + escapeHtml(document.getElementById('makeJobs').value) + '</p>' +
+            '<p class="mb-0"><strong>模块</strong>：<code class="small">' + escapeHtml(mods.join(' ')) + '</code></p>';
+    }
+
+    document.querySelectorAll('.pkg-row').forEach(function (row) {
+        row.addEventListener('click', function (e) {
+            if (e.target.tagName === 'INPUT') return;
+            var radio = row.querySelector('input[type=radio]');
+            if (radio) radio.checked = true;
+        });
+    });
+
+    document.getElementById('btnClearNodes').addEventListener('click', function () {
+        selected = {};
+        renderChips();
+    });
+
+    function doSearch() {
+        var q = document.getElementById('nodeSearch').value.trim();
+        fetch(SEARCH_URL + '?search=' + encodeURIComponent(q), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var nodes = data.nodes || [];
+                if (!Array.isArray(nodes)) nodes = [];
+                var body = document.getElementById('nodeSearchBody');
+                body.innerHTML = nodes.map(function (n) {
+                    var selectable = n.status === 'online' && n.has_credential;
+                    var checked = draft[String(n.id)] ? ' checked' : '';
+                    if (!selectable) checked = '';
+                    var nginx = n.nginx_version || '-';
+                    return '<tr class="' + (selectable ? '' : 'table-secondary') + '" data-id="' + n.id + '">' +
+                        '<td><input type="checkbox" class="node-cb" value="' + n.id + '"' + checked +
+                        (selectable ? '' : ' disabled') +
+                        ' data-hostname="' + escapeHtml(n.hostname) + '" data-ip="' + escapeHtml(n.ip) + '"></td>' +
+                        '<td>' + escapeHtml(n.hostname) + ' <small class="text-muted">(' + escapeHtml(n.ip) + ')</small></td>' +
+                        '<td>' + escapeHtml(n.status) + '</td>' +
+                        '<td><code class="small">' + escapeHtml(nginx) + '</code></td></tr>';
+                }).join('') || '<tr><td colspan="4" class="text-center text-muted">无结果</td></tr>';
+            });
+    }
+
+    document.getElementById('btnSearchNodes').addEventListener('click', doSearch);
+    document.getElementById('nodeSearch').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+    });
+    document.getElementById('selectNodeModal').addEventListener('show.bs.modal', function () {
+        draft = Object.assign({}, selected);
+        document.getElementById('selectAllNodes').checked = false;
+        doSearch();
+    });
+    document.getElementById('selectAllNodes').addEventListener('change', function () {
+        var on = this.checked;
+        document.querySelectorAll('#nodeSearchBody .node-cb:not(:disabled)').forEach(function (cb) {
+            cb.checked = on;
+        });
+    });
+    document.getElementById('btnConfirmNodes').addEventListener('click', function () {
+        draft = {};
+        document.querySelectorAll('#nodeSearchBody .node-cb:checked').forEach(function (cb) {
+            draft[cb.value] = { id: Number(cb.value), hostname: cb.getAttribute('data-hostname'), ip: cb.getAttribute('data-ip') };
+        });
+        if (Object.keys(draft).length > BATCH_MAX) {
+            showAlert('提示', '单次最多选择 ' + BATCH_MAX + ' 台节点');
+            return;
+        }
+        selected = Object.assign({}, draft);
+        renderChips();
+        bootstrap.Modal.getInstance(document.getElementById('selectNodeModal')).hide();
+    });
+
+    function startBatchPoll(batch, firstTcId) {
+        document.getElementById('batchProgressCard').classList.remove('d-none');
+        document.getElementById('batchNumberLabel').textContent = batch;
+        var link = document.getElementById('batchLogLink');
+        if (firstTcId) {
+            link.href = '/releases/tasks/' + firstTcId + '/';
+            link.style.display = '';
+        }
+        if (typeof showAsyncProgressOverlay === 'function') {
+            showAsyncProgressOverlay('Nginx 安装');
+        }
+        if (firstTcId && typeof startAsyncProgressPolling === 'function') {
+            startAsyncProgressPolling(firstTcId, function (task) {
+                afterBatchDone(batch);
+            });
+        }
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(function () { pollBatch(batch); }, {{ sys_poll_interval_ms|default:2000 }});
+        pollBatch(batch);
+    }
+
+    function pollBatch(batch) {
+        fetch(PROGRESS_URL + '?batch=' + encodeURIComponent(batch), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) return;
+                var body = document.getElementById('batchProgressBody');
+                body.innerHTML = (data.tasks || []).map(function (t) {
+                    var badge = t.status === 'success' ? 'bg-success' : (t.status === 'failed' ? 'bg-danger' : 'bg-info');
+                    var sync = (t.status === 'success' && t.sync_ok === false)
+                        ? ' <span class="badge bg-warning text-dark">同步失败</span>' : '';
+                    return '<tr><td>' + escapeHtml(t.hostname) + '</td>' +
+                        '<td><span class="badge ' + badge + '">' + escapeHtml(t.status) + '</span>' + sync + '</td>' +
+                        '<td>' + t.progress + '%</td>' +
+                        '<td class="small text-muted">' + escapeHtml(t.current_step || '') + '</td></tr>';
+                }).join('');
+                if (data.finished) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                    afterBatchDone(batch, data);
+                }
+            });
+    }
+
+    function afterBatchDone(batch, data) {
+        data = data || {};
+        var syncFail = (data.tasks || []).some(function (t) { return t.status === 'success' && t.sync_ok === false; });
+        if (syncFail) {
+            showConfirm(
+                '安装完成',
+                '<p>部分节点安装成功但<strong>配置同步失败</strong>，是否前往配置同步页手动同步？</p>',
+                function () { window.location.href = '{% url "configs:sync_wizard" %}'; },
+                true,
+                'md'
+            );
+        }
+    }
+
+    document.getElementById('btnStartInstall').addEventListener('click', function () {
+        var pkg = document.querySelector('input[name=sourcePackage]:checked');
+        if (!pkg || !selectedCount()) {
+            showAlert('提示', '请选择节点与源码包');
+            return;
+        }
+        var names = Object.keys(selected).map(function (id) { return selected[id].hostname; }).join('、');
+        showConfirm('确认安装 Nginx', '<p>将对以下节点执行全新安装：</p><p><code>' + escapeHtml(names) + '</code></p>', function () {
+            fetch(CREATE_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    node_ids: Object.keys(selected).map(Number),
+                    source_package: Number(pkg.value),
+                    target_prefix: document.getElementById('targetPrefix').value.trim(),
+                    remote_work_dir: document.getElementById('remoteWorkDir').value.trim(),
+                    make_jobs: Number(document.getElementById('makeJobs').value) || 4,
+                    added_modules: getAddedModules(),
+                    added_third_party: []
+                })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (result) {
+                    if (!result.success) {
+                        if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
+                        showAlert('创建失败', result.message || '操作失败');
+                        return;
+                    }
+                    startBatchPoll(result.batch_number, result.task_center_id);
+                })
+                .catch(function () {
+                    if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
+                    showAlert('创建失败', '网络错误');
+                });
+        }, true, 'md');
+    });
+
+    renderChips();
+})();
+</script>
+{% endblock %}
