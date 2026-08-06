@@ -12,18 +12,19 @@ from django.core.paginator import Paginator
 from django.db import close_old_connections
 from django.db.models import Q
 from django.http import JsonResponse
+from django.urls import reverse
 from django.utils import timezone
-from django.views.generic import ListView, TemplateView, View
+from django.views.generic import DetailView, ListView, TemplateView, View
 
 from apps.audit.utils import log_task_center_created
 from apps.nodes.models import Node
 from apps.releases.models import TaskCenterTask
+from apps.upgrade.builtin_modules import BUILTIN_ADD_MODULES
 from apps.upgrade.models import NginxSourcePackage, NginxThirdPartyModulePackage
+from apps.upgrade.services import enrich_third_party_module_paths
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_recent_tasks_limit, get_setting
-
-from apps.upgrade.builtin_modules import BUILTIN_ADD_MODULES
 
 from .models import NginxInstallTask
 from .services import (
@@ -118,6 +119,19 @@ class NginxInstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Templa
         context["default_modules_json"] = json.dumps(DEFAULT_INSTALL_MODULES, ensure_ascii=False)
         context["default_prefix_json"] = json.dumps(
             context["default_prefix"], ensure_ascii=False
+        )
+        pkgs = list(context["module_packages"])
+        context["module_packages_json"] = json.dumps(
+            [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "version": p.version,
+                    "label": f"{p.name} ({p.version})" if p.version else p.name,
+                }
+                for p in pkgs
+            ],
+            ensure_ascii=False,
         )
         context["batch_max_count"] = _batch_max_count()
         return context
@@ -235,6 +249,7 @@ class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):
         added_third_party = data.get("added_third_party") or []
         if not isinstance(added_third_party, list):
             added_third_party = []
+        added_third_party = enrich_third_party_module_paths(added_third_party, work_dir)
 
         configure_opts = (data.get("target_configure_opts") or "").strip()
         if not configure_opts:
@@ -382,33 +397,64 @@ class NginxInstallBatchProgressAPIView(LoginRequiredMixin, View):
                     fail_count += 1
             items.append({
                 "id": t.id,
+                "task_id": t.id,
                 "node_id": t.node_id,
                 "hostname": t.node.hostname,
                 "ip": t.node.ip,
                 "status": t.status,
+                "status_display": t.get_status_display(),
                 "progress": t.progress,
                 "current_step": t.current_step,
                 "error_message": (t.error_message or "")[:300],
                 "sync_ok": t.sync_ok,
                 "sync_detail": t.sync_detail,
                 "task_center_id": t.task_center_id,
+                "log_url": reverse("nginx_install:task_log", kwargs={"pk": t.id}),
                 "finished": finished,
             })
 
         all_finished = finished_count == len(tasks) and len(tasks) > 0
+        avg_progress = 0
+        if tasks:
+            avg_progress = int(sum(t.progress for t in tasks) / len(tasks))
         return JsonResponse({
             "success": True,
             "batch_number": batch,
             "tasks": items,
             "finished": all_finished,
+            "all_done": all_finished,
+            "all_success": all_finished and fail_count == 0 and success_count == len(tasks),
             "success_count": success_count,
             "fail_count": fail_count,
             "total": len(tasks),
+            "progress": avg_progress,
         })
 
 
+class NginxInstallTaskLogView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    """安装任务详情与完整执行日志页"""
+
+    model = NginxInstallTask
+    template_name = "nginx_install/task_log.html"
+    context_object_name = "task"
+    permission_resource = "upgrade"
+    permission_action = "read"
+
+    def get_queryset(self):
+        """预加载节点与源码包"""
+        return NginxInstallTask.objects.select_related(
+            "node", "operator", "source_package", "task_center"
+        )
+
+    def get_context_data(self, **kwargs):
+        """注入日志展示文本"""
+        context = super().get_context_data(**kwargs)
+        context["log_output_display"] = (self.object.log_output or "").strip()
+        return context
+
+
 class NginxInstallTaskLogAPIView(LoginRequiredMixin, View):
-    """返回单条安装任务日志"""
+    """返回单条安装任务日志（供日志页轮询）"""
 
     def get(self, request, pk):
         """读取安装任务日志与状态"""
@@ -422,6 +468,7 @@ class NginxInstallTaskLogAPIView(LoginRequiredMixin, View):
             "success": True,
             "id": task.id,
             "status": task.status,
+            "status_display": task.get_status_display(),
             "progress": task.progress,
             "current_step": task.current_step,
             "log_output": task.log_output or "",

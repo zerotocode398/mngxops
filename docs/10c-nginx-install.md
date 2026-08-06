@@ -8,7 +8,7 @@
 - **不调用、不修改** [`apps/upgrade/services.py`](../apps/upgrade/services.py) 的 `run_upgrade_task`。
 - 只读复用升级模块的源码包 / 第三方模块包。
 
-**不做**：apt/yum 包安装编排；修改升级平滑路径逻辑。
+**不做**：apt/yum 包安装编排；修改升级平滑路径逻辑；安装回滚。
 
 ## 2. 角色与权限
 
@@ -32,50 +32,54 @@
 | 路径 | 说明 |
 |------|------|
 | `/nginx-install/` | 运维台首页（最近安装任务条数 = `dashboard.recent_tasks_count`） |
-| `/nginx-install/center/` | 三步安装向导 |
+| `/nginx-install/center/` | 三步安装向导 + 右栏执行进度 |
 | `/nginx-install/history/` | 安装历史 |
+| `/nginx-install/task/<id>/log/` | 安装任务详情 / 完整执行日志（可轮询刷新） |
 | `POST /nginx-install/api/create/` | 创建批次 |
 | `GET /nginx-install/api/batch-progress/?batch=` | 批次进度 |
-| `GET /nginx-install/api/task/<id>/log/` | 任务日志 |
+| `GET /nginx-install/api/task/<id>/log/` | 单任务日志 JSON（日志页轮询） |
 
 ## 5. 安装向导
 
+中心页左右栏：左向导、右 sticky「安装执行进度」。
+
 1. **选择目标**：多选在线节点 + 源码包。  
-2. **编译参数**（左右栏）：
-   - 左：官方支持模块（`BUILTIN_ADD_MODULES`）可搜索勾选；默认勾选 `DEFAULT_INSTALL_MODULES`；可填额外 configure 行。  
-   - 右：基础参数 `--user` / `--group` / `--prefix`、工作目录、`make -j`；前三项缺省读系统设置「安装管理」。  
-3. **确认安装**：对齐升级确认——KV 摘要、`./configure` 预览、节点清单、确认勾选后「开始安装」。
+2. **编译参数**（纵向）：
+   - 顶部紧凑基础参数：`--prefix` / `--user` / `--group`、工作目录、`make -j`（缺省读「安装管理」设置）。  
+   - 全宽支持模块（`BUILTIN_ADD_MODULES` + 搜索；默认勾选 `DEFAULT_INSTALL_MODULES`）。  
+   - 全宽第三方模块：在线 Git / 离线包（对齐升级；离线包共用模块包管理 `?nav=nginx_install`）。  
+3. **确认安装**：KV 摘要、`./configure` 预览（含 `--add-module`）、节点清单、确认勾选。
+
+开跑后右栏按节点展示步骤；「查看完整日志」新窗口打开任务日志页。保留全局进度遮罩。
 
 ## 6. 系统设置（安装管理）
 
 | key | 默认 | 说明 |
 |-----|------|------|
-| `install.default_user` | `root` | 向导右栏 `--user` 缺省 |
-| `install.default_group` | `root` | 向导右栏 `--group` 缺省 |
-| `install.default_prefix` | `/opt/app` | 向导右栏 `--prefix` 缺省 |
+| `install.default_user` | `root` | 向导 `--user` 缺省 |
+| `install.default_group` | `root` | 向导 `--group` 缺省 |
+| `install.default_prefix` | `/opt/app` | 向导 `--prefix` 缺省 |
 
-向导内可改；本批次以向导值为准。详见 [12-settings.md](12-settings.md)。
+详见 [12-settings.md](12-settings.md)。
 
 ## 7. 领域模型
 
-`NginxInstallTask`：批次号 `NI-YYMMDD-XXXX`、节点、源码包、prefix、configure、进度/日志、`sync_ok`/`sync_detail`、关联 `TaskCenterTask(operation_type=nginx_install)`。
+`NginxInstallTask`：批次号 `NI-YYMMDD-XXXX`、节点、源码包、prefix、configure、`added_modules` / `added_third_party`、进度/日志、`sync_ok`/`sync_detail`、关联 `TaskCenterTask(operation_type=nginx_install)`。
 
 ## 8. 执行流水线
 
 实现：`apps/nginx_install/services.py` `run_install_task`。
 
 1. gcc/make 预检  
-2. 上传/解压源码包、准备第三方模块（复用 upgrade 助手函数，不改其行为）  
+2. 上传/解压源码包、准备第三方模块（复用 upgrade 助手）  
 3. configure → make → make install  
 4. `nginx -t` → `start_nginx`  
-5. 回写 `nginx_version` / `nginx_path`，`mark_node_probe_success`，写入 `ConfigSyncSetting.main_conf_path={prefix}/conf/nginx.conf`  
-6. `discover_nginx_configs` + `sync_discovered_configs`  
-
-**同步失败口径**：安装仍算成功；结果/历史标同步失败；引导手动同步；不回滚 nginx。
+5. 回写版本/路径，`mark_node_probe_success`，写入 `main_conf_path`  
+6. 自动配置同步（失败不否定安装、不回滚）
 
 ## 9. 实现锚点
 
 - 应用：`apps/nginx_install`
-- 官方模块常量：`apps/upgrade/builtin_modules.py`
-- 侧栏：`templates/base.html` → 运维工具 → Nginx 安装
-- TaskCenter 类型：`nginx_install`
+- 官方模块：`apps/upgrade/builtin_modules.py`
+- TaskCenter：`nginx_install`
+- 结论：Q132 / Q133 / Q134 / Q136 / Q139（见 [`AGENTS.md`](../AGENTS.md)）

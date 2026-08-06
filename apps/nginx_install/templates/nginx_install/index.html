@@ -116,12 +116,10 @@
                             <td>{{ task.operator|default:"-" }}</td>
                             <td><small>{{ task.created_at|date:"m-d H:i" }}</small></td>
                             <td>
-                                {% if task.task_center_id %}
                                 <a class="btn btn-outline-secondary btn-sm" title="任务详情"
-                                   href="{% url 'releases:task_center_detail' task.task_center_id %}" target="_blank">
+                                   href="{% url 'nginx_install:task_log' task.id %}" target="_blank">
                                     <i class="bi bi-eye"></i>
                                 </a>
-                                {% endif %}
                             </td>
                         </tr>
                     {% endfor %}

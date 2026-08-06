@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% load permission_tags upgrade_filters %}
+
+{% block title %}安装日志 - {{ task.node.hostname }}{% endblock %}
+{% block page_title %}<i class="bi bi-file-text"></i> 安装任务详情 - {{ task.node.hostname }}{% endblock %}
+
+{% block content %}
+<style>
+    .task-detail-body { font-size: var(--fs-base); line-height: 1.5; }
+    .task-detail-body .text-muted { font-size: var(--fs-sm); }
+    .task-info-row {
+        display: flex; align-items: baseline; gap: 8px; min-width: 0;
+        padding: 6px 0; border-bottom: 1px solid var(--gray-100);
+    }
+    .task-info-row:last-child { border-bottom: none; }
+    .task-info-label { flex: 0 0 96px; color: var(--gray-600); white-space: nowrap; font-size: var(--fs-sm); }
+    .task-info-value { flex: 1; min-width: 0; word-break: break-all; font-size: var(--fs-base); }
+    .install-log-body {
+        max-height: 500px;
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: var(--fs-xs);
+    }
+</style>
+<div class="container-fluid">
+
+<div class="mb-3">
+    <a href="{% url 'nginx_install:history' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回历史
+    </a>
+    <a href="{% url 'nginx_install:center' %}" class="btn btn-sm btn-outline-primary ms-2">
+        <i class="bi bi-download"></i> 安装中心
+    </a>
+    {% if task.task_center_id %}
+    <a href="{% url 'releases:task_center_detail' task.task_center_id %}" class="btn btn-sm btn-outline-secondary ms-2" target="_blank">
+        <i class="bi bi-box-arrow-up-right"></i> 任务中心
+    </a>
+    {% endif %}
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="mb-0"><i class="bi bi-list-task"></i> 任务信息</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="taskStatusBadge" class="badge
+                        {% if task.status == 'success' %}bg-success
+                        {% elif task.status == 'failed' %}bg-danger
+                        {% elif task.status == 'cancelled' %}bg-secondary
+                        {% else %}bg-info{% endif %}">
+                        {{ task.get_status_display }}
+                    </span>
+                    <span id="taskProgressBadge" class="badge bg-primary {% if task.status == 'success' or task.status == 'failed' or task.status == 'cancelled' %}d-none{% endif %}">
+                        {{ task.progress }}%
+                    </span>
+                </div>
+            </div>
+            <div class="card-body task-detail-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="task-info-row">
+                            <span class="task-info-label">目标节点</span>
+                            <span class="task-info-value">{{ task.node.hostname }} ({{ task.node.ip }})</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">目标版本</span>
+                            <span class="task-info-value"><code>{{ task.target_version|nginx_ver }}</code></span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">安装路径</span>
+                            <span class="task-info-value code-font">{{ task.target_prefix }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">工作目录</span>
+                            <span class="task-info-value code-font">{{ task.remote_work_dir }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">源码包</span>
+                            <span class="task-info-value">{{ task.source_package.name|default:"-" }}</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="task-info-row">
+                            <span class="task-info-label">批次号</span>
+                            <span class="task-info-value"><code>{{ task.batch_number|default:"-" }}</code></span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">并行编译</span>
+                            <span class="task-info-value">-j{{ task.make_jobs }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">操作人</span>
+                            <span class="task-info-value">{{ task.operator.username|default:"-" }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">创建时间</span>
+                            <span class="task-info-value">{{ task.created_at|date:"Y-m-d H:i:s" }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">完成时间</span>
+                            <span class="task-info-value">{{ task.finished_at|date:"Y-m-d H:i:s"|default:"-" }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% if task.sync_ok == False %}
+                <div class="alert alert-warning small mb-0 mt-2">
+                    配置同步失败{% if task.sync_detail %}：{{ task.sync_detail }}{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if task.target_configure_opts %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> configure 参数</h5>
+            </div>
+            <div class="card-body">
+                <pre class="nginx-v-output mb-0" style="max-height: 240px;">{{ task.target_configure_opts }}</pre>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-file-text"></i> 完整执行日志</h5>
+            </div>
+            <div class="card-body">
+                <pre id="installLogBody" class="nginx-v-output install-log-body code-font">{{ log_output_display|default:"暂无日志" }}</pre>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    /** 将完整执行日志滚到底 */
+    function scrollLogToBottom() {
+        var logEl = document.getElementById('installLogBody');
+        if (!logEl) return;
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                logEl.scrollTop = logEl.scrollHeight;
+                try {
+                    logEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                } catch (e) {
+                    logEl.scrollIntoView(false);
+                }
+            });
+        });
+    }
+
+    scrollLogToBottom();
+
+    var TERMINAL = { success: 1, failed: 1, cancelled: 1 };
+    var initialStatus = '{{ task.status|escapejs }}';
+    if (TERMINAL[initialStatus]) return;
+
+    var progressUrl = '{% url "nginx_install:api_task_log" task.id %}';
+    var pollTimer = null;
+    var lastLogLen = -1;
+
+    function statusBadgeClass(status) {
+        if (status === 'success') return 'badge bg-success';
+        if (status === 'failed') return 'badge bg-danger';
+        if (status === 'cancelled') return 'badge bg-secondary';
+        return 'badge bg-info';
+    }
+
+    function applyProgress(data) {
+        var badge = document.getElementById('taskStatusBadge');
+        if (badge) {
+            badge.className = statusBadgeClass(data.status);
+            badge.textContent = data.status_display || data.status || '';
+        }
+        var pct = document.getElementById('taskProgressBadge');
+        if (pct) {
+            pct.textContent = (data.progress != null ? data.progress : 0) + '%';
+            if (TERMINAL[data.status]) pct.classList.add('d-none');
+            else pct.classList.remove('d-none');
+        }
+        var logEl = document.getElementById('installLogBody');
+        if (logEl) {
+            var text = String(data.log_output || '').replace(/^\s+|\s+$/g, '');
+            if (!text) text = '暂无日志';
+            if (text.length !== lastLogLen || logEl.textContent !== text) {
+                logEl.textContent = text;
+                lastLogLen = text.length;
+                scrollLogToBottom();
+            }
+        }
+        if (TERMINAL[data.status] && pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            scrollLogToBottom();
+        }
+    }
+
+    function pollOnce() {
+        fetch(progressUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data && data.success !== false) applyProgress(data);
+            })
+            .catch(function () { /* 静默重试 */ });
+    }
+
+    pollOnce();
+    pollTimer = setInterval(pollOnce, {{ sys_poll_interval_ms|default:2000 }});
+})();
+</script>
+{% endblock %}
