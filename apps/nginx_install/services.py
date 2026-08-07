@@ -14,6 +14,13 @@ from apps.releases.task_cancel import (
     unregister_ssh,
     update_if_active,
 )
+from apps.releases.task_result import (
+    build_tree_result,
+    item_failed,
+    item_success,
+    node_header,
+    short_error_tail,
+)
 from utils.setting_service import get_setting
 
 logger = logging.getLogger(__name__)
@@ -158,16 +165,25 @@ def run_install_task(task_id):
         NginxInstallTask.objects.filter(pk=task_id).update(**updates)
 
     def fail(progress, message):
-        """标记安装失败并同步任务中心"""
+        """标记安装失败并同步任务中心（含结果树）"""
         log(message)
         set_task_status("failed", progress, error_message=message, finished_at=timezone.now())
         if tc_id:
+            from apps.releases.views import _clear_release_progress_state, _set_current_step
+
+            _set_current_step(tc_id, hostname, None)
+            _clear_release_progress_state(tc_id)
+            blocks = [
+                node_header(node.ip, node.hostname),
+                item_failed("Nginx 安装", short_error_tail(message)),
+            ]
             finish_if_active(
                 tc_id,
                 status="failed",
                 progress=100,
                 finished_at=timezone.now(),
                 detail=message[:200],
+                result=build_tree_result(0, 1, 1, blocks),
             )
         return False
 
@@ -478,12 +494,6 @@ def run_install_task(task_id):
         set_task_status("success", 100, finished_at=timezone.now())
         log(f"✅ {finish_msg}")
         if tc_id:
-            from apps.releases.task_result import (
-                build_tree_result,
-                item_failed,
-                item_success,
-                node_header,
-            )
             from apps.releases.views import _clear_release_progress_state, _set_current_step
 
             _set_current_step(tc_id, hostname, None)

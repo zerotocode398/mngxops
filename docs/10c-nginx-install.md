@@ -82,4 +82,4 @@
 - 应用：`apps/nginx_install`
 - 官方模块：`apps/upgrade/builtin_modules.py`
 - TaskCenter：`nginx_install`
-- 结论：Q132 / Q133 / Q134 / Q136 / Q139 / Q140 / Q141 / Q142 / Q143 / Q144（见 [`AGENTS.md`](../AGENTS.md)）
+- 结论：Q132 / Q133 / Q134 / Q136 / Q139 / Q140 / Q141 / Q142 / Q143 / Q144 / Q146（见 [`AGENTS.md`](../AGENTS.md)）
