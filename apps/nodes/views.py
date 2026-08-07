@@ -133,6 +133,9 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "environment": node.environment,
                     "nginx_version": node.nginx_version or "",
                     "has_credential": bool(node.credential_id),
+                    "credential_username": (
+                        node.credential.username if node.credential_id else ""
+                    ),
                     "groups": [{"id": g.id, "name": g.name} for g in node.groups.all()],
                     "groups_count": node.groups.count(),
                 }
@@ -1183,6 +1186,9 @@ class NodeListAPIView(LoginRequiredMixin, View):
                     "environment": node.environment,
                     "status": node.status,
                     "has_credential": node.credential is not None,
+                    "credential_username": (
+                        node.credential.username if node.credential_id else ""
+                    ),
                     "groups": [{"id": g.id, "name": g.name} for g in node.groups.all()],
                 }
             )

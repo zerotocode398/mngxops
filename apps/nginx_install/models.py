@@ -73,6 +73,11 @@ class NginxInstallTask(models.Model):
     added_modules = models.TextField(default="[]", verbose_name="新增内置模块 JSON")
     added_third_party = models.TextField(default="[]", verbose_name="第三方模块 JSON")
     make_jobs = models.IntegerField(default=4, verbose_name="并行编译数 (-j)")
+    listen_port = models.PositiveIntegerField(
+        default=80,
+        verbose_name="监听端口",
+        help_text="安装后写入主配置 listen 的端口",
+    )
 
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="pending", verbose_name="状态",

@@ -555,7 +555,7 @@ class ReleaseExecutorMixin:
             return _fail(f"nginx -t 失败: {test_output}")
 
         add_log(
-            "nginx -t 通过，等待本节点统一 reload",
+            "nginx -t 通过，等待本节点统一 reload（未运行则 start）",
             milestone=True,
             step=_release_step_label("待 reload", config_label, task.publish_version, remote_path),
         )
@@ -610,20 +610,20 @@ class ReleaseExecutorMixin:
 
         nginx_path = node.nginx_path or None
         reload_step = _release_step_label(
-            "本节点统一 reload", extra=f"{len(pending_items)} 个配置",
+            "本节点统一 reload/start", extra=f"{len(pending_items)} 个配置",
         )
         # 以首个 pending 写里程碑，并广播到各任务日志
         lead = pending_items[0]
         lead["add_log"](
-            "本节点全部配置已通过 nginx -t，正在统一 reload...",
+            "本节点全部配置已通过 nginx -t，正在统一 reload（未运行则 start）...",
             milestone=True,
             step=reload_step,
         )
         for item in pending_items[1:]:
-            item["add_log"]("本节点全部配置已通过 nginx -t，正在统一 reload...")
+            item["add_log"]("本节点全部配置已通过 nginx -t，正在统一 reload（未运行则 start）...")
 
         success, reload_output = execute_nginx_reload(
-            nginx_path=nginx_path, **step_kwargs,
+            nginx_path=nginx_path, start_if_stopped=True, **step_kwargs,
         )
         for item in pending_items:
             item["add_log"](reload_output)

@@ -94,6 +94,7 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 | `install.default_user` | 安装向导右栏缺省 `--user`（默认 root；向导可改） |
 | `install.default_group` | 安装向导右栏缺省 `--group`（默认 root；向导可改） |
 | `install.default_prefix` | 安装向导右栏缺省 `--prefix`（默认 `/opt/app`；向导可改） |
+| `install.default_listen_port` | 安装向导缺省监听端口（默认 80；向导可改；装后写入主配置 listen；Q147） |
 
 整数项 PRESET 带 `min_value`/`max_value`，保存 API 与设置页越界拒绝（Q124）。
 

@@ -104,12 +104,26 @@ class NginxInstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Templa
         )
         context["default_user"] = get_setting("install.default_user", "root") or "root"
         context["default_group"] = get_setting("install.default_group", "root") or "root"
+        try:
+            context["default_listen_port"] = int(
+                get_setting("install.default_listen_port", "80") or 80
+            )
+        except (TypeError, ValueError):
+            context["default_listen_port"] = 80
+        if (
+            context["default_listen_port"] < 1
+            or context["default_listen_port"] > 65535
+        ):
+            context["default_listen_port"] = 80
         context["default_modules"] = DEFAULT_INSTALL_MODULES
         context["builtin_modules"] = BUILTIN_ADD_MODULES
         context["builtin_modules_json"] = json.dumps(BUILTIN_ADD_MODULES, ensure_ascii=False)
         context["default_modules_json"] = json.dumps(DEFAULT_INSTALL_MODULES, ensure_ascii=False)
         context["default_prefix_json"] = json.dumps(
             context["default_prefix"], ensure_ascii=False
+        )
+        context["default_listen_port_json"] = json.dumps(
+            context["default_listen_port"], ensure_ascii=False
         )
         pkgs = list(context["module_packages"])
         context["module_packages_json"] = json.dumps(
@@ -223,6 +237,16 @@ class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):
         nginx_group = (data.get("nginx_group") or "").strip() or (
             get_setting("install.default_group", "root") or "root"
         )
+        try:
+            listen_port = int(
+                data.get("listen_port")
+                if data.get("listen_port") is not None
+                else (get_setting("install.default_listen_port", "80") or 80)
+            )
+        except (TypeError, ValueError):
+            return JsonResponse({"success": False, "message": "监听端口无效"})
+        if listen_port < 1 or listen_port > 65535:
+            return JsonResponse({"success": False, "message": "监听端口须在 1–65535"})
         work_dir = (data.get("remote_work_dir") or "").strip() or get_setting(
             "upgrade.default_work_dir", "/tmp/nginx-upgrade"
         )
@@ -309,6 +333,7 @@ class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):
                 added_modules=json.dumps(added_modules, ensure_ascii=False),
                 added_third_party=json.dumps(added_third_party, ensure_ascii=False),
                 make_jobs=make_jobs,
+                listen_port=listen_port,
                 task_center=tc,
                 operator=request.user,
             )

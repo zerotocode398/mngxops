@@ -704,20 +704,20 @@ def run_upgrade_task(task_id):
             return
         log("nginx -t 语法检查通过")
 
-        # ---- Step 11: 按启动方式 reload（替代硬编码 PID 的 USR2 平滑升级）----
+        # ---- Step 11: 按启动方式 reload（未运行则 start）----
         update_status("upgrading", 90)
         from utils.nginx_ops import reload_nginx
-        log("检测 Nginx 启动方式并执行 reload...")
+        log("检测 Nginx 启动方式并执行 reload（未运行则 start）...")
         success, result = reload_nginx(
             node.ip, node.port, credential.username,
-            nginx_path=nginx_bin, log_fn=log, **auth_kwargs_copy,
+            nginx_path=nginx_bin, log_fn=log, start_if_stopped=True, **auth_kwargs_copy,
         )
         if not success:
-            log(f"reload 失败: {result}")
+            log(f"reload/start 失败: {result}")
             _rollback_binary(node, credential, binary_path, backup_path, auth_kwargs_copy, log)
-            update_status("failed", 90, error_message=f"Nginx reload 失败: {result}")
+            update_status("failed", 90, error_message=f"Nginx reload/start 失败: {result}")
             return
-        log(f"reload 完成: {result}")
+        log(f"reload/start 完成: {result}")
 
         # ---- Step 12: 最终验证 ----
         update_status("verifying", 95)

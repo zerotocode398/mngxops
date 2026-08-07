@@ -51,11 +51,11 @@
   [失败] label - 失败原因: ...
 ```
 
-辅助函数：`node_header`、`item_success`、`item_failed`、`build_tree_result`、`format_task_center_summary`、`targets_from_release_tasks`、`short_error_tail`、`split_failed_item`、`split_error_reason_lines`；列表主机摘要最多 3 台（超出「等N台」，全文看详情，Q112）。
+辅助函数：`node_header`、`item_success`、`item_failed`、`build_tree_result`、`format_task_center_summary`、`targets_from_release_tasks`、`short_error_tail`、`split_failed_item`、`split_error_reason_lines`；列表主机摘要最多 3 台（超出「等N台」，全文看详情，Q112）。发布 / 升级 / 安装 / 启停摘要主行优先展示 `source_batch`（无批次再回退主机名，Q148）。
 
 详情页解析：按 `[节点]` / `  [成功]` / `  [失败]` 切分；失败项拆出 label 与原因，将 `short_error_tail` 折叠的 ` | ` **还原为多行**展示（Q115）；**失败置顶并默认展开**，成功折叠；展示总耗时（Q33/Q34）。`config_batch_sync` 例外：默认展开结果树，并展示 `task.detail`；同步最终树含 `新建`/`更新`/`删除`/`跳过` 明细（Q105）。无「原始日志」大段折叠区（Q35）；发布过程弹窗也不再堆 SSH 折叠（Q80）。
 
-列表摘要：主/次两行，避免空白过大（Q28）；去掉行内展开（Q29）。
+列表摘要：主/次两行，避免空白过大（Q28）；去掉行内展开（Q29）；主/副行 `text-truncate`，长错误省略展示、全文进详情（Q111/Q148）。
 
 ## 6. 进度轮询
 

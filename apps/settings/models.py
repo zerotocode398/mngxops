@@ -154,6 +154,10 @@ PRESET_SETTINGS = [
      "label": "默认安装路径 (--prefix)",
      "description": "仅作 Nginx 安装向导右栏缺省；向导内可改；保存后刷新安装向导生效",
      "sort_order": 92},
+    {"key": "install.default_listen_port", "group": "安装管理", "type": "integer", "value": "80",
+     "label": "默认监听端口 (listen)",
+     "description": "安装完成后写入主配置 listen 的缺省端口；向导内可改；非 root SSH 使用 80 时在编译参数下一步告警；保存后刷新安装向导生效",
+     "sort_order": 93, "min_value": 1, "max_value": 65535},
 ]
 
 

@@ -1,4 +1,7 @@
 """Nginx 启停管理公共方法：检测启动方式并执行 reload/restart/start/stop。"""
+import re
+import shlex
+
 from utils.ssh import SSHClient
 
 # 常见 systemd unit 名（按优先级探测）
@@ -121,7 +124,55 @@ def detect_nginx_manage_mode(
             ssh.close()
 
 
-def reload_nginx(
+def _resolve_pid_path(ssh, nginx_bin):
+    """解析远程 nginx pid 文件路径"""
+    quoted = shlex.quote(nginx_bin)
+    ok, ver = _run(ssh, f"{quoted} -V 2>&1")
+    if ver:
+        match = re.search(r"--pid-path=(\S+)", ver)
+        if match:
+            return match.group(1).strip()
+    if nginx_bin.endswith("/sbin/nginx"):
+        prefix = nginx_bin[: -len("/sbin/nginx")]
+        return f"{prefix}/logs/nginx.pid"
+    return ""
+
+
+def _is_running_with_ssh(ssh, mode, detail, nginx_bin, log_fn=None):
+    """在已连接 SSH 上判断 Nginx 是否在运行"""
+    def _log(msg):
+        if log_fn:
+            log_fn(msg)
+
+    if mode == "systemctl":
+        unit = detail.get("unit") or "nginx"
+        ok, out = _run(ssh, f"systemctl is-active {unit} 2>/dev/null || true")
+        state = (out or "").strip().splitlines()[-1] if out else ""
+        running = state in ("active", "activating", "reloading")
+        _log(f"Nginx 运行态探测(systemctl {unit}): {state or 'unknown'}")
+        return running
+
+    pid_path = _resolve_pid_path(ssh, nginx_bin)
+    if pid_path:
+        quoted_pid = shlex.quote(pid_path)
+        cmd = (
+            f'pid=$(cat {quoted_pid} 2>/dev/null | tr -d " \\t\\r\\n"); '
+            f'[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo Y'
+        )
+        ok, out = _run(ssh, cmd)
+        if "Y" in (out or ""):
+            _log(f"Nginx 运行态探测(pid): 运行中 ({pid_path})")
+            return True
+        _log(f"Nginx 运行态探测(pid): 未运行 ({pid_path or '无'})")
+        return False
+
+    ok, out = _run(ssh, "pgrep -x nginx >/dev/null 2>&1 && echo Y")
+    running = "Y" in (out or "")
+    _log(f"Nginx 运行态探测(pgrep): {'运行中' if running else '未运行'}")
+    return running
+
+
+def is_nginx_running(
     host,
     port,
     username,
@@ -132,7 +183,46 @@ def reload_nginx(
     log_fn=None,
     client=None,
 ):
+    """判断远程 Nginx 是否在运行
+
+    Returns:
+        bool: 是否在运行
+    """
+    nginx_bin = nginx_path or "nginx"
+    owns = False
+    ssh = None
+    try:
+        ssh, owns = _open_ssh(
+            host, port, username, password=password, private_key=private_key, client=client,
+        )
+        mode, detail = _detect_mode_with_ssh(
+            ssh, _unit_candidates(unit_name), log_fn=log_fn,
+        )
+        return _is_running_with_ssh(ssh, mode, detail, nginx_bin, log_fn=log_fn)
+    except Exception as e:
+        if log_fn:
+            log_fn(f"探测 Nginx 运行态异常: {e}")
+        return False
+    finally:
+        if owns and ssh is not None:
+            ssh.close()
+
+
+def reload_nginx(
+    host,
+    port,
+    username,
+    password=None,
+    private_key=None,
+    nginx_path=None,
+    unit_name=None,
+    log_fn=None,
+    client=None,
+    start_if_stopped=False,
+):
     """按启动方式执行 reload：systemctl reload 或 nginx -s reload
+
+    start_if_stopped=True 时，若进程未运行则改为 start（供发布/升级配置生效）。
 
     Returns:
         tuple: (success: bool, message: str)
@@ -141,11 +231,6 @@ def reload_nginx(
         if log_fn:
             log_fn(msg)
 
-    mode, detail = detect_nginx_manage_mode(
-        host, port, username,
-        password=password, private_key=private_key,
-        unit_name=unit_name, log_fn=log_fn, client=client,
-    )
     nginx_bin = nginx_path or "nginx"
     owns = False
     ssh = None
@@ -153,6 +238,28 @@ def reload_nginx(
         ssh, owns = _open_ssh(
             host, port, username, password=password, private_key=private_key, client=client,
         )
+        mode, detail = _detect_mode_with_ssh(
+            ssh, _unit_candidates(unit_name), log_fn=log_fn,
+        )
+
+        if start_if_stopped and not _is_running_with_ssh(
+            ssh, mode, detail, nginx_bin, log_fn=log_fn,
+        ):
+            _log("Nginx 未运行，已改为 start")
+            if owns and ssh is not None:
+                ssh.close()
+                owns = False
+                ssh = None
+            ok, msg = start_nginx(
+                host, port, username,
+                password=password, private_key=private_key,
+                nginx_path=nginx_path, unit_name=unit_name,
+                log_fn=log_fn, client=client,
+            )
+            if not ok:
+                return False, msg
+            return True, f"未运行，已改为 start: {msg}"
+
         if mode == "systemctl":
             unit = detail.get("unit") or "nginx"
             cmd = f"systemctl reload {unit} 2>&1"

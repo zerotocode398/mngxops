@@ -214,6 +214,17 @@ def _default_primary(task):
     return ""
 
 
+def _batch_or_hosts_primary(task):
+    """有来源批次则主行用批次，否则回退主机名摘要"""
+    batch = (task.source_batch or "").strip()
+    if batch:
+        return batch
+    hosts = (task.target_hostnames or "").strip()
+    if hosts:
+        return _shorten_hostnames(hosts)
+    return ""
+
+
 def format_task_center_summary(task):
     """格式化任务中心列表摘要：主行=目标，副行=结果
 
@@ -226,11 +237,17 @@ def format_task_center_summary(task):
     status = task.status or ""
 
     if op == "nginx_upgrade":
-        hosts = (task.target_hostnames or "").strip()
-        primary = _shorten_hostnames(hosts) if hosts else (task.source_batch or "").strip()
+        primary = _batch_or_hosts_primary(task)
         secondary = _shorten_nginx_secondary(detail)
         if not secondary and status in ("success", "failed", "cancelled"):
             secondary = _extract_success_fail(result) or detail
+        return primary or "-", secondary
+
+    if op in ("nginx_install", "nginx_service_control"):
+        primary = _batch_or_hosts_primary(task)
+        secondary = _extract_success_fail(detail) or _extract_success_fail(result)
+        if not secondary:
+            secondary = detail
         return primary or "-", secondary
 
     if op == "credential_enable_test":

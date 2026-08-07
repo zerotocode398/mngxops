@@ -73,6 +73,22 @@
 </script>
 {% endblock %}
 
+{% block extra_head %}
+<style>
+    .dashboard-table td.task-summary-cell {
+        vertical-align: middle;
+        max-width: 0;
+    }
+    .dashboard-table .task-summary-scroll {
+        max-width: 100%;
+        overflow: hidden;
+    }
+    .dashboard-table .task-summary-scroll .small {
+        line-height: 1.4;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row">
@@ -224,16 +240,18 @@
                                         {% endif %}
                                     </td>
                                     <td class="task-summary-cell">
-                                        <div class="small">
-                                            {% if task.operation_type == "release_publish" or task.operation_type == "release_rollback" %}
-                                            <code>{{ task.summary_primary|default:"-" }}</code>
-                                            {% else %}
-                                            {{ task.summary_primary|default:"-" }}
+                                        <div class="task-summary-scroll">
+                                            <div class="small text-truncate">
+                                                {% if task.operation_type == "release_publish" or task.operation_type == "release_rollback" or task.operation_type == "nginx_upgrade" or task.operation_type == "nginx_install" or task.operation_type == "nginx_service_control" %}
+                                                <code>{{ task.summary_primary|default:"-" }}</code>
+                                                {% else %}
+                                                {{ task.summary_primary|default:"-" }}
+                                                {% endif %}
+                                            </div>
+                                            {% if task.summary_secondary %}
+                                            <div class="small text-muted text-truncate">{{ task.summary_secondary }}</div>
                                             {% endif %}
                                         </div>
-                                        {% if task.summary_secondary %}
-                                        <div class="small text-muted">{{ task.summary_secondary }}</div>
-                                        {% endif %}
                                     </td>
                                     <td><small>{{ task.trigger_user.username|default:"-" }}</small></td>
                                     <td>

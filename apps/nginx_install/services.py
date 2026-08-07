@@ -58,6 +58,17 @@ def _default_install_prefix():
     return (get_setting("install.default_prefix", "/opt/app") or "/opt/app").strip() or "/opt/app"
 
 
+def _default_listen_port():
+    """读取安装缺省监听端口"""
+    try:
+        port = int(get_setting("install.default_listen_port", "80") or 80)
+    except (TypeError, ValueError):
+        port = 80
+    if port < 1 or port > 65535:
+        return 80
+    return port
+
+
 def derive_paths_from_prefix(prefix):
     """由 --prefix 推导二进制与主配置路径"""
     fallback = _default_install_prefix()
@@ -67,6 +78,74 @@ def derive_paths_from_prefix(prefix):
         "nginx_path": f"{prefix}/sbin/nginx",
         "main_conf_path": f"{prefix}/conf/nginx.conf",
     }
+
+
+def _apply_listen_port_to_conf(ssh, conf_path, listen_port, log_fn=None):
+    """将主配置中默认 listen 80 / [::]:80 改写为目标端口"""
+    def _log(msg):
+        if log_fn:
+            log_fn(msg)
+
+    try:
+        port = int(listen_port)
+    except (TypeError, ValueError):
+        port = 80
+    if port < 1 or port > 65535:
+        port = 80
+
+    quoted = shlex.quote(conf_path)
+    # 优先 python3；失败则 sed 回退（仅替换独立端口 80）
+    py = (
+        "import re,sys\n"
+        f"path={conf_path!r}\n"
+        f"port={port}\n"
+        "text=open(path,'r',encoding='utf-8',errors='replace').read()\n"
+        "def repl(m): return m.group(1)+str(port)+m.group(2)\n"
+        "new,n1=re.subn(r'(listen\\s+)80(\\b)',repl,text)\n"
+        "new,n2=re.subn(r'(listen\\s+\\[::\\]:)80(\\b)',repl,new)\n"
+        "\n"
+        "if n1+n2==0:\n"
+        " print('NO_CHANGE'); sys.exit(0)\n"
+        "open(path,'w',encoding='utf-8').write(new)\n"
+        "print('CHANGED:%d'%(n1+n2))\n"
+    )
+    ok, out = ssh.execute_command(f"python3 -c {shlex.quote(py)}")
+    out = (out or "").strip()
+    if ok:
+        if out.startswith("NO_CHANGE"):
+            _log(f"主配置未找到 listen 80，跳过改写: {conf_path}")
+        else:
+            _log(f"已将主配置 listen 改为 {port}: {conf_path} ({out})")
+        return True, out
+
+    _log(f"python3 改写失败，尝试 sed: {out}")
+    sed_cmd = (
+        f"cp {quoted} {quoted}.bak.mngxops && "
+        f"sed -E -i "
+        f"-e 's/(listen[[:space:]]+)80([[:space:];])/\\1{port}\\2/g' "
+        f"-e 's/(listen[[:space:]]+\\[::\\]:)80([[:space:];])/\\1{port}\\2/g' "
+        f"{quoted} && echo CHANGED"
+    )
+    ok2, out2 = ssh.execute_command(sed_cmd)
+    out2 = (out2 or "").strip()
+    if not ok2:
+        _log(f"改写 listen 失败: {out2}")
+        return False, out2 or out or "改写 listen 失败"
+    _log(f"已将主配置 listen 改为 {port}: {conf_path} (sed)")
+    return True, out2 or "CHANGED"
+
+
+def _nginx_t_fail_message(output):
+    """组装 nginx -t 失败文案（特权端口权限场景补充引导）"""
+    text = (output or "").strip()
+    msg = f"nginx -t 语法检查失败:\n{text}"
+    low = text.lower()
+    if "permission denied" in low or "bind()" in low:
+        msg += (
+            "\n提示: 非 root 账号无法监听特权端口（如 80）。"
+            "请调整安装监听端口后重试，或改配置后通过发布/启停执行 start。"
+        )
+    return msg
 
 
 def build_install_configure_opts(
@@ -411,6 +490,27 @@ def run_install_task(task_id):
         if cancelled():
             return
 
+        # ---- 写入监听端口 ----
+        listen_port = getattr(task, "listen_port", None) or _default_listen_port()
+        if int(listen_port) != 80:
+            set_task_status("verifying", 82)
+            if tc_id:
+                update_if_active(
+                    tc_id, progress=82, detail=f"{hostname} · 写入 listen {listen_port}"
+                )
+                _set_current_step(tc_id, hostname, f"写入 listen {listen_port}")
+            log(f"将主配置 listen 改为 {listen_port} ...")
+            with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
+                ok, apply_out = _apply_listen_port_to_conf(
+                    ssh, main_conf, listen_port, log_fn=log,
+                )
+            if not ok:
+                return fail(82, f"写入监听端口失败:\n{apply_out}")
+        else:
+            log("监听端口为 80，保持源码包默认主配置")
+        if cancelled():
+            return
+
         # ---- nginx -t ----
         set_task_status("verifying", 85)
         if tc_id:
@@ -423,7 +523,7 @@ def run_install_task(task_id):
         )
         log_raw(output)
         if not success:
-            return fail(85, f"nginx -t 语法检查失败:\n{output}")
+            return fail(85, _nginx_t_fail_message(output))
         log("nginx -t 语法检查通过")
         if cancelled():
             return

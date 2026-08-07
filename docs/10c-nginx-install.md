@@ -45,10 +45,11 @@
 
 1. **选择目标**：多选在线节点 + 源码包。  
 2. **编译参数**（纵向）：
-   - 顶部紧凑基础参数：`--prefix` / `--user` / `--group`、工作目录、`make -j`（缺省读「安装管理」设置）。  
+   - 顶部紧凑基础参数：`--prefix` / `--user` / `--group`、**监听端口 (listen)**、工作目录、`make -j`（缺省读「安装管理」设置；listen 默认 80）。  
    - 支持模块：摘要「已选 N」+「调整模块」弹窗（左右栏绝对选集，对齐升级交互；默认 `DEFAULT_INSTALL_MODULES`）；可选 `#extraOpts` 自定义行（无标签文案）。  
    - 全宽第三方模块：在线 Git / 离线包（对齐升级；离线包共用模块包管理 `?nav=nginx_install`）。  
-3. **确认安装**：KV 摘要、`./configure` 预览（含 `--add-module`）、节点清单、确认勾选。
+3. **确认安装**：KV 摘要（含监听端口）、`./configure` 预览（含 `--add-module`）、节点清单、确认勾选。  
+4. **编译参数「下一步」告警（Q147）**：若监听端口为 80，且已选节点存在 SSH 凭证用户名 ≠ `root`，在离开编译参数步时整批弹一次 `showConfirm` 风险提示（列出风险节点；确认后进入确认页，不硬拦）。
 
 开跑后右栏按节点展示步骤；轮询重建时保留用户已展开的节点块。失败信息对齐升级（最多 5 行 +「失败:」前缀）。「查看完整日志」新窗口打开任务日志页（编译参数展示含 `./configure \`）。不使用全局进度遮罩。
 
@@ -59,12 +60,13 @@
 | `install.default_user` | `root` | 向导 `--user` 缺省 |
 | `install.default_group` | `root` | 向导 `--group` 缺省 |
 | `install.default_prefix` | `/opt/app` | 向导 `--prefix` 缺省 |
+| `install.default_listen_port` | `80` | 向导监听端口缺省；装后写入主配置 `listen`（非 configure 参数） |
 
 详见 [12-settings.md](12-settings.md)。
 
 ## 7. 领域模型
 
-`NginxInstallTask`：批次号 `IN-YYMMDD-NNNN`（当日自增）、节点、源码包、prefix、configure、`added_modules` / `added_third_party`、进度/日志、`sync_ok`/`sync_detail`、关联 `TaskCenterTask(operation_type=nginx_install)`。首页「最近安装任务」与任务中心详情「来源批次」可跳转安装历史并按批次过滤。
+`NginxInstallTask`：批次号 `IN-YYMMDD-NNNN`（当日自增）、节点、源码包、prefix、`listen_port`、configure、`added_modules` / `added_third_party`、进度/日志、`sync_ok`/`sync_detail`、关联 `TaskCenterTask(operation_type=nginx_install)`。首页「最近安装任务」与任务中心详情「来源批次」可跳转安装历史并按批次过滤。
 
 ## 8. 执行流水线
 
@@ -73,13 +75,14 @@
 1. gcc/make 预检  
 2. 上传/解压源码包、准备第三方模块（复用 upgrade 助手）  
 3. configure → make → make install  
-4. `nginx -t` → `start_nginx`  
-5. 回写版本/路径，`mark_node_probe_success`，写入 `main_conf_path`  
-6. 自动配置同步（失败不否定安装、不回滚）
+4. 若 `listen_port != 80`：改写 `{prefix}/conf/nginx.conf` 中默认 `listen 80` / `[::]:80`  
+5. `nginx -t` → `start_nginx`（`-t` 遇 bind/Permission denied 时补充非 root 特权端口引导）  
+6. 回写版本/路径，`mark_node_probe_success`，写入 `main_conf_path`  
+7. 自动配置同步（失败不否定安装、不回滚）
 
 ## 9. 实现锚点
 
 - 应用：`apps/nginx_install`
 - 官方模块：`apps/upgrade/builtin_modules.py`
 - TaskCenter：`nginx_install`
-- 结论：Q132 / Q133 / Q134 / Q136 / Q139 / Q140 / Q141 / Q142 / Q143 / Q144 / Q146（见 [`AGENTS.md`](../AGENTS.md)）
+- 结论：Q132 / Q133 / Q134 / Q136 / Q139 / Q140 / Q141 / Q142 / Q143 / Q144 / Q146 / Q147（见 [`AGENTS.md`](../AGENTS.md)）

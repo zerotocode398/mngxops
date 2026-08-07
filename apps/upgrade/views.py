@@ -952,13 +952,16 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
                 if not success:
                     return JsonResponse({"success": False, "message": f"回滚失败: {output}"}, status=500)
 
-            # 按启动方式 reload，使进程回到旧二进制生效路径
+            # 按启动方式 reload（未运行则 start），使进程回到旧二进制生效路径
             ok, msg = reload_nginx(
                 node.ip, node.port, credential.username,
-                nginx_path=binary_path, **auth_kwargs,
+                nginx_path=binary_path, start_if_stopped=True, **auth_kwargs,
             )
             if not ok:
-                return JsonResponse({"success": False, "message": f"二进制已回滚，但 reload 失败: {msg}"}, status=500)
+                return JsonResponse(
+                    {"success": False, "message": f"二进制已回滚，但 reload/start 失败: {msg}"},
+                    status=500,
+                )
         except Exception as e:
             return JsonResponse({"success": False, "message": f"回滚异常: {str(e)}"}, status=500)
 

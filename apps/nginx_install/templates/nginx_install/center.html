@@ -252,11 +252,17 @@
                 </div>
             </div>
             <div class="row g-2 mt-1">
-                <div class="col-md-8">
+                <div class="col-md-4">
+                    <label class="form-label">监听端口 (listen)</label>
+                    <input type="number" class="form-control form-control-sm" id="listenPort"
+                           value="{{ default_listen_port }}" min="1" max="65535">
+                    <div class="form-text">缺省来自系统设置；安装后写入主配置。</div>
+                </div>
+                <div class="col-md-5">
                     <label class="form-label">远程工作目录</label>
                     <input type="text" class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}">
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">并行编译 (-j)</label>
                     <input type="number" class="form-control form-control-sm" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32">
                 </div>
@@ -297,7 +303,7 @@
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(1)">
                 <i class="bi bi-chevron-left"></i> 上一步
             </button>
-            <button type="button" class="btn btn-primary btn-sm" onclick="goStep(3)">
+            <button type="button" class="btn btn-primary btn-sm" onclick="goStep2Next()">
                 下一步 <i class="bi bi-chevron-right"></i>
             </button>
         </div>
@@ -472,6 +478,7 @@
     var BUILTIN_MODULES = {{ builtin_modules_json|safe }};
     var DEFAULT_MODULES = {{ default_modules_json|safe }};
     var DEFAULT_PREFIX = {{ default_prefix_json|safe }};
+    var DEFAULT_LISTEN_PORT = {{ default_listen_port_json|safe }};
     var MODULE_PACKAGES = {{ module_packages_json|safe }};
     var selected = {};
     var draft = {};
@@ -524,6 +531,26 @@
 
     function getNginxGroup() {
         return (document.getElementById('nginxGroup').value || '').trim();
+    }
+
+    /** 读取安装监听端口（非法时回退缺省） */
+    function getListenPort() {
+        var raw = (document.getElementById('listenPort').value || '').trim();
+        var n = parseInt(raw, 10);
+        if (!n || n < 1 || n > 65535) {
+            return Number(DEFAULT_LISTEN_PORT) || 80;
+        }
+        return n;
+    }
+
+    /** 筛出非 root SSH 凭证的已选节点 */
+    function getNonRootCredentialNodes() {
+        return Object.keys(selected).map(function (id) {
+            return selected[id];
+        }).filter(function (n) {
+            var u = String(n.credential_username || '').trim();
+            return u && u !== 'root';
+        });
     }
 
     /** 刷新 Step2 支持模块摘要 */
@@ -878,22 +905,63 @@
             return;
         }
         if (step === 3) {
-            if (!getPrefix()) {
-                showAlert('提示', '请填写安装路径 (--prefix)');
-                return;
-            }
-            buildConfirm();
-            var chk = document.getElementById('confirmCheck');
-            if (chk) {
-                chk.checked = false;
-                document.getElementById('btnStartInstall').disabled = true;
-            }
+            enterConfirmStep();
+            return;
         }
         document.querySelectorAll('.wizard-panel').forEach(function (el) { el.classList.add('d-none'); });
         document.getElementById('step' + step).classList.remove('d-none');
         syncWizardSteps(step);
     }
     window.goStep = goStep;
+
+    /** 进入确认步：校验参数并在非 root + listen 80 时告警 */
+    function enterConfirmStep() {
+        if (!getPrefix()) {
+            showAlert('提示', '请填写安装路径 (--prefix)');
+            return;
+        }
+        var listenPort = getListenPort();
+        if (!listenPort || listenPort < 1 || listenPort > 65535) {
+            showAlert('提示', '请填写有效的监听端口（1–65535）');
+            return;
+        }
+
+        function proceedToConfirm() {
+            buildConfirm();
+            var chk = document.getElementById('confirmCheck');
+            if (chk) {
+                chk.checked = false;
+                document.getElementById('btnStartInstall').disabled = true;
+            }
+            document.querySelectorAll('.wizard-panel').forEach(function (el) { el.classList.add('d-none'); });
+            document.getElementById('step3').classList.remove('d-none');
+            syncWizardSteps(3);
+        }
+
+        var riskNodes = (listenPort === 80) ? getNonRootCredentialNodes() : [];
+        if (!riskNodes.length) {
+            proceedToConfirm();
+            return;
+        }
+        var maxShow = 10;
+        var lines = riskNodes.slice(0, maxShow).map(function (n) {
+            return '<li><code>' + escapeHtml(n.hostname) + ' (' + escapeHtml(n.ip) + ')</code></li>';
+        }).join('');
+        var more = riskNodes.length > maxShow
+            ? '<p class="mb-0">等共 ' + riskNodes.length + ' 台</p>'
+            : '';
+        var body =
+            '<p>下列节点以非 root 用户绑定 80 端口，建议改为 ≥1024 的端口。</p>' +
+            '<ul class="mb-2">' + lines + '</ul>' + more +
+            '<p class="mb-0">继续后会对全部已选节点安装。</p>';
+        showConfirm('监听端口风险提示', body, proceedToConfirm, true, 'md', '继续');
+    }
+
+    /** 编译参数页「下一步」入口 */
+    function goStep2Next() {
+        enterConfirmStep();
+    }
+    window.goStep2Next = goStep2Next;
 
     function getWorkDir() {
         return (document.getElementById('remoteWorkDir').value || '').trim() || '/tmp/nginx-upgrade';
@@ -1105,6 +1173,7 @@
             renderSummaryInfoRow('并行编译', '-j' + document.getElementById('makeJobs').value) +
             renderSummaryInfoRow('用户 (--user)', getNginxUser() || '-') +
             renderSummaryInfoRow('用户组 (--group)', getNginxGroup() || '-') +
+            renderSummaryInfoRow('监听端口', String(getListenPort())) +
             '</div>' +
             renderSummaryModuleLine('编译模块', mods, 'installModDetail') +
             renderSummaryModuleLine('第三方模块', tpLabels, 'installTpDetail');
@@ -1225,6 +1294,7 @@
                 id: node.id,
                 hostname: node.hostname,
                 ip: node.ip,
+                credential_username: node.credential_username || '',
                 group_names: (node.groups || []).map(function (g) { return g.name; })
             };
         } else {
@@ -1609,6 +1679,12 @@
             showAlert('提示', '请先勾选确认声明');
             return;
         }
+        var listenPort = getListenPort();
+        if (!listenPort || listenPort < 1 || listenPort > 65535) {
+            showAlert('提示', '请填写有效的监听端口（1–65535）');
+            return;
+        }
+
         var names = Object.keys(selected).map(function (id) { return selected[id].hostname; }).join('、');
         showConfirm('确认安装 Nginx', '<p>将对以下节点执行全新安装：</p><p><code>' + escapeHtml(names) + '</code></p>', function () {
             fetch(CREATE_URL, {
@@ -1624,6 +1700,7 @@
                     target_prefix: getPrefix(),
                     nginx_user: getNginxUser(),
                     nginx_group: getNginxGroup(),
+                    listen_port: listenPort,
                     remote_work_dir: getWorkDir(),
                     make_jobs: Number(document.getElementById('makeJobs').value) || 4,
                     added_modules: getAddedModules(),

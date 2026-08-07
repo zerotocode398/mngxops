@@ -133,7 +133,7 @@ sequenceDiagram
 
 ## 11. 架构约束（实现即需求）
 
-1. 发布同节点复用 SSH，同节点批次统一 reload 一次（Q80）。
+1. 发布同节点复用 SSH，同节点批次统一 reload 一次（Q80）；未运行则 start（Q147）。
 2. 进度展示以 TaskCenter 真实进度为准，禁止假倒计时（Q39）。
 3. 设置项须「所见即所得」：仅保留已接线 PRESET（Q75）。
 4. UI 遵循全局 data-table / btn-sm / showConfirm 等规范（Q41/Q42/Q66）。

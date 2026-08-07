@@ -1157,7 +1157,7 @@
 
             confirmModalEl.addEventListener('hidden.bs.modal', function() {
                 document.getElementById('mngxopsConfirmBtn').disabled = false;
-                document.getElementById('mngxopsConfirmBtn').innerHTML = '确认';
+                document.getElementById('mngxopsConfirmBtn').textContent = '确认';
 
                 var accepted = pendingAcceptedCallback;
                 pendingAcceptedCallback = null;
@@ -1182,6 +1182,7 @@
                     } else {
                         bodyEl.textContent = next.message || '';
                     }
+                    document.getElementById('mngxopsConfirmBtn').textContent = next.confirmLabel || '确认';
                     confirmCallback = next.onConfirm;
                     confirmModal.show();
                 } else if (!confirmModalEl.classList.contains('show')) {
@@ -1197,17 +1198,26 @@
              * @param {Function} onConfirm 确认回调
              * @param {boolean} [asHtml=false] 为 true 时 message 按 HTML 渲染
              * @param {string} [size='sm'] 弹窗宽度：sm / md / lg / xl
+             * @param {string} [confirmLabel='确认'] 确认按钮文案
              */
-            window.showConfirm = function(title, message, onConfirm, asHtml, size) {
+            window.showConfirm = function(title, message, onConfirm, asHtml, size, confirmLabel) {
                 asHtml = !!asHtml;
                 size = size || 'sm';
+                confirmLabel = confirmLabel || '确认';
                 var isShown = confirmModalEl.classList.contains('show');
                 var isTransitioning = confirmModalEl.classList.contains('showing')
                     || confirmModalEl.classList.contains('hiding')
                     || !!pendingAcceptedCallback;
                 if (isShown || isTransitioning) {
                     // 正在显示/关闭时排队，等 hidden 后再弹出
-                    queuedConfirm = { title: title, message: message, onConfirm: onConfirm, asHtml: asHtml, size: size };
+                    queuedConfirm = {
+                        title: title,
+                        message: message,
+                        onConfirm: onConfirm,
+                        asHtml: asHtml,
+                        size: size,
+                        confirmLabel: confirmLabel
+                    };
                     if (isShown && !pendingAcceptedCallback) {
                         confirmModal.hide();
                     }
@@ -1221,6 +1231,7 @@
                 } else {
                     bodyEl.textContent = message || '';
                 }
+                document.getElementById('mngxopsConfirmBtn').textContent = confirmLabel;
                 confirmCallback = onConfirm;
                 confirmModal.show();
             };

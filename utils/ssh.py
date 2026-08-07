@@ -794,6 +794,7 @@ def execute_nginx_reload(
     private_key=None,
     nginx_path=None,
     client=None,
+    start_if_stopped=False,
 ):
     """在远程节点按启动方式 reload（委托 utils.nginx_ops.reload_nginx）"""
     from utils.nginx_ops import reload_nginx
@@ -806,4 +807,5 @@ def execute_nginx_reload(
         private_key=private_key,
         nginx_path=nginx_path,
         client=client,
+        start_if_stopped=start_if_stopped,
     )

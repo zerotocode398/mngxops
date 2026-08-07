@@ -41,7 +41,7 @@ GROUP_META = {
     },
     "安装管理": {
         "icon": "bi-download",
-        "description": "Nginx 全新安装向导缺省用户、用户组与安装路径。",
+        "description": "Nginx 全新安装向导缺省用户、用户组、安装路径与监听端口。",
     },
 }
 
@@ -72,6 +72,7 @@ UNIT_MAP = {
     "install.default_user": "",
     "install.default_group": "",
     "install.default_prefix": "",
+    "install.default_listen_port": "",
 }
 
 
