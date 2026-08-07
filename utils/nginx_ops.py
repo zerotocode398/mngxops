@@ -328,7 +328,8 @@ def restart_nginx(
         if not ok:
             _log(f"quit 失败，尝试 stop: {out}")
             _run(ssh, f"{nginx_bin} -s stop 2>&1")
-        start_cmd = f"nohup {nginx_bin} >/dev/null 2>&1 &"
+        # Nginx 默认 daemon on，主进程自行后台化，无需 nohup/&
+        start_cmd = f"{nginx_bin} 2>&1"
         _log(f"执行: {start_cmd}")
         ok, out = _run(ssh, start_cmd)
         if not ok:
@@ -439,7 +440,8 @@ def start_nginx(
                 return False, f"systemctl start 失败: {out}"
             return True, (out or "").strip() or f"systemctl start {unit} 成功"
 
-        start_cmd = f"nohup {nginx_bin} >/dev/null 2>&1 &"
+        # Nginx 默认 daemon on，主进程自行后台化，无需 nohup/&
+        start_cmd = f"{nginx_bin} 2>&1"
         _log(f"执行: {start_cmd}")
         ok, out = _run(ssh, start_cmd)
         if not ok:

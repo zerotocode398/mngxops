@@ -184,7 +184,6 @@ def run_install_task(task_id):
     from utils.ssh import (
         SSHClient,
         check_remote_file_md5,
-        discover_nginx_configs,
         execute_nginx_test,
         get_nginx_version,
         upload_file_via_sftp,
@@ -630,6 +629,7 @@ def _auto_sync_configs(node, credential, auth_kwargs, main_conf, operator, task_
         discover_max_depth,
         sync_discovered_configs,
     )
+    from utils.ssh import discover_nginx_configs
 
     try:
         log(f"开始配置同步，主配置: {main_conf}")
