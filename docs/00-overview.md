@@ -48,7 +48,7 @@
 | 同步 | configs sync | 从远程发现/拉取配置并写入绑定（非发布推送） |
 | 发布 | release publish | 将绑定某版本内容推送到远程并校验/reload |
 | 发布任务 | `ReleaseTask` | 单条「绑定+版本→节点」的发布/回滚记录 |
-| 批次号 | `batch_number` | 发布：`release-YYMMDD-XXXX`；升级：`UG-YYMMDD-XXXX` |
+| 批次号 | `batch_number` / `source_batch` | 发布：`release-YYMMDD-XXXX`；升级：`UG-YYMMDD-XXXX`；安装：`IN-YYMMDD-NNNN`；启停：`OP-YYMMDD-NNNN` |
 | 发布中心 | `/releases/center/` | 勾选节点与绑定并触发发布的工作台 |
 | 发布历史 | `/releases/list/` | 按批次分组的发布/回滚历史与勾选回滚 |
 | 任务中心 | `/releases/history/` | 全平台异步任务列表与详情（易与发布历史混淆，务必区分） |

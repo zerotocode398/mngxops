@@ -111,6 +111,7 @@
                 <table class="table table-hover table-sm mb-0 data-table">
                     <thead class="table-light">
                         <tr>
+                            <th>批次</th>
                             <th>目标节点</th>
                             <th>动作</th>
                             <th>状态</th>
@@ -122,6 +123,16 @@
                     <tbody>
                     {% for task in recent_tasks %}
                         <tr>
+                            <td>
+                                {% if task.source_batch %}
+                                <a href="{% url 'nginx_service:history' %}?search={{ task.source_batch|urlencode }}"
+                                   class="text-decoration-none" target="_blank">
+                                    <code class="small">{{ task.source_batch }}</code>
+                                </a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
                             <td>
                                 <span class="node-identity" title="{{ task.target_hostnames }}">
                                     {{ task.target_hostnames|truncatechars:40 }}

@@ -1,8 +1,6 @@
 """Nginx 全新安装：首页、向导与创建 API"""
 import json
 import logging
-import random
-import string
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
@@ -26,7 +24,7 @@ from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_recent_tasks_limit, get_setting
 
-from .models import NginxInstallTask
+from .models import NginxInstallTask, generate_install_batch_number
 from .services import (
     DEFAULT_INSTALL_MODULES,
     build_install_configure_opts,
@@ -43,13 +41,6 @@ def _batch_max_count():
         return max(1, int(get_setting("node.batch_max_count", "3") or 3))
     except (TypeError, ValueError):
         return 3
-
-
-def _gen_batch_number():
-    """生成安装批次号 NI-YYMMDD-XXXX"""
-    date_part = timezone.now().strftime("%y%m%d")
-    suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
-    return f"NI-{date_part}-{suffix}"
 
 
 def _get_node_credential(node):
@@ -289,7 +280,7 @@ class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):
                 "skipped": rejected,
             })
 
-        batch_number = _gen_batch_number()
+        batch_number = generate_install_batch_number()
         target_version = package.version
         paths = derive_paths_from_prefix(prefix)
         install_task_ids = []

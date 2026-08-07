@@ -17,7 +17,7 @@
             <div class="col-md-4">
                 <div class="tag-input-wrapper form-control form-control-sm" id="serviceHistoryTagWrapper">
                     <input type="text" class="tag-input-field"
-                        placeholder="搜索主机名、IP 或动作">
+                        placeholder="搜索主机名、IP、动作或批次">
                 </div>
                 <input type="hidden" name="search" id="serviceHistorySearchHidden" value="{{ search }}">
             </div>
@@ -54,18 +54,26 @@
             <table class="table table-hover table-sm mb-0 data-table">
                 <thead class="table-light">
                     <tr>
+                        <th style="width: 12%;">批次</th>
                         <th style="width: 10%;">动作</th>
-                        <th style="width: 28%;">目标节点</th>
+                        <th style="width: 24%;">目标节点</th>
                         <th style="width: 10%;">状态</th>
                         <th style="width: 10%;">进度</th>
-                        <th style="width: 12%;">操作人</th>
-                        <th style="width: 18%;">创建时间</th>
-                        <th style="width: 12%;">操作</th>
+                        <th style="width: 10%;">操作人</th>
+                        <th style="width: 14%;">创建时间</th>
+                        <th style="width: 10%;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                 {% for task in tasks %}
                     <tr>
+                        <td>
+                            {% if task.source_batch %}
+                            <code class="small">{{ task.source_batch }}</code>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
                         <td>
                             {% if task.target_configs == "start" %}
                             <span class="badge bg-success">启动</span>

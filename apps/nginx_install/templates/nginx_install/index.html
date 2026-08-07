@@ -71,6 +71,7 @@
                 <table class="table table-hover table-sm mb-0 data-table">
                     <thead class="table-light">
                         <tr>
+                            <th>批次</th>
                             <th>目标节点</th>
                             <th>目标版本</th>
                             <th>安装路径</th>
@@ -84,6 +85,16 @@
                     <tbody>
                     {% for task in recent_tasks %}
                         <tr>
+                            <td>
+                                {% if task.batch_number %}
+                                <a href="{% url 'nginx_install:history' %}?search={{ task.batch_number|urlencode }}"
+                                   class="text-decoration-none" target="_blank">
+                                    <code class="small">{{ task.batch_number }}</code>
+                                </a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
                             <td>
                                 <div class="node-info-cell">
                                     <span class="node-identity">

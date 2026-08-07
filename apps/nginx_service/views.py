@@ -5,6 +5,7 @@ import threading
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
@@ -36,6 +37,27 @@ _ACTION_MAP = {
 
 # 动作码 → 展示名（历史/最近任务表）
 ACTION_LABELS = {k: v[0] for k, v in _ACTION_MAP.items()}
+
+
+def generate_service_batch_number():
+    """生成启停批次号，格式 OP-YYMMDD-NNNN（当日自增）"""
+    today = timezone.now().strftime("%y%m%d")
+    prefix = f"OP-{today}-"
+    with transaction.atomic():
+        last = (
+            TaskCenterTask.objects.select_for_update()
+            .filter(
+                operation_type="nginx_service_control",
+                source_batch__startswith=prefix,
+            )
+            .order_by("-source_batch")
+            .first()
+        )
+        if last and last.source_batch:
+            seq = int(last.source_batch[-4:]) + 1
+        else:
+            seq = 1
+        return f"{prefix}{seq:04d}"
 
 
 def _batch_max_count():
@@ -101,6 +123,7 @@ class NginxServiceHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPa
                 | Q(target_ips__icontains=search)
                 | Q(target_configs__icontains=search)
                 | Q(detail__icontains=search)
+                | Q(source_batch__icontains=search)
             )
         status = (self.request.GET.get("status") or "").strip()
         if status == "running":
@@ -196,6 +219,7 @@ class NginxServiceExecuteAPIView(LoginRequiredMixin, View):
             return JsonResponse({"success": False, "message": msg})
 
         action_label, _ = _ACTION_MAP[action]
+        batch_number = generate_service_batch_number()
         task = TaskCenterTask.objects.create(
             operation_type="nginx_service_control",
             status="pending",
@@ -203,6 +227,7 @@ class NginxServiceExecuteAPIView(LoginRequiredMixin, View):
             target_hostnames=",".join(n.hostname for n in eligible),
             target_ips=",".join(n.ip for n in eligible),
             target_configs=action,
+            source_batch=batch_number,
             trigger_user=request.user,
         )
 
@@ -223,6 +248,7 @@ class NginxServiceExecuteAPIView(LoginRequiredMixin, View):
                 "async": True,
                 "message": message,
                 "task_center_id": task.id,
+                "source_batch": batch_number,
                 "skipped": rejected,
             }
         )

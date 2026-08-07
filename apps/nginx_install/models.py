@@ -1,9 +1,28 @@
 """Nginx 全新安装任务模型（与升级任务隔离）"""
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+from django.utils import timezone
 
 from apps.nodes.models import Node
 from apps.upgrade.models import NginxSourcePackage
+
+
+def generate_install_batch_number():
+    """生成安装批次号，格式 IN-YYMMDD-NNNN（当日自增）"""
+    today = timezone.now().strftime("%y%m%d")
+    prefix = f"IN-{today}-"
+    with transaction.atomic():
+        last = (
+            NginxInstallTask.objects.select_for_update()
+            .filter(batch_number__startswith=prefix)
+            .order_by("-batch_number")
+            .first()
+        )
+        if last and last.batch_number:
+            seq = int(last.batch_number[-4:]) + 1
+        else:
+            seq = 1
+        return f"{prefix}{seq:04d}"
 
 
 class NginxInstallTask(models.Model):

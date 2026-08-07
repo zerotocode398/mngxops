@@ -42,6 +42,10 @@
                             <a href="{% url 'releases:list' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
                             {% elif task.operation_type == 'nginx_upgrade' and task.source_batch %}
                             <a href="{% url 'upgrade:history' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
+                            {% elif task.operation_type == 'nginx_install' and task.source_batch %}
+                            <a href="{% url 'nginx_install:history' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
+                            {% elif task.operation_type == 'nginx_service_control' and task.source_batch %}
+                            <a href="{% url 'nginx_service:history' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
                             {% else %}
                             <code>{{ task.source_batch|default:'-' }}</code>
                             {% endif %}

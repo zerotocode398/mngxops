@@ -64,7 +64,7 @@
 
 ## 7. 领域模型
 
-`NginxInstallTask`：批次号 `NI-YYMMDD-XXXX`、节点、源码包、prefix、configure、`added_modules` / `added_third_party`、进度/日志、`sync_ok`/`sync_detail`、关联 `TaskCenterTask(operation_type=nginx_install)`。
+`NginxInstallTask`：批次号 `IN-YYMMDD-NNNN`（当日自增）、节点、源码包、prefix、configure、`added_modules` / `added_third_party`、进度/日志、`sync_ok`/`sync_detail`、关联 `TaskCenterTask(operation_type=nginx_install)`。首页「最近安装任务」与任务中心详情「来源批次」可跳转安装历史并按批次过滤。
 
 ## 8. 执行流水线
 
@@ -82,4 +82,4 @@
 - 应用：`apps/nginx_install`
 - 官方模块：`apps/upgrade/builtin_modules.py`
 - TaskCenter：`nginx_install`
-- 结论：Q132 / Q133 / Q134 / Q136 / Q139 / Q140 / Q141 / Q142 / Q143（见 [`AGENTS.md`](../AGENTS.md)）
+- 结论：Q132 / Q133 / Q134 / Q136 / Q139 / Q140 / Q141 / Q142 / Q143 / Q144（见 [`AGENTS.md`](../AGENTS.md)）

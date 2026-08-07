@@ -95,7 +95,7 @@ sequenceDiagram
 | `detail` | 当前说明 |
 | `result` | 结束后的结果树文本（协议见 [09-task-center.md](09-task-center.md)） |
 | `log_output` | 增量执行日志 |
-| `source_batch` | 关联发布/升级批次号 |
+| `source_batch` | 关联发布/升级/安装/启停批次号 |
 | `target_*` | 主机名/IP/配置摘要 |
 | `trigger_user` | 触发人 |
 
