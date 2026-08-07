@@ -46,11 +46,11 @@
 1. **选择目标**：多选在线节点 + 源码包。  
 2. **编译参数**（纵向）：
    - 顶部紧凑基础参数：`--prefix` / `--user` / `--group`、工作目录、`make -j`（缺省读「安装管理」设置）。  
-   - 全宽支持模块（`BUILTIN_ADD_MODULES` + 搜索；默认勾选 `DEFAULT_INSTALL_MODULES`）。  
+   - 支持模块：摘要「已选 N」+「调整模块」弹窗（左右栏绝对选集，对齐升级交互；默认 `DEFAULT_INSTALL_MODULES`）；可选 `#extraOpts` 自定义行（无标签文案）。  
    - 全宽第三方模块：在线 Git / 离线包（对齐升级；离线包共用模块包管理 `?nav=nginx_install`）。  
 3. **确认安装**：KV 摘要、`./configure` 预览（含 `--add-module`）、节点清单、确认勾选。
 
-开跑后右栏按节点展示步骤；「查看完整日志」新窗口打开任务日志页。保留全局进度遮罩。
+开跑后右栏按节点展示步骤；轮询重建时保留用户已展开的节点块。失败信息对齐升级（最多 5 行 +「失败:」前缀）。「查看完整日志」新窗口打开任务日志页（编译参数展示含 `./configure \`）。不使用全局进度遮罩。
 
 ## 6. 系统设置（安装管理）
 
@@ -82,4 +82,4 @@
 - 应用：`apps/nginx_install`
 - 官方模块：`apps/upgrade/builtin_modules.py`
 - TaskCenter：`nginx_install`
-- 结论：Q132 / Q133 / Q134 / Q136 / Q139（见 [`AGENTS.md`](../AGENTS.md)）
+- 结论：Q132 / Q133 / Q134 / Q136 / Q139 / Q140 / Q141 / Q142 / Q143（见 [`AGENTS.md`](../AGENTS.md)）

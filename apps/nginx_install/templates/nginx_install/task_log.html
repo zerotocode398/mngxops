@@ -115,10 +115,11 @@
         {% if task.target_configure_opts %}
         <div class="card mb-3">
             <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-gear"></i> configure 参数</h5>
+                <h5 class="mb-0"><i class="bi bi-gear"></i> 编译参数</h5>
             </div>
             <div class="card-body">
-                <pre class="nginx-v-output mb-0" style="max-height: 240px;">{{ task.target_configure_opts }}</pre>
+                <pre class="nginx-v-output mb-0" style="max-height: 240px;">./configure \
+{{ task.target_configure_opts }}</pre>
             </div>
         </div>
         {% endif %}

@@ -61,9 +61,17 @@
         display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.15rem 1rem;
     }
     .module-checkbox-group label { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; margin: 0; }
+    .module-checkbox-group label.is-disabled { opacity: 0.55; cursor: not-allowed; }
+    .module-dual-panel .module-dual-title {
+        font-size: var(--fs-sm); color: var(--gray-600); margin-bottom: 6px;
+    }
     .module-dual-title {
         font-weight: 600; font-size: var(--fs-base); margin-bottom: 0.35rem;
         display: flex; align-items: center; gap: 6px;
+    }
+    .module-summary-box {
+        border: 1px solid var(--gray-200); border-radius: var(--br-md);
+        padding: 10px 12px; background: #fff;
     }
     .kv-info-box {
         padding: 12px 14px; background: var(--gray-100); border-radius: var(--br-md);
@@ -257,16 +265,17 @@
 
         <div class="mb-3">
             <div class="module-dual-title"><i class="bi bi-puzzle"></i> 支持模块</div>
-            <div class="form-text mb-2">勾选写入 configure；默认已勾选常用模块。可用标签搜索过滤。</div>
-            <div class="mb-2">
-                <div class="tag-input-wrapper form-control form-control-sm" id="modTagWrapper">
-                    <input type="text" class="tag-input-field" id="modSearchField"
-                           placeholder="模块名称，回车添加标签" autocomplete="off">
+            <div class="form-text mb-2">点击「调整模块」勾选写入 configure；默认已选常用模块。</div>
+            <div class="module-summary-box d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                <div class="small">
+                    <span class="text-muted">已选</span>
+                    <span class="badge bg-primary" id="moduleSelectedCount">0</span>
+                    <span class="text-muted ms-2" id="moduleSelectedHint">尚未调整</span>
                 </div>
-                <input type="hidden" id="modSearchHidden">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="openModuleAdjustModal()">
+                    <i class="bi bi-arrows-expand"></i> 调整模块
+                </button>
             </div>
-            <div class="module-checkbox-group mb-2" id="moduleGrid"></div>
-            <label class="form-label">额外 configure 参数（可选，每行一个）</label>
             <textarea class="form-control form-control-sm code-font" id="extraOpts" rows="2"
                       placeholder="--with-http_gzip_static_module"></textarea>
         </div>
@@ -403,6 +412,54 @@
         </div>
     </div>
 </div>
+
+<!-- 支持模块左右对比弹窗（绝对选集，对齐升级交互） -->
+<div class="modal fade" id="moduleAdjustModal" tabindex="-1" aria-labelledby="moduleAdjustModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="moduleAdjustModalLabel">
+                    <i class="bi bi-sliders"></i> 调整编译模块
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 module-dual-panel">
+                    <div class="col-md-6">
+                        <div class="module-dual-title"><i class="bi bi-plus-circle"></i> 可选编译参数</div>
+                        <div class="form-text mb-2">勾选添加尚未选中的参数；已选项标「已选」请到右侧勾选移除</div>
+                        <div class="mb-2">
+                            <div class="tag-input-wrapper form-control form-control-sm" id="addModTagWrapper">
+                                <input type="text" class="tag-input-field" id="addModSearchField"
+                                       placeholder="模块名称，回车添加标签" autocomplete="off">
+                            </div>
+                            <input type="hidden" id="addModSearchHidden">
+                        </div>
+                        <div class="module-checkbox-group" id="addModulesGroup" style="max-height: 50vh;"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="module-dual-title"><i class="bi bi-list-check"></i> 已选编译参数</div>
+                        <div class="form-text mb-2">勾选标记移除，确认后生效</div>
+                        <div class="mb-2">
+                            <div class="tag-input-wrapper form-control form-control-sm" id="removeModTagWrapper">
+                                <input type="text" class="tag-input-field" id="removeModSearchField"
+                                       placeholder="模块名称，回车添加标签" autocomplete="off">
+                            </div>
+                            <input type="hidden" id="removeModSearchHidden">
+                        </div>
+                        <div class="module-checkbox-group" id="removeModulesGroup" style="max-height: 50vh;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmModuleAdjustBtn">
+                    <i class="bi bi-check-lg"></i> 确认
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -420,13 +477,22 @@
     var draft = {};
     var pollTimer = null;
     var pkgSearchTags = [];
-    var modSearchTags = [];
     var lastSearchNodes = [];
     var nodeSearchTimer = null;
-    var checkedModules = {};
+    /** 已确认的官方模块绝对选集 */
+    var selectedModules = [];
+    /** 打开弹窗时的基线选集（对齐升级 nginx -V 基线语义） */
+    var modalBaselineSelected = [];
+    /** 弹窗草稿：待新增 / 待移除 */
+    var draftAddedModules = [];
+    var draftRemovedModules = [];
+    var moduleAdjustModal = null;
     var afterDoneOnce = false;
 
-    DEFAULT_MODULES.forEach(function (m) { checkedModules[m] = true; });
+    (DEFAULT_MODULES || []).forEach(function (m) {
+        var v = String(m || '').trim();
+        if (v && selectedModules.indexOf(v) < 0) selectedModules.push(v);
+    });
 
     function csrfToken() {
         var el = document.querySelector('[name=csrfmiddlewaretoken]');
@@ -460,84 +526,301 @@
         return (document.getElementById('nginxGroup').value || '').trim();
     }
 
-    function renderModuleGrid() {
-        var terms = modSearchTags.map(function (t) { return t.toLowerCase(); });
-        var live = (document.getElementById('modSearchField').value || '').trim().toLowerCase();
-        if (live) terms = terms.concat([live]);
-        var html = '';
-        var visible = 0;
-        BUILTIN_MODULES.forEach(function (mod) {
-            var m = String(mod);
-            var ok = !terms.length || terms.every(function (t) {
-                return m.toLowerCase().indexOf(t) >= 0;
-            });
-            if (!ok) return;
-            visible += 1;
-            var checked = checkedModules[m] ? ' checked' : '';
-            html += '<label data-mod="' + escapeHtml(m) + '">' +
-                '<input type="checkbox" class="form-check-input mod-check" value="' + escapeHtml(m) + '"' + checked + '>' +
-                '<code class="small">' + escapeHtml(m) + '</code></label>';
-        });
-        if (!visible) {
-            html = '<p class="text-muted small mb-0">无匹配模块</p>';
+    /** 刷新 Step2 支持模块摘要 */
+    function updateModuleSummary() {
+        var countEl = document.getElementById('moduleSelectedCount');
+        var hintEl = document.getElementById('moduleSelectedHint');
+        if (!countEl) return;
+        countEl.textContent = String(selectedModules.length);
+        if (!hintEl) return;
+        if (!selectedModules.length) {
+            hintEl.textContent = '未选择模块';
+            return;
         }
-        var grid = document.getElementById('moduleGrid');
-        grid.innerHTML = html;
-        grid.querySelectorAll('.mod-check').forEach(function (cb) {
-            cb.addEventListener('change', function () {
-                if (cb.checked) checkedModules[cb.value] = true;
-                else delete checkedModules[cb.value];
+        var preview = selectedModules.slice(0, 2).join(', ');
+        if (selectedModules.length > 2) {
+            hintEl.textContent = preview + ' 等' + selectedModules.length + '项';
+        } else {
+            hintEl.textContent = preview;
+        }
+    }
+
+    /** 清空模块搜索标签 */
+    function clearModTagInput(wrapperId, fieldId, hiddenId) {
+        var wrapper = document.getElementById(wrapperId);
+        var field = document.getElementById(fieldId);
+        var hidden = document.getElementById(hiddenId);
+        if (!wrapper) return;
+        wrapper.querySelectorAll('.tag-badge').forEach(function (b) { b.remove(); });
+        if (field) field.value = '';
+        if (hidden) hidden.value = '';
+    }
+
+    /** 打开支持模块调整弹窗 */
+    window.openModuleAdjustModal = function () {
+        modalBaselineSelected = selectedModules.slice();
+        draftAddedModules = [];
+        draftRemovedModules = [];
+        clearModTagInput('removeModTagWrapper', 'removeModSearchField', 'removeModSearchHidden');
+        clearModTagInput('addModTagWrapper', 'addModSearchField', 'addModSearchHidden');
+        rebuildModuleModalPanels();
+        if (!moduleAdjustModal) {
+            moduleAdjustModal = new bootstrap.Modal(document.getElementById('moduleAdjustModal'));
+        }
+        moduleAdjustModal.show();
+    };
+
+    /**
+     * 重建弹窗：左=全部官方（基线已选禁用）；右=基线已选（勾选标记移除）
+     * 仅在打开弹窗时调用；勾选过程不重建，避免即时挪栏
+     */
+    function rebuildModuleModalPanels() {
+        var baselineSet = {};
+        modalBaselineSelected.forEach(function (p) { baselineSet[p] = true; });
+
+        var addGroup = document.getElementById('addModulesGroup');
+        addGroup.innerHTML = '';
+        var allBuiltin = (BUILTIN_MODULES || []).map(function (m) {
+            return String(m).trim();
+        }).filter(Boolean);
+        if (!allBuiltin.length) {
+            addGroup.innerHTML = '<p class="text-muted small mb-0">无可选编译参数</p>';
+        } else {
+            allBuiltin.forEach(function (mod) {
+                var already = !!baselineSet[mod];
+                var label = document.createElement('label');
+                label.setAttribute('data-mod-text', mod.toLowerCase());
+                if (already) {
+                    label.className = 'text-muted is-disabled';
+                    label.innerHTML = '<input type="checkbox" value="' + escapeHtml(mod) +
+                        '" class="add-module" disabled> ' + escapeHtml(mod) +
+                        ' <span class="badge bg-secondary ms-1">已选</span>';
+                } else {
+                    var checked = draftAddedModules.indexOf(mod) >= 0 ? ' checked' : '';
+                    label.innerHTML = '<input type="checkbox" value="' + escapeHtml(mod) +
+                        '" class="add-module"' + checked + '> ' + escapeHtml(mod);
+                    label.querySelector('input').addEventListener('change', function () {
+                        onModuleModalDraftChange();
+                    });
+                }
+                addGroup.appendChild(label);
             });
+        }
+
+        var removeGroup = document.getElementById('removeModulesGroup');
+        removeGroup.innerHTML = '';
+        if (!modalBaselineSelected.length) {
+            removeGroup.innerHTML = '<p class="text-muted small mb-0">无已选编译参数</p>';
+        } else {
+            modalBaselineSelected.forEach(function (param) {
+                var label = document.createElement('label');
+                label.setAttribute('data-mod-text', param.toLowerCase());
+                var checked = draftRemovedModules.indexOf(param) >= 0 ? ' checked' : '';
+                label.innerHTML = '<input type="checkbox" value="' + escapeHtml(param) +
+                    '" class="remove-module"' + checked + '> ' + escapeHtml(param);
+                label.querySelector('input').addEventListener('change', function () {
+                    onModuleModalDraftChange();
+                });
+                removeGroup.appendChild(label);
+            });
+        }
+
+        filterModuleModalLists();
+    }
+
+    /** 从弹窗 checkbox 同步增减草稿（不重建双栏） */
+    function syncDraftFromModal() {
+        draftRemovedModules = [];
+        document.querySelectorAll('#removeModulesGroup .remove-module:checked').forEach(function (cb) {
+            draftRemovedModules.push(String(cb.value).trim());
+        });
+        draftAddedModules = [];
+        document.querySelectorAll('#addModulesGroup .add-module:checked:not(:disabled)').forEach(function (cb) {
+            var v = String(cb.value).trim();
+            if (v && modalBaselineSelected.indexOf(v) < 0) draftAddedModules.push(v);
         });
     }
 
-    function renderModTags() {
-        var wrapper = document.getElementById('modTagWrapper');
-        var field = document.getElementById('modSearchField');
-        if (!wrapper || !field) return;
-        wrapper.querySelectorAll('.tag-badge').forEach(function (b) { b.remove(); });
-        modSearchTags.forEach(function (text) {
+    /** 草稿勾选变化：仅同步草稿 + 过滤 */
+    function onModuleModalDraftChange() {
+        syncDraftFromModal();
+        filterModuleModalLists();
+    }
+
+    /** 确认模块弹窗：基线去掉待移除后追加待新增 */
+    function confirmModuleAdjust() {
+        syncDraftFromModal();
+        var next = modalBaselineSelected.filter(function (m) {
+            return draftRemovedModules.indexOf(m) < 0;
+        });
+        draftAddedModules.forEach(function (m) {
+            if (next.indexOf(m) < 0) next.push(m);
+        });
+        selectedModules = next;
+        updateModuleSummary();
+        if (moduleAdjustModal) moduleAdjustModal.hide();
+    }
+
+    /** 统计分组内可见的模块 label 数量 */
+    function countVisibleModuleLabels(groupId) {
+        var group = document.getElementById(groupId);
+        if (!group) return 0;
+        var n = 0;
+        group.querySelectorAll('label[data-mod-text]').forEach(function (label) {
+            if (label.style.display !== 'none') n += 1;
+        });
+        return n;
+    }
+
+    /** 按给定搜索词统计分组内匹配的 label 数（不改变 display） */
+    function countModuleLabelsMatching(groupId, tags) {
+        var group = document.getElementById(groupId);
+        if (!group) return 0;
+        var n = 0;
+        group.querySelectorAll('label[data-mod-text]').forEach(function (label) {
+            var text = label.getAttribute('data-mod-text') || '';
+            var ok = !tags.length || tags.every(function (q) { return text.indexOf(q) >= 0; });
+            if (ok) n += 1;
+        });
+        return n;
+    }
+
+    /** 更新或清除分组顶部的交叉搜索提示 */
+    function setModuleGroupSearchHint(groupId, text) {
+        var group = document.getElementById(groupId);
+        if (!group) return;
+        var old = group.querySelector('.module-search-cross-hint');
+        if (old) old.remove();
+        if (!text) return;
+        var tip = document.createElement('p');
+        tip.className = 'text-muted small mb-2 module-search-cross-hint';
+        tip.textContent = text;
+        group.insertBefore(tip, group.firstChild);
+    }
+
+    /** 按标签过滤弹窗左右列表，并给出交叉空结果提示 */
+    function filterModuleModalLists() {
+        filterOneModuleGroup('addModSearchHidden', 'addModSearchField', 'addModulesGroup');
+        filterOneModuleGroup('removeModSearchHidden', 'removeModSearchField', 'removeModulesGroup');
+
+        var addQuery = getModuleGroupSearchQuery('addModSearchHidden', 'addModSearchField');
+        var removeQuery = getModuleGroupSearchQuery('removeModSearchHidden', 'removeModSearchField');
+        var addVisible = countVisibleModuleLabels('addModulesGroup');
+        var removeVisible = countVisibleModuleLabels('removeModulesGroup');
+
+        if (addQuery.length && addVisible === 0 &&
+            countModuleLabelsMatching('removeModulesGroup', addQuery) > 0) {
+            setModuleGroupSearchHint(
+                'addModulesGroup',
+                '无新增项可勾选；已在右侧「已选编译参数」中'
+            );
+        } else {
+            setModuleGroupSearchHint('addModulesGroup', '');
+        }
+
+        if (removeQuery.length && removeVisible === 0 &&
+            countModuleLabelsMatching('addModulesGroup', removeQuery) > 0) {
+            setModuleGroupSearchHint(
+                'removeModulesGroup',
+                '当前未选择该参数；可到左侧「可选编译参数」勾选添加'
+            );
+        } else {
+            setModuleGroupSearchHint('removeModulesGroup', '');
+        }
+    }
+
+    /** 读取某一侧当前搜索关键词（含标签与输入框） */
+    function getModuleGroupSearchQuery(hiddenId, fieldId) {
+        var hidden = document.getElementById(hiddenId);
+        var field = document.getElementById(fieldId);
+        var tags = (hidden && hidden.value ? hidden.value.split(',') : [])
+            .map(function (t) { return t.trim().toLowerCase(); })
+            .filter(Boolean);
+        var live = field && field.value.trim().toLowerCase();
+        if (live && tags.indexOf(live) < 0) tags = tags.concat([live]);
+        return tags;
+    }
+
+    /** 按搜索词过滤单个模块分组（display 显隐，避免整表重建顶滑） */
+    function filterOneModuleGroup(hiddenId, fieldId, groupId) {
+        var tags = getModuleGroupSearchQuery(hiddenId, fieldId);
+        var group = document.getElementById(groupId);
+        if (!group) return;
+        group.querySelectorAll('label[data-mod-text]').forEach(function (label) {
+            var text = label.getAttribute('data-mod-text') || '';
+            var ok = !tags.length || tags.every(function (q) { return text.indexOf(q) >= 0; });
+            label.style.display = ok ? '' : 'none';
+        });
+    }
+
+    /** 初始化模块弹窗两侧 tag-input */
+    function initModuleAdjustTagInputs() {
+        setupModTagInput('removeModTagWrapper', 'removeModSearchField', 'removeModSearchHidden', filterModuleModalLists);
+        setupModTagInput('addModTagWrapper', 'addModSearchField', 'addModSearchHidden', filterModuleModalLists);
+    }
+
+    /** 绑定单侧模块搜索 tag-input */
+    function setupModTagInput(wrapperId, fieldId, hiddenId, onChange) {
+        var wrapper = document.getElementById(wrapperId);
+        var field = document.getElementById(fieldId);
+        var hidden = document.getElementById(hiddenId);
+        if (!wrapper || !field || !hidden) return;
+
+        function updateHidden() {
+            var values = [];
+            wrapper.querySelectorAll('.tag-badge').forEach(function (b) {
+                values.push(b.getAttribute('data-value'));
+            });
+            hidden.value = values.join(',');
+        }
+
+        function createBadge(text) {
+            if (!text) return;
+            if (wrapper.querySelector('.tag-badge[data-value="' + text + '"]')) return;
             var badge = document.createElement('span');
             badge.className = 'tag-badge';
             badge.setAttribute('data-value', text);
             badge.innerHTML = escapeHtml(text) + '<span class="tag-remove">&times;</span>';
             badge.querySelector('.tag-remove').addEventListener('click', function (e) {
                 e.stopPropagation();
-                modSearchTags = modSearchTags.filter(function (t) { return t !== text; });
-                renderModTags();
+                badge.remove();
+                updateHidden();
+                onChange();
             });
             wrapper.insertBefore(badge, field);
-        });
-        renderModuleGrid();
-    }
+            updateHidden();
+        }
 
-    function initModSearch() {
-        var wrapper = document.getElementById('modTagWrapper');
-        var field = document.getElementById('modSearchField');
-        if (!field) return;
         field.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                var text = (field.value || '').trim();
-                if (text && modSearchTags.indexOf(text) < 0) {
-                    modSearchTags.push(text);
+                var val = field.value.trim();
+                if (val) {
+                    createBadge(val);
                     field.value = '';
-                    renderModTags();
+                    onChange();
                 }
             } else if (e.key === 'Backspace' && !field.value) {
-                if (modSearchTags.length) {
-                    modSearchTags.pop();
-                    renderModTags();
+                var badges = wrapper.querySelectorAll('.tag-badge');
+                if (badges.length) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                    onChange();
                 }
             }
         });
-        field.addEventListener('input', renderModuleGrid);
-        if (wrapper) {
-            wrapper.addEventListener('click', function (e) {
-                if (e.target === wrapper) field.focus();
-            });
-        }
-        renderModuleGrid();
+
+        var searchTimer = null;
+        field.addEventListener('input', function () {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function () {
+                onChange();
+            }, 120);
+        });
+
+        wrapper.addEventListener('click', function (e) {
+            if (e.target === wrapper) field.focus();
+        });
     }
 
     function updateStep1Next() {
@@ -733,7 +1016,7 @@
     }
 
     function getAddedModules() {
-        var mods = Object.keys(checkedModules).filter(function (k) { return checkedModules[k]; });
+        var mods = selectedModules.slice();
         var extra = document.getElementById('extraOpts').value.split(/\n+/);
         extra.forEach(function (line) {
             line = line.trim();
@@ -1126,8 +1409,14 @@
     });
 
     initNodeTagSearch();
-    initModSearch();
+    initModuleAdjustTagInputs();
     initThirdParty();
+    updateModuleSummary();
+
+    var confirmModBtn = document.getElementById('confirmModuleAdjustBtn');
+    if (confirmModBtn) {
+        confirmModBtn.addEventListener('click', confirmModuleAdjust);
+    }
 
     var confirmCheck = document.getElementById('confirmCheck');
     if (confirmCheck) {
@@ -1140,6 +1429,16 @@
         document.getElementById('progressPlaceholder').classList.add('d-none');
         document.getElementById('progressLive').classList.remove('d-none');
         document.getElementById('progressPercent').classList.remove('d-none');
+    }
+
+    /** 截断错误信息为前 N 行，完整内容见任务详情日志 */
+    function truncateErrorLines(msg, maxLines) {
+        var text = String(msg || '').replace(/\r\n/g, '\n').trim();
+        if (!text) return '未知错误';
+        var lines = text.split('\n');
+        var limit = maxLines || 5;
+        if (lines.length <= limit) return text;
+        return lines.slice(0, limit).join('\n') + '\n…';
     }
 
     function buildInstallStepHtml(data) {
@@ -1172,12 +1471,16 @@
             }
             html += '<div class="install-step ' + cls + '">' + icon + ' ' + escapeHtml(s.label) + '</div>';
         });
-        if (data.error_message) {
-            html += '<div class="small text-danger mt-1">' + escapeHtml(data.error_message) + '</div>';
+        if (isFailed) {
+            var brief = truncateErrorLines(data.error_message, 5);
+            html += '<div class="install-step failed" style="align-items:flex-start;white-space:pre-wrap;">' +
+                '<i class="bi bi-x-circle-fill me-1"></i><span>失败:\n' +
+                escapeHtml(brief) + '</span></div>';
         }
         if (data.status === 'success' && data.sync_ok === false) {
-            html += '<div class="small text-warning mt-1">配置同步失败' +
-                (data.sync_detail ? '：' + escapeHtml(data.sync_detail) : '') + '</div>';
+            html += '<div class="install-step failed" style="align-items:flex-start;white-space:pre-wrap;background:#fff8e1;color:#856404;">' +
+                '<i class="bi bi-exclamation-triangle-fill me-1"></i><span>配置同步失败' +
+                (data.sync_detail ? '：' + escapeHtml(data.sync_detail) : '') + '</span></div>';
         }
         return html;
     }
@@ -1187,11 +1490,31 @@
         if (body) body.classList.toggle('d-none');
     };
 
+    /** 收集当前已展开的节点进度块 task-id */
+    function getExpandedInstallTaskIds() {
+        var ids = [];
+        document.querySelectorAll('#installSteps .node-progress-block').forEach(function (block) {
+            var body = block.querySelector('.node-progress-body');
+            if (body && !body.classList.contains('d-none')) {
+                ids.push(String(block.getAttribute('data-task-id') || ''));
+            }
+        });
+        return ids.filter(Boolean);
+    }
+
     function renderBatchProgress(tasks) {
         var container = document.getElementById('installSteps');
+        var expanded = getExpandedInstallTaskIds();
+        var hadBlocks = document.querySelectorAll('#installSteps .node-progress-block').length > 0;
         var html = '';
         (tasks || []).forEach(function (t, idx) {
-            var open = idx === 0 ? '' : ' d-none';
+            var tid = String(t.id);
+            var open;
+            if (!hadBlocks) {
+                open = idx === 0 ? '' : ' d-none';
+            } else {
+                open = expanded.indexOf(tid) >= 0 ? '' : ' d-none';
+            }
             var badgeCls = 'bg-secondary';
             if (t.status === 'success') badgeCls = 'bg-success';
             else if (t.status === 'failed' || t.status === 'cancelled') badgeCls = 'bg-danger';
@@ -1211,7 +1534,7 @@
         container.innerHTML = html || '<div class="text-muted small">等待进度...</div>';
     }
 
-    function startBatchPoll(batch, firstTcId) {
+    function startBatchPoll(batch) {
         afterDoneOnce = false;
         showProgressLive();
         document.getElementById('batchNumberLabel').textContent = '批次 ' + batch;
@@ -1222,14 +1545,7 @@
         bar.style.width = '0%';
         pct.textContent = '0%';
 
-        if (typeof showAsyncProgressOverlay === 'function') {
-            showAsyncProgressOverlay('Nginx 安装');
-        }
-        if (firstTcId && typeof startAsyncProgressPolling === 'function') {
-            startAsyncProgressPolling(firstTcId, function () {
-                afterBatchDone(batch);
-            });
-        }
+        // 进度仅展示在右侧「安装执行进度」，不再弹全局遮罩
         if (pollTimer) clearInterval(pollTimer);
         pollTimer = setInterval(function () { pollBatch(batch); }, {{ sys_poll_interval_ms|default:2000 }});
         pollBatch(batch);
@@ -1317,14 +1633,12 @@
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (!result.success) {
-                        if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
                         showAlert('创建失败', result.message || '操作失败');
                         return;
                     }
-                    startBatchPoll(result.batch_number, result.task_center_id);
+                    startBatchPoll(result.batch_number);
                 })
                 .catch(function () {
-                    if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
                     showAlert('创建失败', '网络错误');
                 });
         }, true, 'md');

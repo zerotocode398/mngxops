@@ -405,7 +405,7 @@ class NginxInstallBatchProgressAPIView(LoginRequiredMixin, View):
                 "status_display": t.get_status_display(),
                 "progress": t.progress,
                 "current_step": t.current_step,
-                "error_message": (t.error_message or "")[:300],
+                "error_message": t.error_message or "",
                 "sync_ok": t.sync_ok,
                 "sync_detail": t.sync_detail,
                 "task_center_id": t.task_center_id,
