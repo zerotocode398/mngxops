@@ -5,6 +5,7 @@ import os
 import shlex
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone as dt_timezone
 
 from django.conf import settings
@@ -182,7 +183,7 @@ def fetch_nginx_v_from_node(node):
     Returns:
         tuple: (success: bool, data_or_error: dict|str)
     """
-    from apps.nodes.views import _get_node_credential
+    from apps.nodes.services import _get_node_credential
 
     credential = _get_node_credential(node)
     if not credential:
@@ -436,7 +437,7 @@ def run_upgrade_task(task_id):
             update_if_active(center_id, **tc_updates)
 
     try:
-        from apps.nodes.views import _get_node_credential
+        from apps.nodes.services import _get_node_credential
         credential = _get_node_credential(node)
         if not credential:
             update_status("failed", 0, error_message="节点未配置有效的 SSH 凭证")
@@ -996,3 +997,205 @@ def _rollback_binary(node, credential, binary_path, backup_path, auth_kwargs, lo
                 log_fn(f"回滚失败: {output}")
     except Exception as e:
         log_fn(f"回滚异常: {str(e)}")
+
+
+def start_upgrade_tasks_parallel(task_ids):
+    """在后台线程池中并行执行多个升级任务"""
+    max_workers = max(1, int(get_setting("node.batch_max_count", "3") or 3))
+
+    def _runner():
+        workers = min(max_workers, len(task_ids)) or 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(pool.map(run_upgrade_task, task_ids))
+
+    threading.Thread(target=_runner, daemon=True).start()
+
+
+def create_upgrade_batch_from_data(user, data):
+    """根据 JSON 数据批量创建升级任务并并行启动。
+
+    Returns:
+        (payload, http_status): payload 与原 API JsonResponse 字段一致；失败时 http_status 为 400。
+    """
+    from apps.nodes.models import Node
+    from apps.nodes.services import _get_node_credential
+    from apps.releases.models import TaskCenterTask
+    from apps.releases.task_result import upgrade_detail_short
+
+    from .models import NginxSourcePackage, NginxUpgradeTask, generate_upgrade_batch_number
+
+    try:
+        node_ids = [int(x) for x in (data.get("node_ids") or [])]
+        package_id = int(data.get("source_package") or 0)
+        upgrade_mode = (data.get("upgrade_mode") or "upgrade").strip()
+        remote_work_dir = (
+            data.get("remote_work_dir")
+            or get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
+            or "/tmp/nginx-upgrade"
+        ).strip()
+        make_jobs = int(
+            data.get("make_jobs")
+            or get_setting("upgrade.make_jobs_default", "4")
+            or 4
+        )
+        target_version = (data.get("target_version") or "").strip()
+        shared_prefix = (data.get("target_prefix") or "").strip()
+        added_modules = data.get("added_modules") or []
+        removed_modules = data.get("removed_modules") or []
+        added_third_party = data.get("added_third_party") or []
+        nodes_payload = data.get("nodes_payload") or []
+    except (TypeError, ValueError):
+        return {"success": False, "message": "请求参数格式错误"}, 400
+
+    if not isinstance(added_third_party, list):
+        added_third_party = []
+    added_third_party = enrich_third_party_module_paths(added_third_party, remote_work_dir)
+
+    if not node_ids:
+        return {"success": False, "message": "请至少选择一个节点"}, 400
+    if upgrade_mode not in ("upgrade", "install", "switch_path"):
+        return {"success": False, "message": "升级模式无效"}, 400
+    if upgrade_mode == "switch_path" and not shared_prefix:
+        return {
+            "success": False,
+            "message": "切换路径模式请填写目标 --prefix",
+        }, 400
+
+    package = NginxSourcePackage.objects.filter(pk=package_id).first()
+    if not package:
+        return {"success": False, "message": "源码包不存在"}, 400
+    if not target_version:
+        target_version = package.version
+
+    payload_map = {}
+    for item in nodes_payload:
+        try:
+            nid = int(item.get("node_id"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        payload_map[nid] = item
+
+    nodes = list(
+        Node.objects.filter(pk__in=node_ids)
+        .select_related("credential")
+        .prefetch_related("groups")
+    )
+    node_map = {n.id: n for n in nodes}
+    if len(node_map) != len(set(node_ids)):
+        return {"success": False, "message": "部分节点不存在"}, 400
+
+    for nid in node_ids:
+        node = node_map[nid]
+        if node.is_locked:
+            return {
+                "success": False,
+                "message": f"节点 {node.hostname} 已锁定",
+            }, 400
+        if node.status != "online":
+            return {
+                "success": False,
+                "message": f"节点 {node.hostname} 非在线状态",
+            }, 400
+        if not _get_node_credential(node):
+            return {
+                "success": False,
+                "message": f"节点 {node.hostname} 未配置有效凭证",
+            }, 400
+        if nid not in payload_map and upgrade_mode != "install":
+            return {
+                "success": False,
+                "message": f"缺少节点 {node.hostname} 的编译参数基线",
+            }, 400
+
+    batch_number = generate_upgrade_batch_number()
+    created_tasks = []
+    for nid in node_ids:
+        node = node_map[nid]
+        item = payload_map.get(nid) or {}
+        params = item.get("params") or []
+        if not isinstance(params, list):
+            params = []
+        current_version = (item.get("current_version") or "").strip()
+        current_opts = (item.get("current_configure_opts") or "").strip()
+        prefix = (item.get("prefix") or "").strip()
+        binary_path = (item.get("binary_path") or "").strip()
+
+        # 平滑/全新：各节点自身 prefix；切换路径：统一使用共享 prefix
+        if upgrade_mode == "switch_path":
+            target_prefix = shared_prefix
+        else:
+            target_prefix = prefix or "/usr/local/nginx"
+
+        target_opts = compute_target_configure_opts(
+            params, added_modules, removed_modules, added_third_party,
+            remote_work_dir=remote_work_dir,
+        )
+        # 仅切换路径模式才重写 configure 中的 --prefix=
+        if upgrade_mode == "switch_path" and target_prefix:
+            tokens = _tokenize_configure_args(target_opts)
+            if not tokens:
+                tokens = [p for p in params if p not in removed_modules]
+                for mod in added_modules:
+                    if mod not in tokens:
+                        tokens.append(mod)
+            new_tokens = []
+            has_prefix = False
+            for t in tokens:
+                if t.startswith("--prefix="):
+                    new_tokens.append(f"--prefix={target_prefix}")
+                    has_prefix = True
+                else:
+                    new_tokens.append(t)
+            if not has_prefix:
+                new_tokens.insert(0, f"--prefix={target_prefix}")
+            target_opts = _join_configure_opts(new_tokens, multiline=True)
+
+        task = NginxUpgradeTask(
+            batch_number=batch_number,
+            node=node,
+            source_package=package,
+            upgrade_mode=upgrade_mode,
+            remote_work_dir=remote_work_dir,
+            make_jobs=make_jobs,
+            current_version=current_version or (node.nginx_version or ""),
+            current_configure_opts=current_opts,
+            current_configure_path=prefix,
+            current_binary_path=binary_path,
+            target_version=target_version,
+            target_configure_opts=target_opts,
+            target_prefix=target_prefix,
+            added_modules=json.dumps(added_modules, ensure_ascii=False),
+            removed_modules=json.dumps(removed_modules, ensure_ascii=False),
+            added_third_party=json.dumps(added_third_party, ensure_ascii=False),
+            operator=user,
+            status="pending",
+            current_step="任务已创建，等待执行",
+        )
+        task.save()
+
+        task_center = TaskCenterTask.objects.create(
+            operation_type="nginx_upgrade",
+            status="pending",
+            detail=upgrade_detail_short(
+                current_version or (node.nginx_version or ""),
+                target_version,
+            ),
+            target_hostnames=node.hostname,
+            target_ips=node.ip,
+            trigger_user=user,
+            source_batch=batch_number,
+        )
+        task.task_center = task_center
+        task.save(update_fields=["task_center"])
+        created_tasks.append(task)
+
+    task_ids = [t.id for t in created_tasks]
+    start_upgrade_tasks_parallel(task_ids)
+
+    return {
+        "success": True,
+        "batch_number": batch_number,
+        "task_id": task_ids[0],
+        "task_ids": task_ids,
+        "message": f"已创建 {len(task_ids)} 个升级任务，批次 {batch_number}",
+    }, 200

@@ -11,7 +11,12 @@
     <style>
         :root {
             --primary: #667eea;
+            --primary-rgb: 102, 126, 234;
+            --primary-soft: rgba(102, 126, 234, 0.08);
             --primary-gradient: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            /* 桥接 Bootstrap 主色，避免 CTA 蓝与品牌紫分裂 */
+            --bs-primary: #667eea;
+            --bs-primary-rgb: 102, 126, 234;
             --success: #28a745;
             --warning: #ffc107;
             --danger: #dc3545;
@@ -618,6 +623,14 @@
             padding: 3px 0; font-size: var(--fs-sm);
         }
 
+        /* 弹窗页脚按钮统一小号，对齐列表主操作 */
+        .modal-footer .btn {
+            --bs-btn-padding-y: 0.25rem;
+            --bs-btn-padding-x: 0.5rem;
+            --bs-btn-font-size: 0.875rem;
+            --bs-btn-border-radius: var(--br-md);
+        }
+
         /* ========== 全局工具类 ========== */
         .code-font { font-family: var(--font-mono); }
         .fs-xs { font-size: var(--fs-xs); }
@@ -1065,12 +1078,15 @@
         </div>
     </div>
 
-    <!-- 异步进度遮罩 -->
+    <!-- 异步进度遮罩（同步/发布/回滚/节点测试等共用） -->
     <div id="asyncProgressOverlay" class="async-progress-overlay" style="display: none;">
         <div class="async-progress-dialog">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h6 class="mb-0" id="asyncProgressTitle"><i class="bi bi-hourglass-split"></i> 执行中...</h6>
                 <button type="button" class="btn-close" id="btnCloseAsyncProgress" title="关闭"></button>
+            </div>
+            <div id="asyncProgressBatchWrap" class="mb-2 d-none">
+                <small class="text-muted">批次号: <span id="asyncProgressBatchNumber">-</span></small>
             </div>
             <div class="progress mb-2">
                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="asyncProgressBar" style="width: 0%;"></div>
@@ -1080,8 +1096,11 @@
                 <small class="text-muted"><span id="asyncProgressPercent">0</span>%</small>
             </div>
             <div id="asyncProgressCurrentSteps" class="async-progress-current-steps mb-2 d-none"></div>
-            <div id="asyncProgressResult" class="async-progress-tree" style="max-height: 250px; overflow-y: auto;"></div>
+            <div id="asyncProgressResult" class="async-progress-tree" style="max-height: 280px; overflow-y: auto;"></div>
             <div class="d-flex justify-content-end gap-2 mt-3">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="asyncProgressSkipFailed" style="display:none;">
+                    <i class="bi bi-skip-forward"></i> 跳过失败继续
+                </button>
                 <a href="#" id="asyncProgressLogLink" class="btn btn-sm btn-outline-info" target="_blank" style="display:none;">
                     <i class="bi bi-journal-text"></i> 完整日志
                 </a>
@@ -1192,17 +1211,31 @@
             });
 
             /**
+             * 解析确认框尺寸：纯文案 sm；HTML 默认 md；含 table 默认 lg；显式 size 优先
+             * @param {boolean} asHtml 是否 HTML
+             * @param {string} message 正文
+             * @param {string} [size] 显式尺寸
+             * @returns {string}
+             */
+            function resolveConfirmSize(asHtml, message, size) {
+                if (size) return size;
+                if (!asHtml) return 'sm';
+                if (/<table[\s>]/i.test(message || '')) return 'lg';
+                return 'md';
+            }
+
+            /**
              * 全局确认弹窗
              * @param {string} title 标题
              * @param {string} message 正文（纯文本或 HTML）
              * @param {Function} onConfirm 确认回调
              * @param {boolean} [asHtml=false] 为 true 时 message 按 HTML 渲染
-             * @param {string} [size='sm'] 弹窗宽度：sm / md / lg / xl
+             * @param {string} [size] 弹窗宽度：sm / md / lg / xl；省略时按正文类型推断
              * @param {string} [confirmLabel='确认'] 确认按钮文案
              */
             window.showConfirm = function(title, message, onConfirm, asHtml, size, confirmLabel) {
                 asHtml = !!asHtml;
-                size = size || 'sm';
+                size = resolveConfirmSize(asHtml, message, size);
                 confirmLabel = confirmLabel || '确认';
                 var isShown = confirmModalEl.classList.contains('show');
                 var isTransitioning = confirmModalEl.classList.contains('showing')
@@ -1747,23 +1780,65 @@
 
         /* ========== 异步进度遮罩 ========== */
         var asyncProgressTimer = null;
+        /** 关闭遮罩时的可选回调（发布/回滚等自定义收尾） */
+        var asyncProgressOnClose = null;
 
-        function showAsyncProgressOverlay(title) {
-            document.getElementById('asyncProgressOverlay').removeAttribute('data-no-reload');
-            document.getElementById('asyncProgressTitle').innerHTML = '<i class="bi bi-hourglass-split"></i> ' + (title || '执行中...');
+        /**
+         * 显示全局进度遮罩
+         * @param {string} title 标题文案
+         * @param {Object} [options] 可选：batchNumber / logHref / showSkipFailed / noReload / onClose / iconClass
+         */
+        function showAsyncProgressOverlay(title, options) {
+            options = options || {};
+            var overlay = document.getElementById('asyncProgressOverlay');
+            if (options.noReload) {
+                overlay.setAttribute('data-no-reload', 'true');
+            } else {
+                overlay.removeAttribute('data-no-reload');
+            }
+            asyncProgressOnClose = typeof options.onClose === 'function' ? options.onClose : null;
+            var icon = options.iconClass || 'bi-hourglass-split';
+            document.getElementById('asyncProgressTitle').innerHTML =
+                '<i class="bi ' + icon + '"></i> ' + (title || '执行中...');
             document.getElementById('asyncProgressBar').style.width = '0%';
             document.getElementById('asyncProgressBar').className = 'progress-bar progress-bar-striped progress-bar-animated';
             document.getElementById('asyncProgressPercent').textContent = '0';
             document.getElementById('asyncProgressText').textContent = '准备中...';
             document.getElementById('asyncProgressResult').innerHTML = '';
             updateAsyncProgressCurrentSteps('');
-            document.getElementById('asyncProgressLogLink').style.display = 'none';
-            document.getElementById('asyncProgressOverlay').style.display = 'flex';
+            var batchWrap = document.getElementById('asyncProgressBatchWrap');
+            if (options.batchNumber) {
+                batchWrap.classList.remove('d-none');
+                document.getElementById('asyncProgressBatchNumber').textContent = options.batchNumber;
+            } else {
+                batchWrap.classList.add('d-none');
+                document.getElementById('asyncProgressBatchNumber').textContent = '-';
+            }
+            var skipBtn = document.getElementById('asyncProgressSkipFailed');
+            if (skipBtn) {
+                skipBtn.style.display = options.showSkipFailed ? '' : 'none';
+            }
+            var logLink = document.getElementById('asyncProgressLogLink');
+            if (options.logHref) {
+                logLink.href = options.logHref;
+                logLink.style.display = '';
+            } else {
+                logLink.style.display = 'none';
+            }
+            overlay.style.display = 'flex';
         }
 
         function closeAsyncProgressOverlay() {
             if (asyncProgressTimer) { clearInterval(asyncProgressTimer); asyncProgressTimer = null; }
             document.getElementById('asyncProgressOverlay').style.display = 'none';
+            var skipBtn = document.getElementById('asyncProgressSkipFailed');
+            if (skipBtn) skipBtn.style.display = 'none';
+            document.getElementById('asyncProgressBatchWrap').classList.add('d-none');
+            var onClose = asyncProgressOnClose;
+            asyncProgressOnClose = null;
+            if (typeof onClose === 'function') {
+                try { onClose(); } catch (e) { console.error(e); }
+            }
         }
 
         /** 渲染精简当前步骤行（对齐发布进度） */
@@ -1887,9 +1962,18 @@
         }
 
         document.getElementById('btnCloseAsyncProgress').addEventListener('click', function() {
+            var noReload = document.getElementById('asyncProgressOverlay').getAttribute('data-no-reload') === 'true';
+            var hadCustomClose = !!asyncProgressOnClose;
             closeAsyncProgressOverlay();
-            if (document.getElementById('asyncProgressOverlay').getAttribute('data-no-reload') !== 'true') {
+            // 有自定义 onClose 时不再整页刷新（由业务回调处理）
+            if (!noReload && !hadCustomClose) {
                 location.reload();
+            }
+        });
+
+        document.getElementById('asyncProgressSkipFailed').addEventListener('click', function() {
+            if (typeof showToast === 'function') {
+                showToast('跳过失败功能开发中', 'info');
             }
         });
     </script>

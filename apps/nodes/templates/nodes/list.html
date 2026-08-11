@@ -985,6 +985,19 @@
         });
     }
 
+    /** 同步列表行中的 Nginx 版本单元格 */
+    function updateListNginxVersionCell(nodeId, versionText) {
+        var link = document.querySelector('.node-detail-link[data-node-id="' + nodeId + '"]');
+        if (!link) return;
+        var row = link.closest('tr');
+        if (!row) return;
+        var cell = row.querySelector('.nginx-version-cell');
+        if (!cell) return;
+        var display = versionText ? formatNginxVersion(versionText) : '-';
+        cell.setAttribute('data-nginx-version', versionText || '');
+        cell.textContent = display;
+    }
+
     /** 在详情弹窗内静默检测 Nginx 版本（不弹全屏进度遮罩） */
     function detectNginxVersion() {
         if (!currentDetailNodeId) return;
@@ -1009,9 +1022,12 @@
                         if (d.success && d.tasks && d.tasks[0].finished) {
                             clearInterval(pollTimer);
                             if (d.tasks[0].status === 'success') {
-                                document.getElementById('detailNginxVersion').textContent = formatNginxVersion(d.tasks[0].result || '');
+                                var ver = d.tasks[0].result || '';
+                                document.getElementById('detailNginxVersion').textContent = formatNginxVersion(ver);
+                                updateListNginxVersionCell(currentDetailNodeId, ver);
                             } else {
                                 document.getElementById('detailNginxVersion').textContent = d.tasks[0].detail || '获取失败';
+                                updateListNginxVersionCell(currentDetailNodeId, '');
                             }
                         }
                     });

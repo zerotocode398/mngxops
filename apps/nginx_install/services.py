@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import shlex
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.db import close_old_connections
 from django.utils import timezone
@@ -247,7 +249,7 @@ def run_install_task(task_id):
         log(message)
         set_task_status("failed", progress, error_message=message, finished_at=timezone.now())
         if tc_id:
-            from apps.releases.views import _clear_release_progress_state, _set_current_step
+            from apps.releases.task_progress import _clear_release_progress_state, _set_current_step
 
             _set_current_step(tc_id, hostname, None)
             _clear_release_progress_state(tc_id)
@@ -292,7 +294,7 @@ def run_install_task(task_id):
                 detail=f"{hostname} · 开始安装",
                 started_at=timezone.now(),
             )
-            from apps.releases.views import _set_current_step
+            from apps.releases.task_progress import _set_current_step
             _set_current_step(tc_id, hostname, "检查编译工具")
 
         # ---- 编译工具预检 ----
@@ -593,7 +595,7 @@ def run_install_task(task_id):
         set_task_status("success", 100, finished_at=timezone.now())
         log(f"✅ {finish_msg}")
         if tc_id:
-            from apps.releases.views import _clear_release_progress_state, _set_current_step
+            from apps.releases.task_progress import _clear_release_progress_state, _set_current_step
 
             _set_current_step(tc_id, hostname, None)
             _clear_release_progress_state(tc_id)
@@ -666,3 +668,207 @@ def _auto_sync_configs(node, credential, auth_kwargs, main_conf, operator, task_
         logger.exception("安装后配置同步失败 node=%s", node.id)
         log(f"配置同步异常: {exc}")
         return False, str(exc)[:200]
+
+
+def batch_max_count():
+    """读取批量操作最大节点数"""
+    try:
+        return max(1, int(get_setting("node.batch_max_count", "3") or 3))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _get_node_credential(node):
+    """返回可用凭证或 None"""
+    cred = getattr(node, "credential", None)
+    if cred and cred.is_enabled:
+        return cred
+    return None
+
+
+def run_install_batch(install_task_ids):
+    """并行执行多节点安装（上限 batch_max_count）"""
+    close_old_connections()
+    workers = min(batch_max_count(), max(1, len(install_task_ids)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(run_install_task, tid): tid for tid in install_task_ids}
+        for future in as_completed(futures):
+            tid = futures[future]
+            try:
+                future.result()
+            except Exception:
+                logger.exception("安装任务线程异常 install_task=%s", tid)
+
+
+def start_install_batch(install_task_ids):
+    """在后台线程启动安装批次并行执行"""
+    threading.Thread(
+        target=run_install_batch,
+        args=(install_task_ids,),
+        daemon=True,
+    ).start()
+
+
+def create_install_batch_from_data(user, data):
+    """校验并创建安装批次，成功则启动并行执行。
+
+    Returns:
+        dict: 与原创建 API JsonResponse 字段一致（不含 HTTP status）。
+    """
+    from apps.audit.utils import log_task_center_created
+    from apps.nodes.models import Node
+    from apps.releases.models import TaskCenterTask
+    from apps.upgrade.models import NginxSourcePackage
+    from apps.upgrade.services import enrich_third_party_module_paths
+
+    from .models import NginxInstallTask, generate_install_batch_number
+
+    node_ids = data.get("node_ids") or []
+    if not isinstance(node_ids, list) or not node_ids:
+        return {"success": False, "message": "请选择至少一个节点"}
+
+    try:
+        node_ids = [int(x) for x in node_ids]
+    except (TypeError, ValueError):
+        return {"success": False, "message": "节点 ID 无效"}
+
+    batch_max = batch_max_count()
+    if len(node_ids) > batch_max:
+        return {
+            "success": False,
+            "message": f"单次最多选择 {batch_max} 台节点",
+        }
+
+    package_id = data.get("source_package")
+    try:
+        package = NginxSourcePackage.objects.get(pk=int(package_id))
+    except (TypeError, ValueError, NginxSourcePackage.DoesNotExist):
+        return {"success": False, "message": "请选择有效源码包"}
+
+    prefix = (data.get("target_prefix") or "").strip() or (
+        get_setting("install.default_prefix", "/opt/app") or "/opt/app"
+    )
+    nginx_user = (data.get("nginx_user") or "").strip() or (
+        get_setting("install.default_user", "root") or "root"
+    )
+    nginx_group = (data.get("nginx_group") or "").strip() or (
+        get_setting("install.default_group", "root") or "root"
+    )
+    try:
+        listen_port = int(
+            data.get("listen_port")
+            if data.get("listen_port") is not None
+            else (get_setting("install.default_listen_port", "80") or 80)
+        )
+    except (TypeError, ValueError):
+        return {"success": False, "message": "监听端口无效"}
+    if listen_port < 1 or listen_port > 65535:
+        return {"success": False, "message": "监听端口须在 1–65535"}
+    work_dir = (data.get("remote_work_dir") or "").strip() or get_setting(
+        "upgrade.default_work_dir", "/tmp/nginx-upgrade"
+    )
+    try:
+        make_jobs = int(
+            data.get("make_jobs") or get_setting("upgrade.make_jobs_default", "4") or 4
+        )
+    except (TypeError, ValueError):
+        make_jobs = 4
+    make_jobs = max(1, min(32, make_jobs))
+
+    added_modules = data.get("added_modules") or []
+    if not isinstance(added_modules, list):
+        added_modules = []
+    added_third_party = data.get("added_third_party") or []
+    if not isinstance(added_third_party, list):
+        added_third_party = []
+    added_third_party = enrich_third_party_module_paths(added_third_party, work_dir)
+
+    configure_opts = (data.get("target_configure_opts") or "").strip()
+    if not configure_opts:
+        configure_opts = build_install_configure_opts(
+            prefix,
+            added_modules,
+            added_third_party,
+            work_dir,
+            user=nginx_user,
+            group=nginx_group,
+        )
+
+    nodes = list(
+        Node.objects.filter(id__in=node_ids, is_deleted=False).select_related("credential")
+    )
+    if len(nodes) != len(set(node_ids)):
+        return {"success": False, "message": "部分节点不存在或已删除"}
+
+    rejected = []
+    eligible = []
+    for node in nodes:
+        if node.is_locked:
+            rejected.append({"id": node.id, "hostname": node.hostname, "reason": "节点已锁定"})
+            continue
+        if node.status != "online":
+            rejected.append({"id": node.id, "hostname": node.hostname, "reason": "节点非在线"})
+            continue
+        if not _get_node_credential(node):
+            rejected.append({"id": node.id, "hostname": node.hostname, "reason": "无可用凭证"})
+            continue
+        eligible.append(node)
+
+    if not eligible:
+        return {
+            "success": False,
+            "message": "没有可执行安装的节点",
+            "skipped": rejected,
+        }
+
+    batch_number = generate_install_batch_number()
+    target_version = package.version
+    paths = derive_paths_from_prefix(prefix)
+    install_task_ids = []
+    task_center_ids = []
+
+    for node in eligible:
+        tc = TaskCenterTask.objects.create(
+            operation_type="nginx_install",
+            status="pending",
+            detail=f"Nginx 全新安装 {target_version} → {paths['prefix']}",
+            target_hostnames=node.hostname,
+            target_ips=node.ip,
+            target_configs=target_version,
+            source_batch=batch_number,
+            trigger_user=user,
+        )
+        log_task_center_created(tc, user=user)
+        inst = NginxInstallTask.objects.create(
+            batch_number=batch_number,
+            node=node,
+            source_package=package,
+            remote_work_dir=work_dir,
+            target_version=target_version,
+            target_prefix=prefix,
+            target_configure_opts=configure_opts,
+            added_modules=json.dumps(added_modules, ensure_ascii=False),
+            added_third_party=json.dumps(added_third_party, ensure_ascii=False),
+            make_jobs=make_jobs,
+            listen_port=listen_port,
+            task_center=tc,
+            operator=user,
+        )
+        install_task_ids.append(inst.id)
+        task_center_ids.append(tc.id)
+
+    start_install_batch(install_task_ids)
+
+    msg = f"已创建安装批次 {batch_number}，共 {len(install_task_ids)} 台"
+    if rejected:
+        msg += f"；跳过 {len(rejected)} 台"
+    return {
+        "success": True,
+        "async": True,
+        "message": msg,
+        "batch_number": batch_number,
+        "task_ids": install_task_ids,
+        "task_center_ids": task_center_ids,
+        "task_center_id": task_center_ids[0] if task_center_ids else None,
+        "skipped": rejected,
+    }

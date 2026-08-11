@@ -3,7 +3,7 @@
 {% block title %}Nginx 启停 - MngxOps{% endblock %}
 {% block page_title %}<i class="bi bi-power"></i> Nginx 启停{% endblock %}
 
-{% block extra_css %}
+{% block extra_head %}
 <style>
     .selected-box {
         min-height: 56px;
@@ -19,15 +19,14 @@
         background: #eef1ff;
         color: #3d4db8;
         border: 1px solid #c9d0f8;
-        border-radius: 999px;
+        border-radius: var(--br-sm, 4px);
         padding: 0.2rem 0.55rem;
-        font-size: 0.8rem;
+        font-size: var(--fs-sm, 0.78rem);
         margin: 0.15rem;
     }
     .node-chip .chip-x { cursor: pointer; opacity: 0.7; }
     .node-chip .chip-x:hover { opacity: 1; }
-    .action-hint { color: var(--gray-600, #6c757d); font-size: 0.8rem; }
-    .modal-table-scroll { max-height: 360px; overflow-y: auto; }
+    .action-hint { color: var(--gray-600, #6c757d); font-size: var(--fs-sm, 0.78rem); }
     tr.disabled-row { opacity: 0.55; }
 </style>
 {% endblock %}

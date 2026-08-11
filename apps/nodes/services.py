@@ -21,6 +21,11 @@ def mark_node_probe_success(node: Node) -> Node:
     return node
 
 
+def _get_node_credential(node):
+    """返回节点关联的 SSH 凭证。"""
+    return node.credential
+
+
 # Excel 表头（须与模板完全一致）
 IMPORT_HEADERS = (
     "主机名",
@@ -529,3 +534,486 @@ def apply_node_import(cleaned: List[Dict[str, Any]], user) -> Dict[str, int]:
         else:
             created += 1
     return {"created": created, "restored": restored, "total": created + restored}
+
+
+# ---------- SSH 测活 / 采集后台任务 ----------
+
+
+def run_unlock_ssh_test(task_id, node_ids):
+    """解锁后逐节点测试并写入标准结果树"""
+    from apps.releases.models import TaskCenterTask
+    from apps.releases.task_result import (
+        build_tree_result,
+        item_failed,
+        item_success,
+        node_header,
+    )
+    from utils.ssh import get_nginx_version, test_ssh_connection
+
+    node_list = list(Node.objects.filter(id__in=node_ids).order_by("id"))
+    total = len(node_list)
+    TaskCenterTask.objects.filter(pk=task_id).update(
+        status="running",
+        progress=5,
+        detail="正在解锁并测试连接...",
+        started_at=timezone.now(),
+    )
+    success_count = 0
+    fail_count = 0
+    done = 0
+    node_blocks = []
+
+    for node in node_list:
+        try:
+            credential = _get_node_credential(node)
+            if not credential:
+                node.status = "unknown"
+                node.save()
+                fail_count += 1
+                node_blocks.append(node_header(node.ip, node.hostname))
+                node_blocks.append(item_failed("SSH连接", "未配置凭证"))
+            elif not credential.is_enabled:
+                node.status = "offline"
+                node.save()
+                fail_count += 1
+                node_blocks.append(node_header(node.ip, node.hostname))
+                node_blocks.append(item_failed("SSH连接", "凭证已禁用"))
+            else:
+                if credential.auth_type == "password":
+                    success, message = test_ssh_connection(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        password=credential.get_password(),
+                    )
+                else:
+                    success, message = test_ssh_connection(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        private_key=credential.get_private_key(),
+                    )
+                if success:
+                    mark_node_probe_success(node)
+                    nginx_path = node.nginx_path if node.nginx_path else None
+                    version_success, version_info = get_nginx_version(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        password=credential.get_password()
+                        if credential.auth_type == "password"
+                        else None,
+                        private_key=credential.get_private_key()
+                        if credential.auth_type == "key"
+                        else None,
+                        nginx_path=nginx_path,
+                    )
+                    if version_success:
+                        node.nginx_version = version_info
+                    success_count += 1
+                    node_blocks.append(node_header(node.ip, node.hostname))
+                    node_blocks.append(item_success("SSH连接"))
+                else:
+                    node.status = "offline"
+                    fail_count += 1
+                    node_blocks.append(node_header(node.ip, node.hostname))
+                    node_blocks.append(item_failed("SSH连接", message))
+                node.save()
+        except Exception as e:
+            fail_count += 1
+            node_blocks.append(node_header(node.ip, node.hostname))
+            node_blocks.append(item_failed("SSH连接", f"异常: {str(e)}"))
+
+        done += 1
+        TaskCenterTask.objects.filter(pk=task_id).update(
+            progress=int(done * 100 / total) if total else 100,
+            detail=f"执行中：成功{success_count}，失败{fail_count}，已完成{done}/{total}",
+            updated_at=timezone.now(),
+        )
+
+    status = "success" if fail_count == 0 else "failed"
+    TaskCenterTask.objects.filter(pk=task_id).update(
+        status=status,
+        progress=100,
+        finished_at=timezone.now(),
+        detail=f"执行完成：成功{success_count}，失败{fail_count}，共{total}",
+        result=build_tree_result(success_count, fail_count, total, node_blocks),
+    )
+
+
+def run_single_node_ssh_test(
+    task_id,
+    host,
+    ssh_port,
+    credential_id,
+    target_hostname,
+    node_id=None,
+):
+    """单节点 SSH 测试，结果写入标准树"""
+    from apps.releases.models import TaskCenterTask
+    from apps.releases.task_cancel import finish_if_active
+    from apps.releases.task_result import (
+        build_tree_result,
+        item_failed,
+        item_success,
+        node_header,
+    )
+    from utils.ssh import get_nginx_version, test_ssh_connection
+
+    credential = Credential.objects.get(pk=credential_id)
+    _has_node = node_id is not None
+    _node_id = node_id
+
+    TaskCenterTask.objects.filter(pk=task_id).update(
+        status="running",
+        progress=5,
+        detail="正在测试SSH连接...",
+        started_at=timezone.now(),
+    )
+
+    try:
+        if credential.auth_type == "password":
+            success, message = test_ssh_connection(
+                host, ssh_port, credential.username, password=credential.get_password()
+            )
+        else:
+            success, message = test_ssh_connection(
+                host,
+                ssh_port,
+                credential.username,
+                private_key=credential.get_private_key(),
+            )
+
+        TaskCenterTask.objects.filter(pk=task_id).update(
+            progress=60, detail="正在更新节点状态..."
+        )
+
+        if success and _has_node:
+            _node = Node.objects.get(id=_node_id)
+            mark_node_probe_success(_node)
+            nginx_path = _node.nginx_path if _node.nginx_path else None
+            version_success, version_info = get_nginx_version(
+                host,
+                ssh_port,
+                credential.username,
+                password=credential.get_password()
+                if credential.auth_type == "password"
+                else None,
+                private_key=credential.get_private_key()
+                if credential.auth_type == "key"
+                else None,
+                nginx_path=nginx_path,
+            )
+            if version_success:
+                _node.nginx_version = version_info
+            _node.save()
+        elif not success and _has_node:
+            _node = Node.objects.get(id=_node_id)
+            _node.status = "offline"
+            _node.save()
+
+        status = "success" if success else "failed"
+        blocks = [node_header(host, target_hostname)]
+        if success:
+            blocks.append(item_success("SSH连接"))
+        else:
+            blocks.append(item_failed("SSH连接", message))
+        finish_if_active(
+            task_id,
+            status=status,
+            progress=100,
+            finished_at=timezone.now(),
+            detail=f"连接{'成功' if success else '失败'}",
+            result=build_tree_result(
+                1 if success else 0,
+                0 if success else 1,
+                1,
+                blocks,
+            ),
+        )
+    except Exception as e:
+        blocks = [
+            node_header(host, target_hostname),
+            item_failed("SSH连接", str(e)),
+        ]
+        finish_if_active(
+            task_id,
+            status="failed",
+            progress=100,
+            finished_at=timezone.now(),
+            detail=f"执行异常: {str(e)}",
+            result=build_tree_result(0, 1, 1, blocks),
+        )
+
+
+def _batch_test_one_node(node):
+    """批量测活中的单节点 SSH 测试，返回结果字典"""
+    from utils.ssh import get_nginx_version, test_ssh_connection
+
+    try:
+        if node.is_locked:
+            return {
+                "node_id": node.id,
+                "hostname": node.hostname,
+                "ip": node.ip,
+                "success": False,
+                "message": "节点已锁定",
+            }
+        credential = _get_node_credential(node)
+        if not credential:
+            return {
+                "node_id": node.id,
+                "hostname": node.hostname,
+                "ip": node.ip,
+                "success": False,
+                "message": "未配置凭证",
+            }
+        if not credential.is_enabled:
+            return {
+                "node_id": node.id,
+                "hostname": node.hostname,
+                "ip": node.ip,
+                "success": False,
+                "message": "关联凭证已禁用",
+            }
+
+        if credential.auth_type == "password":
+            success, message = test_ssh_connection(
+                node.ip,
+                node.port,
+                credential.username,
+                password=credential.get_password(),
+            )
+        else:
+            success, message = test_ssh_connection(
+                node.ip,
+                node.port,
+                credential.username,
+                private_key=credential.get_private_key(),
+            )
+
+        if success:
+            mark_node_probe_success(node)
+            nginx_path = node.nginx_path if node.nginx_path else None
+            version_success, version_info = get_nginx_version(
+                node.ip,
+                node.port,
+                credential.username,
+                password=(
+                    credential.get_password()
+                    if credential.auth_type == "password"
+                    else None
+                ),
+                private_key=(
+                    credential.get_private_key()
+                    if credential.auth_type == "key"
+                    else None
+                ),
+                nginx_path=nginx_path,
+            )
+            if version_success:
+                node.nginx_version = version_info
+        else:
+            node.status = "offline"
+
+        node.save()
+
+        return {
+            "node_id": node.id,
+            "hostname": node.hostname,
+            "ip": node.ip,
+            "success": success,
+            "message": message,
+        }
+    except Exception as e:
+        return {
+            "node_id": node.id,
+            "hostname": node.hostname,
+            "ip": node.ip,
+            "success": False,
+            "message": str(e),
+        }
+
+
+def run_batch_node_ssh_test(task_id, node_ids, max_workers):
+    """批量 SSH 测试，结果写入标准树"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from apps.releases.models import TaskCenterTask
+    from apps.releases.task_cancel import finish_if_active, is_cancelled, update_if_active
+    from apps.releases.task_result import (
+        build_tree_result,
+        item_failed,
+        item_success,
+        node_header,
+    )
+
+    test_nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
+    TaskCenterTask.objects.filter(pk=task_id).update(
+        status="running",
+        started_at=timezone.now(),
+        progress=0,
+        detail=f"执行中：0/{len(test_nodes)}",
+    )
+
+    success_count = 0
+    fail_count = 0
+    done = 0
+    node_blocks = []
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_node = {
+            executor.submit(_batch_test_one_node, node): node for node in test_nodes
+        }
+        for future in as_completed(future_to_node):
+            if is_cancelled(task_id):
+                break
+            result = future.result()
+            done += 1
+            node_blocks.append(node_header(result.get("ip"), result.get("hostname")))
+            if result.get("success"):
+                success_count += 1
+                node_blocks.append(item_success("SSH连接"))
+            else:
+                fail_count += 1
+                node_blocks.append(item_failed("SSH连接", result.get("message", "")))
+
+            update_if_active(
+                task_id,
+                progress=(
+                    int(done * 100 / len(test_nodes)) if test_nodes else 100
+                ),
+                detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{len(test_nodes)}",
+            )
+
+    if is_cancelled(task_id):
+        return
+    status = "success" if fail_count == 0 else "failed"
+    finish_if_active(
+        task_id,
+        status=status,
+        progress=100,
+        finished_at=timezone.now(),
+        detail=f"执行完成：成功 {success_count}，失败 {fail_count}，共 {len(test_nodes)}",
+        result=build_tree_result(
+            success_count, fail_count, len(test_nodes), node_blocks
+        ),
+    )
+
+
+def run_node_system_info_task(task_id, node_id, credential_id):
+    """后台采集节点系统信息并回写状态"""
+    import json
+
+    from apps.releases.models import TaskCenterTask
+    from utils.ssh import get_system_info
+
+    node = Node.objects.get(id=node_id)
+    credential = Credential.objects.get(pk=credential_id)
+    TaskCenterTask.objects.filter(pk=task_id).update(
+        status="running",
+        progress=5,
+        detail="正在采集系统信息...",
+        started_at=timezone.now(),
+    )
+
+    try:
+        if credential.auth_type == "password":
+            success, system_info = get_system_info(
+                node.ip,
+                node.port,
+                credential.username,
+                password=credential.get_password(),
+            )
+        else:
+            success, system_info = get_system_info(
+                node.ip,
+                node.port,
+                credential.username,
+                private_key=credential.get_private_key(),
+            )
+
+        if success:
+            mark_node_probe_success(node)
+            node.save()
+        else:
+            node.status = "offline"
+            node.save()
+
+        status = "success" if success else "failed"
+        result_data = system_info if success else system_info
+        TaskCenterTask.objects.filter(pk=task_id).update(
+            status=status,
+            progress=100,
+            finished_at=timezone.now(),
+            detail=f"系统信息采集{'成功' if success else '失败'}",
+            result=json.dumps(system_info, ensure_ascii=False)
+            if success
+            else str(result_data),
+        )
+    except Exception as e:
+        TaskCenterTask.objects.filter(pk=task_id).update(
+            status="failed",
+            progress=100,
+            finished_at=timezone.now(),
+            detail=f"执行异常: {str(e)}",
+        )
+
+
+def run_node_nginx_version_task(task_id, node_id, credential_id, nginx_path=None):
+    """后台检测节点 Nginx 版本并回写"""
+    from apps.releases.models import TaskCenterTask
+    from utils.ssh import get_nginx_version
+
+    node = Node.objects.get(id=node_id)
+    credential = Credential.objects.get(pk=credential_id)
+    TaskCenterTask.objects.filter(pk=task_id).update(
+        status="running",
+        progress=5,
+        detail="正在检测 Nginx 版本...",
+        started_at=timezone.now(),
+    )
+
+    try:
+        if credential.auth_type == "password":
+            success, output = get_nginx_version(
+                node.ip,
+                node.port,
+                credential.username,
+                password=credential.get_password(),
+                nginx_path=nginx_path,
+            )
+        else:
+            success, output = get_nginx_version(
+                node.ip,
+                node.port,
+                credential.username,
+                private_key=credential.get_private_key(),
+                nginx_path=nginx_path,
+            )
+
+        if success:
+            node.nginx_version = output
+            mark_node_probe_success(node)
+            node.save(update_fields=["nginx_version", "status", "last_probe_at", "updated_at"])
+        else:
+            # 清空陈旧版本，避免列表仍展示已失效的版本号（二进制缺失等）
+            # SSH 已连通仅 nginx -v 失败时不改 status，避免误标离线
+            node.nginx_version = ""
+            node.save(update_fields=["nginx_version", "updated_at"])
+
+        status = "success" if success else "failed"
+        TaskCenterTask.objects.filter(pk=task_id).update(
+            status=status,
+            progress=100,
+            finished_at=timezone.now(),
+            detail=f"Nginx 版本检测{'成功: ' + output if success else '失败'}",
+            result=output if success else output,
+        )
+    except Exception as e:
+        TaskCenterTask.objects.filter(pk=task_id).update(
+            status="failed",
+            progress=100,
+            finished_at=timezone.now(),
+            detail=f"执行异常: {str(e)}",
+        )

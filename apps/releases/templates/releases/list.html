@@ -261,7 +261,7 @@
                 <p class="text-muted small mb-3" id="batchRollbackHint">
                     将回滚到各任务发布版本的上一版；同一配置跨多批次仅保留最近一次；需指定其他版本请使用单配置回滚。
                 </p>
-                <div class="table-responsive border rounded" style="max-height: 360px; overflow-y: auto;">
+                <div class="table-responsive modal-table-scroll border rounded">
                     <table class="table table-sm table-hover mb-0 data-table" id="batchRollbackPreviewTable">
                         <thead class="table-light">
                             <tr>
@@ -276,8 +276,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-warning" id="batchRollbackSubmitBtn">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning btn-sm" id="batchRollbackSubmitBtn">
                     <i class="bi bi-arrow-counterclockwise"></i> 确认并执行
                 </button>
             </div>

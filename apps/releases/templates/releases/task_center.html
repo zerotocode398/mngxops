@@ -317,11 +317,11 @@
                                 window.location.reload();
                             } else {
                                 btn.disabled = false;
-                                alert((r.data && r.data.message) || '取消失败');
+                                showAlert('取消失败', (r.data && r.data.message) || '取消失败');
                             }
                         }).catch(function () {
                             btn.disabled = false;
-                            alert('取消请求失败');
+                            showAlert('取消失败', '取消请求失败');
                         });
                     }, true, 'md');
                 });

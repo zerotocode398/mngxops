@@ -1,4 +1,4 @@
-# mngxops 优化点台账（Q1–Q148）
+# mngxops 优化点台账（Q1–Q149）
 
 本文档记录历史优化点结论，供 Agent / 开发快速检索。**不修改业务逻辑时请以本文件结论为准。**
 
@@ -147,8 +147,9 @@
 | Q69 | 全项目字号/字重对齐 | 已完成 |
 | Q70 | 审计日志筛选与任务软链 | 已完成 |
 | Q119 | 绑定/版本审计 detail 可读身份 | 已完成 |
+| Q149 | UI 一致性收敛（弹窗尺寸/进度合一/主色桥接） | 已完成 |
 
-### 缺口与结论项（Q84–Q148）
+### 缺口与结论项（Q84–Q149）
 
 | 编号 | 摘要 | 状态 |
 |------|------|------|
@@ -217,6 +218,7 @@
 | Q146 | 安装失败回填任务中心执行结果树 | 已完成 |
 | Q147 | 发布未运行则 start；安装 listen 设置与非 root+80 告警 | 已完成 |
 | Q148 | 升级/安装/启停摘要主行批次号；仪表盘副行截断对齐 | 已完成 |
+| Q149 | UI 一致性收敛（弹窗尺寸/进度合一/主色桥接） | 已完成 |
 
 ---
 
@@ -541,7 +543,7 @@
 ### Q50 · 发布历史 · 回滚后 pending 无进度
 
 - **问题**：回滚变为 pending 但无执行反馈。
-- **处理**：确认后异步执行 + 发布同款 progressOverlay；完整日志按批次打开。
+- **处理**：确认后异步执行 + 发布同款 `#asyncProgressOverlay`；完整日志按批次打开。
 - **状态**：已完成
 
 ### Q51 · 发布历史 · 失败是否可回滚
@@ -1236,4 +1238,15 @@
 - **处理**：
   1. `format_task_center_summary`：`nginx_upgrade` / `nginx_install` / `nginx_service_control` 主行优先 `source_batch`，无批次再回退主机名。
   2. 任务中心与仪表盘对上述类型主行用 `<code>`；仪表盘摘要主/副行加 `text-truncate`（对齐任务中心，全文进详情）。
+- **状态**：已完成
+
+### Q149 · UI · 样式/布局/弹窗一致性收敛
+
+- **问题**：双主色（Bootstrap 蓝 vs 品牌紫）；启停页 `extra_css` 未挂入；`showConfirm` 富内容默认过窄；发布/回滚自建进度层与全局 overlay 重复；内容预览尺寸分裂；残留 `alert()`；弹窗页脚按钮大小不一。
+- **处理**：
+  1. 启停模板改 `extra_head`；chip 改矩形对齐升级/安装。
+  2. `showConfirm`：`asHtml` 默认 `md`、含 table 默认 `lg`；任务取消/用户操作改 `showAlert`；`.modal-footer` 统一小号按钮。
+  3. 发布/回滚进度改用全局 `#asyncProgressOverlay`（支持批次号、跳过失败、`onClose`）；删除本地 `.publish-overlay`。
+  4. 发布中心内容预览改为 `modal-xl`；`--bs-primary` 对齐 `--primary`；pending 筛选 chip 用品牌色。
+  5. 规范写入 [`docs/13-ui-conventions.md`](docs/13-ui-conventions.md) §5.1。
 - **状态**：已完成

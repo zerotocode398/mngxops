@@ -175,11 +175,7 @@ function sendUserToggleRequest(url, checkbox) {
         .catch(function (err) {
             var wasActive = checkbox.getAttribute('data-is-active') === 'true';
             checkbox.checked = wasActive;
-            if (typeof showAlert === 'function') {
-                showAlert('操作失败', err.message || '请稍后重试');
-            } else {
-                alert(err.message || '操作失败');
-            }
+            showAlert('操作失败', err.message || '请稍后重试');
         });
 }
 

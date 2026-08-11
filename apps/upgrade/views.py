@@ -1,7 +1,5 @@
 """Nginx 升级模块 - 视图"""
 import json
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -31,8 +29,10 @@ from .services import (
     parse_nginx_v_output,
     compute_target_configure_opts,
     enrich_third_party_module_paths,
-    run_upgrade_task,
+    start_upgrade_tasks_parallel,
+    create_upgrade_batch_from_data,
     _tokenize_configure_args,
+    _rollback_binary,
 )
 
 from apps.users.permissions import PermissionRequiredMixin
@@ -40,7 +40,7 @@ from utils.nav_context import append_nav_query, get_sidebar_nav, nav_context
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_recent_tasks_limit, get_setting
 from apps.nodes.models import Node
-from apps.nodes.views import _get_node_credential
+from apps.nodes.services import _get_node_credential
 
 
 # ==================== 源码包管理 ====================
@@ -530,16 +530,7 @@ def _task_progress_dict(task):
     }
 
 
-def _start_upgrade_tasks_parallel(task_ids):
-    """在后台线程池中并行执行多个升级任务"""
-    max_workers = max(1, int(get_setting("node.batch_max_count", "3") or 3))
 
-    def _runner():
-        workers = min(max_workers, len(task_ids)) or 1
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            list(pool.map(run_upgrade_task, task_ids))
-
-    threading.Thread(target=_runner, daemon=True).start()
 
 
 class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -590,7 +581,7 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         task.task_center = task_center
         task.save(update_fields=["task_center"])
 
-        _start_upgrade_tasks_parallel([task.id])
+        start_upgrade_tasks_parallel([task.id])
         return JsonResponse({
             "success": True,
             "task_id": task.id,
@@ -604,186 +595,8 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         data = _parse_json_body(request)
         if data is None:
             return JsonResponse({"success": False, "message": "JSON 解析失败"}, status=400)
-
-        try:
-            node_ids = [int(x) for x in (data.get("node_ids") or [])]
-            package_id = int(data.get("source_package") or 0)
-            upgrade_mode = (data.get("upgrade_mode") or "upgrade").strip()
-            remote_work_dir = (
-                data.get("remote_work_dir")
-                or get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
-                or "/tmp/nginx-upgrade"
-            ).strip()
-            make_jobs = int(
-                data.get("make_jobs")
-                or get_setting("upgrade.make_jobs_default", "4")
-                or 4
-            )
-            target_version = (data.get("target_version") or "").strip()
-            shared_prefix = (data.get("target_prefix") or "").strip()
-            added_modules = data.get("added_modules") or []
-            removed_modules = data.get("removed_modules") or []
-            added_third_party = data.get("added_third_party") or []
-            nodes_payload = data.get("nodes_payload") or []
-        except (TypeError, ValueError):
-            return JsonResponse({"success": False, "message": "请求参数格式错误"}, status=400)
-
-        if not isinstance(added_third_party, list):
-            added_third_party = []
-        added_third_party = enrich_third_party_module_paths(added_third_party, remote_work_dir)
-
-        if not node_ids:
-            return JsonResponse({"success": False, "message": "请至少选择一个节点"}, status=400)
-        if upgrade_mode not in ("upgrade", "install", "switch_path"):
-            return JsonResponse({"success": False, "message": "升级模式无效"}, status=400)
-        if upgrade_mode == "switch_path" and not shared_prefix:
-            return JsonResponse(
-                {"success": False, "message": "切换路径模式请填写目标 --prefix"},
-                status=400,
-            )
-
-        package = NginxSourcePackage.objects.filter(pk=package_id).first()
-        if not package:
-            return JsonResponse({"success": False, "message": "源码包不存在"}, status=400)
-        if not target_version:
-            target_version = package.version
-
-        payload_map = {}
-        for item in nodes_payload:
-            try:
-                nid = int(item.get("node_id"))
-            except (TypeError, ValueError, AttributeError):
-                continue
-            payload_map[nid] = item
-
-        nodes = list(
-            Node.objects.filter(pk__in=node_ids)
-            .select_related("credential")
-            .prefetch_related("groups")
-        )
-        node_map = {n.id: n for n in nodes}
-        if len(node_map) != len(set(node_ids)):
-            return JsonResponse({"success": False, "message": "部分节点不存在"}, status=400)
-
-        for nid in node_ids:
-            node = node_map[nid]
-            if node.is_locked:
-                return JsonResponse(
-                    {"success": False, "message": f"节点 {node.hostname} 已锁定"},
-                    status=400,
-                )
-            if node.status != "online":
-                return JsonResponse(
-                    {"success": False, "message": f"节点 {node.hostname} 非在线状态"},
-                    status=400,
-                )
-            if not _get_node_credential(node):
-                return JsonResponse(
-                    {"success": False, "message": f"节点 {node.hostname} 未配置有效凭证"},
-                    status=400,
-                )
-            if nid not in payload_map and upgrade_mode != "install":
-                return JsonResponse(
-                    {"success": False, "message": f"缺少节点 {node.hostname} 的编译参数基线"},
-                    status=400,
-                )
-
-        batch_number = generate_upgrade_batch_number()
-        from apps.releases.models import TaskCenterTask
-
-        created_tasks = []
-        for nid in node_ids:
-            node = node_map[nid]
-            item = payload_map.get(nid) or {}
-            params = item.get("params") or []
-            if not isinstance(params, list):
-                params = []
-            current_version = (item.get("current_version") or "").strip()
-            current_opts = (item.get("current_configure_opts") or "").strip()
-            prefix = (item.get("prefix") or "").strip()
-            binary_path = (item.get("binary_path") or "").strip()
-
-            # 平滑/全新：各节点自身 prefix；切换路径：统一使用共享 prefix
-            if upgrade_mode == "switch_path":
-                target_prefix = shared_prefix
-            else:
-                target_prefix = prefix or "/usr/local/nginx"
-
-            target_opts = compute_target_configure_opts(
-                params, added_modules, removed_modules, added_third_party,
-                remote_work_dir=remote_work_dir,
-            )
-            # 仅切换路径模式才重写 configure 中的 --prefix=
-            if upgrade_mode == "switch_path" and target_prefix:
-                from .services import _tokenize_configure_args, _join_configure_opts
-                tokens = _tokenize_configure_args(target_opts)
-                if not tokens:
-                    tokens = [p for p in params if p not in removed_modules]
-                    for mod in added_modules:
-                        if mod not in tokens:
-                            tokens.append(mod)
-                new_tokens = []
-                has_prefix = False
-                for t in tokens:
-                    if t.startswith("--prefix="):
-                        new_tokens.append(f"--prefix={target_prefix}")
-                        has_prefix = True
-                    else:
-                        new_tokens.append(t)
-                if not has_prefix:
-                    new_tokens.insert(0, f"--prefix={target_prefix}")
-                target_opts = _join_configure_opts(new_tokens, multiline=True)
-
-            task = NginxUpgradeTask(
-                batch_number=batch_number,
-                node=node,
-                source_package=package,
-                upgrade_mode=upgrade_mode,
-                remote_work_dir=remote_work_dir,
-                make_jobs=make_jobs,
-                current_version=current_version or (node.nginx_version or ""),
-                current_configure_opts=current_opts,
-                current_configure_path=prefix,
-                current_binary_path=binary_path,
-                target_version=target_version,
-                target_configure_opts=target_opts,
-                target_prefix=target_prefix,
-                added_modules=json.dumps(added_modules, ensure_ascii=False),
-                removed_modules=json.dumps(removed_modules, ensure_ascii=False),
-                added_third_party=json.dumps(added_third_party, ensure_ascii=False),
-                operator=request.user,
-                status="pending",
-                current_step="任务已创建，等待执行",
-            )
-            task.save()
-
-            from apps.releases.task_result import upgrade_detail_short
-            task_center = TaskCenterTask.objects.create(
-                operation_type="nginx_upgrade",
-                status="pending",
-                detail=upgrade_detail_short(
-                    current_version or (node.nginx_version or ""),
-                    target_version,
-                ),
-                target_hostnames=node.hostname,
-                target_ips=node.ip,
-                trigger_user=request.user,
-                source_batch=batch_number,
-            )
-            task.task_center = task_center
-            task.save(update_fields=["task_center"])
-            created_tasks.append(task)
-
-        task_ids = [t.id for t in created_tasks]
-        _start_upgrade_tasks_parallel(task_ids)
-
-        return JsonResponse({
-            "success": True,
-            "batch_number": batch_number,
-            "task_id": task_ids[0],
-            "task_ids": task_ids,
-            "message": f"已创建 {len(task_ids)} 个升级任务，批次 {batch_number}",
-        })
+        payload, status = create_upgrade_batch_from_data(request.user, data)
+        return JsonResponse(payload, status=status)
 
 
 class UpgradeTaskProgressView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -932,7 +745,6 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
         if not task.old_binary_backup:
             return JsonResponse({"success": False, "message": "没有可用的备份文件"}, status=400)
 
-        from utils.ssh import SSHClient
         auth_kwargs = {}
         if credential.auth_type == "password":
             auth_kwargs["password"] = credential.get_password()
@@ -944,13 +756,26 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
         try:
             from utils.nginx_ops import reload_nginx
 
-            with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
-                # 恢复旧二进制
-                success, output = ssh.execute_command(
-                    f"cp {task.old_binary_backup} {binary_path} 2>&1"
-                )
-                if not success:
-                    return JsonResponse({"success": False, "message": f"回滚失败: {output}"}, status=500)
+            # 复用服务层 cp 恢复；经 log_fn 收集成败信息以保持原 API 文案
+            rollback_logs = []
+            _rollback_binary(
+                node,
+                credential,
+                binary_path,
+                task.old_binary_backup,
+                auth_kwargs,
+                rollback_logs.append,
+            )
+            fail_msg = next(
+                (
+                    m
+                    for m in rollback_logs
+                    if m.startswith("回滚失败:") or m.startswith("回滚异常:")
+                ),
+                None,
+            )
+            if fail_msg:
+                return JsonResponse({"success": False, "message": fail_msg}, status=500)
 
             # 按启动方式 reload（未运行则 start），使进程回到旧二进制生效路径
             ok, msg = reload_nginx(
@@ -995,7 +820,6 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
         messages.success(request, f"Nginx 已回滚到备份版本 ({task.old_binary_backup})")
         return JsonResponse({"success": True})
-
 
 # ==================== 升级历史 ====================
 

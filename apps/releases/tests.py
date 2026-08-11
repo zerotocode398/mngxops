@@ -112,11 +112,13 @@ class ReleaseCreateJSONAPITests(TestCase):
         self.node_a = Node.objects.create(
             hostname="node-a",
             ip="10.10.0.11",
+            status="online",
             created_by=self.user,
         )
         self.node_b = Node.objects.create(
             hostname="node-b",
             ip="10.10.0.12",
+            status="online",
             created_by=self.user,
         )
 

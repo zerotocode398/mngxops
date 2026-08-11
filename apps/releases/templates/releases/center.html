@@ -162,60 +162,28 @@
     </div>
 </div>
 
-<!-- 配置内容预览弹窗 -->
+<!-- 配置内容预览弹窗（对齐发布历史 modal-xl） -->
 <div class="modal fade" id="contentPreviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="contentPreviewTitle">
-                    <i class="bi bi-file-earmark-code"></i> 配置预览
-                </h5>
+                <div>
+                    <h5 class="modal-title mb-0" id="contentPreviewTitle">
+                        <i class="bi bi-file-earmark-code"></i> 配置预览
+                    </h5>
+                    <small class="text-muted" id="cpPathLabel"></small>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
             </div>
             <div class="modal-body">
                 <div class="d-flex align-items-center mb-2 gap-2">
                     <span class="badge bg-info" id="cpVersionBadge"></span>
-                    <small class="text-muted" id="cpPathLabel"></small>
                 </div>
                 <pre id="cpContent" class="code-font bg-light border rounded p-3" style="max-height: 55vh; overflow: auto; font-size: var(--fs-base); line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;">加载中...</pre>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
             </div>
-        </div>
-    </div>
-</div>
-
-<!-- 发布进度弹窗 -->
-<div id="progressOverlay" class="publish-overlay" style="display: none;">
-    <div class="publish-progress-dialog" id="progressDialog">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="mb-0"><i class="bi bi-rocket-takeoff"></i> 发布执行中</h6>
-            <button type="button" class="btn-close" id="btnCloseProgress" title="关闭"></button>
-        </div>
-        <div class="mb-2">
-            <small class="text-muted">批次号: <span id="progressBatchNumber">-</span></small>
-        </div>
-        <div class="progress mb-2" style="height: 8px;">
-            <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%;"></div>
-        </div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <small id="progressText" class="text-muted">准备中...</small>
-            <small class="text-muted"><span id="progressPercent">0</span>%</small>
-        </div>
-        <div id="progressCurrentSteps" class="progress-current-steps mb-2 d-none"></div>
-        <div id="progressTree" class="progress-tree" style="max-height: 280px; overflow-y: auto;">
-            <div class="text-center text-muted py-3">
-                <div class="spinner-border spinner-border-sm"></div> 初始化中...
-            </div>
-        </div>
-        <div class="d-flex justify-content-end gap-2 mt-3">
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnSkipFailed">
-                <i class="bi bi-skip-forward"></i> 跳过失败继续
-            </button>
-            <a href="#" id="progressLogLink" class="btn btn-sm btn-outline-info" target="_blank">
-                <i class="bi bi-journal-text"></i> 完整日志
-            </a>
         </div>
     </div>
 </div>
@@ -259,69 +227,28 @@
 
     /* 状态过滤标签 */
     .status-filter-tag {
-        padding: 5px 12px; font-size: var(--fs-sm); border-radius: 4px;
-        cursor: pointer; transition: all 0.15s ease;
-        background: #f8f9fa; color: #495057; border: 1px solid #dee2e6;
+        padding: 5px 12px; font-size: var(--fs-sm); border-radius: var(--br-sm);
+        cursor: pointer; transition: var(--transition-fast);
+        background: var(--gray-100); color: var(--gray-700); border: 1px solid var(--gray-300);
     }
     .status-filter-tag:hover { opacity: 0.85; }
     .status-filter-active { color: #fff !important; font-weight: 500; border-color: transparent; }
-    .status-filter-active[data-status=""] { background-color: #6c757d; }
-    .status-filter-active[data-status="pending"] { background-color: #0d6efd; }
-    .status-filter-active[data-status="synced"] { background-color: #28a745; }
+    .status-filter-active[data-status=""] { background-color: var(--gray-600); }
+    .status-filter-active[data-status="pending"] { background-color: var(--primary); }
+    .status-filter-active[data-status="synced"] { background-color: var(--success); }
     .status-filter-active[data-status="conflict"] { background-color: #fd7e14; }
-    .status-filter-active[data-status="failed"] { background-color: #dc3545; }
+    .status-filter-active[data-status="failed"] { background-color: var(--danger); }
     .status-filter-active[data-status="syncing"] { background-color: var(--info); }
-    .status-filter-active[data-status="orphaned"] { background-color: #6c757d; }
+    .status-filter-active[data-status="orphaned"] { background-color: var(--gray-600); }
     .status-filter-active[data-status="marked_deleted"] { background-color: #e83e8c; }
 
     /* 发布清单节点分组 */
-    .preview-node-group { border-bottom: 2px solid #dee2e6; }
-    .preview-node-header { background: #f8f9fa; cursor: pointer; }
+    .preview-node-group { border-bottom: 2px solid var(--gray-300); }
+    .preview-node-header { background: var(--gray-100); cursor: pointer; }
     .preview-node-header td { font-weight: 400; padding: 8px 12px; }
     .preview-node-header .toggle-preview-expand { padding: 0 4px; }
     .preview-binding td { padding: 6px 12px; }
     .btn-publish-node { white-space: nowrap; }
-
-    /* 进度弹窗 */
-    .publish-overlay {
-        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-        background: rgba(0, 0, 0, 0.45); z-index: 9999;
-        display: flex; align-items: center; justify-content: center;
-    }
-    .publish-progress-dialog {
-        background: #fff; border-radius: 12px; padding: 24px 28px;
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
-        width: 640px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
-    }
-    .progress-current-steps {
-        font-size: var(--fs-sm); line-height: 1.5;
-        padding: 8px 10px; border-radius: var(--br-md);
-        background: #f8f9fa; border: 1px solid #e9ecef;
-        max-height: 140px; overflow-y: auto;
-    }
-    .progress-current-steps .step-line {
-        display: flex; align-items: center; gap: 6px;
-        padding: 2px 0; color: var(--dark);
-    }
-    .progress-tree .node-group { margin-bottom: 8px; }
-    .progress-tree .node-group-header {
-        display: flex; align-items: center; gap: 6px;
-        padding: 6px 8px; border-radius: 6px; cursor: pointer;
-        background: #f8f9fa; font-size: var(--fs-md);
-    }
-    .progress-tree .node-group-header.success { background: #d4edda; }
-    .progress-tree .node-group-header.failed { background: #f8d7da; }
-    .progress-tree .node-group-header.running { background: #fff3cd; }
-    .progress-tree .node-group-body { padding-left: 20px; }
-    .progress-tree .config-item {
-        display: flex; align-items: center; gap: 8px;
-        padding: 3px 0; font-size: var(--fs-sm);
-    }
-    .config-item .retry-btn {
-        font-size: var(--fs-xs); padding: 0 4px; line-height: 1.4;
-        cursor: pointer; color: #dc3545;
-    }
-    .config-item .retry-btn:hover { text-decoration: underline; }
 </style>
 <script>
 (function() {
@@ -1378,44 +1305,26 @@
 
     initPreviewSearchTag();
 
-    // 进度弹窗
+    // 进度弹窗（复用全局 #asyncProgressOverlay）
     function showProgressOverlay(batchNumber, taskCenterId) {
-        document.getElementById('progressBatchNumber').textContent = batchNumber;
-        document.getElementById('progressBar').style.width = '0%';
-        document.getElementById('progressPercent').textContent = '0';
-        document.getElementById('progressText').textContent = '初始化中...';
-        var stepsEl = document.getElementById('progressCurrentSteps');
-        stepsEl.innerHTML = '';
-        stepsEl.classList.add('d-none');
-        document.getElementById('progressTree').innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 等待任务启动...</div>';
-        // 完整日志跳转任务中心，按当前批次号筛选
-        document.getElementById('progressLogLink').href =
-            '/releases/history/?search=' + encodeURIComponent(batchNumber);
-        document.getElementById('progressOverlay').style.display = 'flex';
-
+        showAsyncProgressOverlay('发布执行中', {
+            batchNumber: batchNumber,
+            showSkipFailed: true,
+            noReload: true,
+            iconClass: 'bi-rocket-takeoff',
+            logHref: '/releases/history/?search=' + encodeURIComponent(batchNumber),
+            onClose: function() {
+                if (publishInterval) { clearInterval(publishInterval); publishInterval = null; }
+                loadNodes(currentNodePage);
+            }
+        });
+        document.getElementById('asyncProgressResult').innerHTML =
+            '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div> 等待任务启动...</div>';
         startProgressPolling([taskCenterId], batchNumber);
     }
 
     function updateProgressCurrentSteps(stepsText) {
-        // 渲染每主机一行当前精炼步骤
-        var el = document.getElementById('progressCurrentSteps');
-        if (!el) return;
-        if (!stepsText) {
-            el.classList.add('d-none');
-            el.innerHTML = '';
-            return;
-        }
-        var lines = stepsText.split('\n').filter(function(l) { return l.trim(); });
-        if (!lines.length) {
-            el.classList.add('d-none');
-            el.innerHTML = '';
-            return;
-        }
-        el.classList.remove('d-none');
-        el.innerHTML = lines.map(function(line) {
-            return '<div class="step-line"><i class="bi bi-arrow-repeat text-info"></i> ' +
-                line.replace(/</g, '&lt;') + '</div>';
-        }).join('');
+        updateAsyncProgressCurrentSteps(stepsText);
     }
 
     function startProgressPolling(checkedIds, batchNumber) {
@@ -1435,9 +1344,9 @@
                 var currentSteps = task.current_steps || '';
                 var finished = task.finished;
 
-                document.getElementById('progressBar').style.width = progress + '%';
-                document.getElementById('progressPercent').textContent = progress;
-                document.getElementById('progressText').textContent = detail || '执行中...';
+                document.getElementById('asyncProgressBar').style.width = progress + '%';
+                document.getElementById('asyncProgressPercent').textContent = progress;
+                document.getElementById('asyncProgressText').textContent = detail || '执行中...';
 
                 updateProgressCurrentSteps(finished ? '' : currentSteps);
                 if (result) renderProgressTree(result);
@@ -1445,25 +1354,23 @@
                 if (finished) {
                     clearInterval(publishInterval);
                     publishInterval = null;
-                    document.getElementById('progressBar').classList.remove('progress-bar-animated');
+                    document.getElementById('asyncProgressBar').classList.remove('progress-bar-animated');
                     if (task.status === 'success') {
-                        document.getElementById('progressBar').classList.add('bg-success');
-                        document.getElementById('progressText').textContent = '全部发布成功';
-                        // 成功后从确认清单剔除本次已发布项
+                        document.getElementById('asyncProgressBar').classList.add('bg-success');
+                        document.getElementById('asyncProgressText').textContent = '全部发布成功';
                         removePublishedFromSelection(lastPublishedBindingIds);
                         lastPublishedBindingIds = [];
                     } else {
-                        document.getElementById('progressBar').classList.add('bg-warning');
-                        document.getElementById('progressText').textContent = '部分任务失败，请查看详情';
+                        document.getElementById('asyncProgressBar').classList.add('bg-warning');
+                        document.getElementById('asyncProgressText').textContent = '部分任务失败，请查看详情';
                     }
-                    document.getElementById('btnCloseProgress').classList.remove('d-none');
                 }
             });
         }, {{ sys_poll_interval_ms|default:2000 }});
     }
 
     function renderProgressTree(resultText) {
-        var container = document.getElementById('progressTree');
+        var container = document.getElementById('asyncProgressResult');
         var lines = (resultText || '').split('\n');
         var html = '';
         var currentNode = null;
@@ -1507,16 +1414,6 @@
         html += '</div></div>';
         return html;
     }
-
-    document.getElementById('btnCloseProgress').addEventListener('click', function() {
-        document.getElementById('progressOverlay').style.display = 'none';
-        if (publishInterval) { clearInterval(publishInterval); publishInterval = null; }
-        loadNodes(currentNodePage);
-    });
-
-    document.getElementById('btnSkipFailed').addEventListener('click', function() {
-        showToast('跳过失败功能开发中', 'info');
-    });
 
     function handlePreSelection() {
         if (!preNodeId) return;

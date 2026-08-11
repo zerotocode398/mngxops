@@ -444,7 +444,7 @@
 
 <!-- 选择节点弹窗（多选） -->
 <div class="modal fade" id="upgradeSelectNodeModal" tabindex="-1" aria-labelledby="upgradeSelectNodeModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="upgradeSelectNodeModalLabel">
@@ -489,8 +489,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="confirmUpgradeNodeBtn" onclick="confirmUpgradeNodeSelection()">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="confirmUpgradeNodeBtn" onclick="confirmUpgradeNodeSelection()">
                     <i class="bi bi-check-lg"></i> 确认选择
                 </button>
             </div>
@@ -528,10 +528,10 @@
                 <div id="paramsDiffList" style="max-height: 28vh; overflow-y: auto;"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" id="paramsMismatchBackBtn">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="paramsMismatchBackBtn">
                     <i class="bi bi-arrow-left"></i> 返回改选节点
                 </button>
-                <button type="button" class="btn btn-warning" id="paramsMismatchContinueBtn">
+                <button type="button" class="btn btn-warning btn-sm" id="paramsMismatchContinueBtn">
                     <i class="bi bi-check-lg"></i> 仍要继续
                 </button>
             </div>
@@ -578,8 +578,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="confirmModuleAdjustBtn">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="confirmModuleAdjustBtn">
                     <i class="bi bi-check-lg"></i> 确认
                 </button>
             </div>

@@ -14,7 +14,9 @@
 
 | 变量 | 值 | 用途 |
 |------|-----|------|
-| `--primary` | `#667eea` | 主色、强调、tag 徽标 |
+| `--primary` | `#667eea` | 主色、强调、tag 徽标；同时映射 `--bs-primary` |
+| `--primary-rgb` | `102, 126, 234` | 与 Bootstrap `--bs-primary-rgb` 对齐 |
+| `--primary-soft` | `rgba(102, 126, 234, 0.08)` | 上传区/浅强调底 |
 | `--primary-gradient` | `linear-gradient(180deg, #667eea 0%, #764ba2 100%)` | 侧栏背景（竖直） |
 | `--success` | `#28a745` | 成功 / 在线 |
 | `--warning` | `#ffc107` | 警告 / 进行中 |
@@ -113,18 +115,30 @@
 | 开关 | Bootstrap `form-switch` | 统一 |
 | 关联多选 | 弹窗 + chips | 用户组/角色/节点等（Q68/Q83） |
 | 权限矩阵 | `.perm-matrix` | 全局；单元格可点切换勾选（Q117） |
-| 确认/警告 | `showConfirm` / `showAlert` | 收敛；支持排队（升级中心 Q65） |
-| 弹窗表 | `.modal-picker-table` + `bindModalTableRowToggle` | 行点击勾选；滚动区 `max-height: 60vh` |
+| 确认/警告 | `showConfirm` / `showAlert` | 收敛；支持排队（升级中心 Q65）；尺寸见 §5.1 |
+| 弹窗表 | `.modal-picker-table` + `bindModalTableRowToggle` | 行点击勾选；滚动区 `max-height: 60vh`；picker 宜 `modal-lg` + `modal-dialog-scrollable` |
 | 弹窗 ID | 模块前缀 | 避免冲突（Q42） |
+| 弹窗页脚 | `.modal-footer .btn` | 统一小号（等同 `btn-sm`，Q149） |
 | 标签搜索 | `.tag-input-wrapper` | 白底；选中 tag 用 `--primary`；多标签 AND（Q23） |
 | Toast | `.toast-container-global` | 右上；success/danger/warning/info 对应语义色 |
-| 进度遮罩 | `#asyncProgressOverlay` | 阶段文案 + 结果树；树头 success/failed/running 底色见下 |
+| 进度遮罩 | `#asyncProgressOverlay` | 同步/发布/回滚/节点测试等共用；可传 `batchNumber` / `showSkipFailed` / `onClose`（Q149） |
 | 状态徽标 | `.badge-status-*` | 见 §6 |
 | 描边徽标 | `.badge-outline` | 灰底 + `--gray-300` 边 |
-| 上传区 | `.upload-dropzone` | 虚线 `--primary`；浅紫底 `rgba(102,126,234,.08)` |
+| 上传区 | `.upload-dropzone` | 虚线 `--primary`；浅紫底 `var(--primary-soft)` / `rgba(102,126,234,.08)` |
 | 统计卡 | `.dashboard-stat-card` + `.stat-card-*` | 白底；左边 `4px` 语义色；可点/只读分叉 |
 
 进度树节点头底色：成功 `#d4edda`、失败 `#f8d7da`、进行中 `#fff3cd`。
+
+### 5.1 `showConfirm` 尺寸矩阵
+
+| 尺寸 | 适用 |
+|------|------|
+| `sm` | 纯文案短确认（默认，且 `asHtml=false` 时） |
+| `md` | HTML / 多行说明（`asHtml=true` 且未显式传 size 时自动） |
+| `lg` | 含 `<table>` 的明细确认（`asHtml=true` 且正文含 table 时自动，或显式传入） |
+| `xl` | 双栏代码 / 大型预览类（显式传入；内容预览类 Bootstrap Modal 亦用 `xl`） |
+
+业务页勿再使用浏览器原生 `alert()` / `confirm()`；失败提示统一 `showAlert`。
 
 ---
 
@@ -158,7 +172,7 @@
 
 ### 6.4 配置同步状态过滤标签
 
-配置列表 `.config-status-active` 默认灰底 `#6c757d`（「全部」可见，Q99）；各状态有页面级专用色。`conflict` / `syncing` **过滤入口已下线**（Q84/Q85）；行内兜底 badge 仍可显示脏数据。
+配置列表 `.config-status-active` 默认灰底 `#6c757d`（「全部」可见，Q99）；`pending` 等状态色对齐 `--primary` / 语义色（Q149）。`conflict` / `syncing` **过滤入口已下线**（Q84/Q85）；行内兜底 badge 仍可显示脏数据。
 
 ---
 
@@ -166,7 +180,7 @@
 
 | 页面 | 约定 |
 |------|------|
-| 发布中心 | 两步选择；节点行点击展开绑定；路径 Modal 预览；状态过滤栏 |
+| 发布中心 | 两步选择；节点行点击展开绑定；路径 Modal 预览 `modal-xl`；状态过滤栏；进度用全局 `#asyncProgressOverlay` |
 | 发布历史 | 按批次分页；三级勾选联动；批量回滚明细 `modal-lg` |
 | 任务中心 | 摘要窄列省略（全文看详情）；无横向滚动；筛选 onchange；操作 icon-only；详情结果树失败置顶；批次超链新窗口 |
 | 配置列表 | 返回保持节点展开；未绑定标签区；状态过滤标签见 §6.4 |
@@ -188,10 +202,12 @@
 | 侧栏折叠浮层 | 子菜单背景 `#5a67d8`（非 CSS 变量） |
 | 登录页 | 局部 `:root` 子集；渐变方向 `135deg`（侧栏为 `180deg`） |
 | 发布中心页内 | `.env-badge-*` / `.sync-badge-*` / `.status-badge-*` 本地十六进制 |
-| 配置列表页内 | `.config-status-active.*` 状态色（如 pending `#0d6efd`、marked `#e83e8c`） |
+| 配置列表页内 | `.config-status-active.*` 部分状态色（如 marked `#e83e8c`）；pending 已改 `--primary` |
 | 终端主题 | `.nginx-v-output` / `.terminal-theme`：`#1a1a2e` 底、`#00ff88` 字；高亮/批注色为固定十六进制 |
 | 进度树 / 步骤条 | 部分背景直接用 `#f8f9fa`、`#d4edda` 等 Bootstrap 浅色，未全部走变量 |
 | tag 聚焦 | `.tag-badge-focus` 用 `#fff3cd` / `#ffe69c` |
+
+主色：`--primary` / `--bs-primary` 均为 `#667eea`（Q149），CTA 与侧栏品牌色一致。
 
 ---
 
