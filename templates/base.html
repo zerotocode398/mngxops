@@ -81,6 +81,11 @@
             overflow-y: auto;
         }
 
+        /* 折叠态：侧栏本身不裁剪，避免浮层子菜单被 overflow 吃掉 */
+        body.sidebar-collapsed .sidebar {
+            overflow: visible;
+        }
+
         .sidebar .sidebar-brand {
             padding: 1.25rem 1rem;
             display: flex;
@@ -219,12 +224,16 @@
             background: #5a67d8;
             border-radius: var(--br-md);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-            z-index: 1040;
+            z-index: 1050;
             display: none;
             padding: 0.35rem 0;
         }
         body.sidebar-collapsed .sidebar .nav-item-wrap {
             position: relative;
+            z-index: 1;
+        }
+        body.sidebar-collapsed .sidebar .nav-item-wrap:has(.submenu.show) {
+            z-index: 1050;
         }
         body.sidebar-collapsed .sidebar .submenu.show {
             display: block;
@@ -857,7 +866,7 @@
                     <!-- 节点管理（可展开） -->
                     {% if user|has_perm_code:"nodes.read" %}
                     <div class="nav-item-wrap">
-                    <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-nodes" title="节点管理">
+                    <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-nodes" title="节点管理">
                         <i class="bi bi-server"></i> <span class="sidebar-label">节点管理</span>
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
@@ -889,7 +898,7 @@
                     <!-- 发布管理（可展开） -->
                     {% if user|has_perm_code:"releases.read" or user|has_perm_code:"releases.create" %}
                     <div class="nav-item-wrap">
-                    <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-releases" title="发布管理">
+                    <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-releases" title="发布管理">
                         <i class="bi bi-rocket-takeoff"></i> <span class="sidebar-label">发布管理</span>
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
@@ -918,7 +927,7 @@
                     <div class="nav-section-title">运维工具</div>
                     <!-- 运维工具（可展开分组） -->
                     <div class="nav-item-wrap">
-                    <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-ops" title="运维工具">
+                    <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-ops" title="运维工具">
                         <i class="bi bi-tools"></i> <span class="sidebar-label">运维工具</span>
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
@@ -944,7 +953,7 @@
                     <!-- 用户管理（可展开） -->
                     {% if user|has_perm_code:"users.read" or user|has_perm_code:"roles.read" or user|has_perm_code:"teams.read" %}
                     <div class="nav-item-wrap">
-                    <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-users" title="用户管理">
+                    <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-users" title="用户管理">
                         <i class="bi bi-people"></i> <span class="sidebar-label">用户管理</span>
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
@@ -971,7 +980,7 @@
                     <!-- 审计日志（可展开） -->
                     {% if user|has_perm_code:"audit.read" %}
                     <div class="nav-item-wrap">
-                    <a class="nav-link collapsed" href="#" data-bs-toggle="submenu" data-target="submenu-audit" title="审计日志">
+                    <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-audit" title="审计日志">
                         <i class="bi bi-journal-text"></i> <span class="sidebar-label">审计日志</span>
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
@@ -1538,7 +1547,7 @@
             const currentUrlName = '{{ request.resolver_match.url_name }}';
             const currentAppName = '{{ request.resolver_match.app_name }}';
 
-            const submenuTriggers = document.querySelectorAll('[data-bs-toggle="submenu"]');
+            const submenuTriggers = document.querySelectorAll('[data-submenu-toggle]');
 
             function autoExpandParentMenus() {
                 // 折叠侧栏时用浮层，不自动展开 accordion
@@ -1582,7 +1591,7 @@
                 document.querySelectorAll('.sidebar .submenu.show').forEach(function (submenu) {
                     submenu.classList.remove('show');
                 });
-                document.querySelectorAll('.sidebar [data-bs-toggle="submenu"]').forEach(function (trigger) {
+                document.querySelectorAll('.sidebar [data-submenu-toggle]').forEach(function (trigger) {
                     trigger.classList.remove('expanded');
                     trigger.classList.add('collapsed');
                 });
@@ -1720,7 +1729,7 @@
                         document.querySelectorAll('.sidebar .submenu.show').forEach(function (other) {
                             if (other !== submenu) other.classList.remove('show');
                         });
-                        document.querySelectorAll('.sidebar [data-bs-toggle="submenu"]').forEach(function (t) {
+                        document.querySelectorAll('.sidebar [data-submenu-toggle]').forEach(function (t) {
                             if (t !== trigger) {
                                 t.classList.remove('expanded');
                                 t.classList.add('collapsed');

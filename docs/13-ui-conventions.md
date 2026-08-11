@@ -79,7 +79,8 @@
 
 - 布局：`base.html` 中 `.app-shell`（flex）；侧栏 `.sidebar` + 主区 `.main-area`。
 - 侧栏可折叠 `220px` / `64px`；`body.sidebar-collapsed` 切换；状态存 `localStorage`（Q73）。
-- 折叠后子菜单浮层展示；浮层背景见 §8（`#5a67d8`）。
+- 折叠后子菜单浮层展示；浮层背景见 §8（`#5a67d8`）。折叠态 `.sidebar { overflow: visible }`，避免浮层被裁切。
+- 子菜单触发器用 `data-submenu-toggle`（勿用 `data-bs-toggle`，避免与 Bootstrap 冲突）。
 - 导航项按 `has_perm_code` 显隐；无权限不展示入口。
 - 全局全屏进度：`#asyncProgressOverlay`（Q39）；完成可跳转任务详情「完整日志」。
 
