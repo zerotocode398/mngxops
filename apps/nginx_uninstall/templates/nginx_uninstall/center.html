@@ -186,8 +186,6 @@
                                 我确认删除上述勾选路径（不可恢复）
                             </label>
                         </div>
-                        <p class="small text-muted mb-0" id="confirmPackageNote"></p>
-                        <p class="small text-muted mb-0" id="confirmSystemdNote"></p>
                         <p class="small text-muted mb-0">
                             卸载成功后将清空节点 Nginx 路径/版本，标记 Nginx 不可用，相关配置绑定变为「远程已删除」。
                         </p>
@@ -538,12 +536,14 @@
         return p.indexOf(pref + '/') === 0;
     }
 
-    /** 父路径勾选时锁定其下子路径并强制勾选 */
+    /** 父路径勾选时锁定其下子路径并强制勾选；父取消则子项解锁并取消勾选 */
     function applyContainmentLocks(nodeId) {
         var map = draftSelections[String(nodeId)];
         if (!map) return;
         var keys = Object.keys(map);
+        var wasLocked = {};
         keys.forEach(function (k) {
+            wasLocked[k] = !!map[k].locked_by_parent;
             map[k].locked_by_parent = false;
             map[k].locked_by_key = '';
         });
@@ -572,6 +572,9 @@
                 child.locked_by_parent = true;
                 child.locked_by_key = locker;
                 child.checked = true;
+            } else if (wasLocked[childKey]) {
+                // 父取消勾选：解除「随父路径」并同步取消勾选
+                child.checked = false;
             }
         });
     }
@@ -818,19 +821,6 @@
             sysCount + ' 台 systemctl 启动 / ' + binCount + ' 台二进制启动' +
             '</div></div>';
 
-        var pkgNote = document.getElementById('confirmPackageNote');
-        if (pkgNote) {
-            pkgNote.textContent = pkgCount
-                ? '包安装节点将通过 yum/dnf/apt remove 卸载，不直接删除安装目录；仍可清理下方勾选的发布备份/工作目录等。'
-                : '';
-        }
-        var noteEl = document.getElementById('confirmSystemdNote');
-        if (noteEl) {
-            noteEl.textContent = sysCount
-                ? 'systemctl 托管（源码安装）节点将 disable 并删除 /etc/systemd/system 下可管的 nginx.service；发行版 unit 由包卸载处理或仅 disable。'
-                : '';
-        }
-
         document.getElementById('confirmSummary').innerHTML = previewNodes.map(function (n) {
             var map = draftSelections[String(n.id)] || {};
             var lis = Object.keys(map).filter(function (k) { return map[k].checked; }).map(function (k) {
@@ -934,6 +924,7 @@
 
     /** 创建任务前先展示节点骨架，避免右栏空白等待 */
     function showCreatingSkeleton() {
+        expandedProgressIds = {};
         showProgressPanel('', null);
         document.getElementById('batchNumberLabel').innerHTML = '批次 <code>创建中…</code>';
         document.getElementById('progressPercent').textContent = '0%';
@@ -954,6 +945,7 @@
 
     /** 创建失败时恢复右栏占位 */
     function resetProgressPanel() {
+        expandedProgressIds = {};
         if (pollTimer) {
             clearInterval(pollTimer);
             pollTimer = null;
@@ -1012,20 +1004,122 @@
         return html;
     }
 
+    /** 收集当前已展开的卸载进度块 task-id */
+    function getExpandedUninstallTaskIds() {
+        var ids = [];
+        document.querySelectorAll('#uninstallSteps .node-progress-block').forEach(function (block) {
+            var body = block.querySelector('.node-progress-body');
+            if (body && !body.classList.contains('d-none')) {
+                ids.push(String(block.getAttribute('data-task-id') || ''));
+            }
+        });
+        return ids.filter(Boolean);
+    }
+
+    /** 同步内存中的展开态（点击折叠后立即写入，避免轮询抢先读 DOM 丢失） */
+    function syncExpandedProgressFromDom() {
+        expandedProgressIds = {};
+        getExpandedUninstallTaskIds().forEach(function (id) {
+            expandedProgressIds[id] = true;
+        });
+    }
+
+    /** 更新节点块头状态徽标与进度百分比 */
+    function updateProgressHeader(block, t) {
+        var badge = block.querySelector('.node-progress-header .badge');
+        var pctEl = block.querySelector('.node-progress-pct');
+        var badgeCls = 'bg-secondary';
+        if (t.status === 'success') badgeCls = 'bg-success';
+        else if (t.status === 'failed' || t.status === 'cancelled') badgeCls = 'bg-danger';
+        else if (t.status !== 'pending') badgeCls = 'bg-primary';
+        if (badge) {
+            badge.className = 'badge ' + badgeCls;
+            badge.textContent = t.status_display || t.status || '';
+        }
+        if (pctEl) pctEl.textContent = (t.progress || 0) + '%';
+    }
+
+    /** 更新步骤区与日志链（保留展开态，日志链接尽量原地改 href） */
+    function updateProgressBody(block, t) {
+        var body = block.querySelector('.node-progress-body');
+        if (!body) return;
+        var stepsWrap = body.querySelector('.uninstall-steps-wrap');
+        var logA = body.querySelector('a.uninstall-log-link');
+        var logHref = t.log_url || '';
+        if (!stepsWrap || !logA) {
+            body.innerHTML =
+                '<div class="uninstall-steps-wrap">' + buildStepHtml(t) + '</div>' +
+                '<a class="small uninstall-log-link' + (logHref ? '' : ' d-none') + '" href="' +
+                (logHref ? logHref : '#') + '" target="_blank" rel="noopener">查看完整日志</a>';
+            logA = body.querySelector('a.uninstall-log-link');
+            if (logA) {
+                logA.addEventListener('click', function (e) { e.stopPropagation(); });
+            }
+            return;
+        }
+        stepsWrap.innerHTML = buildStepHtml(t);
+        if (logHref) {
+            logA.href = logHref;
+            logA.classList.remove('d-none');
+        } else {
+            logA.classList.add('d-none');
+            logA.removeAttribute('href');
+        }
+    }
+
     function renderBatchProgress(tasks) {
         var container = document.getElementById('uninstallSteps');
-        var prevExpanded = {};
-        container.querySelectorAll('.node-progress-block').forEach(function (el) {
+        var list = tasks || [];
+        var prevBlocks = Array.prototype.slice.call(
+            container.querySelectorAll('.node-progress-block')
+        );
+        var existingById = {};
+        prevBlocks.forEach(function (el) {
             var id = el.getAttribute('data-task-id');
-            var body = el.querySelector('.node-progress-body');
-            if (id && body && !body.classList.contains('d-none')) prevExpanded[id] = true;
+            if (id) existingById[id] = el;
         });
-        if (!Object.keys(prevExpanded).length) prevExpanded = expandedProgressIds;
+        var newIds = list.map(function (t) {
+            return String(t.task_id != null ? t.task_id : t.id);
+        });
+        var sameSet = newIds.length > 0 &&
+            newIds.length === prevBlocks.length &&
+            newIds.every(function (id) { return !!existingById[id]; });
+
+        // 任务集合未变：原地刷新，避免整表重建冲掉展开与点击中的日志链
+        if (sameSet) {
+            list.forEach(function (t) {
+                var tid = String(t.task_id != null ? t.task_id : t.id);
+                var block = existingById[tid];
+                if (!block) return;
+                updateProgressHeader(block, t);
+                updateProgressBody(block, t);
+            });
+            syncExpandedProgressFromDom();
+            return;
+        }
+
+        var expanded = getExpandedUninstallTaskIds();
+        Object.keys(expandedProgressIds).forEach(function (id) {
+            if (expandedProgressIds[id] && expanded.indexOf(id) < 0) expanded.push(id);
+        });
+        var expandedIdx = {};
+        prevBlocks.forEach(function (el, idx) {
+            var body = el.querySelector('.node-progress-body');
+            if (body && !body.classList.contains('d-none')) expandedIdx[idx] = true;
+        });
+        var hadBlocks = prevBlocks.length > 0;
 
         var html = '';
-        (tasks || []).forEach(function (t, idx) {
-            var tid = String(t.task_id || t.id);
-            var open = (prevExpanded[tid] || (idx === 0 && !Object.keys(prevExpanded).length)) ? '' : ' d-none';
+        list.forEach(function (t, idx) {
+            var tid = String(t.task_id != null ? t.task_id : t.id);
+            var open;
+            if (!hadBlocks) {
+                open = idx === 0 ? '' : ' d-none';
+            } else if (expanded.indexOf(tid) >= 0 || expandedIdx[idx]) {
+                open = '';
+            } else {
+                open = ' d-none';
+            }
             var badgeCls = 'bg-secondary';
             if (t.status === 'success') badgeCls = 'bg-success';
             else if (t.status === 'failed' || t.status === 'cancelled') badgeCls = 'bg-danger';
@@ -1036,26 +1130,35 @@
                 '<div class="node-progress-header">' +
                 '<span>' + escapeHtml(t.hostname) +
                 ' <small class="text-muted">(' + escapeHtml(t.ip) + ')</small></span>' +
-                '<span><span class="badge ' + badgeCls + '">' + escapeHtml(t.status_display || t.status) +
-                '</span> ' + (t.progress || 0) + '% <i class="bi bi-chevron-down"></i></span></div>' +
+                '<span><span class="badge ' + badgeCls + '">' +
+                escapeHtml(t.status_display || t.status) +
+                '</span> <span class="node-progress-pct">' + (t.progress || 0) +
+                '%</span> <i class="bi bi-chevron-down"></i></span></div>' +
                 '<div class="node-progress-body' + open + '">' +
-                buildStepHtml(t) +
-                (logHref ? '<a class="small" href="' + logHref + '" target="_blank">查看完整日志</a>' : '') +
+                '<div class="uninstall-steps-wrap">' + buildStepHtml(t) + '</div>' +
+                '<a class="small uninstall-log-link' + (logHref ? '' : ' d-none') + '" href="' +
+                (logHref ? logHref : '#') +
+                '" target="_blank" rel="noopener">查看完整日志</a>' +
                 '</div></div>';
         });
         container.innerHTML = html || '<div class="text-muted small">等待进度...</div>';
         container.querySelectorAll('.node-progress-header').forEach(function (hdr) {
             hdr.addEventListener('click', function () {
-                var body = hdr.parentElement.querySelector('.node-progress-body');
-                if (body) body.classList.toggle('d-none');
+                var block = hdr.parentElement;
+                var body = block.querySelector('.node-progress-body');
+                var id = block.getAttribute('data-task-id');
+                if (!body) return;
+                body.classList.toggle('d-none');
+                if (id) {
+                    if (body.classList.contains('d-none')) delete expandedProgressIds[id];
+                    else expandedProgressIds[id] = true;
+                }
             });
         });
-        expandedProgressIds = {};
-        container.querySelectorAll('.node-progress-block').forEach(function (el) {
-            var id = el.getAttribute('data-task-id');
-            var body = el.querySelector('.node-progress-body');
-            if (id && body && !body.classList.contains('d-none')) expandedProgressIds[id] = true;
+        container.querySelectorAll('a.uninstall-log-link').forEach(function (a) {
+            a.addEventListener('click', function (e) { e.stopPropagation(); });
         });
+        syncExpandedProgressFromDom();
     }
 
     function startBatchPolling(batch) {
