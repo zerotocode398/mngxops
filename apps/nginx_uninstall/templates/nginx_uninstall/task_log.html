@@ -100,13 +100,6 @@
                         </div>
                     </div>
                 </div>
-                {% if task.error_message %}
-                <div class="alert alert-danger small mb-0 mt-2" id="taskErrorAlert">
-                    {{ task.error_message }}
-                </div>
-                {% else %}
-                <div class="alert alert-danger small mb-0 mt-2 d-none" id="taskErrorAlert"></div>
-                {% endif %}
             </div>
         </div>
 
@@ -188,14 +181,6 @@
         }
         var stepEl = document.getElementById('taskCurrentStep');
         if (stepEl) stepEl.textContent = data.current_step || '-';
-        var errEl = document.getElementById('taskErrorAlert');
-        if (errEl) {
-            var err = String(data.error_message || '').trim();
-            if (err) {
-                errEl.textContent = err;
-                errEl.classList.remove('d-none');
-            }
-        }
         var logEl = document.getElementById('uninstallLogBody');
         if (logEl) {
             var text = String(data.log_output || '').replace(/^\s+|\s+$/g, '');

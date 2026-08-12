@@ -327,7 +327,7 @@ def _setting_path_entries(node, work_dir):
             "path": backup_path,
             "source": "系统设置",
             "required": False,
-            "checked": True,
+            "checked": False,
             "editable": False,
             "kind": "dir",
         },
@@ -545,7 +545,7 @@ def _parse_options(raw):
             "kind": "file" if kind == "file" else "dir",
         })
     return {
-        "remove_backup": bool(data.get("remove_backup", True)),
+        "remove_backup": bool(data.get("remove_backup", False)),
         "remove_workdir": bool(data.get("remove_workdir", False)),
         "remove_modules": bool(data.get("remove_modules", False)),
         "stop_if_running": bool(data.get("stop_if_running", True)),
@@ -615,11 +615,11 @@ def preview_nodes(node_ids):
                         package_mgr = pkg_info.get("mgr") or ""
                         package_name = pkg_info.get("package") or ""
                         if install_origin == "package":
-                            # 包安装：-V 路径仅展示，不参与直接 rm
+                            # 包安装：-V 路径锁定勾选展示，实际由包管理器卸载（不 rm）
                             for p in paths:
                                 if p.get("source") == "nginx -V":
-                                    p["checked"] = False
-                                    p["required"] = False
+                                    p["checked"] = True
+                                    p["required"] = True
                                     p["editable"] = False
                                     p["package_owned"] = True
                         mode, detail = detect_nginx_manage_mode(
@@ -685,7 +685,7 @@ def preview_nodes(node_ids):
         "success": True,
         "nodes": items,
         "defaults": {
-            "remove_backup": True,
+            "remove_backup": False,
             "remove_workdir": False,
             "remove_modules": False,
             "work_dir": work_dir,
@@ -763,7 +763,7 @@ def _options_from_selected_paths(item, node, stop_if_running, batch_work_dir):
         (item.get("prefix") or "").strip()
     ) or resolve_prefix_for_node(node)[0]
     opts = {
-        "remove_backup": bool(item.get("remove_backup", True)),
+        "remove_backup": bool(item.get("remove_backup", False)),
         "remove_workdir": bool(item.get("remove_workdir", False)),
         "remove_modules": bool(item.get("remove_modules", False)),
         "stop_if_running": stop_if_running,
@@ -833,27 +833,14 @@ def create_uninstall_batch_from_data(user, data):
             item, node, stop_if_running, batch_work_dir
         )
 
-        # 执行前再探测包归属（权威）
-        pkg_info = {"origin": "source", "mgr": "", "package": ""}
-        try:
-            with SSHClient(
-                node.ip, node.port, node.credential.username, **_auth_kwargs(node.credential)
-            ) as ssh:
-                conn = getattr(ssh, "_connect_result", None)
-                if isinstance(conn, tuple) and conn[0]:
-                    pkg_info = detect_nginx_package_origin(
-                        ssh, nginx_path=node.nginx_path or ""
-                    )
-        except Exception:
-            logger.exception("探测节点 %s 包归属失败", node.id)
-
-        is_pkg = (
-            (pkg_info.get("origin") == "package")
-            and bool(pkg_info.get("package"))
-        )
+        # 复用预览包归属（create 不做同步 SSH；执行线程再权威探测）
+        origin = str(item.get("install_origin") or "").strip().lower()
+        pkg_name = str(item.get("package_name") or "").strip()
+        pkg_mgr = str(item.get("package_mgr") or "").strip()
+        is_pkg = origin == "package" and bool(pkg_name)
         node_opts["install_origin"] = "package" if is_pkg else "source"
-        node_opts["package_mgr"] = pkg_info.get("mgr") or ""
-        node_opts["package_name"] = pkg_info.get("package") or ""
+        node_opts["package_mgr"] = pkg_mgr if is_pkg else ""
+        node_opts["package_name"] = pkg_name if is_pkg else ""
 
         if is_pkg:
             # 包路径不 rm 安装树；忽略 -V 额外路径勾选
@@ -1147,7 +1134,8 @@ def _run_one_uninstall(task, stop_if_running):
                 log_fn=log,
             )
             if not ok:
-                return f"包管理器卸载失败: {msg}"
+                # 原样返回远程输出，由批次写入完整执行日志
+                return (msg or "").strip() or "包管理器卸载失败"
             log(msg or "包管理器卸载完成")
         else:
             _set_task_status(task, "removing_prefix", progress=45, step="删除安装目录")
@@ -1293,6 +1281,8 @@ def _run_uninstall_batch(task_center_id, uninstall_task_ids):
                 err = _run_one_uninstall(task, stop_if_running=stop_if_running)
                 if err:
                     fail_count += 1
+                    # 失败原文写入完整执行日志（返回什么记什么）
+                    _append_log(task, err)
                     _set_task_status(
                         task, "failed", progress=100, step="", error=err,
                     )
@@ -1315,12 +1305,14 @@ def _run_uninstall_batch(task_center_id, uninstall_task_ids):
             except Exception as exc:
                 logger.exception("Nginx 卸载失败 node=%s", node.id)
                 fail_count += 1
+                err_text = str(exc)
+                _append_log(task, err_text)
                 _set_task_status(
-                    task, "failed", progress=100, step="", error=str(exc),
+                    task, "failed", progress=100, step="", error=err_text,
                 )
                 task.finished_at = timezone.now()
                 task.save(update_fields=["finished_at", "updated_at"])
-                node_blocks.append(item_failed("Nginx 卸载", str(exc)))
+                node_blocks.append(item_failed("Nginx 卸载", err_text))
 
             done += 1
             _set_current_step(task_center_id, hostname, None)

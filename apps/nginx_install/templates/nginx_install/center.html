@@ -1182,8 +1182,8 @@
             renderSummaryInfoRow('监听端口', String(getListenPort())) +
             renderSummaryInfoRow(
                 '启动管理',
-                '优先 systemd（nginx.service，开机自启；User/Group 取自 --user/--group）。' +
-                '若 SSH 用户无法管理系统 unit，则改用二进制启动。'
+                '优先注册 nginx.service 并以 ' + (getNginxUser() || '-') +
+                ' 用户开机自启；若无法系统管理则改用二进制启动。'
             ) +
             '</div>' +
             (hasNonRoot
@@ -1734,9 +1734,11 @@
                     ? '<p class="mb-2">等共 ' + nonRoot.length + ' 台</p>'
                     : '');
         } else {
+            var nginxRunUser = getNginxUser() || '-';
             manageLines =
-                '<p class="mb-2">将优先注册 <code>nginx.service</code> 并开机自启（User/Group 取自 --user/--group）；' +
-                '若无法管理系统 unit 则改用二进制启动。</p>';
+                '<p class="mb-2">将优先注册 <code>nginx.service</code> 并以 <code>' +
+                escapeHtml(nginxRunUser) +
+                '</code> 用户开机自启；若无法系统管理则改用二进制启动。</p>';
         }
         var body =
             '<p>将对以下节点执行全新安装：</p><p><code>' + escapeHtml(names) + '</code></p>' +

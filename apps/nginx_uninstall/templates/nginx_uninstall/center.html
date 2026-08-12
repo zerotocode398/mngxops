@@ -530,8 +530,9 @@
                     key: p.key,
                     label: p.label || p.key,
                     path: p.path || '',
-                    checked: owned ? false : (!!p.checked || !!p.required),
-                    required: owned ? false : !!p.required,
+                    // 包占用路径：锁定勾选；其余按探测结果
+                    checked: owned ? true : (!!p.checked || !!p.required),
+                    required: owned ? true : !!p.required,
                     editable: owned ? false : !!p.editable,
                     kind: p.kind || 'dir',
                     source: p.source || '',
@@ -587,11 +588,12 @@
                 '<div class="path-main">' +
                 '<label class="mb-0" for="' + id + '"><span class="path-label">' +
                 escapeHtml(p.label) + '</span>' +
-                (p.required ? ' <span class="badge bg-danger path-badge">必选</span>' : '') +
+                (p.required && !owned ? ' <span class="badge bg-danger path-badge">必选</span>' : '') +
+                (owned ? ' <span class="badge bg-secondary path-badge">锁定</span>' : '') +
                 ownedBadge +
                 '</label>' + valueHtml + '</div>' + sourceBadge(p.source) + '</div>';
         }).join('') + (isPkg
-            ? '<p class="small text-muted mb-0 mt-2 px-1">该节点为包安装，将通过 yum/dnf/apt remove 卸载，不直接删除上表 nginx -V 路径。</p>'
+            ? '<p class="small text-muted mb-0 mt-2 px-1">包安装：下列编译参数路径已锁定勾选，实际由 <code>yum/dnf/apt remove</code> 卸载，不会对路径执行 rm。</p>'
             : '');
     }
 
@@ -612,9 +614,9 @@
             }
             var modeBadge = '';
             if (n.manage_mode === 'systemctl') {
-                modeBadge = ' <span class="badge bg-info text-dark">systemctl</span>';
+                modeBadge = ' <span class="badge bg-info text-dark">systemctl 启动</span>';
             } else if (n.manage_mode === 'binary') {
-                modeBadge = ' <span class="badge bg-secondary">二进制</span>';
+                modeBadge = ' <span class="badge bg-secondary">二进制启动</span>';
             }
             var originBadge = '';
             if (n.install_origin === 'package') {
@@ -715,7 +717,7 @@
             pkgCount + ' 台包安装 / ' + srcCount + ' 台源码安装' +
             '</div></div>' +
             '<div class="kv-info-row"><div class="kv-info-label">托管</div><div>' +
-            sysCount + ' 台 systemctl / ' + binCount + ' 台二进制' +
+            sysCount + ' 台 systemctl 启动 / ' + binCount + ' 台二进制启动' +
             '</div></div>';
 
         var pkgNote = document.getElementById('confirmPackageNote');
@@ -741,9 +743,9 @@
             var run = n.running ? ' <span class="badge bg-warning text-dark">运行中</span>' : '';
             var mode = '';
             if (n.manage_mode === 'systemctl') {
-                mode = ' <span class="badge bg-info text-dark">systemctl</span>';
+                mode = ' <span class="badge bg-info text-dark">systemctl 启动</span>';
             } else if (n.manage_mode === 'binary') {
-                mode = ' <span class="badge bg-secondary">二进制</span>';
+                mode = ' <span class="badge bg-secondary">二进制启动</span>';
             }
             var origin = '';
             if (n.install_origin === 'package') {
@@ -803,7 +805,14 @@
                     kind: p.kind || 'dir'
                 });
             });
-            nodes.push({ id: n.id, prefix: prefix, selected_paths: selectedPaths });
+            nodes.push({
+                id: n.id,
+                prefix: prefix,
+                selected_paths: selectedPaths,
+                install_origin: n.install_origin || '',
+                package_mgr: n.package_mgr || '',
+                package_name: n.package_name || ''
+            });
         });
         return { nodes: nodes, stop_if_running: !!stopIfRunning };
     }
@@ -823,6 +832,41 @@
         bar.style.width = '0%';
         var cancelBtn = document.getElementById('btnCancelUninstall');
         if (cancelBtn) cancelBtn.classList.remove('d-none');
+    }
+
+    /** 创建任务前先展示节点骨架，避免右栏空白等待 */
+    function showCreatingSkeleton() {
+        showProgressPanel('', null);
+        document.getElementById('batchNumberLabel').innerHTML = '批次 <code>创建中…</code>';
+        document.getElementById('progressPercent').textContent = '0%';
+        var skeleton = previewNodes.filter(function (n) { return n.eligible; }).map(function (n, idx) {
+            return {
+                task_id: 'creating-' + n.id,
+                id: 'creating-' + n.id,
+                hostname: n.hostname,
+                ip: n.ip,
+                status: 'pending',
+                status_display: idx === 0 ? '创建中' : '等待中',
+                progress: 0,
+                log_url: ''
+            };
+        });
+        renderBatchProgress(skeleton);
+    }
+
+    /** 创建失败时恢复右栏占位 */
+    function resetProgressPanel() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+        currentBatch = '';
+        currentTaskCenterId = null;
+        document.getElementById('progressLive').classList.add('d-none');
+        document.getElementById('progressPlaceholder').classList.remove('d-none');
+        document.getElementById('uninstallSteps').innerHTML = '';
+        var cancelBtn = document.getElementById('btnCancelUninstall');
+        if (cancelBtn) cancelBtn.classList.add('d-none');
     }
 
     function truncateErrorLines(msg, maxLines) {
@@ -951,6 +995,7 @@
     }
 
     function doCreate(payload) {
+        showCreatingSkeleton();
         fetch(CREATE_URL, {
             method: 'POST',
             headers: {
@@ -963,6 +1008,7 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (!data.success) {
+                    resetProgressPanel();
                     showAlert('卸载失败', data.message || '创建任务失败');
                     return;
                 }
@@ -970,6 +1016,7 @@
                 startBatchPolling(data.source_batch || '');
             })
             .catch(function () {
+                resetProgressPanel();
                 showAlert('错误', '请求失败，请稍后重试');
             });
     }
@@ -1010,9 +1057,9 @@
         var parts = [];
         if (running.length) {
             parts.push(
-                '<p>以下节点 Nginx 仍在运行：<code>' +
+                '<p>以下节点 Nginx 仍在运行：' +
                 escapeHtml(running.map(function (n) { return n.hostname; }).join('、')) +
-                '</code>。<br>将先<strong>停止 Nginx</strong>再继续卸载。</p>'
+                '，将先停止 Nginx再继续卸载。</p>'
             );
         }
         if (pkgNodes.length) {

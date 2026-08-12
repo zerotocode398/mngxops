@@ -42,7 +42,7 @@
 ### 向导步骤
 
 1. **选择目标**：仅 `online` + 启用凭证 + `nginx_available`；「未检测到」不可选。  
-2. **探测路径**：节点可折叠；展示运行态、**安装来源（包/源码）**、托管方式；包安装时 `-V` 路径只读不勾选 rm。  
+2. **探测路径**：节点可折叠；展示运行态、**安装来源（包/源码）**、启动方式（`systemctl 启动` / `二进制启动`）；包安装时 `-V` 路径锁定勾选，由包管理器卸载。  
 3. **确认执行**：摘要（安装来源 + 托管）+ 确认勾选 + 开始卸载；运行中 / 包安装 / 非 root+systemctl 可合并 `showConfirm`。
 
 原型：[`docs/prototypes/nginx-uninstall-wizard-prototype.html`](../docs/prototypes/nginx-uninstall-wizard-prototype.html)。
@@ -53,8 +53,8 @@
 
 | 来源 | 项 | 默认 |
 |------|----|------|
-| nginx -V | `--prefix`（源码必选可编辑）及 `*-path` | 源码：prefix/sbin/modules/conf/pid 默认勾选；**包安装：不勾选、不 rm** |
-| 系统设置 | 发布备份 `{backup_dir}/{hostname}/` | 默认勾选（包/源码均可） |
+| nginx -V | `--prefix`（源码必选可编辑）及 `*-path` | 源码：prefix/sbin/modules/conf/pid 默认勾选；**包安装：锁定勾选展示，由包管理器卸载，不 rm** |
+| 系统设置 | 发布备份 `{backup_dir}/{hostname}/` | 默认不勾（包/源码均可） |
 | 系统设置 | 编译工作目录 | 默认不勾 |
 | 系统设置 | `{work_dir}/nginx-modules` | 默认不勾 |
 

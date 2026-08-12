@@ -1281,7 +1281,10 @@ function doUpgradeNodeSearch() {
             else if (node.status === 'offline') statusBadge = '<span class="badge bg-danger">离线</span>';
             else statusBadge = '<span class="badge bg-secondary">未知</span>';
             if (!node.has_credential) statusBadge += ' <span class="badge bg-warning text-dark">无凭证</span>';
-            if (node.status === 'online' && node.nginx_available !== true) {
+            if (node.status === 'online' && node.nginx_available === true) {
+                statusBadge += ' <span class="badge bg-primary">' +
+                    escapeHtml(formatNginxVer(node.nginx_version) || '已安装') + '</span>';
+            } else if (node.status === 'online' && node.nginx_available !== true) {
                 statusBadge += ' <span class="badge bg-warning text-dark" title="请使用运维工具 → Nginx 安装">' +
                     escapeHtml(node.nginx_status_label || '未检测到') + '</span>';
             }
