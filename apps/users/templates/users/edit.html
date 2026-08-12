@@ -188,16 +188,6 @@
                             </div>
                             {% for resource in permission_matrix.resources %}
                             <div class="perm-matrix-row-header" data-resource="{{ resource.key }}">
-                                {% if resource.key == "nodes" %}<i class="bi bi-hdd-network"></i>
-                                {% elif resource.key == "credentials" %}<i class="bi bi-key"></i>
-                                {% elif resource.key == "configs" %}<i class="bi bi-file-earmark-code"></i>
-                                {% elif resource.key == "releases" %}<i class="bi bi-rocket-takeoff"></i>
-                                {% elif resource.key == "users" %}<i class="bi bi-people"></i>
-                                {% elif resource.key == "roles" %}<i class="bi bi-person-badge"></i>
-                                {% elif resource.key == "teams" %}<i class="bi bi-people-fill"></i>
-                                {% elif resource.key == "audit" %}<i class="bi bi-journal-text"></i>
-                                {% elif resource.key == "upgrade" %}<i class="bi bi-arrow-up-circle"></i>
-                                {% elif resource.key == "settings" %}<i class="bi bi-gear"></i>{% endif %}
                                 {{ resource.label }}
                             </div>
                             {% for action in resource.actions %}
