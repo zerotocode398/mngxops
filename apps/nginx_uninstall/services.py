@@ -4,6 +4,7 @@ import logging
 import re
 import shlex
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.utils import timezone
 
@@ -138,28 +139,8 @@ def resolve_prefix_for_node(node):
     except Exception:
         logger.exception("解析节点 %s nginx -V 失败", getattr(node, "id", None))
 
-    # 2) Node.nginx_path 推导
-    derived = derive_prefix_from_nginx_path(node.nginx_path or "")
-    if derived and not is_dangerous_path(derived):
-        return derived, "nginx_path", ""
-
-    # 3) 最近成功安装任务
-    try:
-        from apps.nginx_install.models import NginxInstallTask
-
-        last = (
-            NginxInstallTask.objects.filter(node_id=node.id, status="success")
-            .order_by("-finished_at", "-id")
-            .first()
-        )
-        if last:
-            prefix = normalize_remote_path(last.target_prefix or "")
-            if prefix and not is_dangerous_path(prefix):
-                return prefix, "install_task", ""
-    except Exception:
-        logger.exception("读取节点 %s 安装历史失败", getattr(node, "id", None))
-
-    return "", "", "无法解析安装路径，请手工填写合法 --prefix"
+    # 2–3) nginx_path / 安装历史
+    return _resolve_prefix_without_v(node)
 
 
 def backup_subdir_for_node(node):
@@ -354,29 +335,104 @@ def _setting_path_entries(node, work_dir):
     ]
 
 
-def _fetch_v_and_prefix(node):
-    """探测 nginx -V 并解析 prefix；返回 (prefix, source, err, parsed, paths_from_v)"""
-    parsed = None
-    try:
-        from apps.upgrade.services import fetch_nginx_v_from_node
+def is_under_path(path, parent):
+    """判断 path 是否等于或位于 parent 目录树内（与执行侧去重口径一致）"""
+    p = normalize_remote_path(path)
+    pref = normalize_remote_path(parent)
+    if not p or not pref:
+        return False
+    if p == pref:
+        return True
+    return p.startswith(pref.rstrip("/") + "/")
 
-        ok, result = fetch_nginx_v_from_node(node)
-        if ok and isinstance(result, dict):
-            parsed = result
+
+def _resolve_prefix_without_v(node):
+    """无可用 -V 结果时：由 nginx_path / 最近成功安装兜底。
+
+    Returns:
+        (prefix, source_label, error_message)
+    """
+    derived = derive_prefix_from_nginx_path(node.nginx_path or "")
+    if derived and not is_dangerous_path(derived):
+        return derived, "nginx_path", ""
+    try:
+        from apps.nginx_install.models import NginxInstallTask
+
+        last = (
+            NginxInstallTask.objects.filter(node_id=node.id, status="success")
+            .order_by("-finished_at", "-id")
+            .first()
+        )
+        if last:
+            prefix = normalize_remote_path(last.target_prefix or "")
+            if prefix and not is_dangerous_path(prefix):
+                return prefix, "install_task", ""
+    except Exception:
+        logger.exception("读取节点 %s 安装历史失败", getattr(node, "id", None))
+    return "", "", "无法解析安装路径，请手工填写合法 --prefix"
+
+
+def _paths_from_v_raw(output):
+    """从 nginx -V 原始输出解析结构化结果与路径条目。
+
+    Returns:
+        (parsed_or_None, paths_list, error_message)
+    """
+    from apps.upgrade.services import parse_nginx_v_output
+
+    parsed = parse_nginx_v_output(output or "")
+    if not parsed.get("configure_opts"):
+        return None, [], f"无法解析 nginx -V 输出: {output}"
+    return parsed, extract_path_entries_from_nginx_v(parsed), ""
+
+
+def _fetch_v_and_prefix(node, ssh=None):
+    """探测 nginx -V 并解析 prefix；ssh 给定时复用连接。
+
+    Returns:
+        (prefix, source, err, parsed, paths_from_v)
+    """
+    parsed = None
+    paths_v = []
+    err = ""
+    try:
+        if ssh is not None:
+            nginx_bin = node.nginx_path or "nginx"
+            ok, output = ssh.execute_command(f"{nginx_bin} -V 2>&1")
+            if not ok:
+                err = f"执行 nginx -V 失败: {output}"
+            else:
+                parsed, paths_v, parse_err = _paths_from_v_raw(output)
+                if parse_err and not parsed:
+                    err = parse_err
+        else:
+            from apps.upgrade.services import fetch_nginx_v_from_node
+
+            ok, result = fetch_nginx_v_from_node(node)
+            if ok and isinstance(result, dict):
+                parsed = result
+                paths_v = extract_path_entries_from_nginx_v(parsed)
+            elif not ok:
+                err = result if isinstance(result, str) else "探测 nginx -V 失败"
     except Exception:
         logger.exception("探测节点 %s nginx -V 失败", getattr(node, "id", None))
+        err = "探测 nginx -V 异常"
 
-    paths_v = extract_path_entries_from_nginx_v(parsed) if parsed else []
     prefix = ""
     source = ""
-    err = ""
     for e in paths_v:
         if e["key"] == "prefix":
             prefix = e["path"]
             source = "nginx -V"
             break
     if not prefix:
-        prefix, source, err = resolve_prefix_for_node(node)
+        # 已有 -V 连接时不再二次 SSH：仅 nginx_path / 安装历史兜底
+        if ssh is not None:
+            prefix, source, fb_err = _resolve_prefix_without_v(node)
+        else:
+            prefix, source, fb_err = resolve_prefix_for_node(node)
+        if not err:
+            err = fb_err
         if prefix and not any(e["key"] == "prefix" for e in paths_v):
             paths_v.insert(0, {
                 "key": "prefix",
@@ -554,8 +610,144 @@ def _parse_options(raw):
     }
 
 
+def _preview_one_node(node, work_dir):
+    """探测单节点卸载预览（门禁 / -V / 包归属 / 托管 / 运行态）。
+
+    线程内仅使用主线程已 select_related 的 node 字段，避免跨线程懒加载。
+    """
+    gate = uninstall_gate_message(node)
+    prefix, source, err = ("", "", "")
+    paths = []
+    running = False
+    running_error = ""
+    manage_mode = "unknown"
+    manage_unit = ""
+    can_manage = False
+    cred_username = ""
+    install_origin = "unknown"
+    package_mgr = ""
+    package_name = ""
+    if node.credential_id and node.credential:
+        cred_username = node.credential.username or ""
+    if not gate:
+        cred = node.credential
+        try:
+            with SSHClient(
+                node.ip, node.port, cred.username, **_auth_kwargs(cred)
+            ) as ssh:
+                conn = getattr(ssh, "_connect_result", None)
+                if isinstance(conn, tuple) and not conn[0]:
+                    running_error = conn[1] or "SSH 连接失败"
+                    # 连接失败：本地兜底 prefix，不再二次 SSH
+                    prefix, source, err = _resolve_prefix_without_v(node)
+                    paths_v = []
+                    if prefix:
+                        paths_v = [{
+                            "key": "prefix",
+                            "label": "--prefix",
+                            "path": prefix,
+                            "source": source or "nginx_path",
+                            "required": True,
+                            "checked": True,
+                            "editable": True,
+                            "kind": "dir",
+                        }]
+                    paths = list(paths_v) + _setting_path_entries(node, work_dir)
+                else:
+                    # 同一 SSH：-V → 包归属 → 托管 → 运行态
+                    prefix, source, err, _parsed, paths_v = _fetch_v_and_prefix(
+                        node, ssh=ssh
+                    )
+                    paths = list(paths_v) + _setting_path_entries(node, work_dir)
+                    pkg_info = detect_nginx_package_origin(
+                        ssh, nginx_path=node.nginx_path or ""
+                    )
+                    install_origin = pkg_info.get("origin") or "source"
+                    package_mgr = pkg_info.get("mgr") or ""
+                    package_name = pkg_info.get("package") or ""
+                    if install_origin == "package":
+                        for p in paths:
+                            if p.get("source") == "nginx -V":
+                                p["checked"] = True
+                                p["required"] = True
+                                p["editable"] = False
+                                p["package_owned"] = True
+                    mode, detail = detect_nginx_manage_mode(
+                        node.ip,
+                        node.port,
+                        cred.username,
+                        client=ssh.client,
+                        **_auth_kwargs(cred),
+                    )
+                    manage_mode = mode or "binary"
+                    manage_unit = (detail or {}).get("unit") or ""
+                    ok_cap, _use_sudo, _reason = can_manage_systemd_unit(ssh)
+                    can_manage = bool(ok_cap)
+                    running = is_nginx_running(
+                        node.ip,
+                        node.port,
+                        cred.username,
+                        nginx_path=node.nginx_path or None,
+                        client=ssh.client,
+                        **_auth_kwargs(cred),
+                    )
+        except Exception as exc:
+            running_error = str(exc)
+            if not paths:
+                prefix, source, err = _resolve_prefix_without_v(node)
+                paths_v = []
+                if prefix:
+                    paths_v = [{
+                        "key": "prefix",
+                        "label": "--prefix",
+                        "path": prefix,
+                        "source": source or "nginx_path",
+                        "required": True,
+                        "checked": True,
+                        "editable": True,
+                        "kind": "dir",
+                    }]
+                paths = list(paths_v) + _setting_path_entries(node, work_dir)
+    else:
+        paths = _setting_path_entries(node, work_dir)
+
+    backup_path = backup_subdir_for_node(node)
+    if install_origin == "package" and package_name:
+        eligible = gate is None
+    else:
+        eligible = (
+            gate is None
+            and bool(prefix)
+            and not is_dangerous_path(prefix)
+        )
+    return {
+        "id": node.id,
+        "hostname": node.hostname,
+        "ip": node.ip,
+        "nginx_path": node.nginx_path or "",
+        "nginx_available": node.nginx_available,
+        "eligible": eligible,
+        "gate_message": gate or err or "",
+        "prefix": prefix,
+        "prefix_source": source,
+        "backup_path": backup_path,
+        "work_dir": work_dir,
+        "modules_dir": f"{work_dir.rstrip('/')}/nginx-modules" if work_dir else "",
+        "paths": paths,
+        "running": running,
+        "running_error": running_error,
+        "credential_username": cred_username,
+        "manage_mode": manage_mode,
+        "manage_unit": manage_unit,
+        "can_manage_systemd": can_manage,
+        "install_origin": install_origin,
+        "package_mgr": package_mgr,
+        "package_name": package_name,
+    }
+
+
 def preview_nodes(node_ids):
-    """预览选中节点的卸载路径与运行状态。
+    """预览选中节点的卸载路径与运行状态（并行，上限 batch_max_count）。
 
     Returns:
         dict: success / nodes / message
@@ -580,107 +772,59 @@ def preview_nodes(node_ids):
         return {"success": False, "message": "节点不存在"}
 
     work_dir = normalize_remote_path(_default_work_dir())
-    items = []
+    # 预取凭证密文，避免工作线程内触发懒加载/解密竞态
     for node in nodes:
-        gate = uninstall_gate_message(node)
-        prefix, source, err = ("", "", "")
-        paths = []
-        running = False
-        running_error = ""
-        manage_mode = "unknown"
-        manage_unit = ""
-        can_manage = False
-        cred_username = ""
-        install_origin = "unknown"
-        package_mgr = ""
-        package_name = ""
-        if node.credential_id and node.credential:
-            cred_username = node.credential.username or ""
-        if not gate:
-            prefix, source, err, _parsed, paths_v = _fetch_v_and_prefix(node)
-            paths = list(paths_v) + _setting_path_entries(node, work_dir)
-            cred = node.credential
+        cred = node.credential
+        if cred:
             try:
-                with SSHClient(
-                    node.ip, node.port, cred.username, **_auth_kwargs(cred)
-                ) as ssh:
-                    conn = getattr(ssh, "_connect_result", None)
-                    if isinstance(conn, tuple) and not conn[0]:
-                        running_error = conn[1] or "SSH 连接失败"
-                    else:
-                        pkg_info = detect_nginx_package_origin(
-                            ssh, nginx_path=node.nginx_path or ""
-                        )
-                        install_origin = pkg_info.get("origin") or "source"
-                        package_mgr = pkg_info.get("mgr") or ""
-                        package_name = pkg_info.get("package") or ""
-                        if install_origin == "package":
-                            # 包安装：-V 路径锁定勾选展示，实际由包管理器卸载（不 rm）
-                            for p in paths:
-                                if p.get("source") == "nginx -V":
-                                    p["checked"] = True
-                                    p["required"] = True
-                                    p["editable"] = False
-                                    p["package_owned"] = True
-                        mode, detail = detect_nginx_manage_mode(
-                            node.ip,
-                            node.port,
-                            cred.username,
-                            client=ssh.client,
-                            **_auth_kwargs(cred),
-                        )
-                        manage_mode = mode or "binary"
-                        manage_unit = (detail or {}).get("unit") or ""
-                        ok_cap, _use_sudo, _reason = can_manage_systemd_unit(ssh)
-                        can_manage = bool(ok_cap)
-                        running = is_nginx_running(
-                            node.ip,
-                            node.port,
-                            cred.username,
-                            nginx_path=node.nginx_path or None,
-                            client=ssh.client,
-                            **_auth_kwargs(cred),
-                        )
+                _auth_kwargs(cred)
+            except Exception:
+                pass
+
+    workers = min(max_batch, max(1, len(nodes)))
+    by_id = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_preview_one_node, node, work_dir): node.id
+            for node in nodes
+        }
+        for future in as_completed(futures):
+            nid = futures[future]
+            try:
+                by_id[nid] = future.result()
             except Exception as exc:
-                running_error = str(exc)
-        else:
-            paths = _setting_path_entries(node, work_dir)
+                logger.exception("卸载预览线程异常 node=%s", nid)
+                node = next((n for n in nodes if n.id == nid), None)
+                by_id[nid] = {
+                    "id": nid,
+                    "hostname": getattr(node, "hostname", "") if node else "",
+                    "ip": getattr(node, "ip", "") if node else "",
+                    "nginx_path": (
+                        (getattr(node, "nginx_path", "") or "") if node else ""
+                    ),
+                    "nginx_available": getattr(node, "nginx_available", None) if node else None,
+                    "eligible": False,
+                    "gate_message": str(exc) or "预览失败",
+                    "prefix": "",
+                    "prefix_source": "",
+                    "backup_path": backup_subdir_for_node(node) if node else "",
+                    "work_dir": work_dir,
+                    "modules_dir": (
+                        f"{work_dir.rstrip('/')}/nginx-modules" if work_dir else ""
+                    ),
+                    "paths": _setting_path_entries(node, work_dir) if node else [],
+                    "running": False,
+                    "running_error": str(exc),
+                    "credential_username": "",
+                    "manage_mode": "unknown",
+                    "manage_unit": "",
+                    "can_manage_systemd": False,
+                    "install_origin": "unknown",
+                    "package_mgr": "",
+                    "package_name": "",
+                }
 
-        backup_path = backup_subdir_for_node(node)
-        if install_origin == "package" and package_name:
-            eligible = gate is None
-        else:
-            eligible = (
-                gate is None
-                and bool(prefix)
-                and not is_dangerous_path(prefix)
-            )
-        items.append({
-            "id": node.id,
-            "hostname": node.hostname,
-            "ip": node.ip,
-            "nginx_path": node.nginx_path or "",
-            "nginx_available": node.nginx_available,
-            "eligible": eligible,
-            "gate_message": gate or err or "",
-            "prefix": prefix,
-            "prefix_source": source,
-            "backup_path": backup_path,
-            "work_dir": work_dir,
-            "modules_dir": f"{work_dir.rstrip('/')}/nginx-modules" if work_dir else "",
-            "paths": paths,
-            "running": running,
-            "running_error": running_error,
-            "credential_username": cred_username,
-            "manage_mode": manage_mode,
-            "manage_unit": manage_unit,
-            "can_manage_systemd": can_manage,
-            "install_origin": install_origin,
-            "package_mgr": package_mgr,
-            "package_name": package_name,
-        })
-
-
+    items = [by_id[n.id] for n in nodes if n.id in by_id]
     return {
         "success": True,
         "nodes": items,
@@ -776,13 +920,7 @@ def _options_from_selected_paths(item, node, stop_if_running, batch_work_dir):
 
 def _under_prefix(path, prefix):
     """判断 path 是否等于或位于 prefix 目录树内"""
-    p = normalize_remote_path(path)
-    pref = normalize_remote_path(prefix)
-    if not p or not pref:
-        return False
-    if p == pref:
-        return True
-    return p.startswith(pref.rstrip("/") + "/")
+    return is_under_path(path, prefix)
 
 
 def create_uninstall_batch_from_data(user, data):

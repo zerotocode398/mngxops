@@ -14,7 +14,9 @@ from apps.nginx_uninstall.services import (
     extract_path_entries_from_nginx_v,
     is_dangerous_path,
     is_file_like_path,
+    is_under_path,
     normalize_remote_path,
+    preview_nodes,
     resolve_nginx_tree_path,
     uninstall_gate_message,
 )
@@ -184,6 +186,42 @@ class ExtractNginxVPathTests(SimpleTestCase):
         self.assertEqual(entries["--error-log-path"]["path"], "/var/log/nginx")
         self.assertEqual(entries["--pid-path"]["path"], "/run/nginx.pid")
 
+    def test_same_nginx_tree_deduped_to_prefix(self):
+        """全在同一 …/nginx 树下时收敛后同路径去重，仅留 --prefix"""
+        parsed = {
+            "prefix": "/opt/app/nginx",
+            "params": [
+                "--prefix=/opt/app/nginx",
+                "--conf-path=/opt/app/nginx/etc/nginx.conf",
+                "--error-log-path=/opt/app/nginx/log/error.log",
+                "--http-log-path=/opt/app/nginx/log/access.log",
+                "--pid-path=/opt/app/nginx/nginx.pid",
+                "--lock-path=/opt/app/nginx/nginx.lock",
+            ],
+        }
+        entries = extract_path_entries_from_nginx_v(parsed)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["key"], "prefix")
+        self.assertEqual(entries[0]["path"], "/opt/app/nginx")
+
+
+class IsUnderPathTests(SimpleTestCase):
+    """路径包含判定（探测勾选锁定与执行去重共用）"""
+
+    def test_child_under_parent(self):
+        """子路径位于父目录下"""
+        self.assertTrue(is_under_path("/opt/app/nginx", "/opt/app"))
+        self.assertTrue(is_under_path("/opt/app/nginx/etc", "/opt/app/nginx"))
+
+    def test_equal_is_under(self):
+        """相等视为在树内"""
+        self.assertTrue(is_under_path("/opt/app", "/opt/app"))
+
+    def test_sibling_not_under(self):
+        """兄弟或父相对子不算包含"""
+        self.assertFalse(is_under_path("/opt/app", "/opt/app/nginx"))
+        self.assertFalse(is_under_path("/var/log/nginx", "/etc/nginx"))
+
 
 class UninstallGateTests(TestCase):
     """卸载门禁：对齐升级，要求 Nginx 可用"""
@@ -315,3 +353,80 @@ class UninstallCreateOptionsTests(TestCase):
         })
         self.assertFalse(result.get("success"))
         self.assertIn("禁止删除路径", result.get("message", ""))
+
+
+class PreviewNodesParallelTests(TestCase):
+    """多节点预览并行且按 id 稳定排序"""
+
+    def setUp(self):
+        """准备两台可卸载节点"""
+        User = get_user_model()
+        self.user = User.objects.create_user(username="un_preview", password="x")
+        self.cred = Credential.objects.create(
+            name="un-cred-preview",
+            auth_type="password",
+            username="root",
+            password="secret",
+            is_enabled=True,
+            created_by=self.user,
+        )
+        self.n1 = Node.objects.create(
+            hostname="host-p1",
+            ip="10.0.1.1",
+            port=22,
+            status="online",
+            nginx_available=True,
+            nginx_path="/opt/app/sbin/nginx",
+            credential=self.cred,
+            created_by=self.user,
+        )
+        self.n2 = Node.objects.create(
+            hostname="host-p2",
+            ip="10.0.1.2",
+            port=22,
+            status="online",
+            nginx_available=True,
+            nginx_path="/opt/app/sbin/nginx",
+            credential=self.cred,
+            created_by=self.user,
+        )
+
+    @patch("apps.nginx_uninstall.services.batch_max_count", return_value=5)
+    @patch("apps.nginx_uninstall.services._preview_one_node")
+    def test_preview_order_matches_node_id(self, mock_one, _mock_batch):
+        """并行完成后按节点 id 升序返回"""
+
+        def _fake(node, work_dir):
+            return {
+                "id": node.id,
+                "hostname": node.hostname,
+                "ip": node.ip,
+                "nginx_path": node.nginx_path or "",
+                "nginx_available": True,
+                "eligible": True,
+                "gate_message": "",
+                "prefix": "/opt/app",
+                "prefix_source": "mock",
+                "backup_path": "/tmp/b",
+                "work_dir": work_dir,
+                "modules_dir": "",
+                "paths": [],
+                "running": False,
+                "running_error": "",
+                "credential_username": "root",
+                "manage_mode": "binary",
+                "manage_unit": "",
+                "can_manage_systemd": False,
+                "install_origin": "source",
+                "package_mgr": "",
+                "package_name": "",
+            }
+
+        mock_one.side_effect = _fake
+        # 故意反序传入
+        result = preview_nodes([self.n2.id, self.n1.id])
+        self.assertTrue(result.get("success"), result)
+        ids = [n["id"] for n in result["nodes"]]
+        self.assertEqual(ids, sorted(ids))
+        self.assertEqual(ids, [self.n1.id, self.n2.id])
+        self.assertEqual(mock_one.call_count, 2)

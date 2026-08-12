@@ -520,6 +520,62 @@
         return '<span class="badge bg-secondary path-badge">系统设置</span>';
     }
 
+    /** 规范化远程绝对路径（对齐后端 normalize_remote_path） */
+    function normalizeRemotePath(path) {
+        var p = (path || '').trim();
+        if (!p || p.charAt(0) !== '/') return '';
+        p = p.replace(/\/+/g, '/');
+        if (p.length > 1 && p.slice(-1) === '/') p = p.slice(0, -1);
+        return p;
+    }
+
+    /** 判断 path 是否等于或位于 parent 目录树内 */
+    function isUnderPath(path, parent) {
+        var p = normalizeRemotePath(path);
+        var pref = normalizeRemotePath(parent);
+        if (!p || !pref) return false;
+        if (p === pref) return true;
+        return p.indexOf(pref + '/') === 0;
+    }
+
+    /** 父路径勾选时锁定其下子路径并强制勾选 */
+    function applyContainmentLocks(nodeId) {
+        var map = draftSelections[String(nodeId)];
+        if (!map) return;
+        var keys = Object.keys(map);
+        keys.forEach(function (k) {
+            map[k].locked_by_parent = false;
+            map[k].locked_by_key = '';
+        });
+        keys.forEach(function (childKey) {
+            var child = map[childKey];
+            if (child.required || child.package_owned) return;
+            var childPath = normalizeRemotePath(child.path);
+            if (!childPath) return;
+            var locker = '';
+            var lockerLen = 0;
+            keys.forEach(function (parentKey) {
+                if (parentKey === childKey) return;
+                var parent = map[parentKey];
+                var parentChecked = !!(parent.checked || parent.required || parent.package_owned);
+                if (!parentChecked) return;
+                var parentPath = normalizeRemotePath(parent.path);
+                if (!parentPath || parentPath === childPath) return;
+                if (!isUnderPath(childPath, parentPath)) return;
+                // 取最外层（最短）已勾选父路径
+                if (!locker || parentPath.length < lockerLen) {
+                    locker = parentKey;
+                    lockerLen = parentPath.length;
+                }
+            });
+            if (locker) {
+                child.locked_by_parent = true;
+                child.locked_by_key = locker;
+                child.checked = true;
+            }
+        });
+    }
+
     function initDraftSelections(nodes) {
         draftSelections = {};
         (nodes || []).forEach(function (n) {
@@ -536,10 +592,13 @@
                     editable: owned ? false : !!p.editable,
                     kind: p.kind || 'dir',
                     source: p.source || '',
-                    package_owned: owned
+                    package_owned: owned,
+                    locked_by_parent: false,
+                    locked_by_key: ''
                 };
             });
             draftSelections[String(n.id)] = map;
+            applyContainmentLocks(n.id);
         });
     }
 
@@ -550,7 +609,10 @@
             block.querySelectorAll('.path-cb').forEach(function (cb) {
                 var key = cb.getAttribute('data-key');
                 if (!map[key]) return;
-                if (!map[key].required && !map[key].package_owned) map[key].checked = cb.checked;
+                // 随父锁定 / 必选 / 包占用：不从 DOM 回写取消勾选
+                if (!map[key].required && !map[key].package_owned && !map[key].locked_by_parent) {
+                    map[key].checked = cb.checked;
+                }
             });
             block.querySelectorAll('.prefix-input').forEach(function (inp) {
                 var key = inp.getAttribute('data-key');
@@ -571,9 +633,10 @@
             var p = map[key];
             var id = 'n' + node.id + '_p' + idx;
             var owned = !!p.package_owned;
+            var locked = !!p.locked_by_parent;
             var checked = p.checked ? ' checked' : '';
-            var disabled = p.required || owned || !node.eligible ? ' disabled' : '';
-            var reqClass = p.required ? ' required' : '';
+            var disabled = p.required || owned || locked || !node.eligible ? ' disabled' : '';
+            var reqClass = (p.required || locked) ? ' required' : '';
             var valueHtml = p.editable
                 ? '<input type="text" class="form-control form-control-sm prefix-input" data-key="' +
                   escapeHtml(p.key) + '" value="' + escapeHtml(p.path || '') + '"' +
@@ -581,6 +644,9 @@
                 : '<span class="path-value">' + escapeHtml(p.path || '-') + '</span>';
             var ownedBadge = owned
                 ? ' <span class="badge bg-warning text-dark path-badge">包管理卸载</span>'
+                : '';
+            var lockBadge = locked
+                ? ' <span class="badge bg-secondary path-badge">随父路径</span>'
                 : '';
             return '<div class="path-row' + reqClass + '">' +
                 '<input class="form-check-input path-cb" type="checkbox" id="' + id + '"' +
@@ -590,11 +656,55 @@
                 escapeHtml(p.label) + '</span>' +
                 (p.required && !owned ? ' <span class="badge bg-danger path-badge">必选</span>' : '') +
                 (owned ? ' <span class="badge bg-secondary path-badge">锁定</span>' : '') +
+                lockBadge +
                 ownedBadge +
                 '</label>' + valueHtml + '</div>' + sourceBadge(p.source) + '</div>';
         }).join('') + (isPkg
             ? '<p class="small text-muted mb-0 mt-2 px-1">包安装：下列编译参数路径已锁定勾选，实际由 <code>yum/dnf/apt remove</code> 卸载，不会对路径执行 rm。</p>'
             : '');
+    }
+
+    /** 绑定单节点路径区勾选/prefix 编辑与包含重算 */
+    function bindPathBodyEvents(block) {
+        if (!block) return;
+        var nid = block.getAttribute('data-node-id');
+        function refreshLocks() {
+            collectSelectionsFromDom();
+            applyContainmentLocks(nid);
+            var node = null;
+            for (var i = 0; i < previewNodes.length; i++) {
+                if (String(previewNodes[i].id) === String(nid)) {
+                    node = previewNodes[i];
+                    break;
+                }
+            }
+            if (!node) return;
+            var body = block.querySelector('.node-body');
+            if (body) {
+                body.innerHTML = renderPathRows(node);
+                bindPathBodyEvents(block);
+            }
+        }
+        block.querySelectorAll('.path-cb').forEach(function (cb) {
+            cb.addEventListener('change', refreshLocks);
+        });
+        block.querySelectorAll('.prefix-input').forEach(function (inp) {
+            inp.addEventListener('click', function (e) { e.stopPropagation(); });
+            // 改完再重算（避免 input 逐字重建导致失焦）
+            inp.addEventListener('change', refreshLocks);
+            inp.addEventListener('blur', refreshLocks);
+        });
+        block.querySelectorAll('.path-row').forEach(function (row) {
+            row.addEventListener('click', function (e) {
+                var tag = (e.target.tagName || '').toUpperCase();
+                if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A') return;
+                if (e.target.closest('button, a, label, input, select')) return;
+                var cb = row.querySelector('.path-cb');
+                if (!cb || cb.disabled) return;
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        });
     }
 
     function renderPreview() {
@@ -645,20 +755,8 @@
                 hdr.parentElement.classList.toggle('collapsed');
             });
         });
-        list.querySelectorAll('.prefix-input').forEach(function (inp) {
-            inp.addEventListener('click', function (e) { e.stopPropagation(); });
-        });
-        // 点击路径行切换勾选（对齐弹窗表行；必选/禁用不切换）
-        list.querySelectorAll('.path-row').forEach(function (row) {
-            row.addEventListener('click', function (e) {
-                var tag = (e.target.tagName || '').toUpperCase();
-                if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A') return;
-                if (e.target.closest('button, a, label, input, select')) return;
-                var cb = row.querySelector('.path-cb');
-                if (!cb || cb.disabled) return;
-                cb.checked = !cb.checked;
-                cb.dispatchEvent(new Event('change', { bubbles: true }));
-            });
+        list.querySelectorAll('.uninstall-node-block[data-node-id]').forEach(function (block) {
+            bindPathBodyEvents(block);
         });
         syncStep2Next();
     }
