@@ -18,6 +18,8 @@ from apps.users.permissions import (
     PermissionRequiredMixin,
     user_has_permission,
     forbidden_response,
+    task_center_limited_ops_for_user,
+    user_can_access_limited_task_center,
 )
 
 from .models import ReleaseTask, TaskCenterTask, generate_batch_number
@@ -301,23 +303,18 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
 
     def dispatch(self, request, *args, **kwargs):
         self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
-        self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
+        self.can_read_node_tasks = user_can_access_limited_task_center(request.user)
         if not (self.can_read_release_tasks or self.can_read_node_tasks):
             return forbidden_response(request, "当前账号无权限访问该功能")
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related("trigger_user")
-        # 仅有 nodes.update 时与详情可见范围对齐（本人触发的批量测/配置同步）
+        # 无发布读权限时：仅本人触发的节点测/同步/运维任务
         if not self.can_read_release_tasks:
+            allowed = task_center_limited_ops_for_user(self.request.user)
             queryset = queryset.filter(
-                operation_type__in=[
-                    "node_batch_test",
-                    "config_batch_sync",
-                    "nginx_service_control",
-                    "nginx_install",
-                    "nginx_uninstall",
-                ],
+                operation_type__in=allowed or ["__none__"],
                 trigger_user=self.request.user,
             )
         search = self.request.GET.get("search", "")
@@ -370,7 +367,7 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
 
     def dispatch(self, request, *args, **kwargs):
         self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
-        self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
+        self.can_read_node_tasks = user_can_access_limited_task_center(request.user)
         if not (self.can_read_release_tasks or self.can_read_node_tasks):
             return forbidden_response(request, "当前账号无权限访问该功能")
         return super().dispatch(request, *args, **kwargs)
@@ -379,14 +376,9 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         queryset = super().get_queryset()
         if self.can_read_release_tasks:
             return queryset
+        allowed = task_center_limited_ops_for_user(self.request.user)
         return queryset.filter(
-            operation_type__in=[
-                "node_batch_test",
-                "config_batch_sync",
-                "nginx_service_control",
-                "nginx_install",
-                "nginx_uninstall",
-            ],
+            operation_type__in=allowed or ["__none__"],
             trigger_user=self.request.user,
         )
 
@@ -575,7 +567,7 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
 
     def dispatch(self, request, *args, **kwargs):
         self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
-        self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
+        self.can_read_node_tasks = user_can_access_limited_task_center(request.user)
         if not (self.can_read_release_tasks or self.can_read_node_tasks):
             return forbidden_response(request, "当前账号无权限访问该功能")
         return super().dispatch(request, *args, **kwargs)
@@ -584,14 +576,9 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
         """按可见范围获取任务"""
         qs = TaskCenterTask.objects.filter(pk=pk)
         if not self.can_read_release_tasks:
+            allowed = task_center_limited_ops_for_user(self.request.user)
             qs = qs.filter(
-                operation_type__in=[
-                    "node_batch_test",
-                    "config_batch_sync",
-                    "nginx_service_control",
-                    "nginx_install",
-                    "nginx_uninstall",
-                ],
+                operation_type__in=allowed or ["__none__"],
                 trigger_user=self.request.user,
             )
         return qs.first()
@@ -838,7 +825,7 @@ class ReleaseCenterView(
 class TaskCenterProgressAPIView(LoginRequiredMixin, View):
     def dispatch(self, request, *args, **kwargs):
         self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
-        self.can_read_node_tasks = user_has_permission(request.user, "nodes", "update")
+        self.can_read_node_tasks = user_can_access_limited_task_center(request.user)
         self.can_sync_configs = user_has_permission(request.user, "configs", "update")
         self.can_read_upgrade = user_has_permission(request.user, "upgrade", "read")
         if not (
@@ -856,19 +843,15 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
         if not id_list:
             return JsonResponse({"success": True, "tasks": []})
         tasks = TaskCenterTask.objects.filter(id__in=id_list).order_by("-created_at")
-        # 无发布读权限时：仅本人触发的节点测试 / 配置同步 / 启停 / 安装
+        # 无发布读权限时：仅本人触发的节点测试 / 配置同步 / 运维任务
         if not self.can_read_release_tasks:
-            allowed = [
-                "node_batch_test",
-                "config_batch_sync",
-                "nginx_service_control",
-                "nginx_install",
-                "nginx_uninstall",
-            ]
+            allowed = set(task_center_limited_ops_for_user(request.user))
+            if self.can_sync_configs:
+                allowed.add("config_batch_sync")
             if self.can_read_upgrade:
-                allowed = list(set(allowed + ["nginx_install", "nginx_upgrade", "nginx_rollback"]))
+                allowed.update(["nginx_upgrade", "nginx_rollback"])
             tasks = tasks.filter(
-                operation_type__in=allowed,
+                operation_type__in=list(allowed) or ["__none__"],
                 trigger_user=request.user,
             )
         data = [

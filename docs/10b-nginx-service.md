@@ -6,14 +6,16 @@
 
 底层复用 [`utils/nginx_ops.py`](../utils/nginx_ops.py)（systemctl 或二进制），经 TaskCenter 异步执行与进度遮罩反馈。
 
-**不做**：Nginx 进程态常驻采集、节点列表行内启停按钮、独立 RBAC 资源码。
+**不做**：Nginx 进程态常驻采集、节点列表行内启停按钮。
 
 ## 2. 角色与权限
 
 | 能力 | 权限 |
 |------|------|
-| 菜单与页面 | `nodes.read`（运维工具分区同条件） |
-| 执行启停 | `nodes.update` |
+| 菜单与页面 | `nginx_service.read` |
+| 执行启停 | `nginx_service.create` |
+
+运维工具分区：任一 `upgrade.read` / `nginx_install.read` / `nginx_service.read` / `nginx_uninstall.read` 可见；子项各自 `.read`。
 
 ## 3. 页面与路由
 

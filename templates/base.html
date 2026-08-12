@@ -72,8 +72,11 @@
         }
 
         .sidebar {
-            position: relative;
+            position: sticky;
+            top: 0;
+            align-self: flex-start;
             z-index: 1030;
+            height: 100vh;
             min-height: 100vh;
             background: var(--primary-gradient);
             color: white;
@@ -859,12 +862,12 @@
                     </a>
 
                     <!-- ========== 功能模块 ========== -->
-                    {% if user|has_perm_code:"nodes.read" or user|has_perm_code:"credentials.read" or user|has_perm_code:"configs.read" or user|has_perm_code:"releases.read" or user|has_perm_code:"releases.create" %}
+                    {% if request.user|has_perm_code:"nodes.read" or request.user|has_perm_code:"credentials.read" or request.user|has_perm_code:"configs.read" or request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"releases.create" %}
                     <div class="nav-section-title">功能模块</div>
                     {% endif %}
 
                     <!-- 节点管理（可展开） -->
-                    {% if user|has_perm_code:"nodes.read" %}
+                    {% if request.user|has_perm_code:"nodes.read" %}
                     <div class="nav-item-wrap">
                     <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-nodes" title="节点管理">
                         <i class="bi bi-server"></i> <span class="sidebar-label">节点管理</span>
@@ -882,38 +885,38 @@
                     {% endif %}
 
                     <!-- 凭证管理（独立链接） -->
-                    {% if user|has_perm_code:"credentials.read" %}
+                    {% if request.user|has_perm_code:"credentials.read" %}
                     <a class="nav-link top-level" href="{% url 'credentials:list' %}" data-nav="credentials" title="凭证管理">
                         <i class="bi bi-key"></i> <span class="sidebar-label">凭证管理</span>
                     </a>
                     {% endif %}
 
                     <!-- 配置管理（独立链接） -->
-                    {% if user|has_perm_code:"configs.read" %}
+                    {% if request.user|has_perm_code:"configs.read" %}
                     <a class="nav-link top-level" href="{% url 'configs:list' %}" data-nav="configs" title="配置管理">
                         <i class="bi bi-file-earmark-code"></i> <span class="sidebar-label">配置管理</span>
                     </a>
                     {% endif %}
 
                     <!-- 发布管理（可展开） -->
-                    {% if user|has_perm_code:"releases.read" or user|has_perm_code:"releases.create" %}
+                    {% if request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"releases.create" or request.user|has_perm_code:"nodes.update" or request.user|has_perm_code:"nginx_install.read" or request.user|has_perm_code:"nginx_install.create" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_service.create" or request.user|has_perm_code:"nginx_uninstall.read" or request.user|has_perm_code:"nginx_uninstall.create" %}
                     <div class="nav-item-wrap">
                     <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-releases" title="发布管理">
                         <i class="bi bi-rocket-takeoff"></i> <span class="sidebar-label">发布管理</span>
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-releases">
-                        {% if user|has_perm_code:"releases.create" %}
+                        {% if request.user|has_perm_code:"releases.create" %}
                         <a class="nav-link" href="{% url 'releases:center' %}" data-nav="releases:center">
                             <span class="sidebar-label">发布中心</span>
                         </a>
                         {% endif %}
-                        {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
+                        {% if request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"nodes.update" or request.user|has_perm_code:"nginx_install.read" or request.user|has_perm_code:"nginx_install.create" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_service.create" or request.user|has_perm_code:"nginx_uninstall.read" or request.user|has_perm_code:"nginx_uninstall.create" %}
                         <a class="nav-link" href="{% url 'releases:history' %}" data-nav="releases:history">
                             <span class="sidebar-label">任务中心</span>
                         </a>
                         {% endif %}
-                        {% if user|has_perm_code:"releases.read" %}
+                        {% if request.user|has_perm_code:"releases.read" %}
                         <a class="nav-link" href="{% url 'releases:list' %}" data-nav="releases:list">
                             <span class="sidebar-label">发布历史</span>
                         </a>
@@ -923,7 +926,7 @@
                     {% endif %}
 
                     <!-- ========== 运维工具 ========== -->
-                    {% if user|has_perm_code:"nodes.read" %}
+                    {% if request.user|has_perm_code:"upgrade.read" or request.user|has_perm_code:"nginx_install.read" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_uninstall.read" %}
                     <div class="nav-section-title">运维工具</div>
                     <!-- 运维工具（可展开分组） -->
                     <div class="nav-item-wrap">
@@ -932,46 +935,54 @@
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-ops">
+                        {% if request.user|has_perm_code:"upgrade.read" %}
                         <a class="nav-link" href="{% url 'upgrade:list' %}" data-nav="upgrade">
                             <i class="bi bi-box-seam"></i> <span class="sidebar-label">Nginx 升级</span>
                         </a>
+                        {% endif %}
+                        {% if request.user|has_perm_code:"nginx_install.read" %}
                         <a class="nav-link" href="{% url 'nginx_install:index' %}" data-nav="nginx_install">
                             <i class="bi bi-download"></i> <span class="sidebar-label">Nginx 安装</span>
                         </a>
+                        {% endif %}
+                        {% if request.user|has_perm_code:"nginx_service.read" %}
                         <a class="nav-link" href="{% url 'nginx_service:index' %}" data-nav="nginx_service">
                             <i class="bi bi-power"></i> <span class="sidebar-label">Nginx 启停</span>
                         </a>
+                        {% endif %}
+                        {% if request.user|has_perm_code:"nginx_uninstall.read" %}
                         <a class="nav-link" href="{% url 'nginx_uninstall:index' %}" data-nav="nginx_uninstall">
                             <i class="bi bi-trash3"></i> <span class="sidebar-label">Nginx 卸载</span>
                         </a>
+                        {% endif %}
                     </div>
                     </div>
                     {% endif %}
 
                     <!-- ========== 系统管理 ========== -->
-                    {% if user|has_perm_code:"users.read" or user|has_perm_code:"roles.read" or user|has_perm_code:"teams.read" or user|has_perm_code:"audit.read" or user|has_perm_code:"settings.read" %}
+                    {% if request.user|has_perm_code:"users.read" or request.user|has_perm_code:"roles.read" or request.user|has_perm_code:"teams.read" or request.user|has_perm_code:"audit.read" or request.user|has_perm_code:"settings.read" %}
                     <div class="nav-section-title">系统管理</div>
                     {% endif %}
 
                     <!-- 用户管理（可展开） -->
-                    {% if user|has_perm_code:"users.read" or user|has_perm_code:"roles.read" or user|has_perm_code:"teams.read" %}
+                    {% if request.user|has_perm_code:"users.read" or request.user|has_perm_code:"roles.read" or request.user|has_perm_code:"teams.read" %}
                     <div class="nav-item-wrap">
                     <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-users" title="用户管理">
                         <i class="bi bi-people"></i> <span class="sidebar-label">用户管理</span>
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-users">
-                        {% if user|has_perm_code:"users.read" %}
+                        {% if request.user|has_perm_code:"users.read" %}
                         <a class="nav-link" href="{% url 'users:list' %}" data-nav="users:list">
                             <span class="sidebar-label">用户列表</span>
                         </a>
                         {% endif %}
-                        {% if user|has_perm_code:"roles.read" %}
+                        {% if request.user|has_perm_code:"roles.read" %}
                         <a class="nav-link" href="{% url 'users:role_list' %}" data-nav="users:role_list">
                             <span class="sidebar-label">角色管理</span>
                         </a>
                         {% endif %}
-                        {% if user|has_perm_code:"teams.read" %}
+                        {% if request.user|has_perm_code:"teams.read" %}
                         <a class="nav-link" href="{% url 'users:team_list' %}" data-nav="users:team_list">
                             <span class="sidebar-label">用户组管理</span>
                         </a>
@@ -981,7 +992,7 @@
                     {% endif %}
 
                     <!-- 审计日志（可展开） -->
-                    {% if user|has_perm_code:"audit.read" %}
+                    {% if request.user|has_perm_code:"audit.read" %}
                     <div class="nav-item-wrap">
                     <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-audit" title="审计日志">
                         <i class="bi bi-journal-text"></i> <span class="sidebar-label">审计日志</span>
@@ -999,7 +1010,7 @@
                     {% endif %}
 
                     <!-- 系统设置（独立链接） -->
-                    {% if user|has_perm_code:"settings.read" %}
+                    {% if request.user|has_perm_code:"settings.read" %}
                     <a class="nav-link top-level" href="{% url 'settings:index' %}" data-nav="settings" title="系统设置">
                         <i class="bi bi-gear"></i> <span class="sidebar-label">系统设置</span>
                     </a>
@@ -1565,6 +1576,8 @@
                     'releases:list': 'submenu-releases',
                     'users': 'submenu-users',
                     'users:list': 'submenu-users',
+                    'users:create': 'submenu-users',
+                    'users:edit': 'submenu-users',
                     'users:role_list': 'submenu-users',
                     'users:team_list': 'submenu-users',
                     'audit': 'submenu-audit',
@@ -1723,6 +1736,10 @@
                         const trigger = document.querySelector('[data-target="' + parentSubmenu.id + '"]');
                         if (trigger) { trigger.classList.add('active'); }
                     }
+                    // 长页面下保证活动项落在侧栏可视区（如用户管理在系统管理底部）
+                    try {
+                        matchedLink.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                    } catch (e) { /* ignore */ }
                 }
             }
 

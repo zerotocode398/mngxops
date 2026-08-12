@@ -34,14 +34,14 @@ class NginxServiceIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
     """Nginx 启停操作台页面"""
 
     template_name = "nginx_service/index.html"
-    permission_resource = "nodes"
+    permission_resource = "nginx_service"
     permission_action = "read"
 
     def get_context_data(self, **kwargs):
         """注入批量上限、执行权限与最近启停任务"""
         context = super().get_context_data(**kwargs)
         context["batch_max_count"] = _batch_max_count()
-        context["can_execute"] = user_has_permission(self.request.user, "nodes", "update")
+        context["can_execute"] = user_has_permission(self.request.user, "nginx_service", "create")
         recent = list(
             TaskCenterTask.objects.filter(operation_type="nginx_service_control")
             .select_related("trigger_user")
@@ -63,7 +63,7 @@ class NginxServiceHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPa
     context_object_name = "tasks"
     paginate_by = None
     ordering = ["-created_at"]
-    permission_resource = "nodes"
+    permission_resource = "nginx_service"
     permission_action = "read"
 
     def get_queryset(self):
@@ -112,7 +112,7 @@ class NginxServiceExecuteAPIView(LoginRequiredMixin, View):
 
     def post(self, request):
         """校验节点与动作后创建 TaskCenter 后台任务"""
-        if not user_has_permission(request.user, "nodes", "update"):
+        if not user_has_permission(request.user, "nginx_service", "create"):
             return JsonResponse({"success": False, "message": "无权限执行该操作"}, status=403)
 
         try:

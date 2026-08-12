@@ -17,10 +17,10 @@
 
 | 能力 | 权限 |
 |------|------|
-| 菜单与页面 | `nodes.read` |
-| 执行卸载 | `nodes.update` |
+| 菜单与页面 | `nginx_uninstall.read` |
+| 向导与执行 | `nginx_uninstall.create` |
 
-不新增独立 RBAC 资源码。
+独立 RBAC 资源码见 Q157；历史角色若仅有 `nodes.*`，由迁移 `0003` 拷贝到本资源。
 
 ## 3. 页面与路由
 

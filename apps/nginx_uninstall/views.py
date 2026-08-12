@@ -51,7 +51,7 @@ class NginxUninstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templ
     """Nginx 卸载运维台首页"""
 
     template_name = "nginx_uninstall/index.html"
-    permission_resource = "nodes"
+    permission_resource = "nginx_uninstall"
     permission_action = "read"
 
     def get_context_data(self, **kwargs):
@@ -76,7 +76,7 @@ class NginxUninstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templ
             NginxUninstallTask.objects.select_related("node", "operator", "task_center")
             .order_by("-created_at")[: get_recent_tasks_limit()]
         )
-        context["can_execute"] = user_has_permission(self.request.user, "nodes", "update")
+        context["can_execute"] = user_has_permission(self.request.user, "nginx_uninstall", "create")
         return context
 
 
@@ -91,14 +91,14 @@ class NginxUninstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Temp
     """Nginx 卸载三步向导"""
 
     template_name = "nginx_uninstall/center.html"
-    permission_resource = "nodes"
-    permission_action = "update"
+    permission_resource = "nginx_uninstall"
+    permission_action = "create"
 
     def get_context_data(self, **kwargs):
         """注入批量上限"""
         context = super().get_context_data(**kwargs)
         context["batch_max_count"] = batch_max_count()
-        context["can_execute"] = user_has_permission(self.request.user, "nodes", "update")
+        context["can_execute"] = user_has_permission(self.request.user, "nginx_uninstall", "create")
         return context
 
 
@@ -112,7 +112,7 @@ class NginxUninstallHistoryView(
     context_object_name = "tasks"
     paginate_by = None
     ordering = ["-created_at"]
-    permission_resource = "nodes"
+    permission_resource = "nginx_uninstall"
     permission_action = "read"
 
     def get_queryset(self):
@@ -162,7 +162,7 @@ class NginxUninstallTaskLogView(LoginRequiredMixin, PermissionRequiredMixin, Det
     model = NginxUninstallTask
     template_name = "nginx_uninstall/task_log.html"
     context_object_name = "task"
-    permission_resource = "nodes"
+    permission_resource = "nginx_uninstall"
     permission_action = "read"
 
     def get_queryset(self):
@@ -184,7 +184,7 @@ class NginxUninstallTaskLogAPIView(LoginRequiredMixin, View):
 
     def get(self, request, pk):
         """读取卸载任务日志与状态"""
-        if not user_has_permission(request.user, "nodes", "read"):
+        if not user_has_permission(request.user, "nginx_uninstall", "read"):
             return JsonResponse({"success": False, "message": "无权限"}, status=403)
         try:
             task = NginxUninstallTask.objects.select_related("node").get(pk=pk)
@@ -207,7 +207,7 @@ class NginxUninstallPreviewAPIView(LoginRequiredMixin, View):
 
     def post(self, request):
         """返回每节点 prefix / 备份路径 / 是否运行中"""
-        if not user_has_permission(request.user, "nodes", "update"):
+        if not user_has_permission(request.user, "nginx_uninstall", "create"):
             return JsonResponse({"success": False, "message": "无权限"}, status=403)
         try:
             data = json.loads(request.body or "{}")
@@ -221,7 +221,7 @@ class NginxUninstallCreateAPIView(LoginRequiredMixin, View):
 
     def post(self, request):
         """校验后创建任务并启动后台线程"""
-        if not user_has_permission(request.user, "nodes", "update"):
+        if not user_has_permission(request.user, "nginx_uninstall", "create"):
             return JsonResponse({"success": False, "message": "无权限执行卸载"}, status=403)
         try:
             data = json.loads(request.body or "{}")
@@ -235,7 +235,7 @@ class NginxUninstallBatchProgressAPIView(LoginRequiredMixin, View):
 
     def get(self, request):
         """返回批次内各卸载任务状态"""
-        if not user_has_permission(request.user, "nodes", "read"):
+        if not user_has_permission(request.user, "nginx_uninstall", "read"):
             return JsonResponse({"success": False, "message": "无权限"}, status=403)
 
         batch = (request.GET.get("batch") or "").strip()

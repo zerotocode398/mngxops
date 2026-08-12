@@ -8,10 +8,24 @@
 
 ## 2. 角色与权限码
 
-资源：`users` / `roles` / `teams`，动作 read/create/update/delete。  
+资源：`nodes` / `credentials` / `configs` / `releases` / `upgrade` / `nginx_install` / `nginx_service` / `nginx_uninstall` / `users` / `roles` / `teams` / `audit` / `settings`，动作 read/create/update/delete。  
 定义：[`apps/users/perm_defs.py`](../apps/users/perm_defs.py)。  
 校验：[`apps/users/permissions.py`](../apps/users/permissions.py) `user_has_permission`、`PermissionRequiredMixin`。  
 模板：`has_perm_code`。
+
+运维三模块独立码（Q157）：
+
+| 资源 | read | create |
+|------|------|--------|
+| `nginx_install` | 安装首页/历史/日志 | 向导与执行 |
+| `nginx_service` | 启停操作台/历史 | 执行启停 |
+| `nginx_uninstall` | 卸载首页/历史/日志 | 向导与执行 |
+
+`update`/`delete` 在矩阵预留展示，当前未接线。迁移 `0003` 从既有 `upgrade.*` / `nodes.*` 授权拷贝到新码。
+
+矩阵资源列文案（`RESOURCE_CHOICES`）与侧栏对齐：节点管理 / 凭证管理 / 配置管理 / 发布管理 / 用户管理 / 角色管理 / 用户组管理 / 审计日志；Nginx 升级/安装/启停/卸载与系统设置保持模块名。
+
+侧栏菜单权限一律用 `request.user|has_perm_code`（勿用裸 `user`）：用户编辑/删除页若默认 `context_object_name=user` 会覆盖登录用户导致菜单按被编辑对象权限隐藏（Q157）。
 
 ### 2.1 生效规则
 
@@ -93,6 +107,7 @@ accounts、audit、全业务 View 鉴权。
 | Q83 | 用户可选所属用户组 |
 | Q116 | 无权访问回首页 + showAlert |
 | Q117 | 权限矩阵勾选与 PermissionItem 启动 seed |
+| Q157 | Nginx 安装/启停/卸载独立权限；编辑用户侧栏 `user` 覆盖修复；矩阵资源列文案 |
 
 ## 11. 待确认缺口
 

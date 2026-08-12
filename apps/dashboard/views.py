@@ -9,7 +9,11 @@ from apps.nodes.models import Node
 from apps.configs.models import ConfigNodeBinding
 from apps.releases.models import TaskCenterTask
 from apps.releases.task_result import format_task_center_summary
-from apps.users.permissions import user_has_permission
+from apps.users.permissions import (
+    user_has_permission,
+    task_center_limited_ops_for_user,
+    user_can_access_limited_task_center,
+)
 from utils.setting_service import get_recent_tasks_limit, get_setting
 
 
@@ -29,19 +33,10 @@ def _task_center_queryset_for_user(user):
     can_read_release = user_has_permission(user, "releases", "read")
     if can_read_release:
         return qs
-    # 仅有 nodes.update 时：本人触发的批量测/配置同步
-    if user_has_permission(user, "nodes", "update"):
-        return qs.filter(
-            operation_type__in=[
-                "node_batch_test",
-                "config_batch_sync",
-                "nginx_service_control",
-                "nginx_install",
-                "nginx_uninstall",
-            ],
-            trigger_user=user,
-        )
-    return qs.none()
+    allowed = task_center_limited_ops_for_user(user)
+    if not allowed:
+        return qs.none()
+    return qs.filter(operation_type__in=allowed, trigger_user=user)
 
 
 def _dashboard_stats(user):
@@ -86,6 +81,10 @@ def index(request):
     context = {
         **stats,
         "recent_tasks": recent_tasks,
+        "can_access_task_center": (
+            user_has_permission(request.user, "releases", "read")
+            or user_can_access_limited_task_center(request.user)
+        ),
     }
     return render(request, "dashboard/index.html", context)
 

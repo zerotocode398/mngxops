@@ -37,7 +37,7 @@
 | 超级用户 | `is_superuser` 绕过全部自定义权限检查 |
 | 系统 | 启动 seed 设置、按日数据保留清理（中间件 + management command） |
 
-权限资源：`nodes` / `credentials` / `configs` / `releases` / `upgrade` / `users` / `roles` / `teams` / `audit` / `settings`，动作：`read` / `create` / `update` / `delete`。详见 [04-users-rbac.md](04-users-rbac.md)。
+权限资源：`nodes` / `credentials` / `configs` / `releases` / `upgrade` / `nginx_install` / `nginx_service` / `nginx_uninstall` / `users` / `roles` / `teams` / `audit` / `settings`，动作：`read` / `create` / `update` / `delete`。详见 [04-users-rbac.md](04-users-rbac.md)。
 
 ## 4. 术语表
 

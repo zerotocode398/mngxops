@@ -112,7 +112,7 @@
                         <i class="bi bi-plus-lg"></i> 新建节点
                     </a>
                     {% endif %}
-                    {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
+                    {% if user|has_perm_code:"releases.read" or can_access_task_center %}
                     <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary btn-sm">
                         <i class="bi bi-list-task"></i> 任务中心
                     </a>
@@ -174,8 +174,8 @@
                     </div>
                 </div>
                 <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div id="stat-running-card" class="dashboard-stat-card {% if running_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'releases.read' and not user|has_perm_code:'nodes.update' %} stat-card-static{% endif %}"
-                         {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}onclick="window.location.href='{% url 'releases:history' %}?status=running'"{% endif %}>
+                    <div id="stat-running-card" class="dashboard-stat-card {% if running_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not can_access_task_center %} stat-card-static{% endif %}"
+                         {% if can_access_task_center %}onclick="window.location.href='{% url 'releases:history' %}?status=running'"{% endif %}>
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3"><i class="bi bi-hourglass-split"></i></div>
                             <div>
@@ -186,8 +186,8 @@
                     </div>
                 </div>
                 <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div id="stat-failed-card" class="dashboard-stat-card {% if failed_7d_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'releases.read' and not user|has_perm_code:'nodes.update' %} stat-card-static{% endif %}"
-                         {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}onclick="window.location.href='{% url 'releases:history' %}?status=failed'"{% endif %}>
+                    <div id="stat-failed-card" class="dashboard-stat-card {% if failed_7d_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not can_access_task_center %} stat-card-static{% endif %}"
+                         {% if can_access_task_center %}onclick="window.location.href='{% url 'releases:history' %}?status=failed'"{% endif %}>
                         <div class="d-flex align-items-center">
                             <div class="stat-icon me-3"><i class="bi bi-x-circle"></i></div>
                             <div>
@@ -203,7 +203,7 @@
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-list-task"></i> 最近任务</h5>
-                    {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
+                    {% if can_access_task_center %}
                     <a href="{% url 'releases:history' %}" class="btn btn-sm btn-outline-primary">查看全部</a>
                     {% endif %}
                 </div>
@@ -258,7 +258,7 @@
                                         <small title="{{ task.created_at|date:'Y-m-d H:i:s' }}">{{ task.created_at|date:"Y-m-d H:i" }}</small>
                                     </td>
                                     <td>
-                                        {% if user|has_perm_code:"releases.read" or user|has_perm_code:"nodes.update" %}
+                                        {% if can_access_task_center %}
                                         <a href="{% url 'releases:task_center_detail' task.id %}" class="btn btn-sm btn-outline-info" title="详情">
                                             <i class="bi bi-eye"></i> 详情
                                         </a>

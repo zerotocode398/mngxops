@@ -12,7 +12,12 @@
 
 ## 2. 角色与权限
 
-复用 `upgrade.read|create|update|delete`（与编译安装同一能力域）。
+| 能力 | 权限 |
+|------|------|
+| 菜单与页面 | `nginx_install.read` |
+| 向导与执行 | `nginx_install.create` |
+
+源码包/模块包管理仍用 `upgrade.*`；`?nav=nginx_install` 仅影响侧栏高亮。
 
 ## 3. 与升级的差异
 

@@ -27,7 +27,7 @@ class NginxInstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
     """Nginx 安装运维台首页"""
 
     template_name = "nginx_install/index.html"
-    permission_resource = "upgrade"
+    permission_resource = "nginx_install"
     permission_action = "read"
 
     def get_context_data(self, **kwargs):
@@ -51,7 +51,7 @@ class NginxInstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
             NginxInstallTask.objects.select_related("node", "operator", "source_package")
             .order_by("-created_at")[: get_recent_tasks_limit()]
         )
-        context["can_create"] = user_has_permission(self.request.user, "upgrade", "create")
+        context["can_create"] = user_has_permission(self.request.user, "nginx_install", "create")
         return context
 
 
@@ -59,7 +59,7 @@ class NginxInstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Templa
     """Nginx 全新安装向导"""
 
     template_name = "nginx_install/center.html"
-    permission_resource = "upgrade"
+    permission_resource = "nginx_install"
     permission_action = "create"
 
     def get_context_data(self, **kwargs):
@@ -122,7 +122,7 @@ class NginxInstallHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPa
     context_object_name = "tasks"
     paginate_by = None
     ordering = ["-created_at"]
-    permission_resource = "upgrade"
+    permission_resource = "nginx_install"
     permission_action = "read"
 
     def get_queryset(self):
@@ -171,7 +171,7 @@ class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):
 
     def post(self, request):
         """校验后创建 NginxInstallTask + TaskCenter 并启动线程"""
-        if not user_has_permission(request.user, "upgrade", "create"):
+        if not user_has_permission(request.user, "nginx_install", "create"):
             return JsonResponse({"success": False, "message": "无权限创建安装任务"}, status=403)
 
         try:
@@ -188,7 +188,7 @@ class NginxInstallBatchProgressAPIView(LoginRequiredMixin, View):
     def get(self, request):
         """返回批次内各安装任务状态"""
         if not (
-            user_has_permission(request.user, "upgrade", "read")
+            user_has_permission(request.user, "nginx_install", "read")
             or user_has_permission(request.user, "releases", "read")
         ):
             return JsonResponse({"success": False, "message": "无权限"}, status=403)
@@ -259,7 +259,7 @@ class NginxInstallTaskLogView(LoginRequiredMixin, PermissionRequiredMixin, Detai
     model = NginxInstallTask
     template_name = "nginx_install/task_log.html"
     context_object_name = "task"
-    permission_resource = "upgrade"
+    permission_resource = "nginx_install"
     permission_action = "read"
 
     def get_queryset(self):
@@ -280,7 +280,7 @@ class NginxInstallTaskLogAPIView(LoginRequiredMixin, View):
 
     def get(self, request, pk):
         """读取安装任务日志与状态"""
-        if not user_has_permission(request.user, "upgrade", "read"):
+        if not user_has_permission(request.user, "nginx_install", "read"):
             return JsonResponse({"success": False, "message": "无权限"}, status=403)
         try:
             task = NginxInstallTask.objects.select_related("node").get(pk=pk)

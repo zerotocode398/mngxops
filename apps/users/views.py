@@ -74,6 +74,7 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     model = User
     form_class = UserUpdateForm
     template_name = "users/edit.html"
+    context_object_name = "edit_user"
     success_url = reverse_lazy("users:list")
     permission_resource = "users"
     permission_action = "update"
@@ -109,6 +110,7 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
 class UserDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     model = User
     template_name = "users/delete.html"
+    context_object_name = "edit_user"
     success_url = reverse_lazy("users:list")
     permission_resource = "users"
     permission_action = "delete"
