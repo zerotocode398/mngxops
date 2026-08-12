@@ -90,7 +90,23 @@
 | 路径 | 说明 |
 |------|------|
 | `/nginx-service/` | 启停操作台页 |
+| `/nginx-service/history/` | 启停历史 |
 | `api/execute/` | **JSON** 异步 start/stop/reload/restart |
+
+## 8c. Nginx 安装 `nginx-install`
+
+见 [10c-nginx-install.md](10c-nginx-install.md)。
+
+## 8d. Nginx 卸载 `nginx-uninstall`
+
+| 路径 | 说明 |
+|------|------|
+| `/nginx-uninstall/` | 卸载运维台首页 |
+| `/nginx-uninstall/center/` | 两步卸载向导 |
+| `/nginx-uninstall/history/` | 卸载历史 |
+| `api/preview/` | **JSON** 预览 prefix / 备份路径 / 运行态 |
+| `api/create/` | **JSON** 创建卸载批次 |
+| `api/batch-progress/` | **JSON** 批次进度 |
 
 ## 9. 审计 `audit`
 

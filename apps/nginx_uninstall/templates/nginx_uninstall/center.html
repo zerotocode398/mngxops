@@ -1,0 +1,575 @@
+{% extends "base.html" %}
+
+{% block title %}Nginx 卸载中心 - MngxOps{% endblock %}
+{% block page_title %}<i class="bi bi-trash3"></i> Nginx 卸载中心{% endblock %}
+
+{% block extra_head %}
+<style>
+    .selected-box {
+        min-height: 56px;
+        border: 1px solid var(--gray-200, #e9ecef);
+        border-radius: var(--br-md, 0.5rem);
+        background: #fff;
+        padding: 0.65rem 0.75rem;
+    }
+    .node-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: #eef1ff;
+        color: #3d4db8;
+        border: 1px solid #c9d0f8;
+        border-radius: var(--br-sm, 4px);
+        padding: 0.2rem 0.55rem;
+        font-size: var(--fs-sm, 0.78rem);
+        margin: 0.15rem;
+    }
+    .node-chip .chip-x { cursor: pointer; opacity: 0.7; }
+    .node-chip .chip-x:hover { opacity: 1; }
+    tr.disabled-row { opacity: 0.55; }
+    .wizard-step { display: none; }
+    .wizard-step.active { display: block; }
+    .prefix-input { font-family: var(--font-mono, monospace); font-size: var(--fs-sm, 0.78rem); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-end align-items-center mb-3 flex-wrap gap-2">
+        <a href="{% url 'nginx_uninstall:index' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> 返回
+        </a>
+        <a href="{% url 'nginx_uninstall:history' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-clock-history"></i> 历史
+        </a>
+    </div>
+
+    <div class="wizard-step active" id="step1">
+        <div class="card mb-3">
+            <div class="card-header"><i class="bi bi-1-circle"></i> 选择目标节点</div>
+            <div class="card-body">
+                <div class="selected-box mb-2" id="selectedBox">
+                    <span class="text-muted small" id="emptyHint">请选择在线且已检测到 Nginx（或仍有安装路径）的节点（最多 {{ batch_max_count }} 台）</span>
+                    <div id="chipWrap"></div>
+                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
+                    <i class="bi bi-search"></i> <span id="btnSelectLabel">选择节点</span>
+                </button>
+            </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-primary btn-sm" id="btnToStep2" disabled onclick="goStep2()">
+                下一步 <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="wizard-step" id="step2">
+        <div class="card mb-3">
+            <div class="card-header"><i class="bi bi-2-circle"></i> 确认删除范围</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="optPrefix" checked disabled>
+                        <label class="form-check-label" for="optPrefix">删除 --prefix 安装树（必选）</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="optBackup" checked>
+                        <label class="form-check-label" for="optBackup">删除该节点远程发布备份目录</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="optWorkdir">
+                        <label class="form-check-label" for="optWorkdir">删除编译工作目录</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="optModules">
+                        <label class="form-check-label" for="optModules">删除第三方模块源码目录（nginx-modules）</label>
+                    </div>
+                </div>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm table-bordered data-table mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>节点</th>
+                                <th>安装路径 (--prefix)</th>
+                                <th>发布备份</th>
+                                <th>运行状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewTbody">
+                            <tr><td colspan="4" class="text-muted text-center py-3">加载预览…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="confirmDelete">
+                    <label class="form-check-label text-danger" for="confirmDelete">
+                        我确认删除上述路径（不可恢复）
+                    </label>
+                </div>
+                <p class="small text-muted mb-0">
+                    卸载成功后将清空节点 Nginx 路径/版本，标记 Nginx 不可用，相关配置绑定变为「远程已删除」。
+                </p>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep1()">
+                <i class="bi bi-chevron-left"></i> 上一步
+            </button>
+            {% if can_execute %}
+            <button type="button" class="btn btn-danger btn-sm" id="btnStartUninstall" disabled onclick="startUninstall()">
+                <i class="bi bi-trash3"></i> 开始卸载
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="selectNodeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-search"></i> 选择目标节点</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="tag-input-wrapper form-control form-control-sm" id="searchWrap">
+                        <input type="text" class="tag-input-field" id="searchField"
+                               placeholder="搜索主机名、IP 或节点组，回车添加标签" autocomplete="off">
+                    </div>
+                    <input type="hidden" id="searchHidden">
+                </div>
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th style="width:6%"><input type="checkbox" id="selectAll" title="全选本页可选"></th>
+                            <th style="width:26%">主机名</th>
+                            <th style="width:22%">IP</th>
+                            <th style="width:24%">节点组</th>
+                            <th style="width:22%">状态</th>
+                        </tr>
+                        </thead>
+                        <tbody id="nodeTbody">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    <i class="bi bi-search"></i>
+                                    <p class="mt-1 mb-0">打开后加载节点…</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between mt-2">
+                    <small class="text-muted">共 <span id="resultCount">0</span> · 已勾 <span id="pickedCount">0</span> · 上限 {{ batch_max_count }}</small>
+                    <small class="text-muted">离线 / 无凭证 / 无 Nginx 路径不可选</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="confirmSelection()">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var MAX_BATCH = {{ batch_max_count|default:3 }};
+    var CAN_EXECUTE = {{ can_execute|yesno:"true,false" }};
+    var PREVIEW_URL = '{% url "nginx_uninstall:api_preview" %}';
+    var CREATE_URL = '{% url "nginx_uninstall:api_create" %}';
+    var SEARCH_URL = '{% url "nodes:api_search_nodes" %}';
+    var DETAIL_URL_TMPL = '{% url "releases:task_center_detail" 0 %}'.replace('/0/', '/{id}/');
+
+    var selected = {};
+    var draft = {};
+    var previewNodes = [];
+    var lastSearchNodes = [];
+    var searchTimer = null;
+
+    function csrfToken() {
+        var m = document.cookie.match(/csrftoken=([^;]+)/);
+        return m ? m[1] : '';
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function canSelect(node) {
+        if (node.status !== 'online' || !node.has_credential) return false;
+        if (node.nginx_available === true) return true;
+        return !!(node.nginx_path && String(node.nginx_path).trim());
+    }
+
+    function selectedCount() { return Object.keys(selected).length; }
+    function draftCount() { return Object.keys(draft).length; }
+
+    function syncStep1() {
+        var btn = document.getElementById('btnToStep2');
+        if (btn) btn.disabled = selectedCount() === 0;
+    }
+
+    function syncStartBtn() {
+        var btn = document.getElementById('btnStartUninstall');
+        if (!btn) return;
+        var ok = CAN_EXECUTE && document.getElementById('confirmDelete').checked &&
+            previewNodes.some(function (n) { return n.eligible; });
+        btn.disabled = !ok;
+    }
+
+    function renderChips() {
+        var wrap = document.getElementById('chipWrap');
+        var hint = document.getElementById('emptyHint');
+        var ids = Object.keys(selected);
+        if (!ids.length) {
+            wrap.innerHTML = '';
+            hint.style.display = '';
+        } else {
+            hint.style.display = 'none';
+            wrap.innerHTML = ids.map(function (id) {
+                var n = selected[id];
+                return '<span class="node-chip">' + escapeHtml(n.hostname) +
+                    ' <code class="small">' + escapeHtml(n.ip) + '</code>' +
+                    ' <i class="bi bi-x chip-x" data-id="' + id + '"></i></span>';
+            }).join('');
+            wrap.querySelectorAll('.chip-x').forEach(function (x) {
+                x.addEventListener('click', function () {
+                    delete selected[x.getAttribute('data-id')];
+                    renderChips();
+                });
+            });
+        }
+        document.getElementById('btnSelectLabel').textContent =
+            ids.length ? ('选择节点（已选 ' + ids.length + '）') : '选择节点';
+        syncStep1();
+    }
+
+    function toggleDraft(node, checked) {
+        var key = String(node.id);
+        if (checked) {
+            if (!draft[key] && draftCount() >= MAX_BATCH) {
+                showAlert('提示', '最多选择 ' + MAX_BATCH + ' 台节点');
+                return false;
+            }
+            draft[key] = node;
+        } else {
+            delete draft[key];
+        }
+        document.getElementById('pickedCount').textContent = String(draftCount());
+        return true;
+    }
+
+    function statusBadge(node) {
+        var html = '';
+        if (node.status === 'online') html = '<span class="badge bg-success">在线</span>';
+        else if (node.status === 'offline') html = '<span class="badge bg-danger">离线</span>';
+        else html = '<span class="badge bg-secondary">未知</span>';
+        if (!node.has_credential) html += ' <span class="badge bg-warning text-dark">无凭证</span>';
+        if (node.nginx_available === true) {
+            html += ' <span class="badge bg-primary">' + escapeHtml(node.nginx_version || '已安装') + '</span>';
+        } else if (node.nginx_available === false) {
+            html += ' <span class="badge bg-warning text-dark">未检测到</span>';
+        } else {
+            html += ' <span class="badge bg-secondary">未探测</span>';
+        }
+        return html;
+    }
+
+    function renderTable(nodes) {
+        lastSearchNodes = nodes || [];
+        var tbody = document.getElementById('nodeTbody');
+        document.getElementById('resultCount').textContent = String(lastSearchNodes.length);
+        document.getElementById('pickedCount').textContent = String(draftCount());
+        if (!lastSearchNodes.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">' +
+                '<i class="bi bi-inbox"></i><p class="mt-1 mb-0">未找到匹配的节点</p></td></tr>';
+            return;
+        }
+        var html = '';
+        lastSearchNodes.forEach(function (node) {
+            var selectable = canSelect(node);
+            var checked = draft[String(node.id)] ? ' checked' : '';
+            if (!selectable) checked = '';
+            var groups = '';
+            if (node.groups && node.groups.length) {
+                node.groups.forEach(function (g) {
+                    groups += '<span class="badge bg-info text-dark me-1">' + escapeHtml(g.name) + '</span>';
+                });
+            } else {
+                groups = '<span class="text-muted small">-</span>';
+            }
+            html += '<tr class="' + (selectable ? '' : 'disabled-row') + '" data-node-id="' + node.id + '"' +
+                (selectable ? '' : ' data-disabled="1"') + '>' +
+                '<td><input type="checkbox" class="un-node-cb" value="' + node.id + '"' + checked +
+                (selectable ? '' : ' disabled') + '></td>' +
+                '<td><span class="node-identity">' + escapeHtml(node.hostname) + '</span></td>' +
+                '<td><code>' + escapeHtml(node.ip) + '</code></td>' +
+                '<td>' + groups + '</td>' +
+                '<td>' + statusBadge(node) + '</td></tr>';
+        });
+        tbody.innerHTML = html;
+        tbody.querySelectorAll('.un-node-cb').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                var node = lastSearchNodes.find(function (n) { return String(n.id) === String(cb.value); });
+                if (!node) return;
+                if (!toggleDraft(node, cb.checked)) cb.checked = false;
+            });
+        });
+        if (typeof bindModalTableRowToggle === 'function') {
+            bindModalTableRowToggle(tbody, '.un-node-cb');
+        }
+    }
+
+    function doSearch() {
+        var search = document.getElementById('searchHidden').value || '';
+        var tbody = document.getElementById('nodeTbody');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">' +
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div>搜索中...</td></tr>';
+        fetch(SEARCH_URL + '?search=' + encodeURIComponent(search), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (result) { renderTable(result.nodes || []); })
+            .catch(function () {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">加载失败</td></tr>';
+            });
+    }
+
+    function updateSearchHidden() {
+        var wrapper = document.getElementById('searchWrap');
+        var field = document.getElementById('searchField');
+        var hidden = document.getElementById('searchHidden');
+        var tags = [];
+        wrapper.querySelectorAll('.tag-item').forEach(function (el) {
+            var t = (el.getAttribute('data-tag') || el.textContent || '').replace(/×$/, '').trim();
+            if (t) tags.push(t);
+        });
+        var cur = (field.value || '').trim();
+        if (cur) tags.push(cur);
+        hidden.value = tags.join(',');
+    }
+
+    window.confirmSelection = function () {
+        selected = Object.assign({}, draft);
+        renderChips();
+        var modal = bootstrap.Modal.getInstance(document.getElementById('selectNodeModal'));
+        if (modal) modal.hide();
+    };
+
+    function goStep1() {
+        document.getElementById('step1').classList.add('active');
+        document.getElementById('step2').classList.remove('active');
+    }
+    window.goStep1 = goStep1;
+
+    window.goStep2 = function () {
+        if (!selectedCount()) {
+            showAlert('提示', '请先选择节点');
+            return;
+        }
+        document.getElementById('step1').classList.remove('active');
+        document.getElementById('step2').classList.add('active');
+        loadPreview();
+    };
+
+    function loadPreview() {
+        var tbody = document.getElementById('previewTbody');
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">' +
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div>解析安装路径…</td></tr>';
+        var ids = Object.keys(selected).map(function (k) { return parseInt(k, 10); });
+        fetch(PREVIEW_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ node_ids: ids })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-danger text-center py-3">' +
+                        escapeHtml(data.message || '预览失败') + '</td></tr>';
+                    previewNodes = [];
+                    syncStartBtn();
+                    return;
+                }
+                previewNodes = data.nodes || [];
+                renderPreview();
+            })
+            .catch(function () {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-danger text-center py-3">预览请求失败</td></tr>';
+                previewNodes = [];
+                syncStartBtn();
+            });
+    }
+
+    function renderPreview() {
+        var tbody = document.getElementById('previewTbody');
+        if (!previewNodes.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-3">无节点</td></tr>';
+            syncStartBtn();
+            return;
+        }
+        tbody.innerHTML = previewNodes.map(function (n) {
+            var runBadge = n.running
+                ? '<span class="badge bg-warning text-dark">运行中</span>'
+                : '<span class="badge bg-secondary">未运行</span>';
+            if (n.running_error) {
+                runBadge += ' <small class="text-danger" title="' + escapeHtml(n.running_error) + '">探测异常</small>';
+            }
+            var gate = n.gate_message
+                ? '<div class="small text-danger mt-1">' + escapeHtml(n.gate_message) + '</div>'
+                : '';
+            return '<tr data-node-id="' + n.id + '">' +
+                '<td><span class="node-identity">' + escapeHtml(n.hostname) +
+                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span>' + gate + '</td>' +
+                '<td><input type="text" class="form-control form-control-sm prefix-input" ' +
+                'data-role="prefix" value="' + escapeHtml(n.prefix || '') + '" ' +
+                (n.eligible || n.prefix ? '' : '') + '></td>' +
+                '<td><code class="small">' + escapeHtml(n.backup_path || '-') + '</code></td>' +
+                '<td>' + runBadge + '</td></tr>';
+        }).join('');
+        syncStartBtn();
+    }
+
+    function collectPayload(stopIfRunning) {
+        var nodes = [];
+        document.querySelectorAll('#previewTbody tr[data-node-id]').forEach(function (tr) {
+            var id = parseInt(tr.getAttribute('data-node-id'), 10);
+            var input = tr.querySelector('[data-role="prefix"]');
+            nodes.push({ id: id, prefix: input ? input.value.trim() : '' });
+        });
+        return {
+            nodes: nodes,
+            remove_backup: document.getElementById('optBackup').checked,
+            remove_workdir: document.getElementById('optWorkdir').checked,
+            remove_modules: document.getElementById('optModules').checked,
+            stop_if_running: !!stopIfRunning
+        };
+    }
+
+    function doCreate(payload) {
+        fetch(CREATE_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(payload)
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) {
+                    showAlert('卸载失败', data.message || '创建任务失败');
+                    return;
+                }
+                var tcId = data.task_center_id;
+                var detailUrl = DETAIL_URL_TMPL.replace('{id}', String(tcId));
+                if (typeof showAsyncProgressOverlay === 'function' && typeof startAsyncProgressPolling === 'function') {
+                    showAsyncProgressOverlay('Nginx 卸载', {
+                        batchNumber: data.source_batch || '',
+                        logHref: detailUrl,
+                        noReload: true
+                    });
+                    startAsyncProgressPolling(tcId);
+                } else {
+                    showAlert('已创建', data.message || '任务已创建');
+                    window.open(detailUrl, '_blank');
+                }
+            })
+            .catch(function () {
+                showAlert('错误', '请求失败，请稍后重试');
+            });
+    }
+
+    window.startUninstall = function () {
+        if (!document.getElementById('confirmDelete').checked) {
+            showAlert('提示', '请先勾选确认删除');
+            return;
+        }
+        var running = previewNodes.filter(function (n) { return n.running; });
+        if (running.length) {
+            var names = running.map(function (n) { return n.hostname; }).join('、');
+            showConfirm(
+                'Nginx 仍在运行',
+                '以下节点 Nginx 仍在运行：' + names +
+                '。<br>将先<strong>停止 Nginx</strong>再删除安装目录，是否继续？',
+                function () { doCreate(collectPayload(true)); },
+                true,
+                'md',
+                '停止并继续卸载'
+            );
+            return;
+        }
+        doCreate(collectPayload(true));
+    };
+
+    document.getElementById('confirmDelete').addEventListener('change', syncStartBtn);
+    ['optBackup', 'optWorkdir', 'optModules'].forEach(function (id) {
+        document.getElementById(id).addEventListener('change', syncStartBtn);
+    });
+
+    document.getElementById('selectNodeModal').addEventListener('show.bs.modal', function () {
+        draft = Object.assign({}, selected);
+        doSearch();
+    });
+
+    document.getElementById('selectAll').addEventListener('change', function () {
+        var on = this.checked;
+        document.querySelectorAll('.un-node-cb:not(:disabled)').forEach(function (cb) {
+            var node = lastSearchNodes.find(function (n) { return String(n.id) === String(cb.value); });
+            if (!node) return;
+            if (on) {
+                if (!toggleDraft(node, true)) { cb.checked = false; return; }
+                cb.checked = true;
+            } else {
+                toggleDraft(node, false);
+                cb.checked = false;
+            }
+        });
+    });
+
+    var searchField = document.getElementById('searchField');
+    searchField.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (typeof addTagFromInput === 'function') {
+                addTagFromInput(document.getElementById('searchWrap'), searchField);
+            }
+            updateSearchHidden();
+            doSearch();
+        }
+    });
+    searchField.addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+            updateSearchHidden();
+            doSearch();
+        }, 350);
+    });
+
+    if (typeof initTagInput === 'function') {
+        initTagInput(document.getElementById('searchWrap'), {
+            onChange: function () {
+                updateSearchHidden();
+                doSearch();
+            }
+        });
+    }
+
+    renderChips();
+})();
+</script>
+{% endblock %}

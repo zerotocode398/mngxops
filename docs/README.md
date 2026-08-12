@@ -31,6 +31,7 @@
 | [10-upgrade.md](10-upgrade.md) | Nginx 编译升级 | `apps/upgrade` |
 | [10b-nginx-service.md](10b-nginx-service.md) | Nginx 启停 | `apps/nginx_service` |
 | [10c-nginx-install.md](10c-nginx-install.md) | Nginx 全新安装 | `apps/nginx_install` |
+| [10d-nginx-uninstall.md](10d-nginx-uninstall.md) | Nginx 卸载 | `apps/nginx_uninstall` |
 | [11-audit.md](11-audit.md) | 操作审计 / 登录日志 | `apps/audit` |
 | [12-settings.md](12-settings.md) | 系统设置 | `apps/settings` |
 

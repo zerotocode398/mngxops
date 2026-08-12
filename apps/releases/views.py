@@ -290,6 +290,7 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
                     "config_batch_sync",
                     "nginx_service_control",
                     "nginx_install",
+                    "nginx_uninstall",
                 ],
                 trigger_user=self.request.user,
             )
@@ -358,6 +359,7 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                 "config_batch_sync",
                 "nginx_service_control",
                 "nginx_install",
+                "nginx_uninstall",
             ],
             trigger_user=self.request.user,
         )
@@ -550,6 +552,7 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
                     "config_batch_sync",
                     "nginx_service_control",
                     "nginx_install",
+                    "nginx_uninstall",
                 ],
                 trigger_user=self.request.user,
             )
@@ -592,6 +595,21 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
                 )
             except Exception:
                 logger.exception("级联取消升级任务失败 task_center=%s", task.id)
+
+        # 级联：关联卸载任务
+        if task.operation_type == "nginx_uninstall":
+            try:
+                from apps.nginx_uninstall.models import NginxUninstallTask
+                terminal = ("success", "failed", "cancelled")
+                NginxUninstallTask.objects.filter(task_center_id=task.id).exclude(
+                    status__in=terminal
+                ).update(
+                    status="cancelled",
+                    error_message=detail,
+                    finished_at=timezone.now(),
+                )
+            except Exception:
+                logger.exception("级联取消卸载任务失败 task_center=%s", task.id)
 
         closed = close_registered_ssh(task.id)
         _clear_release_progress_state(task.id)
@@ -800,6 +818,7 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
                 "config_batch_sync",
                 "nginx_service_control",
                 "nginx_install",
+                "nginx_uninstall",
             ]
             if self.can_read_upgrade:
                 allowed = list(set(allowed + ["nginx_install", "nginx_upgrade", "nginx_rollback"]))

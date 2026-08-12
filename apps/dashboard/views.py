@@ -37,6 +37,7 @@ def _task_center_queryset_for_user(user):
                 "config_batch_sync",
                 "nginx_service_control",
                 "nginx_install",
+                "nginx_uninstall",
             ],
             trigger_user=user,
         )

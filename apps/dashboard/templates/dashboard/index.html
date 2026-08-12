@@ -242,7 +242,7 @@
                                     <td class="task-summary-cell">
                                         <div class="task-summary-scroll">
                                             <div class="small text-truncate">
-                                                {% if task.operation_type == "release_publish" or task.operation_type == "release_rollback" or task.operation_type == "nginx_upgrade" or task.operation_type == "nginx_install" or task.operation_type == "nginx_service_control" %}
+                                                {% if task.operation_type == "release_publish" or task.operation_type == "release_rollback" or task.operation_type == "nginx_upgrade" or task.operation_type == "nginx_install" or task.operation_type == "nginx_service_control" or task.operation_type == "nginx_uninstall" %}
                                                 <code>{{ task.summary_primary|default:"-" }}</code>
                                                 {% else %}
                                                 {{ task.summary_primary|default:"-" }}

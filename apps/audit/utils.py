@@ -63,6 +63,7 @@ OPERATION_AUDIT_MAP = {
     "nginx_rollback": ("Nginx升级", "Nginx升级回滚"),
     "nginx_service_control": ("运维工具", "Nginx服务启停"),
     "nginx_install": ("运维工具", "Nginx全新安装"),
+    "nginx_uninstall": ("运维工具", "Nginx卸载"),
     "other": ("任务中心", "其他任务"),
 }
 

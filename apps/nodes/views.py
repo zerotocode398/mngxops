@@ -131,6 +131,7 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "nginx_version": node.nginx_version or "",
                     "nginx_available": node.nginx_available,
                     "nginx_status_label": node.nginx_status_label,
+                    "nginx_path": node.nginx_path or "",
                     "has_credential": bool(node.credential_id),
                     "credential_username": (
                         node.credential.username if node.credential_id else ""

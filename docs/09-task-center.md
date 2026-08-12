@@ -27,6 +27,8 @@
 | `config_discover` / `config_drift_check` / `config_glob_preview` | 枚举保留兼容；筛选下拉已隐藏；业务不新建（Q86/Q87） |
 | `nginx_upgrade` / `nginx_rollback` | 升级 |
 | `nginx_service_control` | Nginx 启停（运维工具） |
+| `nginx_install` | Nginx 全新安装（运维工具） |
+| `nginx_uninstall` | Nginx 卸载（运维工具） |
 | `other` | 兜底 |
 
 ## 4. 页面与路由
@@ -51,7 +53,7 @@
   [失败] label - 失败原因: ...
 ```
 
-辅助函数：`node_header`、`item_success`、`item_failed`、`build_tree_result`、`format_task_center_summary`、`targets_from_release_tasks`、`short_error_tail`、`split_failed_item`、`split_error_reason_lines`；列表主机摘要最多 3 台（超出「等N台」，全文看详情，Q112）。发布 / 升级 / 安装 / 启停摘要主行优先展示 `source_batch`（无批次再回退主机名，Q148）。
+辅助函数：`node_header`、`item_success`、`item_failed`、`build_tree_result`、`format_task_center_summary`、`targets_from_release_tasks`、`short_error_tail`、`split_failed_item`、`split_error_reason_lines`；列表主机摘要最多 3 台（超出「等N台」，全文看详情，Q112）。发布 / 升级 / 安装 / 启停 / 卸载摘要主行优先展示 `source_batch`（无批次再回退主机名，Q148/Q152）。
 
 详情页解析：按 `[节点]` / `  [成功]` / `  [失败]` 切分；失败项拆出 label 与原因，将 `short_error_tail` 折叠的 ` | ` **还原为多行**展示（Q115）；**失败置顶并默认展开**，成功折叠；展示总耗时（Q33/Q34）。`config_batch_sync` 例外：默认展开结果树，并展示 `task.detail`；同步最终树含 `新建`/`更新`/`删除`/`跳过` 明细（Q105）。无「原始日志」大段折叠区（Q35）；发布过程弹窗也不再堆 SSH 折叠（Q80）。
 

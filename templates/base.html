@@ -941,6 +941,9 @@
                         <a class="nav-link" href="{% url 'nginx_service:index' %}" data-nav="nginx_service">
                             <i class="bi bi-power"></i> <span class="sidebar-label">Nginx 启停</span>
                         </a>
+                        <a class="nav-link" href="{% url 'nginx_uninstall:index' %}" data-nav="nginx_uninstall">
+                            <i class="bi bi-trash3"></i> <span class="sidebar-label">Nginx 卸载</span>
+                        </a>
                     </div>
                     </div>
                     {% endif %}
@@ -1570,6 +1573,7 @@
                     'upgrade': 'submenu-ops',
                     'nginx_install': 'submenu-ops',
                     'nginx_service': 'submenu-ops',
+                    'nginx_uninstall': 'submenu-ops',
                 };
                 const fullKey = currentAppName + ':' + currentUrlName;
                 let targetSubmenu = mapping[fullKey] || mapping[currentAppName];
@@ -1652,6 +1656,12 @@
                     'nginx_install:api_create': 'nginx_install',
                     'nginx_install:api_batch_progress': 'nginx_install',
                     'nginx_install:api_task_log': 'nginx_install',
+                    'nginx_uninstall:index': 'nginx_uninstall',
+                    'nginx_uninstall:center': 'nginx_uninstall',
+                    'nginx_uninstall:history': 'nginx_uninstall',
+                    'nginx_uninstall:api_preview': 'nginx_uninstall',
+                    'nginx_uninstall:api_create': 'nginx_uninstall',
+                    'nginx_uninstall:api_batch_progress': 'nginx_uninstall',
                     'configs:sync_wizard': 'configs',
                     'configs:binding_create': 'configs',
                     'configs:binding_edit': 'configs',

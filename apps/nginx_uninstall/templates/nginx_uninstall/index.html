@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Nginx 卸载 - MngxOps{% endblock %}
+{% block page_title %}<i class="bi bi-trash3"></i> Nginx 卸载{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-end align-items-center mb-3 flex-wrap gap-2">
+        {% if can_execute %}
+        <a href="{% url 'nginx_uninstall:center' %}" class="btn btn-primary btn-sm">
+            <i class="bi bi-trash3"></i> 开始卸载
+        </a>
+        {% endif %}
+        <a href="{% url 'nginx_uninstall:history' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-clock-history"></i> 历史
+        </a>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-3 mb-2">
+            <div class="card dashboard-stat-card stat-card-default"
+                 onclick="window.location.href='{% url 'nginx_uninstall:history' %}'"
+                 style="cursor:pointer;" title="查看全部卸载任务">
+                <div class="stat-number">{{ total_count }}</div>
+                <div class="stat-label">历史任务</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card dashboard-stat-card {% if running_count %}stat-card-info{% else %}stat-card-default{% endif %}"
+                 onclick="window.location.href='{% url 'nginx_uninstall:history' %}?status=running'"
+                 style="cursor:pointer;" title="查看进行中任务">
+                <div class="stat-number">{{ running_count }}</div>
+                <div class="stat-label">进行中</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card dashboard-stat-card {% if success_7d_count %}stat-card-primary{% else %}stat-card-default{% endif %}"
+                 onclick="window.location.href='{% url 'nginx_uninstall:history' %}?status=success'"
+                 style="cursor:pointer;" title="近 7 天成功">
+                <div class="stat-number">{{ success_7d_count }}</div>
+                <div class="stat-label">近 7 天成功</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-2">
+            <div class="card dashboard-stat-card {% if failed_7d_count %}stat-card-offline{% else %}stat-card-default{% endif %}"
+                 onclick="window.location.href='{% url 'nginx_uninstall:history' %}?status=failed'"
+                 style="cursor:pointer;" title="查看失败任务">
+                <div class="stat-number">{{ failed_7d_count }}</div>
+                <div class="stat-label">近 7 天失败</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-list-task"></i> 最近卸载任务</h5>
+            <a href="{% url 'nginx_uninstall:history' %}" class="btn btn-outline-secondary btn-sm">
+                查看全部 <i class="bi bi-chevron-right"></i>
+            </a>
+        </div>
+        <div class="card-body p-0">
+            {% if recent_tasks %}
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0 data-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th>批次</th>
+                            <th>目标节点</th>
+                            <th>安装路径</th>
+                            <th>状态</th>
+                            <th>进度</th>
+                            <th>操作人</th>
+                            <th>时间</th>
+                            <th style="width:72px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for task in recent_tasks %}
+                        <tr>
+                            <td>
+                                {% if task.batch_number %}
+                                <a href="{% url 'nginx_uninstall:history' %}?search={{ task.batch_number|urlencode }}"
+                                   class="text-decoration-none" target="_blank">
+                                    <code class="small">{{ task.batch_number }}</code>
+                                </a>
+                                {% else %}-{% endif %}
+                            </td>
+                            <td>
+                                <div class="node-info-cell">
+                                    <span class="node-identity">
+                                        {{ task.node.hostname }}<small class="text-muted">({{ task.node.ip }})</small>
+                                    </span>
+                                </div>
+                            </td>
+                            <td><code class="small">{{ task.resolved_prefix }}</code></td>
+                            <td>
+                                {% if task.status == "success" %}
+                                <span class="badge bg-success">卸载成功</span>
+                                {% elif task.status == "failed" %}
+                                <span class="badge bg-danger">失败</span>
+                                {% elif task.status == "cancelled" %}
+                                <span class="badge bg-secondary">已取消</span>
+                                {% else %}
+                                <span class="badge bg-info">{{ task.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="progress" style="height:6px;">
+                                    <div class="progress-bar" style="width:{{ task.progress }}%;"></div>
+                                </div>
+                                <small class="text-muted">{{ task.progress }}%</small>
+                            </td>
+                            <td>{{ task.operator|default:"-" }}</td>
+                            <td><small>{{ task.created_at|date:"m-d H:i" }}</small></td>
+                            <td>
+                                {% if task.task_center_id %}
+                                <a class="btn btn-outline-secondary btn-sm" title="任务详情"
+                                   href="{% url 'releases:task_center_detail' task.task_center_id %}" target="_blank">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% else %}-{% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state py-5">
+                <i class="bi bi-inbox"></i>
+                <p>暂无卸载任务</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

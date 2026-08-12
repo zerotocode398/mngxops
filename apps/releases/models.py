@@ -121,6 +121,7 @@ class TaskCenterTask(models.Model):
         ("nginx_rollback", "Nginx 升级回滚"),
         ("nginx_service_control", "Nginx 服务启停"),
         ("nginx_install", "Nginx 全新安装"),
+        ("nginx_uninstall", "Nginx 卸载"),
         ("other", "其他任务"),
     )
 

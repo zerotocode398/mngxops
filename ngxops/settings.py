@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "apps.upgrade",
     "apps.nginx_service",
     "apps.nginx_install",
+    "apps.nginx_uninstall",
 ]
 
 MIDDLEWARE = [
