@@ -49,8 +49,9 @@
    - 顶部紧凑基础参数：`--prefix` / `--user` / `--group`、**监听端口 (listen)**、工作目录、`make -j`（缺省读「安装管理」设置；listen 默认 80）。  
    - 支持模块：摘要「已选 N」+「调整模块」弹窗（左右栏绝对选集，对齐升级交互；默认 `DEFAULT_INSTALL_MODULES`）；可选 `#extraOpts` 自定义行（无标签文案）。  
    - 全宽第三方模块：在线 Git / 离线包（对齐升级；离线包共用模块包管理 `?nav=nginx_install`）。  
-3. **确认安装**：KV 摘要（含监听端口）、`./configure` 预览（含 `--add-module`）、节点清单、确认勾选。  
-4. **编译参数「下一步」告警（Q147）**：若监听端口为 80，且已选节点存在 SSH 凭证用户名 ≠ `root`，在离开编译参数步时整批弹一次 `showConfirm` 风险提示（列出风险节点；确认后进入确认页，不硬拦）。
+3. **确认安装**：KV 摘要（含监听端口、**启动管理**策略）、`./configure` 预览（含 `--add-module`）、节点清单、确认勾选。  
+4. **编译参数「下一步」告警（Q147）**：若监听端口为 80，且已选节点存在 SSH 凭证用户名 ≠ `root`，在离开编译参数步时整批弹一次 `showConfirm` 风险提示（列出风险节点；确认后进入确认页，不硬拦）。  
+5. **开始安装弹窗（Q153）**：说明启动管理策略——优先注册 `nginx.service` 并开机自启（`User=`/`Group=` 取自 `--user`/`--group`）；若 SSH 用户无法管理系统 unit 则二进制启动。含非 root 节点时列出用户名并提示权限差异（与 Q147 分阶段，不合并）。
 
 开跑后右栏按节点展示步骤；轮询重建时保留用户已展开的节点块。失败信息对齐升级（最多 5 行 +「失败:」前缀）。「查看完整日志」新窗口打开任务日志页（编译参数展示含 `./configure \`）。不使用全局进度遮罩。
 
@@ -77,13 +78,17 @@
 2. 上传/解压源码包、准备第三方模块（复用 upgrade 助手）  
 3. configure → make → make install  
 4. 若 `listen_port != 80`：改写 `{prefix}/conf/nginx.conf` 中默认 `listen 80` / `[::]:80`  
-5. `nginx -t` → `start_nginx`（`-t` 遇 bind/Permission denied 时补充非 root 特权端口引导）  
+5. `nginx -t`（遇 bind/Permission denied 时补充非 root 特权端口引导）→ 探测 `can_manage_systemd_unit`：  
+   - **能管**：写入 `/etc/systemd/system/nginx.service`（`User=`/`Group=`←`--user`/`--group`）→ `daemon-reload` → `enable` → `systemctl start`；写/enable/start 失败则安装失败（**不**静默改二进制）  
+   - **不能管**：`{prefix}/sbin/nginx` 二进制启动；日志写明原因  
 6. 回写版本/路径，`mark_node_probe_success`，写入 `main_conf_path`  
 7. 自动配置同步（失败不否定安装、不回滚）
+
+不做：`systemctl --user`；apt/yum 包安装编排。
 
 ## 9. 实现锚点
 
 - 应用：`apps/nginx_install`
 - 官方模块：`apps/upgrade/builtin_modules.py`
 - TaskCenter：`nginx_install`
-- 结论：Q132 / Q133 / Q134 / Q136 / Q139 / Q140 / Q141 / Q142 / Q143 / Q144 / Q146 / Q147（见 [`AGENTS.md`](../AGENTS.md)）
+- 结论：Q132 / Q133 / Q134 / Q136 / Q139 / Q140 / Q141 / Q142 / Q143 / Q144 / Q146 / Q147 / Q153（见 [`AGENTS.md`](../AGENTS.md)）

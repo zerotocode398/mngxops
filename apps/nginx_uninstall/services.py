@@ -17,7 +17,13 @@ from apps.releases.task_result import (
     item_success,
     node_header,
 )
-from utils.nginx_ops import is_nginx_running, stop_nginx
+from utils.nginx_ops import (
+    can_manage_systemd_unit,
+    detect_nginx_manage_mode,
+    is_nginx_running,
+    remove_nginx_systemd_unit,
+    stop_nginx,
+)
 from utils.setting_service import get_setting
 from utils.ssh import SSHClient, _safe_backup_hostname
 
@@ -409,6 +415,110 @@ def _auth_kwargs(credential):
     return {"private_key": credential.get_private_key()}
 
 
+def _pkg_sudo_cmd(cmd, use_sudo=False):
+    """按需为包管理命令加 sudo -n。"""
+    cmd = (cmd or "").strip()
+    if not cmd:
+        return cmd
+    if use_sudo:
+        return f"sudo -n {cmd}"
+    return cmd
+
+
+def detect_nginx_package_origin(ssh, nginx_path=""):
+    """探测 nginx 二进制是否由 rpm/dpkg 包拥有。
+
+    Returns:
+        dict: origin(package|source), mgr(rpm|deb|""), package, binary
+    """
+    result = {
+        "origin": "source",
+        "mgr": "",
+        "package": "",
+        "binary": "",
+    }
+    bin_path = normalize_remote_path(nginx_path or "")
+    if not bin_path:
+        ok, out = ssh.execute_command("command -v nginx 2>/dev/null || true")
+        cand = (out or "").strip().splitlines()
+        bin_path = normalize_remote_path(cand[-1].strip() if cand else "")
+    if not bin_path:
+        return result
+    result["binary"] = bin_path
+    quoted = shlex.quote(bin_path)
+
+    ok, out = ssh.execute_command(
+        f"rpm -qf --queryformat '%{{NAME}}' {quoted} 2>/dev/null || true"
+    )
+    name = (out or "").strip().splitlines()
+    name = name[-1].strip() if name else ""
+    low = name.lower()
+    if ok and name and "not owned" not in low and "error" not in low and "\n" not in name:
+        result["origin"] = "package"
+        result["mgr"] = "rpm"
+        result["package"] = name
+        return result
+
+    ok, out = ssh.execute_command(f"dpkg -S {quoted} 2>/dev/null || true")
+    text = (out or "").strip()
+    if ok and text and "no path found" not in text.lower():
+        first = text.splitlines()[0]
+        left = first.split(":", 1)[0].strip()
+        pkg_name = left.split(",")[0].strip()
+        if pkg_name:
+            result["origin"] = "package"
+            result["mgr"] = "deb"
+            result["package"] = pkg_name
+            return result
+
+    return result
+
+
+def remove_nginx_package(ssh, package, mgr="", use_sudo=False, log_fn=None):
+    """通过 dnf/yum/apt-get 卸载包。
+
+    Returns:
+        tuple: (ok, msg)
+    """
+    def _log(msg):
+        if log_fn:
+            log_fn(msg)
+
+    package = (package or "").strip()
+    if not package:
+        return False, "未解析到软件包名"
+    quoted_pkg = shlex.quote(package)
+    mgr = (mgr or "").strip()
+
+    def _has(cmd):
+        ok, out = ssh.execute_command(
+            f"command -v {cmd} >/dev/null 2>&1 && echo OK"
+        )
+        return ok and "OK" in (out or "")
+
+    if mgr == "deb" or (mgr != "rpm" and _has("apt-get") and not _has("rpm")):
+        cmd = (
+            f"DEBIAN_FRONTEND=noninteractive apt-get remove -y {quoted_pkg} 2>&1"
+        )
+    elif _has("dnf"):
+        cmd = f"dnf remove -y {quoted_pkg} 2>&1"
+    elif _has("yum"):
+        cmd = f"yum remove -y {quoted_pkg} 2>&1"
+    elif _has("apt-get"):
+        cmd = (
+            f"DEBIAN_FRONTEND=noninteractive apt-get remove -y {quoted_pkg} 2>&1"
+        )
+    else:
+        return False, "未找到 dnf/yum/apt-get，无法包管理卸载"
+
+    full = _pkg_sudo_cmd(cmd, use_sudo=use_sudo)
+    _log(f"执行: {full}")
+    ok, out = ssh.execute_command(full)
+    if not ok:
+        return False, (out or "").strip() or "包管理器卸载失败"
+    return True, (out or "").strip() or f"已卸载软件包 {package}"
+
+
 def _parse_options(raw):
     """解析删除选项 JSON（含 extra_paths）"""
     if isinstance(raw, dict):
@@ -477,31 +587,81 @@ def preview_nodes(node_ids):
         paths = []
         running = False
         running_error = ""
+        manage_mode = "unknown"
+        manage_unit = ""
+        can_manage = False
+        cred_username = ""
+        install_origin = "unknown"
+        package_mgr = ""
+        package_name = ""
+        if node.credential_id and node.credential:
+            cred_username = node.credential.username or ""
         if not gate:
             prefix, source, err, _parsed, paths_v = _fetch_v_and_prefix(node)
             paths = list(paths_v) + _setting_path_entries(node, work_dir)
             cred = node.credential
             try:
-                running = is_nginx_running(
-                    node.ip,
-                    node.port,
-                    cred.username,
-                    nginx_path=node.nginx_path or None,
-                    **_auth_kwargs(cred),
-                )
+                with SSHClient(
+                    node.ip, node.port, cred.username, **_auth_kwargs(cred)
+                ) as ssh:
+                    conn = getattr(ssh, "_connect_result", None)
+                    if isinstance(conn, tuple) and not conn[0]:
+                        running_error = conn[1] or "SSH 连接失败"
+                    else:
+                        pkg_info = detect_nginx_package_origin(
+                            ssh, nginx_path=node.nginx_path or ""
+                        )
+                        install_origin = pkg_info.get("origin") or "source"
+                        package_mgr = pkg_info.get("mgr") or ""
+                        package_name = pkg_info.get("package") or ""
+                        if install_origin == "package":
+                            # 包安装：-V 路径仅展示，不参与直接 rm
+                            for p in paths:
+                                if p.get("source") == "nginx -V":
+                                    p["checked"] = False
+                                    p["required"] = False
+                                    p["editable"] = False
+                                    p["package_owned"] = True
+                        mode, detail = detect_nginx_manage_mode(
+                            node.ip,
+                            node.port,
+                            cred.username,
+                            client=ssh.client,
+                            **_auth_kwargs(cred),
+                        )
+                        manage_mode = mode or "binary"
+                        manage_unit = (detail or {}).get("unit") or ""
+                        ok_cap, _use_sudo, _reason = can_manage_systemd_unit(ssh)
+                        can_manage = bool(ok_cap)
+                        running = is_nginx_running(
+                            node.ip,
+                            node.port,
+                            cred.username,
+                            nginx_path=node.nginx_path or None,
+                            client=ssh.client,
+                            **_auth_kwargs(cred),
+                        )
             except Exception as exc:
                 running_error = str(exc)
         else:
             paths = _setting_path_entries(node, work_dir)
 
         backup_path = backup_subdir_for_node(node)
+        if install_origin == "package" and package_name:
+            eligible = gate is None
+        else:
+            eligible = (
+                gate is None
+                and bool(prefix)
+                and not is_dangerous_path(prefix)
+            )
         items.append({
             "id": node.id,
             "hostname": node.hostname,
             "ip": node.ip,
             "nginx_path": node.nginx_path or "",
             "nginx_available": node.nginx_available,
-            "eligible": gate is None and bool(prefix) and not is_dangerous_path(prefix),
+            "eligible": eligible,
             "gate_message": gate or err or "",
             "prefix": prefix,
             "prefix_source": source,
@@ -511,7 +671,15 @@ def preview_nodes(node_ids):
             "paths": paths,
             "running": running,
             "running_error": running_error,
+            "credential_username": cred_username,
+            "manage_mode": manage_mode,
+            "manage_unit": manage_unit,
+            "can_manage_systemd": can_manage,
+            "install_origin": install_origin,
+            "package_mgr": package_mgr,
+            "package_name": package_name,
         })
+
 
     return {
         "success": True,
@@ -664,12 +832,43 @@ def create_uninstall_batch_from_data(user, data):
         prefix, backup_path, work_dir, node_opts = _options_from_selected_paths(
             item, node, stop_if_running, batch_work_dir
         )
-        if not prefix:
-            rejected.append(f"{node.hostname}（无法解析安装路径）")
-            continue
-        if is_dangerous_path(prefix):
-            rejected.append(f"{node.hostname}（禁止删除路径 {prefix}）")
-            continue
+
+        # 执行前再探测包归属（权威）
+        pkg_info = {"origin": "source", "mgr": "", "package": ""}
+        try:
+            with SSHClient(
+                node.ip, node.port, node.credential.username, **_auth_kwargs(node.credential)
+            ) as ssh:
+                conn = getattr(ssh, "_connect_result", None)
+                if isinstance(conn, tuple) and conn[0]:
+                    pkg_info = detect_nginx_package_origin(
+                        ssh, nginx_path=node.nginx_path or ""
+                    )
+        except Exception:
+            logger.exception("探测节点 %s 包归属失败", node.id)
+
+        is_pkg = (
+            (pkg_info.get("origin") == "package")
+            and bool(pkg_info.get("package"))
+        )
+        node_opts["install_origin"] = "package" if is_pkg else "source"
+        node_opts["package_mgr"] = pkg_info.get("mgr") or ""
+        node_opts["package_name"] = pkg_info.get("package") or ""
+
+        if is_pkg:
+            # 包路径不 rm 安装树；忽略 -V 额外路径勾选
+            node_opts["extra_paths"] = []
+            if not prefix:
+                prefix = normalize_remote_path(node.nginx_path or "") or (
+                    f"package:{node_opts['package_name']}"
+                )
+        else:
+            if not prefix:
+                rejected.append(f"{node.hostname}（无法解析安装路径）")
+                continue
+            if is_dangerous_path(prefix):
+                rejected.append(f"{node.hostname}（禁止删除路径 {prefix}）")
+                continue
 
         if node_opts["remove_backup"] and is_dangerous_path(backup_path):
             rejected.append(f"{node.hostname}（发布备份路径不安全：{backup_path}）")
@@ -912,10 +1111,51 @@ def _run_one_uninstall(task, stop_if_running):
                 return f"停止 Nginx 失败: {msg or '未知错误'}"
             log("已停止 Nginx")
 
-        _set_task_status(task, "removing_prefix", progress=45, step="删除安装目录")
-        ok, msg = _rm_remote(ssh, task.resolved_prefix, log, kind="dir")
-        if not ok:
-            return msg
+        pkg_info = detect_nginx_package_origin(
+            ssh, nginx_path=node.nginx_path or ""
+        )
+        # 创建时写入的包信息作回退
+        if pkg_info.get("origin") != "package":
+            if options.get("install_origin") == "package" and options.get("package_name"):
+                pkg_info = {
+                    "origin": "package",
+                    "mgr": options.get("package_mgr") or "",
+                    "package": options.get("package_name") or "",
+                    "binary": node.nginx_path or "",
+                }
+
+        is_pkg = (
+            pkg_info.get("origin") == "package" and bool(pkg_info.get("package"))
+        )
+
+        if is_pkg:
+            _set_task_status(
+                task, "removing_package", progress=45, step="包管理器卸载"
+            )
+            log(
+                f"检测到包安装（{pkg_info.get('mgr') or '?'}:{pkg_info.get('package')}），"
+                "通过包管理器卸载，不直接删除安装目录…"
+            )
+            ok_cap, use_sudo, reason = can_manage_systemd_unit(ssh, log_fn=log)
+            if not ok_cap:
+                return f"包管理器卸载需要系统权限: {reason}"
+            ok, msg = remove_nginx_package(
+                ssh,
+                package=pkg_info.get("package"),
+                mgr=pkg_info.get("mgr") or "",
+                use_sudo=use_sudo,
+                log_fn=log,
+            )
+            if not ok:
+                return f"包管理器卸载失败: {msg}"
+            log(msg or "包管理器卸载完成")
+        else:
+            _set_task_status(task, "removing_prefix", progress=45, step="删除安装目录")
+            if is_dangerous_path(task.resolved_prefix):
+                return f"禁止删除路径: {task.resolved_prefix}"
+            ok, msg = _rm_remote(ssh, task.resolved_prefix, log, kind="dir")
+            if not ok:
+                return msg
 
         extras = _collect_extra_delete_targets(task, options)
         backup_targets = [
@@ -940,6 +1180,54 @@ def _run_one_uninstall(task, stop_if_running):
                 ok, msg = _rm_remote(ssh, path, log, kind=kind)
                 if not ok:
                     return f"清理额外路径失败: {msg}"
+
+        # systemd：源码安装按托管清理；包安装仅清理平台自写 /etc unit（若仍在）
+        if is_pkg:
+            from utils.nginx_ops import UNIT_FILE_PATH
+
+            ok, cout = ssh.execute_command(
+                f"test -e {shlex.quote(UNIT_FILE_PATH)} && echo EXISTS || echo MISSING"
+            )
+            if "EXISTS" in (cout or ""):
+                _set_task_status(task, "removing_unit", progress=85, step="清理 systemd")
+                log("残留平台 nginx.service，尝试清理…")
+                ok_cap, use_sudo, reason = can_manage_systemd_unit(ssh, log_fn=log)
+                if not ok_cap:
+                    return f"存在平台 unit 但无权限清理: {reason}"
+                ok, msg = remove_nginx_systemd_unit(
+                    ssh, unit_name="nginx", use_sudo=use_sudo, log_fn=log,
+                )
+                if not ok:
+                    return f"清理 systemd unit 失败: {msg}"
+                log(msg or "systemd unit 已清理")
+            else:
+                log("包卸载完成，无平台自写 unit，跳过 systemd 清理")
+        else:
+            mode, detail = detect_nginx_manage_mode(
+                node.ip,
+                node.port,
+                cred.username,
+                client=ssh.client,
+                **auth,
+            )
+            if mode == "systemctl":
+                _set_task_status(task, "removing_unit", progress=85, step="清理 systemd")
+                log("检测到 systemctl 托管，清理 unit…")
+                ok_cap, use_sudo, reason = can_manage_systemd_unit(ssh, log_fn=log)
+                if not ok_cap:
+                    return f"当前为 systemctl 托管，但无权限清理 unit: {reason}"
+                unit_name = (detail or {}).get("unit") or "nginx"
+                ok, msg = remove_nginx_systemd_unit(
+                    ssh,
+                    unit_name=unit_name,
+                    use_sudo=use_sudo,
+                    log_fn=log,
+                )
+                if not ok:
+                    return f"清理 systemd unit 失败: {msg}"
+                log(msg or "systemd unit 已清理")
+            else:
+                log("二进制托管，跳过 systemd 清理")
 
     _set_task_status(task, "updating_node", progress=90, step="更新节点状态")
     log("回写节点 Nginx 状态…")
@@ -981,8 +1269,10 @@ def _run_uninstall_batch(task_center_id, uninstall_task_ids):
                 NginxUninstallTask.objects.filter(
                     id__in=uninstall_task_ids,
                     status__in=[
-                        "pending", "stopping", "removing_prefix",
-                        "removing_backup", "removing_extra", "updating_node",
+                        "pending", "stopping", "removing_package",
+                        "removing_prefix",
+                        "removing_backup", "removing_extra", "removing_unit",
+                        "updating_node",
                     ],
                 ).update(
                     status="cancelled",

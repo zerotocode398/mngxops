@@ -1,4 +1,4 @@
-# mngxops 优化点台账（Q1–Q152）
+# mngxops 优化点台账（Q1–Q154）
 
 本文档记录历史优化点结论，供 Agent / 开发快速检索。**不修改业务逻辑时请以本文件结论为准。**
 
@@ -135,6 +135,10 @@
 | Q146 | 安装失败回填任务中心执行结果树 | 已完成 |
 | Q147 | 发布未运行则 start；安装 listen 设置与非 root+80 告警 | 已完成 |
 | Q148 | 升级/安装/启停摘要主行批次号；仪表盘副行截断对齐 | 已完成 |
+| Q150 | SSH/Nginx 双维度状态与门禁（卸载后 orphaned） | 已完成 |
+| Q152 | 运维工具 Nginx 卸载独立页 | 已完成 |
+| Q153 | 安装/卸载按 systemd 管理能力分流 | 已完成 |
+| Q154 | 卸载：包安装走 yum/apt remove | 已完成 |
 
 ### UI 规范 / 性能 / 进度
 
@@ -153,8 +157,10 @@
 | Q149 | UI 一致性收敛（弹窗尺寸/进度合一/主色桥接） | 已完成 |
 | Q151 | Nginx 状态徽标短文案与发布/配置列表展示对齐 | 已完成 |
 | Q152 | 运维工具 Nginx 卸载独立页 | 已完成 |
+| Q153 | 安装/卸载按 systemd 管理能力分流 | 已完成 |
+| Q154 | 卸载：包安装走 yum/apt remove | 已完成 |
 
-### 缺口与结论项（Q84–Q152）
+### 缺口与结论项（Q84–Q154）
 
 | 编号 | 摘要 | 状态 |
 |------|------|------|
@@ -227,6 +233,8 @@
 | Q150 | SSH/Nginx 双维度状态与门禁（卸载后 orphaned） | 已完成 |
 | Q151 | Nginx 状态徽标短文案与发布/配置列表展示对齐 | 已完成 |
 | Q152 | 运维工具 Nginx 卸载独立页 | 已完成 |
+| Q153 | 安装/卸载按 systemd 管理能力分流 | 已完成 |
+| Q154 | 卸载：包安装走 yum/apt remove | 已完成 |
 
 ---
 
@@ -1287,4 +1295,22 @@
   3. 探测 `nginx -V` 路径参数与系统设置项（备份/工作目录/modules）统一列表按节点勾选；节点块可折叠。
   4. 流水线 stop → 删 prefix → 按勾选清备份/额外路径；回写清空路径/版本，`apply_nginx_probe_result(False)` + orphan；清空 `main_conf_path`。
   5. TaskCenter `nginx_uninstall`，批次 `UN-YYMMDD-NNNN`；批次进度轮询 + 取消级联；历史/摘要对齐现有运维模块。
+- **状态**：已完成
+
+### Q153 · 安装/卸载 · systemd 管理能力分流
+
+- **问题**：源码安装后常无 unit，启停靠二进制；卸载明确「不做删除 systemd unit」，导致 root 安装无法开机自启、卸载后 unit 残留。
+- **处理**：
+  1. `utils/nginx_ops`：`can_manage_systemd_unit`（可写 `/etc/systemd/system` 或 `sudo -n`）、写/删 `nginx.service`、`start_nginx(prefer_mode, use_sudo)`。
+  2. 安装：`nginx -t` 后能管则写 unit（`User=`/`Group=`←`--user`/`--group`）+ enable + start；不能则二进制；写/enable/start 失败不静默降级。确认页与开始安装弹窗说明策略；含非 root 时提示权限差异。
+  3. 卸载：preview 返回 `manage_mode`/`credential_username`；systemctl 托管则 `removing_unit`（disable + 删可管 unit）；二进制跳过；非 root+systemctl 与停服合并一次风险确认。不删发行版 `/lib`/`/usr/lib` unit。
+- **状态**：已完成
+
+### Q154 · 卸载 · 包安装走 yum/apt remove
+
+- **问题**：yum/apt 安装的 Nginx 若按源码路径 `rm -rf` 易误删发行版目录，且与包管理状态不一致；文档曾写「不做 apt/yum」。
+- **处理**：
+  1. `detect_nginx_package_origin`：`rpm -qf` / `dpkg -S` 归属二进制 → 包名；否则源码。
+  2. 包路径：`dnf`/`yum`/`apt-get remove -y`（需系统权限/`sudo -n`），不 rm `--prefix`/`-V` 路径；可选备份/工作目录仍可清；残留平台 `/etc/systemd/system/nginx.service` 再清。
+  3. 源码路径维持删树 + Q153 systemd。preview/确认展示安装来源徽标；状态 `removing_package`。
 - **状态**：已完成

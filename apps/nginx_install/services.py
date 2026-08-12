@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import re
 import shlex
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -169,6 +170,17 @@ def build_install_configure_opts(
     return compute_target_configure_opts(
         base, modules, [], added_third_party or [], remote_work_dir=remote_work_dir
     )
+
+
+def _parse_configure_user_group(configure_opts):
+    """从 configure 参数串解析 --user=/--group=。"""
+    text = configure_opts or ""
+    user_m = re.search(r"--user=(\S+)", text)
+    group_m = re.search(r"--group=(\S+)", text)
+    user = user_m.group(1).strip() if user_m else ""
+    group = group_m.group(1).strip() if group_m else ""
+    return user, group
+
 
 
 def run_install_task(task_id):
@@ -529,19 +541,68 @@ def run_install_task(task_id):
         if cancelled():
             return
 
-        # ---- start ----
+        # ---- start（按 systemd 管理能力分流）----
         set_task_status("starting", 88)
         if tc_id:
             update_if_active(tc_id, progress=88, detail=f"{hostname} · 启动 Nginx")
             _set_current_step(tc_id, hostname, "启动 Nginx")
-        log("启动 Nginx ...")
-        ok, result = start_nginx(
-            node.ip, node.port, credential.username,
-            nginx_path=nginx_bin, log_fn=log, **auth_kwargs,
+        from utils.nginx_ops import (
+            can_manage_systemd_unit,
+            write_nginx_systemd_unit,
         )
-        if not ok:
-            return fail(88, f"Nginx 启动失败: {result}")
-        log(f"启动完成: {result}")
+
+        log("探测 systemd 管理能力…")
+        start_ssh = SSHClient(
+            node.ip, node.port, credential.username, **auth_kwargs
+        )
+        conn_ok, conn_msg = start_ssh.connect()
+        if not conn_ok:
+            return fail(88, f"启动阶段 SSH 连接失败: {conn_msg}")
+        if tc_id:
+            register_ssh(tc_id, start_ssh)
+        try:
+            ok_cap, use_sudo, cap_reason = can_manage_systemd_unit(
+                start_ssh, log_fn=log
+            )
+            nginx_user_cfg, nginx_group_cfg = _parse_configure_user_group(
+                task.target_configure_opts
+            )
+            if ok_cap:
+                log(f"将使用 systemctl 托管（{cap_reason}）")
+                if tc_id:
+                    _set_current_step(tc_id, hostname, "注册 systemd / 启动 Nginx")
+                w_ok, w_msg = write_nginx_systemd_unit(
+                    start_ssh,
+                    nginx_bin=nginx_bin,
+                    user=nginx_user_cfg,
+                    group=nginx_group_cfg,
+                    use_sudo=use_sudo,
+                    log_fn=log,
+                )
+                if not w_ok:
+                    return fail(88, f"注册 systemd unit 失败: {w_msg}")
+                ok, result = start_nginx(
+                    node.ip, node.port, credential.username,
+                    nginx_path=nginx_bin, log_fn=log,
+                    prefer_mode="systemctl", use_sudo=use_sudo,
+                    client=start_ssh.client, **auth_kwargs,
+                )
+            else:
+                log(f"无 systemd 管理能力（{cap_reason}），使用二进制启动")
+                ok, result = start_nginx(
+                    node.ip, node.port, credential.username,
+                    nginx_path=nginx_bin, log_fn=log,
+                    prefer_mode="binary",
+                    client=start_ssh.client, **auth_kwargs,
+                )
+            if not ok:
+                return fail(88, f"Nginx 启动失败: {result}")
+            mode_label = "systemctl" if ok_cap else "binary"
+            log(f"启动完成: {result} · 方式={mode_label}")
+        finally:
+            if tc_id:
+                unregister_ssh(tc_id, start_ssh)
+            start_ssh.close()
 
         # ---- 回写节点 ----
         set_task_status("verifying", 92)

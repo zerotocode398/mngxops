@@ -1169,6 +1169,7 @@
             if (tp.source === 'package') return tp.name + ' (离线包)';
             return tp.name + ' (Git)';
         });
+        var hasNonRoot = getNonRootCredentialNodes().length > 0;
         document.getElementById('confirmSummary').innerHTML =
             '<div class="kv-info-grid">' +
             renderSummaryInfoRow('目标节点', selectedCount() + ' 台') +
@@ -1179,7 +1180,15 @@
             renderSummaryInfoRow('用户 (--user)', getNginxUser() || '-') +
             renderSummaryInfoRow('用户组 (--group)', getNginxGroup() || '-') +
             renderSummaryInfoRow('监听端口', String(getListenPort())) +
+            renderSummaryInfoRow(
+                '启动管理',
+                '优先 systemd（nginx.service，开机自启；User/Group 取自 --user/--group）。' +
+                '若 SSH 用户无法管理系统 unit，则改用二进制启动。'
+            ) +
             '</div>' +
+            (hasNonRoot
+                ? '<p class="small text-muted mb-2">含非 root 节点，开始前将再次确认启动管理方式。</p>'
+                : '') +
             renderSummaryModuleLine('编译模块', mods, 'installModDetail') +
             renderSummaryModuleLine('第三方模块', tpLabels, 'installTpDetail');
 
@@ -1703,7 +1712,30 @@
         }
 
         var names = Object.keys(selected).map(function (id) { return selected[id].hostname; }).join('、');
-        showConfirm('确认安装 Nginx', '<p>将对以下节点执行全新安装：</p><p><code>' + escapeHtml(names) + '</code></p>', function () {
+        var nonRoot = getNonRootCredentialNodes();
+        var manageLines = '';
+        if (nonRoot.length) {
+            var maxShow = 10;
+            manageLines =
+                '<p class="mb-1">以下节点 SSH 为非 root，将按远端权限尝试 <code>systemctl</code> 托管；' +
+                '若无 unit 写权限且无免密 sudo，则改用二进制启动：</p><ul class="mb-2">' +
+                nonRoot.slice(0, maxShow).map(function (n) {
+                    var u = n.credential_username || '';
+                    return '<li><code>' + escapeHtml(n.hostname) + ' (' + escapeHtml(n.ip) + ')</code>' +
+                        (u ? ' · 用户 <code>' + escapeHtml(u) + '</code>' : '') + '</li>';
+                }).join('') + '</ul>' +
+                (nonRoot.length > maxShow
+                    ? '<p class="mb-2">等共 ' + nonRoot.length + ' 台</p>'
+                    : '');
+        } else {
+            manageLines =
+                '<p class="mb-2">将优先注册 <code>nginx.service</code> 并开机自启（User/Group 取自 --user/--group）；' +
+                '若无法管理系统 unit 则改用二进制启动。</p>';
+        }
+        var body =
+            '<p>将对以下节点执行全新安装：</p><p><code>' + escapeHtml(names) + '</code></p>' +
+            manageLines;
+        showConfirm('确认安装 Nginx', body, function () {
             fetch(CREATE_URL, {
                 method: 'POST',
                 headers: {
@@ -1735,7 +1767,7 @@
                 .catch(function () {
                     showAlert('创建失败', '网络错误');
                 });
-        }, true, 'md');
+        }, true, 'md', '继续');
     });
 
     renderChips();

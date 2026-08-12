@@ -59,8 +59,8 @@ class NginxUninstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templ
         context = super().get_context_data(**kwargs)
         since = timezone_now_minus_7d()
         running_statuses = [
-            "pending", "stopping", "removing_prefix",
-            "removing_backup", "removing_extra", "updating_node",
+            "pending", "stopping", "removing_package", "removing_prefix",
+            "removing_backup", "removing_extra", "removing_unit", "updating_node",
         ]
         context["running_count"] = NginxUninstallTask.objects.filter(
             status__in=running_statuses

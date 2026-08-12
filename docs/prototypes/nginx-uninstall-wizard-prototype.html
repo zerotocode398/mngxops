@@ -208,7 +208,11 @@
                                 <div class="kv-info-row"><div class="kv-info-label">操作</div><div>Nginx 卸载（不可恢复）</div></div>
                                 <div class="kv-info-row"><div class="kv-info-label">节点数</div><div>2</div></div>
                                 <div class="kv-info-row"><div class="kv-info-label">运行状态</div><div><span class="badge bg-warning text-dark">1 台运行中</span></div></div>
+                                <div class="kv-info-row"><div class="kv-info-label">托管</div><div>1 台 systemctl / 1 台二进制</div></div>
+                                <div class="kv-info-row"><div class="kv-info-label">安装来源</div><div>1 台包安装 / 1 台源码安装</div></div>
                             </div>
+                            <p class="small text-muted">包安装节点将通过 yum/dnf/apt remove 卸载，不直接删除安装目录。</p>
+                            <p class="small text-muted">systemctl 托管节点将 disable 并删除可管 nginx.service，清除开机自启。</p>
                             <div id="confirmSummary"></div>
                             <div class="form-check mb-2 mt-3">
                                 <input class="form-check-input" type="checkbox" id="confirmDelete">

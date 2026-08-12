@@ -186,6 +186,8 @@
                                 我确认删除上述勾选路径（不可恢复）
                             </label>
                         </div>
+                        <p class="small text-muted mb-0" id="confirmPackageNote"></p>
+                        <p class="small text-muted mb-0" id="confirmSystemdNote"></p>
                         <p class="small text-muted mb-0">
                             卸载成功后将清空节点 Nginx 路径/版本，标记 Nginx 不可用，相关配置绑定变为「远程已删除」。
                         </p>
@@ -311,10 +313,12 @@
     var UNINSTALL_STEPS = [
         { key: 'pending', label: '连接远程', step: 1 },
         { key: 'stopping', label: '停止 Nginx', step: 2 },
-        { key: 'removing_prefix', label: '删除安装目录 (--prefix)', step: 3 },
-        { key: 'removing_backup', label: '清理发布备份', step: 4 },
-        { key: 'removing_extra', label: '清理额外路径', step: 5 },
-        { key: 'updating_node', label: '更新节点状态', step: 6 }
+        { key: 'removing_package', label: '包管理器卸载', step: 3 },
+        { key: 'removing_prefix', label: '删除安装目录 (--prefix)', step: 4 },
+        { key: 'removing_backup', label: '清理发布备份', step: 5 },
+        { key: 'removing_extra', label: '清理额外路径', step: 6 },
+        { key: 'removing_unit', label: '清理 systemd', step: 7 },
+        { key: 'updating_node', label: '更新节点状态', step: 8 }
     ];
 
     function csrfToken() {
@@ -514,15 +518,17 @@
         (nodes || []).forEach(function (n) {
             var map = {};
             (n.paths || []).forEach(function (p) {
+                var owned = !!p.package_owned;
                 map[p.key] = {
                     key: p.key,
                     label: p.label || p.key,
                     path: p.path || '',
-                    checked: !!p.checked || !!p.required,
-                    required: !!p.required,
-                    editable: !!p.editable,
+                    checked: owned ? false : (!!p.checked || !!p.required),
+                    required: owned ? false : !!p.required,
+                    editable: owned ? false : !!p.editable,
                     kind: p.kind || 'dir',
-                    source: p.source || ''
+                    source: p.source || '',
+                    package_owned: owned
                 };
             });
             draftSelections[String(n.id)] = map;
@@ -536,7 +542,7 @@
             block.querySelectorAll('.path-cb').forEach(function (cb) {
                 var key = cb.getAttribute('data-key');
                 if (!map[key]) return;
-                if (!map[key].required) map[key].checked = cb.checked;
+                if (!map[key].required && !map[key].package_owned) map[key].checked = cb.checked;
             });
             block.querySelectorAll('.prefix-input').forEach(function (inp) {
                 var key = inp.getAttribute('data-key');
@@ -552,17 +558,22 @@
         if (!keys.length && node.paths) {
             return '<div class="text-muted small">无可展示路径</div>';
         }
+        var isPkg = node.install_origin === 'package';
         return keys.map(function (key, idx) {
             var p = map[key];
             var id = 'n' + node.id + '_p' + idx;
+            var owned = !!p.package_owned;
             var checked = p.checked ? ' checked' : '';
-            var disabled = p.required || !node.eligible ? ' disabled' : '';
+            var disabled = p.required || owned || !node.eligible ? ' disabled' : '';
             var reqClass = p.required ? ' required' : '';
             var valueHtml = p.editable
                 ? '<input type="text" class="form-control form-control-sm prefix-input" data-key="' +
                   escapeHtml(p.key) + '" value="' + escapeHtml(p.path || '') + '"' +
                   (node.eligible ? '' : ' disabled') + '>'
                 : '<span class="path-value">' + escapeHtml(p.path || '-') + '</span>';
+            var ownedBadge = owned
+                ? ' <span class="badge bg-warning text-dark path-badge">包管理卸载</span>'
+                : '';
             return '<div class="path-row' + reqClass + '">' +
                 '<input class="form-check-input path-cb" type="checkbox" id="' + id + '"' +
                 ' data-key="' + escapeHtml(p.key) + '"' + checked + disabled + '>' +
@@ -570,8 +581,11 @@
                 '<label class="mb-0" for="' + id + '"><span class="path-label">' +
                 escapeHtml(p.label) + '</span>' +
                 (p.required ? ' <span class="badge bg-danger path-badge">必选</span>' : '') +
+                ownedBadge +
                 '</label>' + valueHtml + '</div>' + sourceBadge(p.source) + '</div>';
-        }).join('');
+        }).join('') + (isPkg
+            ? '<p class="small text-muted mb-0 mt-2 px-1">该节点为包安装，将通过 yum/dnf/apt remove 卸载，不直接删除上表 nginx -V 路径。</p>'
+            : '');
     }
 
     function renderPreview() {
@@ -589,6 +603,23 @@
             if (n.running_error) {
                 runBadge += ' <small class="text-danger" title="' + escapeHtml(n.running_error) + '">探测异常</small>';
             }
+            var modeBadge = '';
+            if (n.manage_mode === 'systemctl') {
+                modeBadge = ' <span class="badge bg-info text-dark">systemctl</span>';
+            } else if (n.manage_mode === 'binary') {
+                modeBadge = ' <span class="badge bg-secondary">二进制</span>';
+            }
+            var originBadge = '';
+            if (n.install_origin === 'package') {
+                var pkgLabel = n.package_name
+                    ? ('包安装 · ' + n.package_name)
+                    : '包安装';
+                originBadge = ' <span class="badge bg-success" title="' +
+                    escapeHtml((n.package_mgr || '') + ' ' + (n.package_name || '')) +
+                    '">' + escapeHtml(pkgLabel) + '</span>';
+            } else if (n.install_origin === 'source') {
+                originBadge = ' <span class="badge bg-dark">源码安装</span>';
+            }
             var gate = n.gate_message
                 ? '<div class="small text-danger px-3 pb-2">' + escapeHtml(n.gate_message) + '</div>'
                 : '';
@@ -597,7 +628,7 @@
                 '<span><i class="bi bi-chevron-down chevron me-1"></i>' +
                 '<span class="node-identity">' + escapeHtml(n.hostname) +
                 '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span></span>' +
-                runBadge + '</div>' + gate +
+                '<span>' + runBadge + originBadge + modeBadge + '</span></div>' + gate +
                 '<div class="node-body">' + renderPathRows(n) + '</div></div>';
         }).join('');
         list.querySelectorAll('.uninstall-node-block .node-header').forEach(function (hdr) {
@@ -661,6 +692,10 @@
     function renderConfirm() {
         collectSelectionsFromDom();
         var runningCount = previewNodes.filter(function (n) { return n.running; }).length;
+        var sysCount = previewNodes.filter(function (n) { return n.manage_mode === 'systemctl'; }).length;
+        var binCount = previewNodes.filter(function (n) { return n.manage_mode === 'binary'; }).length;
+        var pkgCount = previewNodes.filter(function (n) { return n.install_origin === 'package'; }).length;
+        var srcCount = previewNodes.filter(function (n) { return n.install_origin === 'source'; }).length;
         document.getElementById('confirmMeta').innerHTML =
             '<div class="kv-info-row"><div class="kv-info-label">操作</div><div>Nginx 卸载（不可恢复）</div></div>' +
             '<div class="kv-info-row"><div class="kv-info-label">节点数</div><div>' + previewNodes.length + '</div></div>' +
@@ -668,7 +703,26 @@
             (runningCount
                 ? '<span class="badge bg-warning text-dark">' + runningCount + ' 台运行中</span> · 开始前将先停止'
                 : '<span class="badge bg-secondary">均未运行</span>') +
+            '</div></div>' +
+            '<div class="kv-info-row"><div class="kv-info-label">安装来源</div><div>' +
+            pkgCount + ' 台包安装 / ' + srcCount + ' 台源码安装' +
+            '</div></div>' +
+            '<div class="kv-info-row"><div class="kv-info-label">托管</div><div>' +
+            sysCount + ' 台 systemctl / ' + binCount + ' 台二进制' +
             '</div></div>';
+
+        var pkgNote = document.getElementById('confirmPackageNote');
+        if (pkgNote) {
+            pkgNote.textContent = pkgCount
+                ? '包安装节点将通过 yum/dnf/apt remove 卸载，不直接删除安装目录；仍可清理下方勾选的发布备份/工作目录等。'
+                : '';
+        }
+        var noteEl = document.getElementById('confirmSystemdNote');
+        if (noteEl) {
+            noteEl.textContent = sysCount
+                ? 'systemctl 托管（源码安装）节点将 disable 并删除 /etc/systemd/system 下可管的 nginx.service；发行版 unit 由包卸载处理或仅 disable。'
+                : '';
+        }
 
         document.getElementById('confirmSummary').innerHTML = previewNodes.map(function (n) {
             var map = draftSelections[String(n.id)] || {};
@@ -678,10 +732,26 @@
                     escapeHtml(p.path || '-') + '</li>';
             }).join('');
             var run = n.running ? ' <span class="badge bg-warning text-dark">运行中</span>' : '';
+            var mode = '';
+            if (n.manage_mode === 'systemctl') {
+                mode = ' <span class="badge bg-info text-dark">systemctl</span>';
+            } else if (n.manage_mode === 'binary') {
+                mode = ' <span class="badge bg-secondary">二进制</span>';
+            }
+            var origin = '';
+            if (n.install_origin === 'package') {
+                origin = ' <span class="badge bg-success">包安装' +
+                    (n.package_name ? ' · ' + escapeHtml(n.package_name) : '') + '</span>';
+            } else if (n.install_origin === 'source') {
+                origin = ' <span class="badge bg-dark">源码安装</span>';
+            }
+            var emptyHint = n.install_origin === 'package'
+                ? '<li class="text-muted">包管理器卸载（不 rm 安装目录）</li>'
+                : '<li class="text-muted">未勾选路径</li>';
             return '<div class="confirm-node-block">' +
                 '<div class="node-identity">' + escapeHtml(n.hostname) +
-                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></div>' + run +
-                '<ul class="confirm-path-list">' + (lis || '<li class="text-muted">未勾选路径</li>') + '</ul></div>';
+                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></div>' + run + origin + mode +
+                '<ul class="confirm-path-list">' + (lis || emptyHint) + '</ul></div>';
         }).join('');
         syncStartBtn();
     }
@@ -762,7 +832,7 @@
         var isFailed = data.status === 'failed';
         var isSuccess = data.status === 'success';
         var isCancelled = data.status === 'cancelled';
-        var order = { pending: 1, stopping: 2, removing_prefix: 3, removing_backup: 4, removing_extra: 5, updating_node: 6 };
+        var order = { pending: 1, stopping: 2, removing_package: 3, removing_prefix: 4, removing_backup: 5, removing_extra: 6, removing_unit: 7, updating_node: 8 };
         var cur = order[data.status] || 0;
         UNINSTALL_STEPS.forEach(function (s) {
             var cls = 'pending', icon = '<i class="bi bi-hourglass-split"></i>';
@@ -903,20 +973,63 @@
             return;
         }
         var running = previewNodes.filter(function (n) { return n.running; });
-        if (running.length) {
-            var names = running.map(function (n) { return n.hostname; }).join('、');
+        var sysRisk = previewNodes.filter(function (n) {
+            return n.manage_mode === 'systemctl' &&
+                n.credential_username &&
+                n.credential_username !== 'root' &&
+                n.install_origin !== 'package';
+        });
+        var pkgNodes = previewNodes.filter(function (n) { return n.install_origin === 'package'; });
+        if (!running.length && !sysRisk.length && !pkgNodes.length) {
+            doCreate(collectPayload(true));
+            return;
+        }
+        if (!running.length && !sysRisk.length && pkgNodes.length) {
+            // 仅包安装说明也合并进确认（避免无感）
+            var pkgNames = pkgNodes.map(function (n) {
+                return n.hostname + (n.package_name ? '(' + n.package_name + ')' : '');
+            }).join('、');
             showConfirm(
-                'Nginx 仍在运行',
-                '以下节点 Nginx 仍在运行：' + names +
-                '。<br>将先<strong>停止 Nginx</strong>再删除安装目录，是否继续？',
+                '包管理器卸载确认',
+                '<p>以下节点为包安装，将执行 <code>yum/dnf/apt remove</code>，不直接删除安装目录：</p>' +
+                '<p><code>' + escapeHtml(pkgNames) + '</code></p>',
                 function () { doCreate(collectPayload(true)); },
                 true,
                 'md',
-                '停止并继续卸载'
+                '继续卸载'
             );
             return;
         }
-        doCreate(collectPayload(true));
+        var parts = [];
+        if (running.length) {
+            parts.push(
+                '<p>以下节点 Nginx 仍在运行：<code>' +
+                escapeHtml(running.map(function (n) { return n.hostname; }).join('、')) +
+                '</code>。<br>将先<strong>停止 Nginx</strong>再继续卸载。</p>'
+            );
+        }
+        if (pkgNodes.length) {
+            parts.push(
+                '<p>包安装节点将通过 <code>yum/dnf/apt remove</code> 卸载：<code>' +
+                escapeHtml(pkgNodes.map(function (n) { return n.hostname; }).join('、')) +
+                '</code></p>'
+            );
+        }
+        if (sysRisk.length) {
+            var riskLis = sysRisk.map(function (n) {
+                return '<li><code>' + escapeHtml(n.hostname) + '</code> · 用户 <code>' +
+                    escapeHtml(n.credential_username) + '</code></li>';
+            }).join('');
+            parts.push(
+                '<p class="mb-1">以下节点为非 root 且 systemctl 托管，请确认用户是否具备 systemctl 操作权限；' +
+                '若无权限，停止服务或清理 unit 可能失败：</p><ul class="mb-0">' + riskLis + '</ul>'
+            );
+        }
+        var title = '卸载确认';
+        var btn = running.length ? '停止并继续卸载' : '继续卸载';
+        showConfirm(title, parts.join(''), function () {
+            doCreate(collectPayload(true));
+        }, true, 'md', btn);
     };
 
     window.cancelUninstall = function () {
