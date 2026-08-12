@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load upgrade_filters %}
 
 {% block title %}删除节点 - MngxOps{% endblock %}
 
@@ -67,7 +68,7 @@
                                         </tr>
                                         <tr>
                                             <th>Nginx版本</th>
-                                            <td>{{ object.nginx_version|default:"-" }}</td>
+                                            <td>{{ object.nginx_version|nginx_ver|default:"-" }}</td>
                                         </tr>
                                         <tr>
                                             <th>状态</th>

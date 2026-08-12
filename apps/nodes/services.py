@@ -25,12 +25,15 @@ def apply_nginx_probe_result(node: Node, success: bool, version: str = "") -> No
     """
     统一写入 Nginx 探测结果（不改 SSH status，不自动 save）。
     探测失败时清空版本并触发绑定 orphan；成功则标记可用。
+    版本统一存纯数字（如 1.31.2），去掉 nginx/ 前缀。
     """
+    from apps.releases.task_result import strip_nginx_version
+
     node.last_nginx_probe_at = timezone.now()
     if success:
         node.nginx_available = True
         if version:
-            node.nginx_version = version
+            node.nginx_version = strip_nginx_version(version)
     else:
         node.nginx_available = False
         node.nginx_version = ""

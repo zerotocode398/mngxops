@@ -412,6 +412,12 @@
         return true;
     }
 
+    function formatNginxVersion(version) {
+        /** 去掉 nginx/ 前缀，展示纯版本号 */
+        if (!version) return '';
+        return String(version).replace(/^nginx[/\\-]/i, '');
+    }
+
     function statusBadge(node) {
         var html = '';
         if (node.status === 'online') html = '<span class="badge bg-success">在线</span>';
@@ -419,7 +425,8 @@
         else html = '<span class="badge bg-secondary">未知</span>';
         if (!node.has_credential) html += ' <span class="badge bg-warning text-dark">无凭证</span>';
         if (node.status === 'online' && node.nginx_available === true) {
-            html += ' <span class="badge bg-primary">' + escapeHtml(node.nginx_version || '已安装') + '</span>';
+            html += ' <span class="badge bg-primary">' +
+                escapeHtml(formatNginxVersion(node.nginx_version) || '已安装') + '</span>';
         } else if (node.status === 'online' && node.nginx_available !== true) {
             html += ' <span class="badge bg-warning text-dark">' +
                 escapeHtml(node.nginx_status_label || '未检测到') + '</span>';

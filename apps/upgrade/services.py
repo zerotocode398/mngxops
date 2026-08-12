@@ -24,7 +24,7 @@ def parse_nginx_v_output(raw_output):
 
     Returns:
         dict: {
-            "version": "nginx/1.24.0",
+            "version": "1.24.0",
             "configure_opts": "--prefix=/usr/local/nginx --with-http_ssl_module ...",
             "prefix": "/usr/local/nginx",
             "binary_path": "/usr/local/nginx/sbin/nginx",
@@ -46,10 +46,10 @@ def parse_nginx_v_output(raw_output):
     if not raw_output:
         return result
 
-    # 提取版本号
+    # 提取版本号（纯数字，不含 nginx/ 前缀）
     version_match = re.search(r"nginx version:\s*nginx/([\d.]+)", raw_output)
     if version_match:
-        result["version"] = f"nginx/{version_match.group(1)}"
+        result["version"] = version_match.group(1)
 
     # 提取 configure arguments
     opts_match = re.search(r"configure arguments:\s*(.+)", raw_output, re.DOTALL)
@@ -740,15 +740,11 @@ def run_upgrade_task(task_id):
         update_status("success", 100, finished_at=timezone.now())
         log("✅ Nginx 编译升级成功完成!")
 
-        # 更新节点 nginx_version（优先真实 -v，失败则回退目标版本）
+        # 更新节点 nginx_version（优先真实 -v，失败则回退目标版本；统一纯数字）
         from apps.nodes.models import Node as NodeModel
         from apps.nodes.services import apply_nginx_probe_result
         target_ver = task.target_version or source_package.version
-        if ver_ok and ver_info:
-            # get_nginx_version 返回纯版本号，节点字段统一 nginx/x.y.z
-            node_ver = ver_info if str(ver_info).startswith("nginx/") else f"nginx/{ver_info}"
-        else:
-            node_ver = f"nginx/{target_ver}"
+        node_ver = ver_info if (ver_ok and ver_info) else target_ver
         # 升级成功视为 Nginx 可用（即使 -v 解析失败也回退目标版本）
         fresh = NodeModel.objects.get(pk=node.pk)
         apply_nginx_probe_result(fresh, True, node_ver)

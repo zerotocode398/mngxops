@@ -131,7 +131,9 @@ class Node(models.Model):
     def nginx_status_label(self):
         """Nginx 可用性展示文案（与 SSH 状态分开展示）。"""
         if self.nginx_available is True:
-            return self.nginx_version or "已安装"
+            from apps.releases.task_result import strip_nginx_version
+
+            return strip_nginx_version(self.nginx_version) or "已安装"
         if self.nginx_available is False:
             return "未检测到"
         return "未探测"

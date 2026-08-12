@@ -1322,6 +1322,12 @@
         return true;
     }
 
+    function formatNginxVersion(version) {
+        /** 去掉 nginx/ 前缀，展示纯版本号 */
+        if (!version) return '';
+        return String(version).replace(/^nginx[/\\-]/i, '');
+    }
+
     function statusBadge(node) {
         var html = '';
         if (node.status === 'online') html = '<span class="badge bg-success">在线</span>';
@@ -1330,7 +1336,7 @@
         if (!node.has_credential) html += ' <span class="badge bg-warning text-dark">无凭证</span>';
         if (nodeHasNginx(node)) {
             html += ' <span class="badge bg-primary" title="已检测到 Nginx，安装可能覆盖">' +
-                escapeHtml(node.nginx_version || '已安装') + '</span>';
+                escapeHtml(formatNginxVersion(node.nginx_version) || '已安装') + '</span>';
         } else if (node.nginx_available === false) {
             html += ' <span class="badge bg-warning text-dark">未检测到</span>';
         } else {

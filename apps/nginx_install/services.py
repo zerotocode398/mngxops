@@ -611,10 +611,11 @@ def run_install_task(task_id):
             nginx_path=nginx_bin, **auth_kwargs,
         )
         target_ver = task.target_version or (source_package.version if source_package else "")
+        # 统一纯数字版本（如 1.31.2），由 apply_nginx_probe_result 再 strip
         if ver_ok and ver_info:
-            node_ver = ver_info if str(ver_info).startswith("nginx/") else f"nginx/{ver_info}"
+            node_ver = ver_info
         else:
-            node_ver = f"nginx/{target_ver}" if target_ver else ""
+            node_ver = target_ver or ""
         log(f"回写节点版本={node_ver} 路径={nginx_bin}")
 
         from apps.nodes.services import mark_node_probe_success, apply_nginx_probe_result
