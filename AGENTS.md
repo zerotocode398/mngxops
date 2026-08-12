@@ -1282,8 +1282,9 @@
 
 - **问题**：运维工具缺独立卸载入口；仅靠探测失败 orphan，无法主动删除 `--prefix` 与远程发布备份。
 - **处理**：
-  1. 侧栏新增「Nginx 卸载」；应用 `apps/nginx_uninstall`；首页对齐升级运维台；中心两步（选节点 → 确认范围）。
-  2. 运行中 `showConfirm`「停止并继续卸载」；流水线 stop → `rm -rf` prefix → 默认清 `{backup_dir}/{hostname}/` → 可选工作目录/模块目录。
-  3. 回写清空路径/版本，`apply_nginx_probe_result(False)` + orphan 绑定；清空 `main_conf_path`。
-  4. TaskCenter `nginx_uninstall`，批次 `UN-YYMMDD-NNNN`；进度用全局 overlay；历史/摘要/取消级联对齐现有运维模块。
+  1. 侧栏新增「Nginx 卸载」；应用 `apps/nginx_uninstall`；首页对齐升级运维台；中心三步向导（选择目标 → 探测路径 → 确认执行）+ 右栏「卸载执行进度」（对齐升级，不用全局 overlay）。
+  2. 门禁对齐升级：仅 online + 凭证 + `nginx_available`；「未检测到」不可选。
+  3. 探测 `nginx -V` 路径参数与系统设置项（备份/工作目录/modules）统一列表按节点勾选；节点块可折叠。
+  4. 流水线 stop → 删 prefix → 按勾选清备份/额外路径；回写清空路径/版本，`apply_nginx_probe_result(False)` + orphan；清空 `main_conf_path`。
+  5. TaskCenter `nginx_uninstall`，批次 `UN-YYMMDD-NNNN`；批次进度轮询 + 取消级联；历史/摘要对齐现有运维模块。
 - **状态**：已完成

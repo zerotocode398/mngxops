@@ -167,6 +167,224 @@ def backup_subdir_for_node(node):
     return normalize_remote_path(path)
 
 
+def is_file_like_path(path):
+    """粗判路径更像文件（含扩展名或 sbin/bin 下的 nginx 二进制）"""
+    p = normalize_remote_path(path)
+    if not p:
+        return False
+    name = p.rsplit("/", 1)[-1]
+    if "." in name:
+        return True
+    if name == "nginx":
+        # 仅 …/sbin/nginx、…/bin/nginx 视为文件；名为 nginx 的目录段视为目录
+        parts = [x for x in p.split("/") if x]
+        if len(parts) >= 2 and parts[-2] in ("sbin", "bin"):
+            return True
+        return False
+    if name in ("nginx.pid", "nginx.lock"):
+        return True
+    return False
+
+
+def resolve_nginx_tree_path(path):
+    """将路径收敛到最右侧名为 nginx 的目录段；sbin/bin 下二进制除外。
+
+    例：/etc/nginx/nginx.conf → /etc/nginx；/usr/sbin/nginx 保持原样。
+    找不到 nginx 目录段时原样返回。若收敛结果危险则回退原路径。
+    """
+    p = normalize_remote_path(path)
+    if not p:
+        return ""
+    parts = [x for x in p.split("/") if x]
+    if not parts:
+        return p
+    # …/sbin/nginx 或 …/bin/nginx：只删二进制，不升到父目录
+    if parts[-1] == "nginx" and len(parts) >= 2 and parts[-2] in ("sbin", "bin"):
+        return p
+    # 最右侧段名为 nginx 的位置
+    nginx_idx = None
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i] == "nginx":
+            nginx_idx = i
+            break
+    if nginx_idx is None:
+        return p
+    resolved = "/" + "/".join(parts[: nginx_idx + 1])
+    if is_dangerous_path(resolved):
+        return p
+    return resolved
+
+
+def coalesce_delete_targets(targets):
+    """父子去重：只保留最外层路径，丢弃位于其它目标之下的项。
+
+    Args:
+        targets: list[(path, kind)] 或 list[str]
+
+    Returns:
+        与输入同形的列表（tuple 保留 kind，str 仅路径）
+    """
+    if not targets:
+        return []
+    as_tuples = isinstance(targets[0], (tuple, list))
+    items = []
+    for t in targets:
+        if as_tuples:
+            path, kind = t[0], t[1]
+        else:
+            path, kind = t, "dir"
+        np = normalize_remote_path(path)
+        if not np:
+            continue
+        items.append((np, kind if as_tuples else None))
+    # 短路径优先，便于外层先入选
+    items.sort(key=lambda x: (len(x[0]), x[0]))
+    kept = []
+    for path, kind in items:
+        under = False
+        for kp, _ in kept:
+            if path == kp or path.startswith(kp.rstrip("/") + "/"):
+                under = True
+                break
+        if under:
+            continue
+        kept.append((path, kind))
+    if as_tuples:
+        return [(p, k if k is not None else "dir") for p, k in kept]
+    return [p for p, _ in kept]
+
+
+def extract_path_entries_from_nginx_v(parsed):
+    """从 nginx -V 解析结果提取可勾选路径条目。
+
+    Returns:
+        list[dict]: key/label/path/source/required/checked/editable/kind
+    """
+    if not isinstance(parsed, dict):
+        return []
+    entries = []
+    seen = set()
+    params = parsed.get("params") or []
+    for token in params:
+        if not isinstance(token, str) or "=" not in token:
+            continue
+        key, raw_val = token.split("=", 1)
+        key = key.strip()
+        raw_path = normalize_remote_path(raw_val.strip().strip("'\""))
+        if not raw_path:
+            continue
+        if key != "--prefix" and "-path" not in key:
+            continue
+        is_prefix = key == "--prefix"
+        # prefix 保持探测原值；其余收敛到 …/nginx 目录
+        path = raw_path if is_prefix else resolve_nginx_tree_path(raw_path)
+        if path in seen:
+            continue
+        seen.add(path)
+        entries.append({
+            "key": "prefix" if is_prefix else key,
+            "label": "--prefix" if is_prefix else key,
+            "path": path,
+            "source": "nginx -V",
+            "required": is_prefix,
+            "checked": is_prefix or key in (
+                "--sbin-path", "--modules-path", "--conf-path", "--pid-path",
+            ),
+            "editable": is_prefix,
+            "kind": "dir" if is_prefix or not is_file_like_path(path) else "file",
+        })
+    # 无 --prefix token 时用 parsed.prefix 兜底
+    if not any(e["key"] == "prefix" for e in entries):
+        prefix = normalize_remote_path(parsed.get("prefix") or "")
+        if prefix:
+            entries.insert(0, {
+                "key": "prefix",
+                "label": "--prefix",
+                "path": prefix,
+                "source": "nginx -V",
+                "required": True,
+                "checked": True,
+                "editable": True,
+                "kind": "dir",
+            })
+    return entries
+
+
+def _setting_path_entries(node, work_dir):
+    """组装系统设置类路径条目"""
+    backup_path = backup_subdir_for_node(node)
+    modules_dir = f"{work_dir.rstrip('/')}/nginx-modules" if work_dir else ""
+    return [
+        {
+            "key": "release_backup",
+            "label": "发布备份目录",
+            "path": backup_path,
+            "source": "系统设置",
+            "required": False,
+            "checked": True,
+            "editable": False,
+            "kind": "dir",
+        },
+        {
+            "key": "work_dir",
+            "label": "编译工作目录",
+            "path": work_dir,
+            "source": "系统设置",
+            "required": False,
+            "checked": False,
+            "editable": False,
+            "kind": "dir",
+        },
+        {
+            "key": "nginx_modules",
+            "label": "第三方模块源码目录",
+            "path": modules_dir,
+            "source": "系统设置",
+            "required": False,
+            "checked": False,
+            "editable": False,
+            "kind": "dir",
+        },
+    ]
+
+
+def _fetch_v_and_prefix(node):
+    """探测 nginx -V 并解析 prefix；返回 (prefix, source, err, parsed, paths_from_v)"""
+    parsed = None
+    try:
+        from apps.upgrade.services import fetch_nginx_v_from_node
+
+        ok, result = fetch_nginx_v_from_node(node)
+        if ok and isinstance(result, dict):
+            parsed = result
+    except Exception:
+        logger.exception("探测节点 %s nginx -V 失败", getattr(node, "id", None))
+
+    paths_v = extract_path_entries_from_nginx_v(parsed) if parsed else []
+    prefix = ""
+    source = ""
+    err = ""
+    for e in paths_v:
+        if e["key"] == "prefix":
+            prefix = e["path"]
+            source = "nginx -V"
+            break
+    if not prefix:
+        prefix, source, err = resolve_prefix_for_node(node)
+        if prefix and not any(e["key"] == "prefix" for e in paths_v):
+            paths_v.insert(0, {
+                "key": "prefix",
+                "label": "--prefix",
+                "path": prefix,
+                "source": source or "nginx_path",
+                "required": True,
+                "checked": True,
+                "editable": True,
+                "kind": "dir",
+            })
+    return prefix, source, err, parsed, paths_v
+
+
 def uninstall_gate_message(node):
     """返回禁止卸载的原因；允许时返回 None。"""
     if node.is_locked:
@@ -178,12 +396,10 @@ def uninstall_gate_message(node):
         return "未配置凭证"
     if not cred.is_enabled:
         return "凭证已禁用"
-    # online +（Nginx 可用 或 仍有 nginx_path）才可卸
+    # 对齐升级：仅 online + Nginx 可用
     if node.nginx_available is True:
         return None
-    if (node.nginx_path or "").strip():
-        return None
-    return "未检测到 Nginx 且无已知安装路径"
+    return "未检测到 Nginx"
 
 
 def _auth_kwargs(credential):
@@ -194,7 +410,7 @@ def _auth_kwargs(credential):
 
 
 def _parse_options(raw):
-    """解析删除选项 JSON"""
+    """解析删除选项 JSON（含 extra_paths）"""
     if isinstance(raw, dict):
         data = raw
     else:
@@ -202,11 +418,29 @@ def _parse_options(raw):
             data = json.loads(raw or "{}")
         except (TypeError, ValueError, json.JSONDecodeError):
             data = {}
+    extra = data.get("extra_paths") or []
+    if not isinstance(extra, list):
+        extra = []
+    normalized_extra = []
+    for item in extra:
+        if not isinstance(item, dict):
+            continue
+        path = normalize_remote_path(item.get("path") or "")
+        if not path:
+            continue
+        kind = item.get("kind") or ("file" if is_file_like_path(path) else "dir")
+        normalized_extra.append({
+            "key": str(item.get("key") or path),
+            "path": path,
+            "kind": "file" if kind == "file" else "dir",
+        })
     return {
         "remove_backup": bool(data.get("remove_backup", True)),
         "remove_workdir": bool(data.get("remove_workdir", False)),
         "remove_modules": bool(data.get("remove_modules", False)),
         "stop_if_running": bool(data.get("stop_if_running", True)),
+        "extra_paths": normalized_extra,
+        "work_dir": normalize_remote_path(data.get("work_dir") or ""),
     }
 
 
@@ -240,10 +474,12 @@ def preview_nodes(node_ids):
     for node in nodes:
         gate = uninstall_gate_message(node)
         prefix, source, err = ("", "", "")
+        paths = []
         running = False
         running_error = ""
         if not gate:
-            prefix, source, err = resolve_prefix_for_node(node)
+            prefix, source, err, _parsed, paths_v = _fetch_v_and_prefix(node)
+            paths = list(paths_v) + _setting_path_entries(node, work_dir)
             cred = node.credential
             try:
                 running = is_nginx_running(
@@ -255,6 +491,9 @@ def preview_nodes(node_ids):
                 )
             except Exception as exc:
                 running_error = str(exc)
+        else:
+            paths = _setting_path_entries(node, work_dir)
+
         backup_path = backup_subdir_for_node(node)
         items.append({
             "id": node.id,
@@ -269,6 +508,7 @@ def preview_nodes(node_ids):
             "backup_path": backup_path,
             "work_dir": work_dir,
             "modules_dir": f"{work_dir.rstrip('/')}/nginx-modules" if work_dir else "",
+            "paths": paths,
             "running": running,
             "running_error": running_error,
         })
@@ -285,6 +525,98 @@ def preview_nodes(node_ids):
     }
 
 
+def _options_from_selected_paths(item, node, stop_if_running, batch_work_dir):
+    """从 selected_paths（或旧字段）解析节点删除选项。
+
+    Returns:
+        (prefix, backup_path, work_dir, options_dict) 或 (None, None, None, error_message)
+    """
+    work_dir = normalize_remote_path(
+        (item.get("work_dir") or "").strip() or batch_work_dir
+    )
+    backup_path = backup_subdir_for_node(node)
+    modules_dir = f"{work_dir.rstrip('/')}/nginx-modules" if work_dir else ""
+    selected = item.get("selected_paths")
+
+    if isinstance(selected, list) and selected:
+        prefix = ""
+        remove_backup = False
+        remove_workdir = False
+        remove_modules = False
+        extra_paths = []
+        for sp in selected:
+            if not isinstance(sp, dict):
+                continue
+            key = str(sp.get("key") or "").strip()
+            path = normalize_remote_path(sp.get("path") or "")
+            if key in ("prefix", "--prefix"):
+                prefix = path
+                continue
+            if key == "release_backup":
+                remove_backup = True
+                if path:
+                    backup_path = path
+                continue
+            if key == "work_dir":
+                remove_workdir = True
+                if path:
+                    work_dir = path
+                    modules_dir = f"{work_dir.rstrip('/')}/nginx-modules"
+                continue
+            if key == "nginx_modules":
+                remove_modules = True
+                if path:
+                    modules_dir = path
+                continue
+            if path:
+                resolved = resolve_nginx_tree_path(path)
+                extra_paths.append({
+                    "key": key or resolved,
+                    "path": resolved,
+                    "kind": "file" if is_file_like_path(resolved) else "dir",
+                })
+        if not prefix:
+            prefix = normalize_remote_path(
+                (item.get("prefix") or "").strip()
+            ) or resolve_prefix_for_node(node)[0]
+        opts = {
+            "remove_backup": remove_backup,
+            "remove_workdir": remove_workdir,
+            "remove_modules": remove_modules,
+            "stop_if_running": stop_if_running,
+            "extra_paths": extra_paths,
+            "work_dir": work_dir,
+            "modules_dir": modules_dir,
+        }
+        return prefix, backup_path, work_dir, opts
+
+    # 兼容旧 payload
+    prefix = normalize_remote_path(
+        (item.get("prefix") or "").strip()
+    ) or resolve_prefix_for_node(node)[0]
+    opts = {
+        "remove_backup": bool(item.get("remove_backup", True)),
+        "remove_workdir": bool(item.get("remove_workdir", False)),
+        "remove_modules": bool(item.get("remove_modules", False)),
+        "stop_if_running": stop_if_running,
+        "extra_paths": [],
+        "work_dir": work_dir,
+        "modules_dir": modules_dir,
+    }
+    return prefix, backup_path, work_dir, opts
+
+
+def _under_prefix(path, prefix):
+    """判断 path 是否等于或位于 prefix 目录树内"""
+    p = normalize_remote_path(path)
+    pref = normalize_remote_path(prefix)
+    if not p or not pref:
+        return False
+    if p == pref:
+        return True
+    return p.startswith(pref.rstrip("/") + "/")
+
+
 def create_uninstall_batch_from_data(user, data):
     """校验并创建卸载批次，启动后台线程。
 
@@ -299,13 +631,8 @@ def create_uninstall_batch_from_data(user, data):
     if not isinstance(items, list) or not items:
         return {"success": False, "message": "请选择至少一个节点"}
 
-    options = _parse_options({
-        "remove_backup": data.get("remove_backup", True),
-        "remove_workdir": data.get("remove_workdir", False),
-        "remove_modules": data.get("remove_modules", False),
-        "stop_if_running": data.get("stop_if_running", True),
-    })
-    work_dir = normalize_remote_path(
+    stop_if_running = bool(data.get("stop_if_running", True))
+    batch_work_dir = normalize_remote_path(
         (data.get("work_dir") or "").strip() or _default_work_dir()
     )
 
@@ -316,6 +643,9 @@ def create_uninstall_batch_from_data(user, data):
     prepared = []
     rejected = []
     for item in items:
+        if not isinstance(item, dict):
+            rejected.append("无效节点条目")
+            continue
         try:
             nid = int(item.get("id") or item.get("node_id"))
         except (TypeError, ValueError, AttributeError):
@@ -330,27 +660,48 @@ def create_uninstall_batch_from_data(user, data):
         if gate:
             rejected.append(f"{node.hostname}（{gate}）")
             continue
-        prefix = normalize_remote_path(
-            (item.get("prefix") or "").strip()
-        ) or resolve_prefix_for_node(node)[0]
+
+        prefix, backup_path, work_dir, node_opts = _options_from_selected_paths(
+            item, node, stop_if_running, batch_work_dir
+        )
         if not prefix:
             rejected.append(f"{node.hostname}（无法解析安装路径）")
             continue
         if is_dangerous_path(prefix):
             rejected.append(f"{node.hostname}（禁止删除路径 {prefix}）")
             continue
-        backup_path = backup_subdir_for_node(node)
-        if options["remove_backup"] and is_dangerous_path(backup_path):
+
+        if node_opts["remove_backup"] and is_dangerous_path(backup_path):
             rejected.append(f"{node.hostname}（发布备份路径不安全：{backup_path}）")
             continue
-        if options["remove_workdir"] and is_dangerous_path(work_dir):
+        if node_opts["remove_workdir"] and is_dangerous_path(work_dir):
             rejected.append(f"{node.hostname}（工作目录路径不安全：{work_dir}）")
             continue
-        modules_dir = f"{work_dir.rstrip('/')}/nginx-modules"
-        if options["remove_modules"] and is_dangerous_path(modules_dir):
+        modules_dir = node_opts.get("modules_dir") or (
+            f"{work_dir.rstrip('/')}/nginx-modules" if work_dir else ""
+        )
+        if node_opts["remove_modules"] and is_dangerous_path(modules_dir):
             rejected.append(f"{node.hostname}（模块目录路径不安全：{modules_dir}）")
             continue
-        prepared.append((node, prefix, backup_path))
+
+        bad_extra = False
+        filtered_extra = []
+        for ep in node_opts.get("extra_paths") or []:
+            ep_path = normalize_remote_path(ep.get("path") or "")
+            if not ep_path or _under_prefix(ep_path, prefix):
+                continue
+            if is_dangerous_path(ep_path):
+                rejected.append(
+                    f"{node.hostname}（额外路径不安全：{ep_path}）"
+                )
+                bad_extra = True
+                break
+            filtered_extra.append({**ep, "path": ep_path})
+        if bad_extra:
+            continue
+        node_opts["extra_paths"] = filtered_extra
+        node_opts["modules_dir"] = modules_dir
+        prepared.append((node, prefix, backup_path, work_dir, node_opts))
 
     if not prepared:
         msg = "没有可执行的节点"
@@ -359,8 +710,8 @@ def create_uninstall_batch_from_data(user, data):
         return {"success": False, "message": msg, "skipped": rejected}
 
     batch_number = generate_uninstall_batch_number()
-    hostnames = ",".join(n.hostname for n, _, _ in prepared)
-    ips = ",".join(n.ip for n, _, _ in prepared)
+    hostnames = ",".join(n.hostname for n, _, _, _, _ in prepared)
+    ips = ",".join(n.ip for n, _, _, _, _ in prepared)
     tc = TaskCenterTask.objects.create(
         operation_type="nginx_uninstall",
         status="pending",
@@ -373,16 +724,16 @@ def create_uninstall_batch_from_data(user, data):
     )
     log_task_center_created(tc, user=user)
 
-    options_payload = dict(options)
-    options_payload["work_dir"] = work_dir
-    options_json = json.dumps(options_payload, ensure_ascii=False)
     uninstall_ids = []
-    for node, prefix, backup_path in prepared:
+    for node, prefix, backup_path, work_dir, node_opts in prepared:
+        options_payload = dict(node_opts)
+        options_payload["work_dir"] = work_dir
+        options_json = json.dumps(options_payload, ensure_ascii=False)
         ut = NginxUninstallTask.objects.create(
             batch_number=batch_number,
             node=node,
             resolved_prefix=prefix,
-            backup_path=backup_path if options["remove_backup"] else "",
+            backup_path=backup_path if node_opts["remove_backup"] else "",
             work_dir=work_dir,
             options_json=options_json,
             task_center=tc,
@@ -431,8 +782,8 @@ def _set_task_status(task, status, progress=None, step="", error=""):
     task.save(update_fields=fields)
 
 
-def _rm_rf_remote(ssh, path, log_fn):
-    """远程删除目录；不存在则跳过成功。"""
+def _rm_remote(ssh, path, log_fn, kind="dir"):
+    """远程删除路径；不存在则跳过成功。kind=file 用 rm -f，否则 rm -rf。"""
     path = normalize_remote_path(path)
     if is_dangerous_path(path):
         return False, f"拒绝删除危险路径: {path}"
@@ -443,11 +794,17 @@ def _rm_rf_remote(ssh, path, log_fn):
     if "MISSING" in (out or ""):
         log_fn(f"路径不存在，跳过: {path}")
         return True, "skipped"
-    log_fn(f"删除: {path}")
-    ok, out = ssh.execute_command(f"rm -rf {quoted}")
+    cmd = f"rm -f {quoted}" if kind == "file" else f"rm -rf {quoted}"
+    log_fn(f"删除({'文件' if kind == 'file' else '目录'}): {path}")
+    ok, out = ssh.execute_command(cmd)
     if not ok:
         return False, out or "删除失败"
     return True, "removed"
+
+
+def _rm_rf_remote(ssh, path, log_fn):
+    """远程删除目录（兼容旧调用）"""
+    return _rm_remote(ssh, path, log_fn, kind="dir")
 
 
 def _bookkeep_node_after_uninstall(node, operator=None):
@@ -477,6 +834,39 @@ def _bookkeep_node_after_uninstall(node, operator=None):
         logger.exception("清空节点 %s main_conf_path 失败", node.id)
 
 
+def _collect_extra_delete_targets(task, options):
+    """汇总 prefix 之外待删路径，去重且排除已在 prefix 下的项。"""
+    prefix = normalize_remote_path(task.resolved_prefix)
+    targets = []
+    seen = set()
+
+    def add(path, kind=None):
+        """加入待删路径（收敛后）；kind 忽略，按收敛结果判定。"""
+        np = resolve_nginx_tree_path(path)
+        if not np or np in seen:
+            return
+        if np == prefix or _under_prefix(np, prefix):
+            return
+        # 收敛后按路径形态判定（…/nginx 为目录；sbin/nginx 等仍为文件）
+        resolved_kind = "file" if is_file_like_path(np) else "dir"
+        seen.add(np)
+        targets.append((np, resolved_kind))
+
+    if options.get("remove_backup") and task.backup_path:
+        add(task.backup_path)
+    work_dir = normalize_remote_path(task.work_dir or options.get("work_dir") or "")
+    if options.get("remove_workdir") and work_dir:
+        add(work_dir)
+    modules_dir = normalize_remote_path(options.get("modules_dir") or "")
+    if not modules_dir and options.get("remove_modules") and work_dir:
+        modules_dir = f"{work_dir.rstrip('/')}/nginx-modules"
+    if options.get("remove_modules") and modules_dir:
+        add(modules_dir)
+    for ep in options.get("extra_paths") or []:
+        add(ep.get("path"))
+    return coalesce_delete_targets(targets)
+
+
 def _run_one_uninstall(task, stop_if_running):
     """执行单节点卸载，成功返回 None，失败返回错误信息。"""
     node = task.node
@@ -485,7 +875,6 @@ def _run_one_uninstall(task, stop_if_running):
         return "凭证不可用"
     options = _parse_options(task.options_json)
     auth = _auth_kwargs(cred)
-    hostname = node.hostname or node.ip
 
     def log(msg):
         _append_log(task, msg)
@@ -494,7 +883,6 @@ def _run_one_uninstall(task, stop_if_running):
         conn = getattr(ssh, "_connect_result", None)
         if isinstance(conn, tuple) and not conn[0]:
             return f"SSH 连接失败: {conn[1] or '未知错误'}"
-        # 运行检测与停止（复用同一 SSH 会话）
         try:
             running = is_nginx_running(
                 node.ip,
@@ -524,42 +912,35 @@ def _run_one_uninstall(task, stop_if_running):
                 return f"停止 Nginx 失败: {msg or '未知错误'}"
             log("已停止 Nginx")
 
-        # 删除 prefix
         _set_task_status(task, "removing_prefix", progress=45, step="删除安装目录")
-        ok, msg = _rm_rf_remote(ssh, task.resolved_prefix, log)
+        ok, msg = _rm_remote(ssh, task.resolved_prefix, log, kind="dir")
         if not ok:
             return msg
 
-        # 发布备份
-        if options.get("remove_backup") and task.backup_path:
+        extras = _collect_extra_delete_targets(task, options)
+        backup_targets = [
+            t for t in extras
+            if normalize_remote_path(task.backup_path) == t[0]
+        ]
+        other_targets = [
+            t for t in extras
+            if normalize_remote_path(task.backup_path) != t[0]
+        ]
+
+        if backup_targets:
             _set_task_status(task, "removing_backup", progress=65, step="清理发布备份")
-            ok, msg = _rm_rf_remote(ssh, task.backup_path, log)
-            if not ok:
-                return f"清理发布备份失败: {msg}"
-
-        # 额外目录
-        extras = []
-        work_dir = normalize_remote_path(task.work_dir or options.get("work_dir") or "")
-        if options.get("remove_workdir") and work_dir:
-            extras.append(work_dir)
-        if options.get("remove_modules") and work_dir:
-            extras.append(f"{work_dir.rstrip('/')}/nginx-modules")
-        # 去重且避免重复删同一路径
-        seen = set()
-        unique_extras = []
-        for p in extras:
-            np = normalize_remote_path(p)
-            if np and np not in seen and np != normalize_remote_path(task.resolved_prefix):
-                seen.add(np)
-                unique_extras.append(np)
-        if unique_extras:
-            _set_task_status(task, "removing_extra", progress=80, step="清理额外目录")
-            for p in unique_extras:
-                ok, msg = _rm_rf_remote(ssh, p, log)
+            for path, kind in backup_targets:
+                ok, msg = _rm_remote(ssh, path, log, kind=kind)
                 if not ok:
-                    return f"清理额外目录失败: {msg}"
+                    return f"清理发布备份失败: {msg}"
 
-    # 平台回写（SSH 已关闭）
+        if other_targets:
+            _set_task_status(task, "removing_extra", progress=80, step="清理额外路径")
+            for path, kind in other_targets:
+                ok, msg = _rm_remote(ssh, path, log, kind=kind)
+                if not ok:
+                    return f"清理额外路径失败: {msg}"
+
     _set_task_status(task, "updating_node", progress=90, step="更新节点状态")
     log("回写节点 Nginx 状态…")
     try:

@@ -1,11 +1,21 @@
 """Nginx 卸载模块单元测试"""
-from django.test import SimpleTestCase, TestCase
-from django.contrib.auth import get_user_model
+import json
+from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase
+
+from apps.credentials.models import Credential
+from apps.nginx_uninstall.models import NginxUninstallTask
 from apps.nginx_uninstall.services import (
+    coalesce_delete_targets,
+    create_uninstall_batch_from_data,
     derive_prefix_from_nginx_path,
+    extract_path_entries_from_nginx_v,
     is_dangerous_path,
+    is_file_like_path,
     normalize_remote_path,
+    resolve_nginx_tree_path,
     uninstall_gate_message,
 )
 from apps.nodes.models import Node
@@ -37,13 +47,159 @@ class PathSafetyTests(SimpleTestCase):
         )
 
 
+class ResolveNginxTreePathTests(SimpleTestCase):
+    """收敛到 …/nginx 目录"""
+
+    def test_conf_and_log_and_modules(self):
+        """配置/日志/模块收敛到 nginx 目录"""
+        self.assertEqual(
+            resolve_nginx_tree_path("/etc/nginx/nginx.conf"),
+            "/etc/nginx",
+        )
+        self.assertEqual(
+            resolve_nginx_tree_path("/var/log/nginx/error.log"),
+            "/var/log/nginx",
+        )
+        self.assertEqual(
+            resolve_nginx_tree_path("/usr/lib64/nginx/modules"),
+            "/usr/lib64/nginx",
+        )
+        self.assertEqual(
+            resolve_nginx_tree_path("/var/lib/nginx/tmp/proxy"),
+            "/var/lib/nginx",
+        )
+
+    def test_sbin_binary_not_expanded(self):
+        """sbin/bin 下二进制不收敛到父目录"""
+        self.assertEqual(
+            resolve_nginx_tree_path("/usr/sbin/nginx"),
+            "/usr/sbin/nginx",
+        )
+        self.assertEqual(
+            resolve_nginx_tree_path("/usr/local/bin/nginx"),
+            "/usr/local/bin/nginx",
+        )
+
+    def test_no_nginx_segment_unchanged(self):
+        """无 nginx 目录段时保持原路径"""
+        self.assertEqual(
+            resolve_nginx_tree_path("/run/nginx.pid"),
+            "/run/nginx.pid",
+        )
+        self.assertEqual(
+            resolve_nginx_tree_path("/opt/app/conf/nginx.conf"),
+            "/opt/app/conf/nginx.conf",
+        )
+
+    def test_dangerous_resolve_falls_back(self):
+        """收敛结果若为危险根则回退原路径"""
+        self.assertEqual(resolve_nginx_tree_path("/etc/nginx"), "/etc/nginx")
+
+    def test_file_like_nginx_dir_vs_binary(self):
+        """名为 nginx 的目录非文件；sbin 下为文件"""
+        self.assertFalse(is_file_like_path("/etc/nginx"))
+        self.assertTrue(is_file_like_path("/usr/sbin/nginx"))
+        self.assertTrue(is_file_like_path("/etc/nginx/nginx.conf"))
+
+
+class CoalesceDeleteTargetsTests(SimpleTestCase):
+    """删除目标父子去重"""
+
+    def test_keep_outermost(self):
+        """父目录与子路径只留最外层"""
+        result = coalesce_delete_targets([
+            ("/etc/nginx/conf.d/test.conf", "file"),
+            ("/etc/nginx", "dir"),
+            ("/etc/nginx/conf.d", "dir"),
+        ])
+        self.assertEqual(result, [("/etc/nginx", "dir")])
+
+    def test_sibling_paths_kept(self):
+        """兄弟路径均保留"""
+        result = coalesce_delete_targets([
+            ("/etc/nginx", "dir"),
+            ("/var/log/nginx", "dir"),
+            ("/usr/sbin/nginx", "file"),
+        ])
+        paths = {p for p, _ in result}
+        self.assertEqual(paths, {"/etc/nginx", "/var/log/nginx", "/usr/sbin/nginx"})
+
+    def test_string_list_form(self):
+        """支持纯路径列表"""
+        self.assertEqual(
+            coalesce_delete_targets([
+                "/etc/nginx/conf.d",
+                "/etc/nginx/conf.d/test.conf",
+            ]),
+            ["/etc/nginx/conf.d"],
+        )
+
+
+class ExtractNginxVPathTests(SimpleTestCase):
+    """从 nginx -V 提取路径条目"""
+
+    def test_extract_path_tokens(self):
+        """提取 prefix 与 *-path 绝对路径"""
+        parsed = {
+            "prefix": "/opt/app",
+            "params": [
+                "--prefix=/opt/app",
+                "--with-http_ssl_module",
+                "--sbin-path=/opt/app/sbin/nginx",
+                "--conf-path=/opt/app/conf/nginx.conf",
+                "--error-log-path=/opt/app/logs/error.log",
+                "--pid-path=/opt/app/logs/nginx.pid",
+                "--add-module=/tmp/nginx-modules/foo",
+            ],
+        }
+        entries = extract_path_entries_from_nginx_v(parsed)
+        keys = [e["key"] for e in entries]
+        self.assertIn("prefix", keys)
+        self.assertIn("--sbin-path", keys)
+        self.assertIn("--conf-path", keys)
+        self.assertNotIn("--add-module", keys)
+        prefix = next(e for e in entries if e["key"] == "prefix")
+        self.assertTrue(prefix["required"])
+        self.assertTrue(prefix["editable"])
+
+    def test_extract_resolves_nginx_tree(self):
+        """系统包路径在探测结果中已收敛到 nginx 目录"""
+        parsed = {
+            "prefix": "/usr/share/nginx",
+            "params": [
+                "--prefix=/usr/share/nginx",
+                "--sbin-path=/usr/sbin/nginx",
+                "--conf-path=/etc/nginx/nginx.conf",
+                "--modules-path=/usr/lib64/nginx/modules",
+                "--error-log-path=/var/log/nginx/error.log",
+                "--pid-path=/run/nginx.pid",
+            ],
+        }
+        entries = {e["key"]: e for e in extract_path_entries_from_nginx_v(parsed)}
+        self.assertEqual(entries["--sbin-path"]["path"], "/usr/sbin/nginx")
+        self.assertEqual(entries["--sbin-path"]["kind"], "file")
+        self.assertEqual(entries["--conf-path"]["path"], "/etc/nginx")
+        self.assertEqual(entries["--conf-path"]["kind"], "dir")
+        self.assertEqual(entries["--modules-path"]["path"], "/usr/lib64/nginx")
+        self.assertEqual(entries["--error-log-path"]["path"], "/var/log/nginx")
+        self.assertEqual(entries["--pid-path"]["path"], "/run/nginx.pid")
+
+
 class UninstallGateTests(TestCase):
-    """卸载门禁"""
+    """卸载门禁：对齐升级，要求 Nginx 可用"""
 
     def setUp(self):
-        """准备在线节点"""
+        """准备凭证与在线节点"""
         User = get_user_model()
         self.user = User.objects.create_user(username="un_tester", password="x")
+        self.cred = Credential.objects.create(
+            name="un-cred",
+            auth_type="password",
+            username="root",
+            password="secret",
+            is_enabled=True,
+            created_by=self.user,
+        )
         self.node = Node.objects.create(
             hostname="host-a",
             ip="10.0.0.1",
@@ -51,10 +207,111 @@ class UninstallGateTests(TestCase):
             status="online",
             nginx_available=True,
             nginx_path="/opt/app/sbin/nginx",
+            credential=self.cred,
             created_by=self.user,
         )
 
     def test_online_with_nginx_ok(self):
-        """在线且 Nginx 可用可通过（无凭证时仍失败）"""
-        msg = uninstall_gate_message(self.node)
-        self.assertEqual(msg, "未配置凭证")
+        """在线且 Nginx 可用可通过"""
+        self.assertIsNone(uninstall_gate_message(self.node))
+
+    def test_unavailable_rejected_even_with_path(self):
+        """未检测到时即使有 nginx_path 也拒绝"""
+        self.node.nginx_available = False
+        self.node.nginx_path = "/opt/app/sbin/nginx"
+        self.node.save(update_fields=["nginx_available", "nginx_path", "updated_at"])
+        self.assertEqual(uninstall_gate_message(self.node), "未检测到 Nginx")
+
+    def test_no_credential_rejected(self):
+        """无凭证拒绝"""
+        self.node.credential = None
+        self.node.save(update_fields=["credential", "updated_at"])
+        self.assertEqual(uninstall_gate_message(self.node), "未配置凭证")
+
+
+class UninstallCreateOptionsTests(TestCase):
+    """创建批次时按节点写入 selected_paths / options_json"""
+
+    def setUp(self):
+        """准备可卸载节点"""
+        User = get_user_model()
+        self.user = User.objects.create_user(username="un_creator", password="x")
+        self.cred = Credential.objects.create(
+            name="un-cred2",
+            auth_type="password",
+            username="root",
+            password="secret",
+            is_enabled=True,
+            created_by=self.user,
+        )
+        self.node = Node.objects.create(
+            hostname="host-b",
+            ip="10.0.0.2",
+            port=22,
+            status="online",
+            nginx_available=True,
+            nginx_path="/opt/app/sbin/nginx",
+            credential=self.cred,
+            created_by=self.user,
+        )
+
+    @patch("apps.nginx_uninstall.services.threading.Thread")
+    def test_selected_paths_persisted(self, mock_thread):
+        """selected_paths 写入 options_json，未勾选备份则 backup_path 为空"""
+        mock_thread.return_value.start = lambda: None
+        result = create_uninstall_batch_from_data(self.user, {
+            "stop_if_running": True,
+            "nodes": [{
+                "id": self.node.id,
+                "prefix": "/opt/app",
+                "selected_paths": [
+                    {"key": "prefix", "path": "/opt/app", "kind": "dir"},
+                    {"key": "--conf-path", "path": "/var/log/outside.conf", "kind": "file"},
+                    {"key": "work_dir", "path": "/tmp/nginx-upgrade", "kind": "dir"},
+                ],
+            }],
+        })
+        self.assertTrue(result.get("success"), result)
+        task = NginxUninstallTask.objects.get(batch_number=result["source_batch"])
+        self.assertEqual(task.backup_path, "")
+        opts = json.loads(task.options_json)
+        self.assertFalse(opts["remove_backup"])
+        self.assertTrue(opts["remove_workdir"])
+        self.assertFalse(opts["remove_modules"])
+        self.assertEqual(len(opts.get("extra_paths") or []), 1)
+        self.assertEqual(opts["extra_paths"][0]["path"], "/var/log/outside.conf")
+        self.assertEqual(task.resolved_prefix, "/opt/app")
+
+    @patch("apps.nginx_uninstall.services.threading.Thread")
+    def test_conf_path_resolved_on_create(self, mock_thread):
+        """创建时将 conf 文件路径收敛为 nginx 目录"""
+        mock_thread.return_value.start = lambda: None
+        result = create_uninstall_batch_from_data(self.user, {
+            "nodes": [{
+                "id": self.node.id,
+                "selected_paths": [
+                    {"key": "prefix", "path": "/opt/app", "kind": "dir"},
+                    {"key": "--conf-path", "path": "/etc/nginx/nginx.conf", "kind": "file"},
+                ],
+            }],
+        })
+        self.assertTrue(result.get("success"), result)
+        task = NginxUninstallTask.objects.get(batch_number=result["source_batch"])
+        opts = json.loads(task.options_json)
+        self.assertEqual(opts["extra_paths"][0]["path"], "/etc/nginx")
+        self.assertEqual(opts["extra_paths"][0]["kind"], "dir")
+
+    @patch("apps.nginx_uninstall.services.threading.Thread")
+    def test_dangerous_prefix_rejected(self, mock_thread):
+        """危险 prefix 拒绝"""
+        mock_thread.return_value.start = lambda: None
+        result = create_uninstall_batch_from_data(self.user, {
+            "nodes": [{
+                "id": self.node.id,
+                "selected_paths": [
+                    {"key": "prefix", "path": "/opt", "kind": "dir"},
+                ],
+            }],
+        })
+        self.assertFalse(result.get("success"))
+        self.assertIn("禁止删除路径", result.get("message", ""))

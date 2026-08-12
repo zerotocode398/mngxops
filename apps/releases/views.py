@@ -493,8 +493,9 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
             else:
                 duration = f"{delta:.1f} 秒"
 
-        # Nginx 升级：关联升级任务详情入口
+        # Nginx 升级 / 卸载：关联模块任务详情入口
         upgrade_task = None
+        uninstall_task = None
         if op == "nginx_upgrade":
             try:
                 from apps.upgrade.models import NginxUpgradeTask
@@ -505,6 +506,16 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                 )
             except Exception:
                 upgrade_task = None
+        elif op == "nginx_uninstall":
+            try:
+                from apps.nginx_uninstall.models import NginxUninstallTask
+                uninstall_task = (
+                    NginxUninstallTask.objects.filter(task_center_id=task.id)
+                    .select_related("node")
+                    .first()
+                )
+            except Exception:
+                uninstall_task = None
 
         # 系统信息 / 版本检测：特化展示
         system_info_rows = None
@@ -526,6 +537,7 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         context["result_summary"] = {"success": success_total, "failed": failed_total}
         context["execution_duration"] = duration
         context["upgrade_task"] = upgrade_task
+        context["uninstall_task"] = uninstall_task
         context["system_info_rows"] = system_info_rows
         context["nginx_version_text"] = nginx_version_text
         context["can_cancel"] = task.status in ("pending", "running")

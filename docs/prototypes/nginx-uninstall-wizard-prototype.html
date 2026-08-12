@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nginx 卸载中心原型 · MngxOps</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #667eea;
+            --gray-100: #f8f9fa;
+            --gray-200: #e9ecef;
+            --gray-600: #6c757d;
+            --br-md: 0.5rem;
+            --br-sm: 4px;
+            --fs-base: 0.875rem;
+            --fs-sm: 0.78rem;
+            --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            --transition-fast: 0.15s ease;
+        }
+        body { background: var(--gray-100); font-size: var(--fs-base); color: #212529; }
+        .proto-banner {
+            background: #fff3cd; border-bottom: 1px solid #ffecb5;
+            padding: 0.5rem 1rem; font-size: 0.8rem; color: #664d03;
+        }
+        .proto-shell { display: flex; min-height: calc(100vh - 40px); }
+        .proto-sidebar {
+            width: 220px; flex-shrink: 0;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            color: #fff; padding: 1rem 0.75rem;
+        }
+        .proto-sidebar .brand { font-weight: 600; margin-bottom: 1.25rem; padding: 0 0.5rem; }
+        .proto-sidebar .brand small { display: block; opacity: 0.75; font-weight: 400; font-size: 0.75rem; }
+        .proto-sidebar .section-title {
+            font-size: 0.7rem; text-transform: uppercase; opacity: 0.65;
+            padding: 0.75rem 0.5rem 0.35rem; letter-spacing: 0.04em;
+        }
+        .proto-sidebar .nav-link {
+            color: rgba(255,255,255,0.9); border-radius: 0.375rem;
+            padding: 0.45rem 0.65rem; font-size: 0.875rem;
+        }
+        .proto-sidebar .nav-link:hover, .proto-sidebar .nav-link.active {
+            background: rgba(255,255,255,0.15); color: #fff;
+        }
+        .proto-main { flex: 1; min-width: 0; padding: 1rem 1.25rem 2rem; }
+        .page-title { font-size: 1.1rem; font-weight: 600; }
+        .wizard-steps {
+            display: flex; gap: 0; margin-bottom: 1rem;
+            border-radius: var(--br-md); overflow: hidden; border: 1px solid var(--gray-200);
+        }
+        .wizard-step-item {
+            flex: 1; text-align: center; padding: 0.65rem 0.5rem; font-size: var(--fs-base);
+            background: var(--gray-100); color: var(--gray-600);
+            border-right: 1px solid var(--gray-200);
+        }
+        .wizard-step-item:last-child { border-right: none; }
+        .wizard-step-item.active { background: var(--primary); color: #fff; }
+        .wizard-step-item.done { background: rgba(102, 126, 234, 0.12); color: var(--primary); }
+        .wizard-step-item .step-num {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 1.35rem; height: 1.35rem; border-radius: 50%;
+            background: rgba(0,0,0,0.08); font-size: var(--fs-sm); margin-right: 4px;
+        }
+        .wizard-step-item.active .step-num { background: rgba(255,255,255,0.25); }
+        .wizard-panel { display: none; }
+        .wizard-panel.active { display: block; }
+        .selected-box {
+            min-height: 56px; border: 1px solid var(--gray-200);
+            border-radius: var(--br-md); background: #fff; padding: 0.65rem 0.75rem;
+        }
+        .node-chip {
+            display: inline-flex; align-items: center; gap: 0.35rem;
+            background: #eef1ff; color: #3d4db8; border: 1px solid #c9d0f8;
+            border-radius: var(--br-sm); padding: 0.2rem 0.55rem;
+            font-size: var(--fs-sm); margin: 0.15rem;
+        }
+        .uninstall-node-block {
+            border: 1px solid var(--gray-200); border-radius: var(--br-md);
+            margin-bottom: 0.75rem; background: #fff; overflow: hidden;
+        }
+        .uninstall-node-block .node-header {
+            display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+            padding: 0.75rem 1rem; cursor: pointer; user-select: none;
+        }
+        .uninstall-node-block .node-header:hover { background: var(--gray-100); }
+        .uninstall-node-block .chevron { transition: transform var(--transition-fast); }
+        .uninstall-node-block.collapsed .chevron { transform: rotate(-90deg); }
+        .uninstall-node-block .node-body { padding: 0 1rem 0.85rem; }
+        .uninstall-node-block.collapsed .node-body { display: none; }
+        .path-row {
+            display: flex; align-items: flex-start; gap: 0.5rem;
+            padding: 0.4rem 0.35rem; border-radius: var(--br-sm);
+        }
+        .path-row:not(.required) { cursor: pointer; }
+        .path-row:hover { background: var(--gray-100); }
+        .path-row.required { background: rgba(102, 126, 234, 0.06); }
+        .path-row .path-main { flex: 1; min-width: 0; }
+        .path-row .path-label {
+            font-family: var(--font-mono); font-size: var(--fs-sm); color: #3d4db8; margin-right: 0.35rem;
+        }
+        .path-row .path-value {
+            display: block; font-family: var(--font-mono); font-size: var(--fs-sm);
+            color: var(--gray-600); word-break: break-all;
+        }
+        .path-badge { font-size: 0.7rem; }
+        .kv-info-box {
+            background: #fff; border: 1px solid var(--gray-200);
+            border-radius: var(--br-md); padding: 0.85rem 1rem;
+        }
+        .kv-info-row { display: flex; gap: 0.75rem; padding: 0.25rem 0; border-bottom: 1px dashed var(--gray-200); }
+        .kv-info-row:last-child { border-bottom: none; }
+        .kv-info-label { width: 7rem; flex-shrink: 0; color: var(--gray-600); }
+        .confirm-node-block {
+            border: 1px solid var(--gray-200); border-radius: var(--br-md);
+            padding: 0.75rem 1rem; margin-bottom: 0.65rem; background: #fff;
+        }
+        .confirm-path-list {
+            margin: 0.35rem 0 0; padding-left: 1.1rem;
+            font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--gray-600);
+        }
+        .progress-placeholder { color: var(--gray-600); padding: 1.5rem 0.5rem; text-align: center; }
+        .node-progress-block { border: 1px solid var(--gray-200); border-radius: var(--br-md); margin-bottom: 0.75rem; overflow: hidden; }
+        .node-progress-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 12px; background: var(--gray-100); cursor: pointer;
+        }
+        .node-progress-body { padding: 8px 12px; border-top: 1px solid var(--gray-200); }
+        .upgrade-step {
+            display: flex; align-items: center; padding: 8px 12px; border-radius: var(--br-md);
+            margin-bottom: 4px; font-family: var(--font-mono); font-size: var(--fs-base);
+        }
+        .upgrade-step.success { background: #f0fff4; color: #155724; }
+        .upgrade-step.running { background: #fff8e1; color: #856404; }
+        .upgrade-step.pending { background: var(--gray-100); color: var(--gray-600); }
+        .btn-primary { background: var(--primary); border-color: var(--primary); }
+        .btn-primary:hover { background: #5a6fd6; border-color: #5a6fd6; }
+        code { font-size: var(--fs-sm); }
+    </style>
+</head>
+<body>
+<div class="proto-banner">
+    <strong>原型预览</strong>：三步向导 + 右栏「卸载执行进度」（对齐升级中心）。文件：
+    <code>docs/prototypes/nginx-uninstall-wizard-prototype.html</code>
+</div>
+<div class="proto-shell">
+    <aside class="proto-sidebar">
+        <div class="brand">MngxOps<small>运维平台原型</small></div>
+        <div class="section-title">运维工具</div>
+        <nav class="nav flex-column">
+            <a class="nav-link" href="#"><i class="bi bi-arrow-up-circle"></i> Nginx 升级</a>
+            <a class="nav-link" href="#"><i class="bi bi-download"></i> Nginx 安装</a>
+            <a class="nav-link" href="#"><i class="bi bi-play-circle"></i> Nginx 启停</a>
+            <a class="nav-link active" href="#"><i class="bi bi-trash3"></i> Nginx 卸载</a>
+        </nav>
+    </aside>
+    <main class="proto-main">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div class="page-title mb-0"><i class="bi bi-trash3"></i> Nginx 卸载中心</div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" disabled>返回</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" disabled>历史</button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-7">
+                <div class="wizard-steps" id="wizardSteps">
+                    <div class="wizard-step-item active" data-step="1"><span class="step-num">1</span>选择目标</div>
+                    <div class="wizard-step-item" data-step="2"><span class="step-num">2</span>探测路径</div>
+                    <div class="wizard-step-item" data-step="3"><span class="step-num">3</span>确认执行</div>
+                </div>
+
+                <div class="wizard-panel active" id="step1">
+                    <div class="card mb-3">
+                        <div class="card-header"><i class="bi bi-1-circle"></i> 选择目标节点</div>
+                        <div class="card-body">
+                            <div class="selected-box mb-2">
+                                <span class="node-chip">ngx-prod-01 <code>10.0.0.11</code></span>
+                                <span class="node-chip">ngx-prod-02 <code>10.0.0.12</code></span>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm" disabled>
+                                <i class="bi bi-search"></i> 选择节点（已选 2）
+                            </button>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="goStep(2)">下一步 <i class="bi bi-chevron-right"></i></button>
+                    </div>
+                </div>
+
+                <div class="wizard-panel" id="step2">
+                    <div class="card mb-3">
+                        <div class="card-header"><i class="bi bi-2-circle"></i> 探测路径</div>
+                        <div class="card-body"><div id="pathBlocks"></div></div>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(1)"><i class="bi bi-chevron-left"></i> 上一步</button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="goStep(3)">下一步 <i class="bi bi-chevron-right"></i></button>
+                    </div>
+                </div>
+
+                <div class="wizard-panel" id="step3">
+                    <div class="card mb-3">
+                        <div class="card-header"><i class="bi bi-3-circle"></i> 确认执行</div>
+                        <div class="card-body">
+                            <div class="kv-info-box mb-3">
+                                <div class="kv-info-row"><div class="kv-info-label">操作</div><div>Nginx 卸载（不可恢复）</div></div>
+                                <div class="kv-info-row"><div class="kv-info-label">节点数</div><div>2</div></div>
+                                <div class="kv-info-row"><div class="kv-info-label">运行状态</div><div><span class="badge bg-warning text-dark">1 台运行中</span></div></div>
+                            </div>
+                            <div id="confirmSummary"></div>
+                            <div class="form-check mb-2 mt-3">
+                                <input class="form-check-input" type="checkbox" id="confirmDelete">
+                                <label class="form-check-label text-danger" for="confirmDelete">我确认删除上述勾选路径（不可恢复）</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(2)"><i class="bi bi-chevron-left"></i> 上一步</button>
+                        <button type="button" class="btn btn-danger btn-sm" id="btnStart" disabled onclick="demoStart()">
+                            <i class="bi bi-trash3"></i> 开始卸载
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-5">
+                <div class="card sticky-top" style="top: 20px;">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 卸载执行进度</h5>
+                        <span id="progressPercent" class="badge bg-secondary d-none">0%</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="progressPlaceholder" class="progress-placeholder">
+                            <i class="bi bi-hourglass" style="font-size: 1.75rem;"></i>
+                            <p class="mt-2 mb-0">确认后开始卸载，进度将在此展示</p>
+                        </div>
+                        <div id="progressLive" class="d-none">
+                            <div class="mb-2 small">批次 <code>UN-260812-0001</code></div>
+                            <div class="progress mb-3" style="height: 8px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%"></div>
+                            </div>
+                            <div id="demoSteps"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+(function () {
+    var SAMPLE_NODES = [
+        {
+            id: 1, hostname: 'ngx-prod-01', ip: '10.0.0.11', running: true,
+            paths: [
+                { key: 'prefix', label: '--prefix', path: '/opt/app', source: 'nginx -V', required: true, checked: true },
+                { key: '--sbin-path', label: '--sbin-path', path: '/opt/app/sbin/nginx', source: 'nginx -V', checked: true },
+                { key: '--conf-path', label: '--conf-path', path: '/opt/app/conf/nginx.conf', source: 'nginx -V', checked: true },
+                { key: '--pid-path', label: '--pid-path', path: '/opt/app/logs/nginx.pid', source: 'nginx -V', checked: true },
+                { key: '--error-log-path', label: '--error-log-path', path: '/opt/app/logs/error.log', source: 'nginx -V', checked: false },
+                { key: 'release_backup', label: '发布备份目录', path: '/tmp/mngxops/ngx-prod-01', source: '系统设置', checked: true },
+                { key: 'work_dir', label: '编译工作目录', path: '/tmp/nginx-upgrade', source: '系统设置', checked: false },
+                { key: 'nginx_modules', label: '第三方模块源码目录', path: '/tmp/nginx-upgrade/nginx-modules', source: '系统设置', checked: false }
+            ]
+        },
+        {
+            id: 2, hostname: 'ngx-prod-02', ip: '10.0.0.12', running: false,
+            paths: [
+                { key: 'prefix', label: '--prefix', path: '/usr/local/nginx', source: 'nginx -V', required: true, checked: true },
+                { key: '--sbin-path', label: '--sbin-path', path: '/usr/sbin/nginx', source: 'nginx -V', checked: true },
+                { key: '--conf-path', label: '--conf-path', path: '/etc/nginx', source: 'nginx -V', checked: true },
+                { key: '--modules-path', label: '--modules-path', path: '/usr/lib64/nginx', source: 'nginx -V', checked: true },
+                { key: 'release_backup', label: '发布备份目录', path: '/tmp/mngxops/ngx-prod-02', source: '系统设置', checked: true },
+                { key: 'work_dir', label: '编译工作目录', path: '/tmp/nginx-upgrade', source: '系统设置', checked: false },
+                { key: 'nginx_modules', label: '第三方模块源码目录', path: '/tmp/nginx-upgrade/nginx-modules', source: '系统设置', checked: false }
+            ]
+        }
+    ];
+    var STEPS = ['连接远程', '停止 Nginx', '删除安装目录 (--prefix)', '清理发布备份', '清理额外路径', '更新节点状态'];
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function sourceBadge(source) {
+        return source === 'nginx -V'
+            ? '<span class="badge bg-primary path-badge">nginx -V</span>'
+            : '<span class="badge bg-secondary path-badge">系统设置</span>';
+    }
+
+    function renderBlocks() {
+        document.getElementById('pathBlocks').innerHTML = SAMPLE_NODES.map(function (n, i) {
+            var rows = n.paths.map(function (p, idx) {
+                var id = 'n' + n.id + '_' + idx;
+                return '<div class="path-row' + (p.required ? ' required' : '') + '">' +
+                    '<input class="form-check-input" type="checkbox" id="' + id + '"' +
+                    (p.checked ? ' checked' : '') + (p.required ? ' disabled' : '') +
+                    ' data-node="' + n.id + '" data-idx="' + idx + '">' +
+                    '<div class="path-main"><label class="mb-0" for="' + id + '"><span class="path-label">' +
+                    escapeHtml(p.label) + '</span>' + (p.required ? ' <span class="badge bg-danger path-badge">必选</span>' : '') +
+                    '</label><span class="path-value">' + escapeHtml(p.path) + '</span></div>' +
+                    sourceBadge(p.source) + '</div>';
+            }).join('');
+            return '<div class="uninstall-node-block' + (i ? ' collapsed' : '') + '">' +
+                '<div class="node-header"><span><i class="bi bi-chevron-down chevron me-1"></i>' +
+                escapeHtml(n.hostname) + ' <small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span>' +
+                (n.running ? '<span class="badge bg-warning text-dark">运行中</span>' : '<span class="badge bg-secondary">未运行</span>') +
+                '</div><div class="node-body">' + rows + '</div></div>';
+        }).join('');
+        document.querySelectorAll('.uninstall-node-block .node-header').forEach(function (h) {
+            h.addEventListener('click', function () { h.parentElement.classList.toggle('collapsed'); });
+        });
+        document.querySelectorAll('.path-row').forEach(function (row) {
+            row.addEventListener('click', function (e) {
+                var tag = (e.target.tagName || '').toUpperCase();
+                if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A') return;
+                if (e.target.closest('button, a, label, input, select')) return;
+                var cb = row.querySelector('input[type="checkbox"]');
+                if (!cb || cb.disabled) return;
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        });
+        document.querySelectorAll('.path-row input').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                var n = SAMPLE_NODES.find(function (x) { return String(x.id) === cb.getAttribute('data-node'); });
+                if (n) n.paths[parseInt(cb.getAttribute('data-idx'), 10)].checked = cb.checked;
+            });
+        });
+    }
+
+    function renderConfirm() {
+        document.getElementById('confirmSummary').innerHTML = SAMPLE_NODES.map(function (n) {
+            var lis = n.paths.filter(function (p) { return p.checked; }).map(function (p) {
+                return '<li><span class="path-label">' + escapeHtml(p.label) + '</span> ' + escapeHtml(p.path) + '</li>';
+            }).join('');
+            return '<div class="confirm-node-block">' + escapeHtml(n.hostname) +
+                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small>' +
+                '<ul class="confirm-path-list">' + lis + '</ul></div>';
+        }).join('');
+    }
+
+    window.goStep = function (step) {
+        document.querySelectorAll('.wizard-panel').forEach(function (el) {
+            el.classList.toggle('active', el.id === 'step' + step);
+        });
+        document.querySelectorAll('#wizardSteps .wizard-step-item').forEach(function (el) {
+            var n = parseInt(el.getAttribute('data-step'), 10);
+            el.classList.remove('active', 'done');
+            if (n === step) el.classList.add('active');
+            else if (n < step) el.classList.add('done');
+        });
+        if (step === 3) renderConfirm();
+    };
+
+    function renderDemoProgress(doneCount) {
+        var html = SAMPLE_NODES.map(function (n, ni) {
+            var stepHtml = STEPS.map(function (label, i) {
+                var cls = i < doneCount ? 'success' : (i === doneCount ? 'running' : 'pending');
+                var icon = cls === 'success' ? 'bi-check-circle-fill' : (cls === 'running' ? 'bi-arrow-repeat' : 'bi-hourglass-split');
+                return '<div class="upgrade-step ' + cls + '"><i class="bi ' + icon + '"></i> ' + (i + 1) + '. ' + label + '</div>';
+            }).join('');
+            if (doneCount >= STEPS.length) {
+                stepHtml += '<div class="upgrade-step success"><i class="bi bi-check-circle-fill"></i> 卸载成功</div>';
+            }
+            return '<div class="node-progress-block"><div class="node-progress-header">' +
+                '<span>' + escapeHtml(n.hostname) + '</span><span class="badge ' +
+                (doneCount >= STEPS.length ? 'bg-success' : 'bg-primary') + '">' +
+                (doneCount >= STEPS.length ? '成功' : '执行中') + '</span></div>' +
+                '<div class="node-progress-body' + (ni ? ' d-none' : '') + '">' + stepHtml + '</div></div>';
+        }).join('');
+        document.getElementById('demoSteps').innerHTML = html;
+        document.querySelectorAll('.node-progress-header').forEach(function (h) {
+            h.onclick = function () {
+                var b = h.parentElement.querySelector('.node-progress-body');
+                if (b) b.classList.toggle('d-none');
+            };
+        });
+    }
+
+    window.demoStart = function () {
+        document.getElementById('progressPlaceholder').classList.add('d-none');
+        document.getElementById('progressLive').classList.remove('d-none');
+        var pct = document.getElementById('progressPercent');
+        pct.classList.remove('d-none', 'bg-secondary');
+        pct.classList.add('bg-primary');
+        var i = 0;
+        function tick() {
+            var progress = Math.min(100, Math.round((i / STEPS.length) * 100));
+            pct.textContent = progress + '%';
+            document.getElementById('progressBar').style.width = progress + '%';
+            renderDemoProgress(i);
+            if (i >= STEPS.length) {
+                pct.classList.remove('bg-primary');
+                pct.classList.add('bg-success');
+                document.getElementById('progressBar').classList.remove('progress-bar-animated', 'progress-bar-striped');
+                document.getElementById('progressBar').classList.add('bg-success');
+                return;
+            }
+            i += 1;
+            setTimeout(tick, 700);
+        }
+        tick();
+    };
+
+    document.getElementById('confirmDelete').addEventListener('change', function () {
+        document.getElementById('btnStart').disabled = !this.checked;
+    });
+    renderBlocks();
+})();
+</script>
+</body>
+</html>

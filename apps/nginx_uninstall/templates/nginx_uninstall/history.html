@@ -94,13 +94,11 @@
                         <td>{{ task.operator.username|default:"-" }}</td>
                         <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
                         <td>
-                            {% if task.task_center_id %}
                             <a class="btn btn-outline-secondary btn-sm"
-                               href="{% url 'releases:task_center_detail' task.task_center_id %}"
+                               href="{% url 'nginx_uninstall:task_log' task.id %}"
                                target="_blank" title="查看详情">
                                 <i class="bi bi-eye"></i>
                             </a>
-                            {% else %}-{% endif %}
                         </td>
                     </tr>
                 {% endfor %}

@@ -27,9 +27,92 @@
     .node-chip .chip-x { cursor: pointer; opacity: 0.7; }
     .node-chip .chip-x:hover { opacity: 1; }
     tr.disabled-row { opacity: 0.55; }
-    .wizard-step { display: none; }
-    .wizard-step.active { display: block; }
+    .wizard-steps {
+        display: flex; gap: 0; margin-bottom: 1rem;
+        border-radius: var(--br-md); overflow: hidden; border: 1px solid var(--gray-200);
+    }
+    .wizard-step-item {
+        flex: 1; text-align: center; padding: 0.65rem 0.5rem; font-size: var(--fs-base);
+        background: var(--gray-100); color: var(--gray-600);
+        border-right: 1px solid var(--gray-200);
+    }
+    .wizard-step-item:last-child { border-right: none; }
+    .wizard-step-item.active { background: var(--primary); color: #fff; }
+    .wizard-step-item.done { background: rgba(102, 126, 234, 0.12); color: var(--primary); }
+    .wizard-step-item .step-num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.35rem; height: 1.35rem; border-radius: 50%;
+        background: rgba(0,0,0,0.08); font-size: var(--fs-sm); margin-right: 4px;
+    }
+    .wizard-step-item.active .step-num { background: rgba(255,255,255,0.25); }
+    .wizard-panel { display: none; }
+    .wizard-panel.active { display: block; }
     .prefix-input { font-family: var(--font-mono, monospace); font-size: var(--fs-sm, 0.78rem); }
+    .uninstall-node-block {
+        border: 1px solid var(--gray-200); border-radius: var(--br-md);
+        margin-bottom: 0.75rem; background: #fff; overflow: hidden;
+    }
+    .uninstall-node-block .node-header {
+        display: flex; flex-wrap: wrap; align-items: center;
+        justify-content: space-between; gap: 0.5rem;
+        padding: 0.75rem 1rem; cursor: pointer; user-select: none;
+    }
+    .uninstall-node-block .node-header:hover { background: var(--gray-100); }
+    .uninstall-node-block .chevron { transition: transform var(--transition-fast, 0.15s); color: var(--gray-600); }
+    .uninstall-node-block.collapsed .chevron { transform: rotate(-90deg); }
+    .uninstall-node-block .node-body { padding: 0 1rem 0.85rem; }
+    .uninstall-node-block.collapsed .node-body { display: none; }
+    .path-row {
+        display: flex; align-items: flex-start; gap: 0.5rem;
+        padding: 0.4rem 0.35rem; border-radius: var(--br-sm);
+    }
+    .path-row:not(.required) { cursor: pointer; }
+    .path-row:hover { background: var(--gray-100); }
+    .path-row.required { background: rgba(102, 126, 234, 0.06); }
+    .path-row .form-check-input { margin-top: 0.25rem; flex-shrink: 0; }
+    .path-row .path-main { flex: 1; min-width: 0; }
+    .path-row .path-label {
+        display: inline-block; font-family: var(--font-mono);
+        font-size: var(--fs-sm); color: #3d4db8; margin-right: 0.35rem;
+    }
+    .path-row .path-value {
+        display: block; font-family: var(--font-mono);
+        font-size: var(--fs-sm); color: var(--gray-600); word-break: break-all;
+    }
+    .path-row .path-badge { flex-shrink: 0; font-size: 0.7rem; margin-top: 0.15rem; }
+    .kv-info-box {
+        padding: 12px 14px; background: var(--gray-100); border-radius: var(--br-md);
+        border: 1px solid var(--gray-200); font-size: var(--fs-base);
+    }
+    .kv-info-row {
+        display: flex; gap: 0.75rem; padding: 0.25rem 0;
+        border-bottom: 1px dashed var(--gray-200);
+    }
+    .kv-info-row:last-child { border-bottom: none; }
+    .kv-info-label { width: 7rem; flex-shrink: 0; color: var(--gray-600); }
+    .confirm-node-block {
+        border: 1px solid var(--gray-200); border-radius: var(--br-md);
+        padding: 0.75rem 1rem; margin-bottom: 0.65rem; background: #fff;
+    }
+    .confirm-path-list {
+        margin: 0.35rem 0 0; padding-left: 1.1rem;
+        font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--gray-600);
+    }
+    .progress-placeholder { color: var(--gray-600); font-size: var(--fs-base); padding: 1.5rem 0.5rem; text-align: center; }
+    .node-progress-block { border: 1px solid var(--gray-200); border-radius: var(--br-md); margin-bottom: 0.75rem; overflow: hidden; }
+    .node-progress-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 12px; background: var(--gray-100); cursor: pointer; font-size: var(--fs-base);
+    }
+    .node-progress-body { padding: 8px 12px; border-top: 1px solid var(--gray-200); }
+    .upgrade-step {
+        display: flex; align-items: center; padding: 8px 12px; border-radius: var(--br-md);
+        margin-bottom: 4px; font-family: var(--font-mono); font-size: var(--fs-base);
+    }
+    .upgrade-step.success { background: #f0fff4; color: #155724; }
+    .upgrade-step.running { background: #fff8e1; color: #856404; }
+    .upgrade-step.failed { background: #fff5f5; color: #721c24; }
+    .upgrade-step.pending { background: var(--gray-100); color: var(--gray-600); }
 </style>
 {% endblock %}
 
@@ -44,83 +127,108 @@
         </a>
     </div>
 
-    <div class="wizard-step active" id="step1">
-        <div class="card mb-3">
-            <div class="card-header"><i class="bi bi-1-circle"></i> 选择目标节点</div>
-            <div class="card-body">
-                <div class="selected-box mb-2" id="selectedBox">
-                    <span class="text-muted small" id="emptyHint">请选择在线且已检测到 Nginx（或仍有安装路径）的节点（最多 {{ batch_max_count }} 台）</span>
-                    <div id="chipWrap"></div>
-                </div>
-                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
-                    <i class="bi bi-search"></i> <span id="btnSelectLabel">选择节点</span>
-                </button>
+    <div class="row">
+        <div class="col-md-7">
+            <div class="wizard-steps" id="wizardSteps">
+                <div class="wizard-step-item active" data-step="1"><span class="step-num">1</span>选择目标</div>
+                <div class="wizard-step-item" data-step="2"><span class="step-num">2</span>探测路径</div>
+                <div class="wizard-step-item" data-step="3"><span class="step-num">3</span>确认执行</div>
             </div>
-        </div>
-        <div class="d-flex justify-content-end gap-2">
-            <button type="button" class="btn btn-primary btn-sm" id="btnToStep2" disabled onclick="goStep2()">
-                下一步 <i class="bi bi-chevron-right"></i>
-            </button>
-        </div>
-    </div>
 
-    <div class="wizard-step" id="step2">
-        <div class="card mb-3">
-            <div class="card-header"><i class="bi bi-2-circle"></i> 确认删除范围</div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="optPrefix" checked disabled>
-                        <label class="form-check-label" for="optPrefix">删除 --prefix 安装树（必选）</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="optBackup" checked>
-                        <label class="form-check-label" for="optBackup">删除该节点远程发布备份目录</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="optWorkdir">
-                        <label class="form-check-label" for="optWorkdir">删除编译工作目录</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="optModules">
-                        <label class="form-check-label" for="optModules">删除第三方模块源码目录（nginx-modules）</label>
+            <div class="wizard-panel active" id="step1">
+                <div class="card mb-3">
+                    <div class="card-header"><i class="bi bi-1-circle"></i> 选择目标节点</div>
+                    <div class="card-body">
+                        <div class="selected-box mb-2" id="selectedBox">
+                            <span class="text-muted small" id="emptyHint">请选择在线且已检测到 Nginx 的节点（最多 {{ batch_max_count }} 台）</span>
+                            <div id="chipWrap"></div>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
+                            <i class="bi bi-search"></i> <span id="btnSelectLabel">选择节点</span>
+                        </button>
                     </div>
                 </div>
-                <div class="table-responsive mb-3">
-                    <table class="table table-sm table-bordered data-table mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>节点</th>
-                                <th>安装路径 (--prefix)</th>
-                                <th>发布备份</th>
-                                <th>运行状态</th>
-                            </tr>
-                        </thead>
-                        <tbody id="previewTbody">
-                            <tr><td colspan="4" class="text-muted text-center py-3">加载预览…</td></tr>
-                        </tbody>
-                    </table>
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-primary btn-sm" id="btnToStep2" disabled onclick="goStep(2)">
+                        下一步 <i class="bi bi-chevron-right"></i>
+                    </button>
                 </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="confirmDelete">
-                    <label class="form-check-label text-danger" for="confirmDelete">
-                        我确认删除上述路径（不可恢复）
-                    </label>
+            </div>
+
+            <div class="wizard-panel" id="step2">
+                <div class="card mb-3">
+                    <div class="card-header"><i class="bi bi-2-circle"></i> 探测路径</div>
+                    <div class="card-body">
+                        <div id="previewList">
+                            <div class="text-muted text-center py-3">加载预览…</div>
+                        </div>
+                    </div>
                 </div>
-                <p class="small text-muted mb-0">
-                    卸载成功后将清空节点 Nginx 路径/版本，标记 Nginx 不可用，相关配置绑定变为「远程已删除」。
-                </p>
+                <div class="d-flex justify-content-between gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(1)">
+                        <i class="bi bi-chevron-left"></i> 上一步
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" id="btnToStep3" disabled onclick="goStep(3)">
+                        下一步 <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="wizard-panel" id="step3">
+                <div class="card mb-3">
+                    <div class="card-header"><i class="bi bi-3-circle"></i> 确认执行</div>
+                    <div class="card-body">
+                        <div class="kv-info-box mb-3" id="confirmMeta"></div>
+                        <div id="confirmSummary"></div>
+                        <div class="form-check mb-2 mt-3">
+                            <input class="form-check-input" type="checkbox" id="confirmDelete">
+                            <label class="form-check-label text-danger" for="confirmDelete">
+                                我确认删除上述勾选路径（不可恢复）
+                            </label>
+                        </div>
+                        <p class="small text-muted mb-0">
+                            卸载成功后将清空节点 Nginx 路径/版本，标记 Nginx 不可用，相关配置绑定变为「远程已删除」。
+                        </p>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(2)">
+                        <i class="bi bi-chevron-left"></i> 上一步
+                    </button>
+                    {% if can_execute %}
+                    <button type="button" class="btn btn-danger btn-sm" id="btnStartUninstall" disabled onclick="startUninstall()">
+                        <i class="bi bi-trash3"></i> 开始卸载
+                    </button>
+                    {% endif %}
+                </div>
             </div>
         </div>
-        <div class="d-flex justify-content-between gap-2">
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep1()">
-                <i class="bi bi-chevron-left"></i> 上一步
-            </button>
-            {% if can_execute %}
-            <button type="button" class="btn btn-danger btn-sm" id="btnStartUninstall" disabled onclick="startUninstall()">
-                <i class="bi bi-trash3"></i> 开始卸载
-            </button>
-            {% endif %}
+
+        <div class="col-md-5">
+            <div class="card sticky-top" style="top: 20px;">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 卸载执行进度</h5>
+                    <span id="progressPercent" class="badge bg-secondary d-none">0%</span>
+                </div>
+                <div class="card-body">
+                    <div id="progressPlaceholder" class="progress-placeholder">
+                        <i class="bi bi-hourglass" style="font-size: 1.75rem;"></i>
+                        <p class="mt-2 mb-0">确认后开始卸载，进度将在此展示</p>
+                    </div>
+                    <div id="progressLive" class="d-none">
+                        <div class="mb-2 small" id="batchNumberLabel"></div>
+                        <div class="progress mb-3" style="height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%"></div>
+                        </div>
+                        <div id="uninstallSteps"></div>
+                        <div class="mt-3 d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-outline-danger d-none" id="btnCancelUninstall" onclick="cancelUninstall()">
+                                <i class="bi bi-stop-circle"></i> 取消卸载
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -163,7 +271,7 @@
                 </div>
                 <div class="d-flex justify-content-between mt-2">
                     <small class="text-muted">共 <span id="resultCount">0</span> · 已勾 <span id="pickedCount">0</span> · 上限 {{ batch_max_count }}</small>
-                    <small class="text-muted">离线 / 无凭证 / 无 Nginx 路径不可选</small>
+                    <small class="text-muted">仅可选在线且已检测到 Nginx 的节点</small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -184,14 +292,30 @@
     var CAN_EXECUTE = {{ can_execute|yesno:"true,false" }};
     var PREVIEW_URL = '{% url "nginx_uninstall:api_preview" %}';
     var CREATE_URL = '{% url "nginx_uninstall:api_create" %}';
+    var PROGRESS_URL = '{% url "nginx_uninstall:api_batch_progress" %}';
     var SEARCH_URL = '{% url "nodes:api_search_nodes" %}';
-    var DETAIL_URL_TMPL = '{% url "releases:task_center_detail" 0 %}'.replace('/0/', '/{id}/');
+    var CANCEL_URL_TMPL = '{% url "releases:task_center_cancel" 0 %}'.replace('/0/', '/{id}/');
+    var POLL_MS = {{ sys_poll_interval_ms|default:2000 }};
 
     var selected = {};
     var draft = {};
     var previewNodes = [];
+    var draftSelections = {};
     var lastSearchNodes = [];
     var searchTimer = null;
+    var pollTimer = null;
+    var currentBatch = '';
+    var currentTaskCenterId = null;
+    var expandedProgressIds = {};
+
+    var UNINSTALL_STEPS = [
+        { key: 'pending', label: '连接远程', step: 1 },
+        { key: 'stopping', label: '停止 Nginx', step: 2 },
+        { key: 'removing_prefix', label: '删除安装目录 (--prefix)', step: 3 },
+        { key: 'removing_backup', label: '清理发布备份', step: 4 },
+        { key: 'removing_extra', label: '清理额外路径', step: 5 },
+        { key: 'updating_node', label: '更新节点状态', step: 6 }
+    ];
 
     function csrfToken() {
         var m = document.cookie.match(/csrftoken=([^;]+)/);
@@ -205,17 +329,33 @@
     }
 
     function canSelect(node) {
-        if (node.status !== 'online' || !node.has_credential) return false;
-        if (node.nginx_available === true) return true;
-        return !!(node.nginx_path && String(node.nginx_path).trim());
+        return node.status === 'online' && !!node.has_credential && node.nginx_available === true;
     }
 
     function selectedCount() { return Object.keys(selected).length; }
     function draftCount() { return Object.keys(draft).length; }
 
+    function setWizardStep(step) {
+        document.querySelectorAll('#wizardSteps .wizard-step-item').forEach(function (el) {
+            var n = parseInt(el.getAttribute('data-step'), 10);
+            el.classList.remove('active', 'done');
+            if (n === step) el.classList.add('active');
+            else if (n < step) el.classList.add('done');
+        });
+        document.querySelectorAll('.wizard-panel').forEach(function (el) {
+            el.classList.toggle('active', el.id === 'step' + step);
+        });
+    }
+
     function syncStep1() {
         var btn = document.getElementById('btnToStep2');
         if (btn) btn.disabled = selectedCount() === 0;
+    }
+
+    function syncStep2Next() {
+        var btn = document.getElementById('btnToStep3');
+        if (!btn) return;
+        btn.disabled = !previewNodes.some(function (n) { return n.eligible; });
     }
 
     function syncStartBtn() {
@@ -274,12 +414,11 @@
         else if (node.status === 'offline') html = '<span class="badge bg-danger">离线</span>';
         else html = '<span class="badge bg-secondary">未知</span>';
         if (!node.has_credential) html += ' <span class="badge bg-warning text-dark">无凭证</span>';
-        if (node.nginx_available === true) {
+        if (node.status === 'online' && node.nginx_available === true) {
             html += ' <span class="badge bg-primary">' + escapeHtml(node.nginx_version || '已安装') + '</span>';
-        } else if (node.nginx_available === false) {
-            html += ' <span class="badge bg-warning text-dark">未检测到</span>';
-        } else {
-            html += ' <span class="badge bg-secondary">未探测</span>';
+        } else if (node.status === 'online' && node.nginx_available !== true) {
+            html += ' <span class="badge bg-warning text-dark">' +
+                escapeHtml(node.nginx_status_label || '未检测到') + '</span>';
         }
         return html;
     }
@@ -314,7 +453,7 @@
                 '<td><span class="node-identity">' + escapeHtml(node.hostname) + '</span></td>' +
                 '<td><code>' + escapeHtml(node.ip) + '</code></td>' +
                 '<td>' + groups + '</td>' +
-                '<td>' + statusBadge(node) + '</td></tr>';
+                '<td class="text-nowrap">' + statusBadge(node) + '</td></tr>';
         });
         tbody.innerHTML = html;
         tbody.querySelectorAll('.un-node-cb').forEach(function (cb) {
@@ -365,26 +504,129 @@
         if (modal) modal.hide();
     };
 
-    function goStep1() {
-        document.getElementById('step1').classList.add('active');
-        document.getElementById('step2').classList.remove('active');
+    function sourceBadge(source) {
+        if (source === 'nginx -V') return '<span class="badge bg-primary path-badge">nginx -V</span>';
+        return '<span class="badge bg-secondary path-badge">系统设置</span>';
     }
-    window.goStep1 = goStep1;
 
-    window.goStep2 = function () {
-        if (!selectedCount()) {
-            showAlert('提示', '请先选择节点');
+    function initDraftSelections(nodes) {
+        draftSelections = {};
+        (nodes || []).forEach(function (n) {
+            var map = {};
+            (n.paths || []).forEach(function (p) {
+                map[p.key] = {
+                    key: p.key,
+                    label: p.label || p.key,
+                    path: p.path || '',
+                    checked: !!p.checked || !!p.required,
+                    required: !!p.required,
+                    editable: !!p.editable,
+                    kind: p.kind || 'dir',
+                    source: p.source || ''
+                };
+            });
+            draftSelections[String(n.id)] = map;
+        });
+    }
+
+    function collectSelectionsFromDom() {
+        document.querySelectorAll('#previewList .uninstall-node-block[data-node-id]').forEach(function (block) {
+            var nid = block.getAttribute('data-node-id');
+            var map = draftSelections[nid] || {};
+            block.querySelectorAll('.path-cb').forEach(function (cb) {
+                var key = cb.getAttribute('data-key');
+                if (!map[key]) return;
+                if (!map[key].required) map[key].checked = cb.checked;
+            });
+            block.querySelectorAll('.prefix-input').forEach(function (inp) {
+                var key = inp.getAttribute('data-key');
+                if (map[key]) map[key].path = inp.value.trim();
+            });
+            draftSelections[nid] = map;
+        });
+    }
+
+    function renderPathRows(node) {
+        var map = draftSelections[String(node.id)] || {};
+        var keys = Object.keys(map);
+        if (!keys.length && node.paths) {
+            return '<div class="text-muted small">无可展示路径</div>';
+        }
+        return keys.map(function (key, idx) {
+            var p = map[key];
+            var id = 'n' + node.id + '_p' + idx;
+            var checked = p.checked ? ' checked' : '';
+            var disabled = p.required || !node.eligible ? ' disabled' : '';
+            var reqClass = p.required ? ' required' : '';
+            var valueHtml = p.editable
+                ? '<input type="text" class="form-control form-control-sm prefix-input" data-key="' +
+                  escapeHtml(p.key) + '" value="' + escapeHtml(p.path || '') + '"' +
+                  (node.eligible ? '' : ' disabled') + '>'
+                : '<span class="path-value">' + escapeHtml(p.path || '-') + '</span>';
+            return '<div class="path-row' + reqClass + '">' +
+                '<input class="form-check-input path-cb" type="checkbox" id="' + id + '"' +
+                ' data-key="' + escapeHtml(p.key) + '"' + checked + disabled + '>' +
+                '<div class="path-main">' +
+                '<label class="mb-0" for="' + id + '"><span class="path-label">' +
+                escapeHtml(p.label) + '</span>' +
+                (p.required ? ' <span class="badge bg-danger path-badge">必选</span>' : '') +
+                '</label>' + valueHtml + '</div>' + sourceBadge(p.source) + '</div>';
+        }).join('');
+    }
+
+    function renderPreview() {
+        var list = document.getElementById('previewList');
+        if (!previewNodes.length) {
+            list.innerHTML = '<div class="text-muted text-center py-3">无节点</div>';
+            syncStep2Next();
             return;
         }
-        document.getElementById('step1').classList.remove('active');
-        document.getElementById('step2').classList.add('active');
-        loadPreview();
-    };
+        list.innerHTML = previewNodes.map(function (n, i) {
+            var collapsed = i === 0 ? '' : ' collapsed';
+            var runBadge = n.running
+                ? '<span class="badge bg-warning text-dark">运行中</span>'
+                : '<span class="badge bg-secondary">未运行</span>';
+            if (n.running_error) {
+                runBadge += ' <small class="text-danger" title="' + escapeHtml(n.running_error) + '">探测异常</small>';
+            }
+            var gate = n.gate_message
+                ? '<div class="small text-danger px-3 pb-2">' + escapeHtml(n.gate_message) + '</div>'
+                : '';
+            return '<div class="uninstall-node-block' + collapsed + '" data-node-id="' + n.id + '">' +
+                '<div class="node-header" role="button">' +
+                '<span><i class="bi bi-chevron-down chevron me-1"></i>' +
+                '<span class="node-identity">' + escapeHtml(n.hostname) +
+                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span></span>' +
+                runBadge + '</div>' + gate +
+                '<div class="node-body">' + renderPathRows(n) + '</div></div>';
+        }).join('');
+        list.querySelectorAll('.uninstall-node-block .node-header').forEach(function (hdr) {
+            hdr.addEventListener('click', function () {
+                hdr.parentElement.classList.toggle('collapsed');
+            });
+        });
+        list.querySelectorAll('.prefix-input').forEach(function (inp) {
+            inp.addEventListener('click', function (e) { e.stopPropagation(); });
+        });
+        // 点击路径行切换勾选（对齐弹窗表行；必选/禁用不切换）
+        list.querySelectorAll('.path-row').forEach(function (row) {
+            row.addEventListener('click', function (e) {
+                var tag = (e.target.tagName || '').toUpperCase();
+                if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'A') return;
+                if (e.target.closest('button, a, label, input, select')) return;
+                var cb = row.querySelector('.path-cb');
+                if (!cb || cb.disabled) return;
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        });
+        syncStep2Next();
+    }
 
     function loadPreview() {
-        var tbody = document.getElementById('previewTbody');
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">' +
-            '<div class="spinner-border spinner-border-sm text-primary me-2"></div>解析安装路径…</td></tr>';
+        var list = document.getElementById('previewList');
+        list.innerHTML = '<div class="text-muted text-center py-3">' +
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div>正在探测 nginx -V…</div>';
         var ids = Object.keys(selected).map(function (k) { return parseInt(k, 10); });
         fetch(PREVIEW_URL, {
             method: 'POST',
@@ -398,65 +640,237 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (!data.success) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-danger text-center py-3">' +
-                        escapeHtml(data.message || '预览失败') + '</td></tr>';
+                    list.innerHTML = '<div class="text-danger text-center py-3">' +
+                        escapeHtml(data.message || '预览失败') + '</div>';
                     previewNodes = [];
-                    syncStartBtn();
+                    draftSelections = {};
+                    syncStep2Next();
                     return;
                 }
                 previewNodes = data.nodes || [];
+                initDraftSelections(previewNodes);
                 renderPreview();
             })
             .catch(function () {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-danger text-center py-3">预览请求失败</td></tr>';
+                list.innerHTML = '<div class="text-danger text-center py-3">预览请求失败</div>';
                 previewNodes = [];
-                syncStartBtn();
+                syncStep2Next();
             });
     }
 
-    function renderPreview() {
-        var tbody = document.getElementById('previewTbody');
-        if (!previewNodes.length) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-3">无节点</td></tr>';
-            syncStartBtn();
-            return;
-        }
-        tbody.innerHTML = previewNodes.map(function (n) {
-            var runBadge = n.running
-                ? '<span class="badge bg-warning text-dark">运行中</span>'
-                : '<span class="badge bg-secondary">未运行</span>';
-            if (n.running_error) {
-                runBadge += ' <small class="text-danger" title="' + escapeHtml(n.running_error) + '">探测异常</small>';
-            }
-            var gate = n.gate_message
-                ? '<div class="small text-danger mt-1">' + escapeHtml(n.gate_message) + '</div>'
-                : '';
-            return '<tr data-node-id="' + n.id + '">' +
-                '<td><span class="node-identity">' + escapeHtml(n.hostname) +
-                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span>' + gate + '</td>' +
-                '<td><input type="text" class="form-control form-control-sm prefix-input" ' +
-                'data-role="prefix" value="' + escapeHtml(n.prefix || '') + '" ' +
-                (n.eligible || n.prefix ? '' : '') + '></td>' +
-                '<td><code class="small">' + escapeHtml(n.backup_path || '-') + '</code></td>' +
-                '<td>' + runBadge + '</td></tr>';
+    function renderConfirm() {
+        collectSelectionsFromDom();
+        var runningCount = previewNodes.filter(function (n) { return n.running; }).length;
+        document.getElementById('confirmMeta').innerHTML =
+            '<div class="kv-info-row"><div class="kv-info-label">操作</div><div>Nginx 卸载（不可恢复）</div></div>' +
+            '<div class="kv-info-row"><div class="kv-info-label">节点数</div><div>' + previewNodes.length + '</div></div>' +
+            '<div class="kv-info-row"><div class="kv-info-label">运行状态</div><div>' +
+            (runningCount
+                ? '<span class="badge bg-warning text-dark">' + runningCount + ' 台运行中</span> · 开始前将先停止'
+                : '<span class="badge bg-secondary">均未运行</span>') +
+            '</div></div>';
+
+        document.getElementById('confirmSummary').innerHTML = previewNodes.map(function (n) {
+            var map = draftSelections[String(n.id)] || {};
+            var lis = Object.keys(map).filter(function (k) { return map[k].checked; }).map(function (k) {
+                var p = map[k];
+                return '<li><span class="path-label">' + escapeHtml(p.label) + '</span> ' +
+                    escapeHtml(p.path || '-') + '</li>';
+            }).join('');
+            var run = n.running ? ' <span class="badge bg-warning text-dark">运行中</span>' : '';
+            return '<div class="confirm-node-block">' +
+                '<div class="node-identity">' + escapeHtml(n.hostname) +
+                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></div>' + run +
+                '<ul class="confirm-path-list">' + (lis || '<li class="text-muted">未勾选路径</li>') + '</ul></div>';
         }).join('');
         syncStartBtn();
     }
 
+    window.goStep = function (step) {
+        if (step === 2) {
+            if (!selectedCount()) {
+                showAlert('提示', '请先选择节点');
+                return;
+            }
+            setWizardStep(2);
+            loadPreview();
+            return;
+        }
+        if (step === 3) {
+            if (!previewNodes.some(function (n) { return n.eligible; })) {
+                showAlert('提示', '没有可卸载的节点');
+                return;
+            }
+            setWizardStep(3);
+            renderConfirm();
+            return;
+        }
+        setWizardStep(step);
+    };
+
     function collectPayload(stopIfRunning) {
+        collectSelectionsFromDom();
         var nodes = [];
-        document.querySelectorAll('#previewTbody tr[data-node-id]').forEach(function (tr) {
-            var id = parseInt(tr.getAttribute('data-node-id'), 10);
-            var input = tr.querySelector('[data-role="prefix"]');
-            nodes.push({ id: id, prefix: input ? input.value.trim() : '' });
+        previewNodes.forEach(function (n) {
+            if (!n.eligible) return;
+            var map = draftSelections[String(n.id)] || {};
+            var selectedPaths = [];
+            var prefix = '';
+            Object.keys(map).forEach(function (k) {
+                var p = map[k];
+                if (!p.checked) return;
+                if (p.key === 'prefix' || p.key === '--prefix') prefix = p.path;
+                selectedPaths.push({
+                    key: p.key,
+                    path: p.path,
+                    kind: p.kind || 'dir'
+                });
+            });
+            nodes.push({ id: n.id, prefix: prefix, selected_paths: selectedPaths });
         });
-        return {
-            nodes: nodes,
-            remove_backup: document.getElementById('optBackup').checked,
-            remove_workdir: document.getElementById('optWorkdir').checked,
-            remove_modules: document.getElementById('optModules').checked,
-            stop_if_running: !!stopIfRunning
-        };
+        return { nodes: nodes, stop_if_running: !!stopIfRunning };
+    }
+
+    function showProgressPanel(batch, tcId) {
+        currentBatch = batch || '';
+        currentTaskCenterId = tcId;
+        document.getElementById('progressPlaceholder').classList.add('d-none');
+        document.getElementById('progressLive').classList.remove('d-none');
+        document.getElementById('progressPercent').classList.remove('d-none', 'bg-secondary', 'bg-success', 'bg-danger');
+        document.getElementById('progressPercent').classList.add('bg-primary');
+        document.getElementById('batchNumberLabel').innerHTML =
+            '批次 <code>' + escapeHtml(batch || '-') + '</code>';
+        var bar = document.getElementById('progressBar');
+        bar.classList.add('progress-bar-animated', 'progress-bar-striped');
+        bar.classList.remove('bg-success', 'bg-danger');
+        bar.style.width = '0%';
+        var cancelBtn = document.getElementById('btnCancelUninstall');
+        if (cancelBtn) cancelBtn.classList.remove('d-none');
+    }
+
+    function truncateErrorLines(msg, maxLines) {
+        var text = String(msg || '').replace(/\r\n/g, '\n').trim();
+        if (!text) return '未知错误';
+        var lines = text.split('\n');
+        var limit = maxLines || 5;
+        if (lines.length <= limit) return text;
+        return lines.slice(0, limit).join('\n') + '\n…';
+    }
+
+    function buildStepHtml(data) {
+        var html = '';
+        var isFailed = data.status === 'failed';
+        var isSuccess = data.status === 'success';
+        var isCancelled = data.status === 'cancelled';
+        var order = { pending: 1, stopping: 2, removing_prefix: 3, removing_backup: 4, removing_extra: 5, updating_node: 6 };
+        var cur = order[data.status] || 0;
+        UNINSTALL_STEPS.forEach(function (s) {
+            var cls = 'pending', icon = '<i class="bi bi-hourglass-split"></i>';
+            if (isSuccess || (cur && s.step < cur)) {
+                cls = 'success'; icon = '<i class="bi bi-check-circle-fill"></i>';
+            } else if (s.key === data.status) {
+                cls = 'running'; icon = '<i class="bi bi-arrow-repeat"></i>';
+            }
+            if (isFailed && s.key === data.status) {
+                cls = 'failed'; icon = '<i class="bi bi-x-circle-fill"></i>';
+            }
+            if ((isFailed || isCancelled) && cur && s.step > cur) {
+                cls = 'pending'; icon = '<i class="bi bi-hourglass-split"></i>';
+            }
+            html += '<div class="upgrade-step ' + cls + '">' + icon + ' ' + s.step + '. ' + s.label + '</div>';
+        });
+        if (isSuccess) {
+            html += '<div class="upgrade-step success"><i class="bi bi-check-circle-fill"></i> 卸载成功</div>';
+        }
+        if (isFailed) {
+            html += '<div class="upgrade-step failed" style="align-items:flex-start;white-space:pre-wrap;">' +
+                '<i class="bi bi-x-circle-fill me-1"></i><span>失败:\n' +
+                escapeHtml(truncateErrorLines(data.error_message, 5)) + '</span></div>';
+        }
+        if (isCancelled) {
+            html += '<div class="upgrade-step failed"><i class="bi bi-x-circle-fill"></i> 已取消</div>';
+        }
+        return html;
+    }
+
+    function renderBatchProgress(tasks) {
+        var container = document.getElementById('uninstallSteps');
+        var prevExpanded = {};
+        container.querySelectorAll('.node-progress-block').forEach(function (el) {
+            var id = el.getAttribute('data-task-id');
+            var body = el.querySelector('.node-progress-body');
+            if (id && body && !body.classList.contains('d-none')) prevExpanded[id] = true;
+        });
+        if (!Object.keys(prevExpanded).length) prevExpanded = expandedProgressIds;
+
+        var html = '';
+        (tasks || []).forEach(function (t, idx) {
+            var tid = String(t.task_id || t.id);
+            var open = (prevExpanded[tid] || (idx === 0 && !Object.keys(prevExpanded).length)) ? '' : ' d-none';
+            var badgeCls = 'bg-secondary';
+            if (t.status === 'success') badgeCls = 'bg-success';
+            else if (t.status === 'failed' || t.status === 'cancelled') badgeCls = 'bg-danger';
+            else if (t.status !== 'pending') badgeCls = 'bg-primary';
+            var logHref = t.log_url || '';
+            html +=
+                '<div class="node-progress-block" data-task-id="' + tid + '">' +
+                '<div class="node-progress-header">' +
+                '<span>' + escapeHtml(t.hostname) +
+                ' <small class="text-muted">(' + escapeHtml(t.ip) + ')</small></span>' +
+                '<span><span class="badge ' + badgeCls + '">' + escapeHtml(t.status_display || t.status) +
+                '</span> ' + (t.progress || 0) + '% <i class="bi bi-chevron-down"></i></span></div>' +
+                '<div class="node-progress-body' + open + '">' +
+                buildStepHtml(t) +
+                (logHref ? '<a class="small" href="' + logHref + '" target="_blank">查看完整日志</a>' : '') +
+                '</div></div>';
+        });
+        container.innerHTML = html || '<div class="text-muted small">等待进度...</div>';
+        container.querySelectorAll('.node-progress-header').forEach(function (hdr) {
+            hdr.addEventListener('click', function () {
+                var body = hdr.parentElement.querySelector('.node-progress-body');
+                if (body) body.classList.toggle('d-none');
+            });
+        });
+        expandedProgressIds = {};
+        container.querySelectorAll('.node-progress-block').forEach(function (el) {
+            var id = el.getAttribute('data-task-id');
+            var body = el.querySelector('.node-progress-body');
+            if (id && body && !body.classList.contains('d-none')) expandedProgressIds[id] = true;
+        });
+    }
+
+    function startBatchPolling(batch) {
+        if (pollTimer) clearInterval(pollTimer);
+        var url = PROGRESS_URL + '?batch=' + encodeURIComponent(batch);
+        function pollOnce() {
+            fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data.success) return;
+                    document.getElementById('progressPercent').textContent = (data.progress || 0) + '%';
+                    document.getElementById('progressBar').style.width = (data.progress || 0) + '%';
+                    renderBatchProgress(data.tasks || []);
+                    if (data.all_done || data.finished) {
+                        clearInterval(pollTimer);
+                        pollTimer = null;
+                        var cancelBtn = document.getElementById('btnCancelUninstall');
+                        if (cancelBtn) cancelBtn.classList.add('d-none');
+                        var bar = document.getElementById('progressBar');
+                        bar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                        var pct = document.getElementById('progressPercent');
+                        pct.classList.remove('bg-primary');
+                        if ((data.fail_count || 0) === 0) {
+                            bar.classList.add('bg-success');
+                            pct.classList.add('bg-success');
+                        } else {
+                            bar.classList.add('bg-danger');
+                            pct.classList.add('bg-danger');
+                        }
+                    }
+                });
+        }
+        pollOnce();
+        pollTimer = setInterval(pollOnce, POLL_MS);
     }
 
     function doCreate(payload) {
@@ -475,19 +889,8 @@
                     showAlert('卸载失败', data.message || '创建任务失败');
                     return;
                 }
-                var tcId = data.task_center_id;
-                var detailUrl = DETAIL_URL_TMPL.replace('{id}', String(tcId));
-                if (typeof showAsyncProgressOverlay === 'function' && typeof startAsyncProgressPolling === 'function') {
-                    showAsyncProgressOverlay('Nginx 卸载', {
-                        batchNumber: data.source_batch || '',
-                        logHref: detailUrl,
-                        noReload: true
-                    });
-                    startAsyncProgressPolling(tcId);
-                } else {
-                    showAlert('已创建', data.message || '任务已创建');
-                    window.open(detailUrl, '_blank');
-                }
+                showProgressPanel(data.source_batch || '', data.task_center_id);
+                startBatchPolling(data.source_batch || '');
             })
             .catch(function () {
                 showAlert('错误', '请求失败，请稍后重试');
@@ -516,10 +919,24 @@
         doCreate(collectPayload(true));
     };
 
+    window.cancelUninstall = function () {
+        if (!currentTaskCenterId) return;
+        showConfirm('取消卸载', '确认取消当前卸载批次？已开始的远程删除可能无法回滚。', function () {
+            fetch(CANCEL_URL_TMPL.replace('{id}', String(currentTaskCenterId)), {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                if (!data.success) showAlert('取消失败', data.message || '取消失败');
+            }).catch(function () {
+                showAlert('错误', '取消请求失败');
+            });
+        }, false, 'md', '确认取消');
+    };
+
     document.getElementById('confirmDelete').addEventListener('change', syncStartBtn);
-    ['optBackup', 'optWorkdir', 'optModules'].forEach(function (id) {
-        document.getElementById(id).addEventListener('change', syncStartBtn);
-    });
 
     document.getElementById('selectNodeModal').addEventListener('show.bs.modal', function () {
         draft = Object.assign({}, selected);
@@ -569,6 +986,7 @@
         });
     }
 
+    setWizardStep(1);
     renderChips();
 })();
 </script>

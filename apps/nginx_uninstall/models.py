@@ -54,7 +54,7 @@ class NginxUninstallTask(models.Model):
     options_json = models.TextField(
         default="{}",
         verbose_name="删除选项 JSON",
-        help_text="remove_backup / remove_workdir / remove_modules / stop_if_running",
+        help_text="按节点：remove_* / stop_if_running / work_dir / modules_dir / extra_paths",
     )
 
     status = models.CharField(
