@@ -6,10 +6,7 @@
 
 | 项 | 现状 |
 |----|------|
-| 发布并行 | `release.max_parallel_tasks` 控制跨节点线程池；同节点内串行多配置后一次 reload（Q80） |
-| 配置同步并发 | `config.sync_max_concurrency` |
-| 凭证测试并发 | `credential.test_max_concurrency` |
-| 节点批量探测 | `node.batch_max_count` |
+| 跨节点并行 / 勾选上限 | `node.batch_max_count`：节点批量测解锁、凭证启用测试、配置同步、发布、Nginx 升级/安装/启停/卸载；发布同节点内串行多配置后一次 reload（Q80/Q156） |
 | SSH 超时 | `node.ssh_connect_timeout`；失败可 `node.detect_retries` |
 | 发布门禁 | **已知约束**：存在任意 `ReleaseTask.status=running` 时阻断新批次自动执行（Q93 结论：维持） |
 

@@ -55,7 +55,7 @@
 ### 5.2 启用
 
 1. 打开启用 → 创建 `CredentialEnableTask` + `TaskCenterTask(operation_type=credential_enable_test)`。  
-2. 线程池按 `credential.test_max_concurrency` 测关联节点。  
+2. 线程池按 `node.batch_max_count` 并发测**全部**关联节点（不截断台数）。  
 3. 更新凭证 `last_test_*` 与任务结果树。  
 4. 前端 `#asyncProgressOverlay` 轮询（Q39）。
 
@@ -71,7 +71,7 @@
 
 - 加密：[`utils/crypto.py`](../utils/crypto.py)。
 - 异步与进度：[`apps/credentials/views.py`](../apps/credentials/views.py)。
-- 设置键：`credential.test_max_concurrency`。
+- 设置键：跨节点并发复用 `node.batch_max_count`（Q156）。
 
 ## 7. 前后端约定
 

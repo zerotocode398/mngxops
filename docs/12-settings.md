@@ -40,16 +40,10 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 
 | key | 生效 |
 |-----|------|
-| `node.batch_max_count` | 后端立即；勾选上限需刷新对应页面（节点列表 / Nginx 启停等） |
+| `node.batch_max_count` | 后端立即；勾选上限需刷新页面。单次并行/勾选上限：节点批量测解锁、凭证启用测试、配置同步、发布、Nginx 升级/安装/启停/卸载 |
 | `node.ssh_connect_timeout` | 下次 SSH |
 | `node.ssh_default_port` | 仅新建/导入默认 |
 | `node.detect_retries` | 下次连接 |
-
-### 凭证
-
-| key | 生效 |
-|-----|------|
-| `credential.test_max_concurrency` | 下次启用测试 |
 
 ### 配置管理
 
@@ -58,13 +52,11 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 | `config.discover_max_depth` | 下次发现/同步 |
 | `config.default_nginx_path` | 仅新建/空同步设置 |
 | `config.default_nginx_bin` | 新建/导入默认 Nginx 路径 |
-| `config.sync_max_concurrency` | 后端立即；向导勾选上限需刷新 |
 
 ### 发布管理
 
 | key | 生效 |
 |-----|------|
-| `release.max_parallel_tasks` | 下次发布 |
 | `release.backup_dir` | 下次发布；实际 `{dir}/{hostname}/` |
 
 ### 系统

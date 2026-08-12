@@ -1060,6 +1060,15 @@ def create_upgrade_batch_from_data(user, data):
 
     if not node_ids:
         return {"success": False, "message": "请至少选择一个节点"}, 400
+    try:
+        batch_max = max(1, int(get_setting("node.batch_max_count", "3") or 3))
+    except (TypeError, ValueError):
+        batch_max = 3
+    if len(set(node_ids)) > batch_max:
+        return {
+            "success": False,
+            "message": f"最多只能勾选 {batch_max} 个节点",
+        }, 400
     if upgrade_mode not in ("upgrade", "install", "switch_path"):
         return {"success": False, "message": "升级模式无效"}, 400
     if upgrade_mode == "switch_path" and not shared_prefix:

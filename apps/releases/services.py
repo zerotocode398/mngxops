@@ -41,9 +41,9 @@ logger = logging.getLogger(__name__)
 
 
 def _release_max_workers():
-    """读取发布并行 worker 数"""
+    """读取跨节点并行上限（复用批量操作最大节点数）"""
     try:
-        return max(1, int(get_setting("release.max_parallel_tasks", "3") or 3))
+        return max(1, int(get_setting("node.batch_max_count", "3") or 3))
     except (TypeError, ValueError):
         return 3
 

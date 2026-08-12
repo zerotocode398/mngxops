@@ -484,8 +484,8 @@
                     </table>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mt-2">
-                    <small class="text-muted">共 <span id="upgradeResultCount">0</span> 个结果（最多 50）· 已勾选 <span id="modalPickedCount">0</span></small>
-                    <small class="text-muted">仅可选在线且已配置凭证的节点</small>
+                    <small class="text-muted">共 <span id="upgradeResultCount">0</span> 个结果（最多 50）· 已勾 <span id="modalPickedCount">0</span> · 上限 {{ batch_max_count|default:3 }}</small>
+                    <small class="text-muted">仅可选在线、已配置凭证且已检测到 Nginx 的节点</small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -592,6 +592,8 @@
 <script>
 /** 当前向导步骤 1-4 */
 let currentStep = 1;
+/** 单次可选节点上限（node.batch_max_count） */
+var MAX_BATCH = {{ batch_max_count|default:3 }};
 /** 已确认选中的节点 map: id -> node */
 let selectedNodes = {};
 /** 弹窗临时勾选 map */
@@ -1316,7 +1318,7 @@ function doUpgradeNodeSearch() {
             var cb = tr.querySelector('.upgrade-node-cb');
             if (cb) {
                 cb.addEventListener('change', function () {
-                    toggleModalPick(node, cb.checked);
+                    if (!toggleModalPick(node, cb.checked)) cb.checked = false;
                 });
             }
         });
@@ -1330,9 +1332,14 @@ function doUpgradeNodeSearch() {
 }
 
 function toggleModalPick(node, checked) {
-    if (!node) return;
+    /** 弹窗勾选/取消节点；超限时提示并拒绝 */
+    if (!node) return false;
     var key = String(node.id);
     if (checked) {
+        if (!modalPickedNodes[key] && Object.keys(modalPickedNodes).length >= MAX_BATCH) {
+            showAlert('提示', '<p class="text-warning mb-0">最多只能勾选 ' + MAX_BATCH + ' 个节点</p>');
+            return false;
+        }
         modalPickedNodes[key] = {
             id: node.id,
             hostname: node.hostname,
@@ -1345,6 +1352,7 @@ function toggleModalPick(node, checked) {
         delete modalPickedNodes[key];
     }
     updateModalPickedCount();
+    return true;
 }
 
 function confirmUpgradeNodeSelection() {
@@ -2616,14 +2624,28 @@ document.addEventListener('DOMContentLoaded', function () {
         doUpgradeNodeSearch();
     });
 
-    document.getElementById('modalSelectAllNodes').addEventListener('change', function () {
-        var checked = this.checked;
-        document.querySelectorAll('#upgradeSearchResultTbody .upgrade-node-cb:not(:disabled)').forEach(function (cb) {
-            cb.checked = checked;
-            var nodeId = cb.value;
-            var node = lastSearchNodes.find(function (n) { return String(n.id) === String(nodeId); });
-            toggleModalPick(node, checked);
-        });
+    document.getElementById('modalSelectAllNodes').addEventListener('change', function (e) {
+        var cbs = document.querySelectorAll('#upgradeSearchResultTbody .upgrade-node-cb:not(:disabled)');
+        if (e.target.checked) {
+            cbs.forEach(function (cb) {
+                var nodeId = cb.value;
+                if (Object.keys(modalPickedNodes).length >= MAX_BATCH && !modalPickedNodes[String(nodeId)]) {
+                    return;
+                }
+                var node = lastSearchNodes.find(function (n) { return String(n.id) === String(nodeId); });
+                if (!node) return;
+                if (toggleModalPick(node, true)) cb.checked = true;
+            });
+        } else {
+            cbs.forEach(function (cb) {
+                var nodeId = cb.value;
+                var node = lastSearchNodes.find(function (n) { return String(n.id) === String(nodeId); });
+                cb.checked = false;
+                if (node) toggleModalPick(node, false);
+            });
+        }
+        e.target.checked = Object.keys(modalPickedNodes).length > 0 &&
+            Array.prototype.every.call(cbs, function (cb) { return cb.checked; });
         updateModalPickedCount();
     });
 

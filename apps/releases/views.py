@@ -55,6 +55,32 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         if not bindings_data:
             return JsonResponse({"success": False, "message": "请至少选择一个配置绑定"}, status=400)
 
+        from utils.setting_service import get_setting
+        try:
+            batch_max = max(1, int(get_setting("node.batch_max_count", "3") or 3))
+        except (TypeError, ValueError):
+            batch_max = 3
+
+        # 预检唯一节点数是否超限（跳过无法解析的 binding）
+        preview_node_ids = set()
+        for item in bindings_data:
+            binding_id = item.get("binding_id", 0)
+            try:
+                binding = ConfigNodeBinding.objects.select_related("node").get(pk=binding_id)
+            except ConfigNodeBinding.DoesNotExist:
+                continue
+            if binding.node.is_locked or binding.node.is_deleted:
+                continue
+            from apps.nodes.services import nginx_ops_gate_message
+            if nginx_ops_gate_message(binding.node):
+                continue
+            preview_node_ids.add(binding.node_id)
+        if len(preview_node_ids) > batch_max:
+            return JsonResponse(
+                {"success": False, "message": f"最多只能勾选 {batch_max} 个节点"},
+                status=400,
+            )
+
         batch_number = generate_batch_number()
         task_ids = []
         skipped_offline = False
@@ -799,6 +825,13 @@ class ReleaseCenterView(
         context["pre_node_id"] = self.request.GET.get("node_id", "")
         context["pre_binding_id"] = self.request.GET.get("binding_id", "")
         context["environment_choices"] = Node.ENV_CHOICES
+        from utils.setting_service import get_setting
+        try:
+            context["batch_max_count"] = max(
+                1, int(get_setting("node.batch_max_count", "3") or 3)
+            )
+        except (TypeError, ValueError):
+            context["batch_max_count"] = 3
         return context
 
 

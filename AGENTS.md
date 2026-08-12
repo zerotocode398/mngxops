@@ -1,4 +1,4 @@
-# mngxops 优化点台账（Q1–Q155）
+# mngxops 优化点台账（Q1–Q156）
 
 本文档记录历史优化点结论，供 Agent / 开发快速检索。**不修改业务逻辑时请以本文件结论为准。**
 
@@ -140,6 +140,7 @@
 | Q153 | 安装/卸载按 systemd 管理能力分流 | 已完成 |
 | Q154 | 卸载：包安装走 yum/apt remove | 已完成 |
 | Q155 | 卸载探测并行 + 路径包含勾选锁定 | 已完成 |
+| Q156 | 批量勾选上限统一 + 冗余并发设置下线 | 已完成 |
 
 ### UI 规范 / 性能 / 进度
 
@@ -161,8 +162,9 @@
 | Q153 | 安装/卸载按 systemd 管理能力分流 | 已完成 |
 | Q154 | 卸载：包安装走 yum/apt remove | 已完成 |
 | Q155 | 卸载探测并行 + 路径包含勾选锁定 | 已完成 |
+| Q156 | 批量勾选上限统一 + 冗余并发设置下线 | 已完成 |
 
-### 缺口与结论项（Q84–Q155）
+### 缺口与结论项（Q84–Q156）
 
 | 编号 | 摘要 | 状态 |
 |------|------|------|
@@ -238,6 +240,7 @@
 | Q153 | 安装/卸载按 systemd 管理能力分流 | 已完成 |
 | Q154 | 卸载：包安装走 yum/apt remove | 已完成 |
 | Q155 | 卸载探测并行 + 路径包含勾选锁定 | 已完成 |
+| Q156 | 批量勾选上限统一 + 冗余并发设置下线 | 已完成 |
 
 ---
 
@@ -491,7 +494,7 @@
 
 - **问题**：超时/并发硬编码；系统信息/Nginx 版本同步阻塞 HTTP。
 - **处理**：
-  1. `get_setting` 接线：`ssh_connect_timeout`、`batch_max_count`、`credential.test_max_concurrency` 等。
+  1. `get_setting` 接线：`ssh_connect_timeout`、`batch_max_count` 等（凭证/同步/发布独立并发键后由 Q156 并入 `node.batch_max_count`）。
   2. 系统信息/Nginx 版本改为异步 TaskCenter；列表轮询更新 DOM。
   3. 结论：不在本条实施 asyncio 层。
 - **状态**：已完成
@@ -1325,4 +1328,14 @@
   1. `preview_nodes` 按 `node.batch_max_count` 线程池并行；单节点一次 SSH 完成 `-V`/包归属/托管/运行态；结果按节点 id 排序。
   2. 同路径仍精确去重；真包含路径保留展示：父勾选 → 子自动勾选并「随父路径」锁定；取消父勾选 → 子解锁并取消勾选；编辑 `--prefix` 后重算。
   3. 执行侧 `_under_prefix` / `coalesce_delete_targets` 不变。
+- **状态**：已完成
+
+### Q156 · 批量勾选上限统一与冗余并发设置下线
+
+- **问题**：升级/发布中心总勾选不受 `node.batch_max_count` 约束；配置同步总勾选会勾上 disabled（未检测到 Nginx）；卸载总勾选超限弹窗；「最多勾选」黄/黑文案不一；`release.max_parallel_tasks` / `config.sync_max_concurrency` / `credential.test_max_concurrency` 与批量上限语义重叠。
+- **处理**：
+  1. 总勾选静默截断至上限；单勾超限统一黄字「最多只能勾选 N 个节点」。
+  2. 升级/发布/配置同步 UI + API 勾选上限接 `node.batch_max_count`；同步全选跳过 disabled。
+  3. 发布/同步/升级/凭证启用跨节点并行 worker 一律读 `node.batch_max_count`（凭证仍测全部关联节点）。
+  4. PRESET 下线三项冗余键；更新 `node.batch_max_count` 说明与 docs。
 - **状态**：已完成

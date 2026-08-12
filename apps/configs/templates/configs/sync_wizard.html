@@ -389,7 +389,7 @@
                     return;
                 }
                 var cb = row.querySelector('.node-checkbox');
-                if (!cb) {
+                if (!cb || cb.disabled) {
                     return;
                 }
                 cb.checked = !cb.checked;
@@ -423,11 +423,11 @@
     }
 
     function updateBatchCount(changedCb) {
-        var checked = document.querySelectorAll('.node-checkbox:checked');
+        var checked = document.querySelectorAll('.node-checkbox:not(:disabled):checked');
         var count = checked.length;
 
         if (count > MAX_BATCH) {
-            showCustomModal('提示', '最多只能选择 ' + MAX_BATCH + ' 个节点进行批量同步', true);
+            showCustomModal('提示', '<p class="text-warning mb-0">最多只能勾选 ' + MAX_BATCH + ' 个节点</p>', true);
             if (changedCb) {
                 changedCb.checked = false;
             } else {
@@ -435,7 +435,7 @@
                     if (idx >= MAX_BATCH) cb.checked = false;
                 });
             }
-            checked = document.querySelectorAll('.node-checkbox:checked');
+            checked = document.querySelectorAll('.node-checkbox:not(:disabled):checked');
             count = checked.length;
         }
 
@@ -444,15 +444,15 @@
         btn.disabled = count === 0;
 
         var selectAll = document.getElementById('selectAllNodes');
-        var allBoxes = document.querySelectorAll('.node-checkbox');
+        var allBoxes = document.querySelectorAll('.node-checkbox:not(:disabled)');
         var maxSelectable = Math.min(MAX_BATCH, allBoxes.length);
         selectAll.checked = allBoxes.length > 0 && count >= maxSelectable;
         selectAll.indeterminate = count > 0 && count < maxSelectable;
     }
 
     function toggleSelectAll(el) {
-        var allBoxes = document.querySelectorAll('.node-checkbox');
-        var hasSelected = document.querySelectorAll('.node-checkbox:checked').length > 0;
+        var allBoxes = document.querySelectorAll('.node-checkbox:not(:disabled)');
+        var hasSelected = document.querySelectorAll('.node-checkbox:not(:disabled):checked').length > 0;
 
         if (hasSelected) {
             allBoxes.forEach(function(cb) { cb.checked = false; });
@@ -543,7 +543,7 @@
             return;
         }
         if (checked.length > MAX_BATCH) {
-            showCustomModal('提示', '最多只能选择 ' + MAX_BATCH + ' 个节点进行批量同步', true);
+            showCustomModal('提示', '<p class="text-warning mb-0">最多只能勾选 ' + MAX_BATCH + ' 个节点</p>', true);
             return;
         }
 

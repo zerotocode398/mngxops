@@ -99,7 +99,7 @@ sequenceDiagram
 5. **失败**：回滚本节点本批已上传（有备份则还原，首发失败则 rm）；已上传的中转文件尽力清理。  
 6. **成功**：绑定 `sync_status=synced`，更新 `synced_version`、`remote_content_hash`、时间。
 
-跨节点并行：`release.max_parallel_tasks`；节点内串行配置。
+跨节点并行：`node.batch_max_count`；节点内串行配置。勾选上限同键（Q156）。
 
 进度：更新 TaskCenter；内存 `_RELEASE_CURRENT_STEPS` / `_RELEASE_LIVE_TREE` 供 progress API 的 `current_steps`；弹窗不展示冗长「详细 SSH」折叠，保留完整日志跳转（Q80）。
 

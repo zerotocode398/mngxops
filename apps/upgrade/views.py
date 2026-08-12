@@ -437,6 +437,12 @@ class UpgradeCenterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateVie
         )
         context["default_work_dir"] = get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
         context["default_make_jobs"] = int(get_setting("upgrade.make_jobs_default", "4") or 4)
+        try:
+            context["batch_max_count"] = max(
+                1, int(get_setting("node.batch_max_count", "3") or 3)
+            )
+        except (TypeError, ValueError):
+            context["batch_max_count"] = 3
         return context
 
 

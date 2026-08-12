@@ -604,7 +604,7 @@
                 var checked = document.querySelectorAll('.node-checkbox:checked');
                 if (checked.length > MAX_SELECT) {
                     cb.checked = false;
-                    showCustomModal('提示', '<p class="text-warning">最多只能勾选 ' + MAX_SELECT + ' 个节点</p>');
+                    showCustomModal('提示', '<p class="text-warning mb-0">最多只能勾选 ' + MAX_SELECT + ' 个节点</p>');
                 }
                 updateBatchUI();
             });

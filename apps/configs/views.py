@@ -900,7 +900,7 @@ class ConfigSyncWizardView(
         context["node_groups"] = node_groups
         context["search"] = search
         context["group_search"] = group_search
-        context["batch_max_count"] = int(get_setting("config.sync_max_concurrency", "3"))
+        context["batch_max_count"] = int(get_setting("node.batch_max_count", "3"))
         return context
 
 
@@ -917,10 +917,11 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         if not node_ids:
             return JsonResponse({"success": False, "message": "请至少选择一个节点"})
 
-        MAX_BATCH = int(get_setting("config.sync_max_concurrency", "3"))
+        MAX_BATCH = int(get_setting("node.batch_max_count", "3"))
         if len(node_ids) > MAX_BATCH:
-            return JsonResponse({"success": False, "message": f"最多只能选择 {MAX_BATCH} 个节点"})
+            return JsonResponse({"success": False, "message": f"最多只能勾选 {MAX_BATCH} 个节点"})
 
+        max_workers = MAX_BATCH
         nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
 
         # 任选节点非在线或无 Nginx 则整批拒绝
@@ -946,7 +947,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         thread = threading.Thread(
             target=run_batch_config_sync_task,
-            args=(task_center.id, nodes, request.user, MAX_BATCH),
+            args=(task_center.id, nodes, request.user, max_workers),
             daemon=True,
         )
         thread.start()

@@ -17,19 +17,15 @@ GROUP_META = {
     },
     "节点管理": {
         "icon": "bi-plug",
-        "description": "SSH 超时、默认端口、批量与探测相关参数。",
-    },
-    "凭证管理": {
-        "icon": "bi-key",
-        "description": "凭证启用测试时的并发上限。",
+        "description": "SSH 超时、默认端口、批量操作上限与探测相关参数。",
     },
     "配置管理": {
         "icon": "bi-pencil",
-        "description": "发现深度、默认主配置路径与同步并发。",
+        "description": "发现深度与默认主配置/Nginx 路径。",
     },
     "发布管理": {
         "icon": "bi-rocket-takeoff",
-        "description": "并行任务数与远程备份路径。",
+        "description": "远程配置备份路径。",
     },
     "系统": {
         "icon": "bi-display",
@@ -52,12 +48,9 @@ UNIT_MAP = {
     "node.ssh_connect_timeout": "秒",
     "node.ssh_default_port": "",
     "node.detect_retries": "次",
-    "credential.test_max_concurrency": "个",
     "config.discover_max_depth": "层",
     "config.default_nginx_path": "",
     "config.default_nginx_bin": "",
-    "config.sync_max_concurrency": "个",
-    "release.max_parallel_tasks": "个",
     "release.backup_dir": "",
     "system.task_progress_poll_interval": "秒",
     "system.dashboard_refresh_interval": "秒",

@@ -1305,7 +1305,7 @@
         var key = String(node.id);
         if (checked) {
             if (!draft[key] && draftCount() >= BATCH_MAX) {
-                showAlert('提示', '最多选择 ' + BATCH_MAX + ' 台节点');
+                showAlert('提示', '<p class="text-warning mb-0">最多只能勾选 ' + BATCH_MAX + ' 个节点</p>');
                 return false;
             }
             draft[key] = {
@@ -1501,7 +1501,7 @@
 
     document.getElementById('btnConfirmNodes').addEventListener('click', function () {
         if (draftCount() > BATCH_MAX) {
-            showAlert('提示', '单次最多选择 ' + BATCH_MAX + ' 台节点');
+            showAlert('提示', '<p class="text-warning mb-0">最多只能勾选 ' + BATCH_MAX + ' 个节点</p>');
             return;
         }
         selected = Object.assign({}, draft);

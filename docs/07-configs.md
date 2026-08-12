@@ -113,7 +113,7 @@ stateDiagram-v2
 
 ### 6.6 同步向导
 
-1. 选节点（并发上限 `config.sync_max_concurrency`），指定/默认主配置路径。  
+1. 选节点（勾选/并发上限 `node.batch_max_count`），指定/默认主配置路径。  
 2. `ConfigSyncBatchAPIView` / `Single`：线程池 SSH `discover_nginx_configs`（深度 `config.discover_max_depth`）。  
 3. `apps/configs/services.py`：`sync_discovered_configs` 创建/更新 Config 与 Binding、版本；**跳过** `marked_deleted` 绑定（避免 unique 冲突再导入），结束后 `_cleanup_marked_deleted_bindings` 远程 rm + 物理删并返回已删名单；无发现结果时亦执行清理（Q103）。  
 4. 全量同步可标记 orphaned；写 `last_sync_task_id` → TaskCenter `config_batch_sync`。  

@@ -304,7 +304,7 @@
         var key = String(node.id);
         if (checked) {
             if (!draft[key] && draftCount() >= MAX_BATCH) {
-                showAlert('提示', '最多选择 ' + MAX_BATCH + ' 台节点');
+                showAlert('提示', '<p class="text-warning mb-0">最多只能勾选 ' + MAX_BATCH + ' 个节点</p>');
                 return false;
             }
             draft[key] = node;

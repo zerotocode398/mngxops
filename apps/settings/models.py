@@ -54,7 +54,7 @@ PRESET_SETTINGS = [
     # 节点管理
     {"key": "node.batch_max_count", "group": "节点管理", "type": "integer", "value": "3",
      "label": "批量操作最大节点数",
-     "description": "节点批量测试/解锁、Nginx 启停等操作的最大节点数（后端立即生效；页面勾选上限需刷新对应页面）",
+     "description": "单次并行数。用于：节点批量测试/解锁、凭证启用测试、配置同步、发布、Nginx 升级/安装/启停/卸载；勾选上限需刷新页面后生效。",
      "sort_order": 10, "min_value": 1, "max_value": 50},
     {"key": "node.ssh_connect_timeout", "group": "节点管理", "type": "integer", "value": "10",
      "label": "SSH 连接超时（秒）",
@@ -68,11 +68,6 @@ PRESET_SETTINGS = [
      "label": "节点探测重试次数",
      "description": "SSH 连接失败时的额外重试次数（不含首次；下次连接立即生效）",
      "sort_order": 13, "min_value": 0, "max_value": 10},
-    # 凭证管理
-    {"key": "credential.test_max_concurrency", "group": "凭证管理", "type": "integer", "value": "10",
-     "label": "凭证测试最大并发数",
-     "description": "凭证启用批量测试的最大并发数（下次启用测试立即生效）",
-     "sort_order": 20, "min_value": 1, "max_value": 100},
     # 配置管理
     {"key": "config.discover_max_depth", "group": "配置管理", "type": "integer", "value": "3",
      "label": "配置发现最大递归深度",
@@ -86,15 +81,7 @@ PRESET_SETTINGS = [
      "label": "默认 Nginx 可执行文件路径",
      "description": "仅影响新建/批量导入节点时 Nginx 路径未填的默认值（与主配置路径区分）",
      "sort_order": 32},
-    {"key": "config.sync_max_concurrency", "group": "配置管理", "type": "integer", "value": "3",
-     "label": "配置同步最大并发节点数",
-     "description": "批量同步时的最大并发节点数（后端立即生效；向导勾选上限需刷新同步页）",
-     "sort_order": 33, "min_value": 1, "max_value": 50},
     # 发布管理
-    {"key": "release.max_parallel_tasks", "group": "发布管理", "type": "integer", "value": "3",
-     "label": "最大并行任务数",
-     "description": "批量发布/回滚时 ThreadPoolExecutor 的最大 worker 数（下次发布立即生效）",
-     "sort_order": 41, "min_value": 1, "max_value": 50},
     {"key": "release.backup_dir", "group": "发布管理", "type": "string", "value": "/opt/app/mascloud/ansible/mngxops",
      "label": "远程配置备份目录",
      "description": "配置发布前在远程节点上备份的根目录，实际路径为 {backup_dir}/{节点hostname}/（下次发布立即生效）",

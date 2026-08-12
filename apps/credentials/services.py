@@ -82,7 +82,7 @@ def _run_credential_enable_task(task_id, credential_id):
                 )
             return
 
-        max_workers = min(int(get_setting("credential.test_max_concurrency", "10")), len(nodes))
+        max_workers = min(int(get_setting("node.batch_max_count", "3")), len(nodes))
 
         def _test_node(node):
             """对单个节点执行SSH连接测试，返回 (node, success, message)"""
