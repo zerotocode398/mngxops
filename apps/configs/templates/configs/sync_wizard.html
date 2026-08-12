@@ -68,19 +68,20 @@
                                     <th style="width: 15%;">IP 地址</th>
                                     <th style="width: 13%;">所属组</th>
                                     <th style="width: 9%;">环境</th>
-                                    <th style="width: 8%;">状态</th>
+                                    <th style="width: 14%;">状态</th>
                                     <th style="width: 17%;">已同步配置</th>
                                     <th style="width: 20%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for node in nodes %}
-                                <tr class="sync-node-row{% if node.status != 'online' %} disabled{% endif %}">
+                                <tr class="sync-node-row{% if node.status != 'online' or node.nginx_available is not True %} disabled{% endif %}">
                                     <td>
                                         <input class="form-check-input node-checkbox" type="checkbox"
                                             value="{{ node.id }}" data-hostname="{{ node.hostname }}"
                                             data-status="{{ node.status }}"
-                                            {% if node.status != 'online' %}disabled{% endif %}
+                                            data-nginx-available="{% if node.nginx_available is True %}true{% elif node.nginx_available is False %}false{% else %}null{% endif %}"
+                                            {% if node.status != 'online' or node.nginx_available is not True %}disabled{% endif %}
                                             onchange="updateBatchCount(this)">
                                     </td>
                                     <td>
@@ -106,13 +107,8 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if node.status == 'online' %}
-                                        <span class="badge bg-success">在线</span>
-                                        {% elif node.status == 'offline' %}
-                                        <span class="badge bg-danger">离线</span>
-                                        {% else %}
-                                        <span class="badge bg-secondary">未知</span>
-                                        {% endif %}
+                                        {% include "nodes/_status_badge.html" with status=node.status %}
+                                        {% include "nodes/_nginx_badge.html" with nginx_available=node.nginx_available nginx_version=node.nginx_version %}
                                     </td>
                                     <td>
                                         {% with stat=node_stats|dict_get:node.id %}
@@ -149,24 +145,37 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" style="white-space: nowrap;">
-                                            {% if node.status == 'online' %}
+                                            {% if node.status == 'online' and node.nginx_available is True %}
                                             <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal"
                                                 data-bs-target="#syncModal{{ node.id }}" title="从该节点同步配置">
                                                 <i class="bi bi-cloud-download"></i> 同步配置
+                                            </button>
+                                            <a href="{% url 'configs:create' %}?node_id={{ node.id }}"
+                                                class="btn btn-outline-secondary" title="手动添加配置">
+                                                <i class="bi bi-plus-circle"></i> 手动添加
+                                            </a>
+                                            {% elif node.status == 'online' %}
+                                            <button type="button" class="btn btn-outline-secondary" disabled
+                                                title="未检测到 Nginx，无法同步">
+                                                <i class="bi bi-cloud-download"></i> 同步配置
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary" disabled
+                                                title="未检测到 Nginx，无法添加绑定">
+                                                <i class="bi bi-plus-circle"></i> 手动添加
                                             </button>
                                             {% else %}
                                             <button type="button" class="btn btn-outline-secondary" disabled
                                                 title="节点非在线状态，无法同步">
                                                 <i class="bi bi-cloud-download"></i> 同步配置
                                             </button>
-                                            {% endif %}
-                                            <a href="{% url 'configs:create' %}?node_id={{ node.id }}"
-                                                class="btn btn-outline-secondary" title="手动添加配置">
+                                            <button type="button" class="btn btn-outline-secondary" disabled
+                                                title="节点非在线状态，无法添加">
                                                 <i class="bi bi-plus-circle"></i> 手动添加
-                                            </a>
+                                            </button>
+                                            {% endif %}
                                         </div>
 
-                                        {% if node.status == 'online' %}
+                                        {% if node.status == 'online' and node.nginx_available is True %}
                                         <div class="modal fade" id="syncModal{{ node.id }}" tabindex="-1">
                                             <div class="modal-dialog modal-dialog-centered">
                                                 <div class="modal-content">

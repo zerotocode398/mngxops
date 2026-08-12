@@ -556,12 +556,18 @@ def run_install_task(task_id):
             node_ver = f"nginx/{target_ver}" if target_ver else ""
         log(f"回写节点版本={node_ver} 路径={nginx_bin}")
 
-        from apps.nodes.services import mark_node_probe_success
+        from apps.nodes.services import mark_node_probe_success, apply_nginx_probe_result
         mark_node_probe_success(node)
-        node.nginx_version = node_ver
+        apply_nginx_probe_result(node, True, node_ver)
         node.nginx_path = nginx_bin
         node.save(update_fields=[
-            "nginx_version", "nginx_path", "status", "last_probe_at", "updated_at",
+            "nginx_version",
+            "nginx_available",
+            "last_nginx_probe_at",
+            "nginx_path",
+            "status",
+            "last_probe_at",
+            "updated_at",
         ])
 
         from apps.configs.services import save_sync_path
@@ -806,8 +812,11 @@ def create_install_batch_from_data(user, data):
         if node.is_locked:
             rejected.append({"id": node.id, "hostname": node.hostname, "reason": "节点已锁定"})
             continue
-        if node.status != "online":
-            rejected.append({"id": node.id, "hostname": node.hostname, "reason": "节点非在线"})
+        from apps.nodes.services import install_gate_message
+
+        gate_msg = install_gate_message(node)
+        if gate_msg:
+            rejected.append({"id": node.id, "hostname": node.hostname, "reason": gate_msg})
             continue
         if not _get_node_credential(node):
             rejected.append({"id": node.id, "hostname": node.hostname, "reason": "无可用凭证"})

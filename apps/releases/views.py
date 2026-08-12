@@ -70,7 +70,9 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
             if binding.node.is_locked or binding.node.is_deleted:
                 continue
-            if binding.node.status != "online":
+            from apps.nodes.services import nginx_ops_gate_message
+
+            if nginx_ops_gate_message(binding.node):
                 skipped_offline = True
                 continue
 
@@ -91,7 +93,7 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         if not task_ids:
             msg = (
-                "所选配置绑定均不可发布（含非在线或已锁定/已删除节点）"
+                "所选配置绑定均不可发布（含非在线、未检测到 Nginx 或已锁定/已删除节点）"
                 if skipped_offline
                 else "未找到可发布的配置绑定"
             )
@@ -649,8 +651,11 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
         if task.node.is_deleted:
             messages.error(request, f"节点 {task.node.hostname} 已删除，无法回滚")
             return redirect("releases:detail", pk=task.pk)
-        if task.node.status != "online":
-            messages.error(request, f"节点 {task.node.hostname} 非在线状态")
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(task.node)
+        if gate_msg:
+            messages.error(request, gate_msg)
             return redirect("releases:detail", pk=task.pk)
         binding = task.binding
         versions = []
@@ -687,11 +692,13 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 return JsonResponse({"success": False, "message": msg}, status=400)
             messages.error(request, msg)
             return redirect("releases:detail", pk=task.pk)
-        if task.node.status != "online":
-            msg = f"节点 {task.node.hostname} 非在线状态"
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(task.node)
+        if gate_msg:
             if is_ajax:
-                return JsonResponse({"success": False, "message": msg}, status=400)
-            messages.error(request, msg)
+                return JsonResponse({"success": False, "message": gate_msg}, status=400)
+            messages.error(request, gate_msg)
             return redirect("releases:detail", pk=task.pk)
 
         version_id = request.POST.get("version_id")
@@ -1050,6 +1057,9 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
                 "status": node.status,
                 "is_locked": node.is_locked,
                 "has_credential": node.credential_id is not None,
+                "nginx_available": node.nginx_available,
+                "nginx_version": node.nginx_version or "",
+                "nginx_status_label": node.nginx_status_label,
                 "total_bindings": stats["total_bindings"],
                 "modified_bindings": stats["modified_bindings"],
                 "group_names": [g.name for g in node.groups.all()],
@@ -1124,11 +1134,11 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return JsonResponse({"success": False, "message": f"节点 {task.node.hostname} 已锁定"}, status=400)
         if task.node.is_deleted:
             return JsonResponse({"success": False, "message": f"节点 {task.node.hostname} 已删除，无法重试"}, status=400)
-        if task.node.status != "online":
-            return JsonResponse(
-                {"success": False, "message": f"节点 {task.node.hostname} 非在线状态"},
-                status=400,
-            )
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(task.node)
+        if gate_msg:
+            return JsonResponse({"success": False, "message": gate_msg}, status=400)
 
         task.status = "pending"
         task.result = ""

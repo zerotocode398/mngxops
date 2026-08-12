@@ -29,7 +29,7 @@
 
 ## 4. 业务流程
 
-1. 弹窗多选节点（`/nodes/api/search-nodes/`）：仅 online + 有凭证可勾；上限 `node.batch_max_count`。  
+1. 弹窗多选节点（`/nodes/api/search-nodes/`）：仅 online + 有凭证 + `nginx_available=True` 可勾（Q150）；上限 `node.batch_max_count`。  
 2. 选择动作并确认（stop/restart 强提示；reload 说明平滑重载 ≠ 重启）。  
 3. API 校验门禁后创建 `TaskCenterTask(operation_type=nginx_service_control)`，写入来源批次 `OP-YYMMDD-NNNN`（当日自增），后台逐节点调用 `start_nginx`/`stop_nginx`/`reload_nginx`/`restart_nginx`。  
 4. 前端 `#asyncProgressOverlay` 轮询；结果树写入任务中心。  

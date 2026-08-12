@@ -21,6 +21,56 @@ def mark_node_probe_success(node: Node) -> Node:
     return node
 
 
+def apply_nginx_probe_result(node: Node, success: bool, version: str = "") -> Node:
+    """
+    统一写入 Nginx 探测结果（不改 SSH status，不自动 save）。
+    探测失败时清空版本并触发绑定 orphan；成功则标记可用。
+    """
+    node.last_nginx_probe_at = timezone.now()
+    if success:
+        node.nginx_available = True
+        if version:
+            node.nginx_version = version
+    else:
+        node.nginx_available = False
+        node.nginx_version = ""
+        _orphan_bindings_after_nginx_missing(node)
+    return node
+
+
+def _orphan_bindings_after_nginx_missing(node: Node) -> None:
+    """Nginx 确认不可用时，将该节点绑定标为远程已删除。"""
+    try:
+        from apps.configs.services import mark_node_bindings_orphaned
+
+        mark_node_bindings_orphaned(node)
+    except Exception:
+        # 探测路径不应因配置侧异常中断 SSH 状态回写
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "节点 %s Nginx 缺失后 orphan 绑定失败", getattr(node, "hostname", node.pk)
+        )
+
+
+def nginx_ops_gate_message(node: Node) -> Optional[str]:
+    """返回禁止 Nginx 业务操作的原因；允许时返回 None。"""
+    if node.status != "online":
+        return f"节点 {node.hostname} 非在线状态"
+    if node.nginx_available is not True:
+        if node.nginx_available is False:
+            return f"节点 {node.hostname} 未检测到 Nginx，请先安装"
+        return f"节点 {node.hostname} 尚未探测 Nginx，请先测试连接或采集版本"
+    return None
+
+
+def install_gate_message(node: Node) -> Optional[str]:
+    """返回禁止安装的原因；允许时返回 None（仅校验 SSH 在线）。"""
+    if node.status != "online":
+        return f"节点 {node.hostname} 非在线状态"
+    return None
+
+
 def _get_node_credential(node):
     """返回节点关联的 SSH 凭证。"""
     return node.credential
@@ -608,8 +658,9 @@ def run_unlock_ssh_test(task_id, node_ids):
                         else None,
                         nginx_path=nginx_path,
                     )
-                    if version_success:
-                        node.nginx_version = version_info
+                    apply_nginx_probe_result(
+                        node, version_success, version_info if version_success else ""
+                    )
                     success_count += 1
                     node_blocks.append(node_header(node.ip, node.hostname))
                     node_blocks.append(item_success("SSH连接"))
@@ -704,8 +755,9 @@ def run_single_node_ssh_test(
                 else None,
                 nginx_path=nginx_path,
             )
-            if version_success:
-                _node.nginx_version = version_info
+            apply_nginx_probe_result(
+                _node, version_success, version_info if version_success else ""
+            )
             _node.save()
         elif not success and _has_node:
             _node = Node.objects.get(id=_node_id)
@@ -811,8 +863,9 @@ def _batch_test_one_node(node):
                 ),
                 nginx_path=nginx_path,
             )
-            if version_success:
-                node.nginx_version = version_info
+            apply_nginx_probe_result(
+                node, version_success, version_info if version_success else ""
+            )
         else:
             node.status = "offline"
 
@@ -993,14 +1046,29 @@ def run_node_nginx_version_task(task_id, node_id, credential_id, nginx_path=None
             )
 
         if success:
-            node.nginx_version = output
             mark_node_probe_success(node)
-            node.save(update_fields=["nginx_version", "status", "last_probe_at", "updated_at"])
+            apply_nginx_probe_result(node, True, output)
+            node.save(
+                update_fields=[
+                    "nginx_version",
+                    "nginx_available",
+                    "last_nginx_probe_at",
+                    "status",
+                    "last_probe_at",
+                    "updated_at",
+                ]
+            )
         else:
-            # 清空陈旧版本，避免列表仍展示已失效的版本号（二进制缺失等）
             # SSH 已连通仅 nginx -v 失败时不改 status，避免误标离线
-            node.nginx_version = ""
-            node.save(update_fields=["nginx_version", "updated_at"])
+            apply_nginx_probe_result(node, False, "")
+            node.save(
+                update_fields=[
+                    "nginx_version",
+                    "nginx_available",
+                    "last_nginx_probe_at",
+                    "updated_at",
+                ]
+            )
 
         status = "success" if success else "failed"
         TaskCenterTask.objects.filter(pk=task_id).update(

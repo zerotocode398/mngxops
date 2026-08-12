@@ -1,0 +1,8 @@
+{# Nginx 可用性徽标（与 SSH 状态分开展示）；可选 badge_title 覆盖悬停说明 #}
+{% if nginx_available is True %}
+<span class="badge bg-primary" title="{{ badge_title|default:'已检测到 Nginx' }}">{{ nginx_version|default:"已安装" }}</span>
+{% elif nginx_available is False %}
+<span class="badge bg-warning text-dark" title="{{ badge_title|default:'未检测到 Nginx' }}"><i class="bi bi-exclamation-triangle"></i> 未检测到</span>
+{% else %}
+<span class="badge bg-secondary" title="{{ badge_title|default:'尚未探测 Nginx' }}">未探测</span>
+{% endif %}

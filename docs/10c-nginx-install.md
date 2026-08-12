@@ -22,8 +22,9 @@
 | 基线 | 拉 `nginx -V` | 无；用户填 `--prefix` / `--user` / `--group` + 模块 |
 | 备份旧二进制 | 有 | 无 |
 | 装完动作 | `nginx -t` + reload | `nginx -t` + **start** |
-| 节点回写 | 仅 `nginx_version` | `nginx_version` + `nginx_path` + `mark_node_probe_success` |
+| 节点回写 | 仅 `nginx_version` | `nginx_version` + `nginx_path` + `nginx_available=True` + `mark_node_probe_success` |
 | 配置 | 无自动同步 | 成功后**自动配置同步** |
+| 选节点门禁 | online + 凭证 + **已检测到 Nginx**（Q150） | online + 凭证即可；已检测到 Nginx 时确认页弱提示可能覆盖 |
 
 升级向导已隐藏「全新安装」选项，引导至本模块。
 
@@ -43,7 +44,7 @@
 
 中心页左右栏：左向导、右 sticky「安装执行进度」。
 
-1. **选择目标**：多选在线节点 + 源码包。  
+1. **选择目标**：多选在线节点 + 源码包（offline/unknown 禁选；无 Nginx / 未探测均可选，已有 Nginx 确认页弱提示）。  
 2. **编译参数**（纵向）：
    - 顶部紧凑基础参数：`--prefix` / `--user` / `--group`、**监听端口 (listen)**、工作目录、`make -j`（缺省读「安装管理」设置；listen 默认 80）。  
    - 支持模块：摘要「已选 N」+「调整模块」弹窗（左右栏绝对选集，对齐升级交互；默认 `DEFAULT_INSTALL_MODULES`）；可选 `#extraOpts` 自定义行（无标签文案）。  

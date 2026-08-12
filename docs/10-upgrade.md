@@ -6,6 +6,8 @@
 
 **不做**：官方 apt/yum 包升级编排；容器镜像构建；平台代拉 Git 再转发。
 
+**节点门禁（Q150）**：升级选节点要求 online + 凭证 + `nginx_available=True`；无 Nginx 时禁选并引导「运维工具 → Nginx 安装」。
+
 ## 2. 角色与权限
 
 `upgrade.read|create|update|delete`。

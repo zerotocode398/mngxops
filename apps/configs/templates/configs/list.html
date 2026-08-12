@@ -105,6 +105,12 @@
                                             <span class="badge bg-info text-dark">{{ grp.name }}</span>
                                             {% endfor %}
                                             {% endif %}
+                                            {% include "nodes/_status_badge.html" with status=node.status %}
+                                            {% if node.nginx_available is False %}
+                                            {% include "nodes/_nginx_badge.html" with nginx_available=node.nginx_available nginx_version=node.nginx_version badge_title="未检测到 Nginx，仅可查看/解除绑定" %}
+                                            {% else %}
+                                            {% include "nodes/_nginx_badge.html" with nginx_available=node.nginx_available nginx_version=node.nginx_version %}
+                                            {% endif %}
                                         </div>
                                         <span class="ms-auto"></span>
                                         <span class="badge bg-info">{{ stats.total }}配置</span>
@@ -188,13 +194,23 @@
                                                     <td>
                                                         <div class="btn-group btn-group-sm">
                                                             {% if binding.sync_status == 'marked_deleted' %}
+                                                            {% if node.nginx_available is True %}
                                                             <form method="post" action="{% url 'configs:binding_restore' binding.id %}" style="display:inline">
                                                                 {% csrf_token %}
                                                                 <button type="submit" class="btn btn-outline-success" title="恢复此绑定">
                                                                     <i class="bi bi-arrow-counterclockwise"></i> 恢复
                                                                 </button>
                                                             </form>
+                                                            {% endif %}
+                                                            {% if user|has_perm_code:"configs.delete" %}
+                                                            <button type="button" class="btn btn-outline-danger"
+                                                                title="解除绑定"
+                                                                onclick="openDeleteModal('{{ binding.config.name|escapejs }}', '{{ node.hostname|escapejs }}', '{% url 'configs:binding_delete' binding.id %}', '{{ binding.sync_status }}')">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                            {% endif %}
                                                             {% elif binding.sync_status != 'syncing' %}
+                                                            {% if node.nginx_available is True %}
                                                             {% if user|has_perm_code:"configs.update" %}
                                                             <a href="{% url 'configs:binding_edit' binding.id %}"
                                                                 class="btn btn-outline-primary" title="编辑内容">
@@ -205,6 +221,7 @@
                                                                 class="btn btn-outline-info" title="版本对比">
                                                                 <i class="bi bi-file-diff"></i>
                                                             </a>
+                                                            {% endif %}
                                                             <a href="{% url 'configs:binding_versions' binding.id %}"
                                                                 class="btn btn-outline-secondary" title="版本历史">
                                                                 <i class="bi bi-clock-history"></i>

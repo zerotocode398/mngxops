@@ -35,6 +35,8 @@ erDiagram
 | `groups` M2M | 节点组 |
 | `environment` | dev/test/prod |
 | `nginx_version`, `nginx_path` | 版本与二进制路径 |
+| `nginx_available`, `last_nginx_probe_at` | Nginx 可用性（null/True/False）与探测时间；与 SSH `status` 独立（Q150） |
+| `status` / `last_probe_at` | SSH 在线态与上次成功探测时间 |
 | `status` | online/offline/unknown |
 | `is_locked` | 锁定后限制部分操作 |
 | `is_deleted` + `deleted_at/by` | 逻辑删除；默认 Manager 过滤已删 |

@@ -742,13 +742,24 @@ def run_upgrade_task(task_id):
 
         # 更新节点 nginx_version（优先真实 -v，失败则回退目标版本）
         from apps.nodes.models import Node as NodeModel
+        from apps.nodes.services import apply_nginx_probe_result
         target_ver = task.target_version or source_package.version
         if ver_ok and ver_info:
             # get_nginx_version 返回纯版本号，节点字段统一 nginx/x.y.z
             node_ver = ver_info if str(ver_info).startswith("nginx/") else f"nginx/{ver_info}"
         else:
             node_ver = f"nginx/{target_ver}"
-        NodeModel.objects.filter(pk=node.pk).update(nginx_version=node_ver)
+        # 升级成功视为 Nginx 可用（即使 -v 解析失败也回退目标版本）
+        fresh = NodeModel.objects.get(pk=node.pk)
+        apply_nginx_probe_result(fresh, True, node_ver)
+        fresh.save(
+            update_fields=[
+                "nginx_version",
+                "nginx_available",
+                "last_nginx_probe_at",
+                "updated_at",
+            ]
+        )
 
     except Exception as e:
         log(f"升级过程发生异常: {str(e)}")
@@ -1091,11 +1102,11 @@ def create_upgrade_batch_from_data(user, data):
                 "success": False,
                 "message": f"节点 {node.hostname} 已锁定",
             }, 400
-        if node.status != "online":
-            return {
-                "success": False,
-                "message": f"节点 {node.hostname} 非在线状态",
-            }, 400
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(node)
+        if gate_msg:
+            return {"success": False, "message": gate_msg}, 400
         if not _get_node_credential(node):
             return {
                 "success": False,

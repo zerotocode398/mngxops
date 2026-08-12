@@ -74,7 +74,7 @@
                                         <th style="width: 28px;"></th>
                                         <th>节点</th>
                                         <th style="width: 70px;">环境</th>
-                                        <th style="width: 80px;">状态</th>
+                                        <th style="width: 150px;">状态</th>
                                         <th style="width: 100px;">绑定数</th>
                                     </tr>
                                 </thead>
@@ -438,7 +438,7 @@
                 nodeStatusMap[n.id] = n.status || 'unknown';
                 var noCred = !n.has_credential;
                 var isLocked = n.is_locked;
-                var canSelect = !isLocked && n.status === 'online';
+                var canSelect = !isLocked && n.status === 'online' && n.nginx_available === true;
                 // 节点变为不可选时，从已选中剔除
                 if (!canSelect && selectedNodes[n.id] !== undefined) {
                     delete selectedNodes[n.id];
@@ -451,6 +451,11 @@
                 var statusCls = 'status-badge-' + n.status;
                 var isChecked = selectedNodes[n.id] !== undefined ? 'checked' : '';
                 var disabledAttr = canSelect ? '' : 'disabled';
+                var nginxHint = '';
+                if (n.status === 'online' && n.nginx_available !== true) {
+                    nginxHint = ' <span class="badge bg-warning text-dark" title="未检测到 Nginx，不可发布">' +
+                        (n.nginx_status_label || '未检测到') + '</span>';
+                }
 
                 var groupBadges = '';
                 if (n.group_names && n.group_names.length > 0) {
@@ -468,7 +473,7 @@
                     (groupBadges ? groupBadges : '') +
                     '</div></td>';
                 html += '<td style="white-space: nowrap;"><span class="' + envCls + '">' + envLabel + '</span></td>';
-                html += '<td style="white-space: nowrap;"><span class="' + statusCls + '">' + statusIcon + ' ' + (n.status === 'online' ? '在线' : (n.status === 'unknown' ? '未知' : '离线')) + '</span></td>';
+                html += '<td style="white-space: nowrap;"><span class="' + statusCls + '">' + statusIcon + ' ' + (n.status === 'online' ? '在线' : (n.status === 'unknown' ? '未知' : '离线')) + '</span>' + nginxHint + '</td>';
                 html += '<td style="white-space: nowrap;"><span class="badge bg-info">' + n.total_bindings + '</span></td>';
                 html += '</tr>';
 

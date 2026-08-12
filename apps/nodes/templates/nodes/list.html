@@ -101,7 +101,7 @@
                                     <th style="width: 6%;">凭证</th>
                                     <th style="width: 7%;">状态</th>
                                     <th style="width: 12%;">探测时间</th>
-                                    <th style="width: 12%;">Nginx版本</th>
+                                    <th style="width: 12%;">Nginx</th>
                                     <th style="width: 16%;">操作</th>
                                 </tr>
                             </thead>
@@ -151,9 +151,11 @@
                                         {% if node.last_probe_at %}{{ node.last_probe_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}
                                     </td>
                                     <td>
-                                        <code class="nginx-version-cell"
-                                            data-nginx-version="{{ node.nginx_version|default:'' }}">
-                                            {{ node.nginx_version|default:"-" }}
+                                        {% include "nodes/_nginx_badge.html" with nginx_available=node.nginx_available nginx_version=node.nginx_version %}
+                                        <code class="nginx-version-cell d-none"
+                                            data-nginx-version="{{ node.nginx_version|default:'' }}"
+                                            data-nginx-available="{% if node.nginx_available is True %}true{% elif node.nginx_available is False %}false{% else %}null{% endif %}">
+                                            {{ node.nginx_status_label }}
                                         </code>
                                     </td>
                                     <td>
@@ -985,7 +987,7 @@
         });
     }
 
-    /** 同步列表行中的 Nginx 版本单元格 */
+    /** 同步列表行中的 Nginx 状态徽标 */
     function updateListNginxVersionCell(nodeId, versionText) {
         var link = document.querySelector('.node-detail-link[data-node-id="' + nodeId + '"]');
         if (!link) return;
@@ -993,9 +995,22 @@
         if (!row) return;
         var cell = row.querySelector('.nginx-version-cell');
         if (!cell) return;
-        var display = versionText ? formatNginxVersion(versionText) : '-';
+        var available = versionText ? 'true' : 'false';
         cell.setAttribute('data-nginx-version', versionText || '');
-        cell.textContent = display;
+        cell.setAttribute('data-nginx-available', available);
+        var badgeTd = cell.closest('td');
+        if (!badgeTd) return;
+        var badge = badgeTd.querySelector('.badge');
+        if (!badge) return;
+        if (versionText) {
+            badge.className = 'badge bg-primary';
+            badge.title = '已检测到 Nginx';
+            badge.innerHTML = formatNginxVersion(versionText);
+        } else {
+            badge.className = 'badge bg-warning text-dark';
+            badge.title = '未检测到 Nginx';
+            badge.innerHTML = '<i class="bi bi-exclamation-triangle"></i> 未检测到';
+        }
     }
 
     /** 在详情弹窗内静默检测 Nginx 版本（不弹全屏进度遮罩） */

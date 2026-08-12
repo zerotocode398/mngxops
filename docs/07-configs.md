@@ -58,6 +58,10 @@ stateDiagram-v2
   synced --> failed: 同步读远程失败
   synced --> marked_deleted: 用户删除已同步绑定
   modified --> marked_deleted: 用户删除
+  synced --> orphaned: Nginx探测确认不可用(Q150)
+  modified --> orphaned: Nginx探测确认不可用(Q150)
+  not_synced --> orphaned: Nginx探测确认不可用(Q150)
+  failed --> orphaned: Nginx探测确认不可用(Q150)
   marked_deleted --> [*]: 下次同步远程 rm 后物理删
   orphaned --> [*]: 解除绑定物理删
   not_synced --> [*]: 解除绑定物理删
@@ -67,8 +71,11 @@ stateDiagram-v2
 |------|-----|----------|
 | conflict | **主推过滤已下线**（Q84）；行内兜底 badge 仍可显示脏数据 | **无**（未启用） |
 | syncing | **主推过滤已下线**（Q85） | **无**（未启用） |
+| orphaned | 「远程已删除」 | 全量同步路径缺失；**或** Nginx 探测 `nginx_available=false` / 发现为空时 `mark_node_bindings_orphaned`（Q150）。**勿与** `marked_deleted` 混用 |
 
 漂移字段 `remote_content_hash` / `drift_detected_at` 与 `config_drift_check`：**现阶段不做**（Q86 关闭）；hash 仍可在发布成功时写入。
+
+**无 Nginx 节点门禁（Q150）**：`nginx_available is not True` 时禁止同步/新建编辑绑定/版本恢复待推送；允许查看与解除绑定（无 Nginx 时一律物理删，不发起远程 rm）。
 
 ## 5. 页面与路由
 

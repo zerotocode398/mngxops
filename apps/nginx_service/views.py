@@ -155,8 +155,11 @@ class NginxServiceExecuteAPIView(LoginRequiredMixin, View):
             if node.is_locked:
                 rejected.append(f"{node.hostname}（已锁定）")
                 continue
-            if node.status != "online":
-                rejected.append(f"{node.hostname}（非在线）")
+            from apps.nodes.services import nginx_ops_gate_message
+
+            gate_msg = nginx_ops_gate_message(node)
+            if gate_msg:
+                rejected.append(f"{node.hostname}（{gate_msg}）")
                 continue
             cred = node.credential
             if not cred:

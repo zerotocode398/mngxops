@@ -521,6 +521,11 @@
         return node.status === 'online' && !!node.has_credential;
     }
 
+    /** 节点是否已检测到 Nginx（用于确认页弱提示） */
+    function nodeHasNginx(node) {
+        return node && node.nginx_available === true;
+    }
+
     function getPrefix() {
         return (document.getElementById('targetPrefix').value || '').trim() || DEFAULT_PREFIX || '/opt/app';
     }
@@ -1190,7 +1195,11 @@
                 '<div class="confirm-node-block" data-node-id="' + id + '">' +
                 '<div class="confirm-node-header">' +
                 '<span class="node-info-cell"><span class="node-identity">' + escapeHtml(n.hostname) +
-                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span> ' + groups + '</span>' +
+                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span> ' + groups +
+                (nodeHasNginx(n)
+                    ? ' <span class="badge bg-warning text-dark">已检测到 Nginx，安装可能覆盖</span>'
+                    : '') +
+                '</span>' +
                 '<span class="small text-muted text-end code-font">安装目录: ' + escapeHtml(prefix) + '</span>' +
                 '</div></div>';
         });
@@ -1310,6 +1319,14 @@
         else if (node.status === 'offline') html = '<span class="badge bg-danger">离线</span>';
         else html = '<span class="badge bg-secondary">未知</span>';
         if (!node.has_credential) html += ' <span class="badge bg-warning text-dark">无凭证</span>';
+        if (nodeHasNginx(node)) {
+            html += ' <span class="badge bg-primary" title="已检测到 Nginx，安装可能覆盖">' +
+                escapeHtml(node.nginx_version || '已安装') + '</span>';
+        } else if (node.nginx_available === false) {
+            html += ' <span class="badge bg-warning text-dark">未检测到</span>';
+        } else {
+            html += ' <span class="badge bg-secondary">未探测</span>';
+        }
         return html;
     }
 

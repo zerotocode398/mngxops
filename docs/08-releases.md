@@ -6,6 +6,8 @@
 
 **不做**：灰度流量切换、金丝雀（应用层）；传统独立 create 表单页已删除（Q27）。
 
+**节点门禁（Q114 + Q150）**：发布/回滚/重试要求节点 `status=online` **且** `nginx_available=True`；发布中心勾选同步展示 Nginx 缺失徽标。
+
 ## 2. 角色与权限
 
 `releases.read|create|update|delete`（delete 使用场景较少）。  

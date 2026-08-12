@@ -254,7 +254,7 @@
     }
 
     function canSelect(node) {
-        return node.status === 'online' && !!node.has_credential;
+        return node.status === 'online' && !!node.has_credential && node.nginx_available === true;
     }
 
     function selectedCount() {
@@ -321,6 +321,13 @@
         else if (node.status === 'offline') html = '<span class="badge bg-danger">离线</span>';
         else html = '<span class="badge bg-secondary">未知</span>';
         if (!node.has_credential) html += ' <span class="badge bg-warning text-dark">无凭证</span>';
+        if (node.nginx_available === true) {
+            html += ' <span class="badge bg-primary">' + escapeHtml(node.nginx_version || '已安装') + '</span>';
+        } else if (node.nginx_available === false) {
+            html += ' <span class="badge bg-warning text-dark">未检测到</span>';
+        } else {
+            html += ' <span class="badge bg-secondary">未探测</span>';
+        }
         return html;
     }
 

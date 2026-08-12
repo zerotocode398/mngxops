@@ -159,7 +159,7 @@
 
                         <div class="text-end mt-3">
                             <a href="{% url 'releases:detail' task.id %}" class="btn btn-secondary">取消</a>
-                            {% if task.node.status == 'online' and not task.node.is_locked and not task.node.is_deleted %}
+                            {% if task.node.status == 'online' and task.node.nginx_available is True and not task.node.is_locked and not task.node.is_deleted %}
                             <button type="button" class="btn btn-warning" id="rollbackConfirmBtn">
                                 <i class="bi bi-arrow-counterclockwise"></i> 确认回滚
                             </button>

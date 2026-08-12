@@ -1272,7 +1272,7 @@ function doUpgradeNodeSearch() {
 
         var html = '';
         lastSearchNodes.forEach(function (node) {
-            var selectable = node.status === 'online' && node.has_credential;
+            var selectable = node.status === 'online' && node.has_credential && node.nginx_available === true;
             var checked = modalPickedNodes[String(node.id)] ? ' checked' : '';
             if (!selectable) checked = '';
 
@@ -1281,6 +1281,10 @@ function doUpgradeNodeSearch() {
             else if (node.status === 'offline') statusBadge = '<span class="badge bg-danger">离线</span>';
             else statusBadge = '<span class="badge bg-secondary">未知</span>';
             if (!node.has_credential) statusBadge += ' <span class="badge bg-warning text-dark">无凭证</span>';
+            if (node.status === 'online' && node.nginx_available !== true) {
+                statusBadge += ' <span class="badge bg-warning text-dark" title="请使用运维工具 → Nginx 安装">' +
+                    escapeHtml(node.nginx_status_label || '未检测到') + '</span>';
+            }
 
             var groupBadges = '';
             if (node.groups && node.groups.length) {
@@ -1298,7 +1302,7 @@ function doUpgradeNodeSearch() {
                 '<td>' + escapeHtml(node.hostname) + '</td>' +
                 '<td><small>' + escapeHtml(node.ip) + ':' + escapeHtml(String(node.port || 22)) + '</small></td>' +
                 '<td>' + groupBadges + '</td>' +
-                '<td>' + statusBadge + '</td></tr>';
+                '<td class="text-nowrap">' + statusBadge + '</td></tr>';
         });
         tbody.innerHTML = html;
 

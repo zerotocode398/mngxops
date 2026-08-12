@@ -74,6 +74,15 @@ class Node(models.Model):
         verbose_name="Nginx路径",
         help_text="自定义编译的nginx路径，例如: /usr/local/nginx/sbin/nginx",
     )
+    nginx_available = models.BooleanField(
+        null=True,
+        blank=True,
+        verbose_name="Nginx可用",
+        help_text="null=未探测，True=已检测到，False=确认不可用；与 SSH status 独立",
+    )
+    last_nginx_probe_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="上次Nginx探测时间",
+    )
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="unknown", verbose_name="状态"
     )
@@ -116,6 +125,23 @@ class Node(models.Model):
 
     @property
     def is_online(self):
+        return self.status == "online"
+
+    @property
+    def nginx_status_label(self):
+        """Nginx 可用性展示文案（与 SSH 状态分开展示）。"""
+        if self.nginx_available is True:
+            return self.nginx_version or "已安装"
+        if self.nginx_available is False:
+            return "未检测到"
+        return "未探测"
+
+    def allows_nginx_ops(self):
+        """是否允许依赖 Nginx 的操作（同步/发布/升级/启停等）。"""
+        return self.status == "online" and self.nginx_available is True
+
+    def allows_install(self):
+        """是否允许 Nginx 安装（仅需 SSH 在线）。"""
         return self.status == "online"
 
     def soft_delete(self, user=None):

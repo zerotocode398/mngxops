@@ -184,14 +184,23 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
 
     def form_valid(self, form):
         from apps.nodes.models import Node
+        from apps.nodes.services import nginx_ops_gate_message
 
         form.instance.created_by = self.request.user
         form.instance.source = "manual"
-        response = super().form_valid(form)
 
         node_id = self.request.GET.get("node_id")
+        node = None
         if node_id:
             node = get_object_or_404(Node, pk=node_id)
+            gate_msg = nginx_ops_gate_message(node)
+            if gate_msg:
+                messages.error(self.request, gate_msg)
+                return redirect("configs:list")
+
+        response = super().form_valid(form)
+
+        if node is not None:
             binding = ConfigNodeBinding.objects.create(
                 config=self.object,
                 node=node,
@@ -306,11 +315,16 @@ class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         from apps.nodes.models import Node
-        context["all_nodes"] = Node.objects.filter(is_locked=False).order_by("hostname")
+        # 仅展示可依赖 Nginx 的节点（在线且已检测到）
+        context["all_nodes"] = (
+            Node.objects.filter(is_locked=False, status="online", nginx_available=True)
+            .order_by("hostname")
+        )
         return context
 
     def post(self, request, *args, **kwargs):
         from apps.nodes.models import Node
+        from apps.nodes.services import nginx_ops_gate_message
 
         node_ids_raw = request.POST.get("node_ids", "")
         node_ids = [int(nid) for nid in node_ids_raw.split(",") if nid.strip()]
@@ -328,6 +342,12 @@ class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
         if not nodes:
             form.add_error(None, "请至少选择一个目标节点")
             return self.form_invalid(form)
+
+        for node in nodes:
+            gate_msg = nginx_ops_gate_message(node)
+            if gate_msg:
+                form.add_error(None, gate_msg)
+                return self.form_invalid(form)
 
         created_count = 0
         for node in nodes:
@@ -374,6 +394,12 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
         obj = self.get_object()
         if obj.sync_status == "marked_deleted":
             messages.error(request, "已标记删除的绑定无法编辑")
+            return redirect("configs:list")
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(obj.node)
+        if gate_msg:
+            messages.error(request, gate_msg)
             return redirect("configs:list")
         return super().dispatch(request, *args, **kwargs)
 
@@ -465,6 +491,12 @@ class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         binding = get_object_or_404(ConfigNodeBinding, pk=pk)
         label = f"{binding.config.name} @ {binding.node.hostname}"
 
+        # 无 Nginx 时：任何状态均物理删除，避免 marked_deleted 挂起无法远程 rm
+        if binding.node.nginx_available is not True:
+            binding.delete()
+            messages.success(request, f"绑定 {label} 已删除（节点无可用 Nginx，未清理远程）")
+            return redirect("configs:list")
+
         if binding.sync_status in ("not_synced", "orphaned"):
             binding.delete()
             messages.success(request, f"绑定 {label} 已删除")
@@ -484,6 +516,12 @@ class BindingRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View):
         binding = get_object_or_404(ConfigNodeBinding, pk=pk)
         if binding.sync_status != "marked_deleted":
             messages.error(request, "该绑定未处于标记删除状态")
+            return redirect("configs:list")
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(binding.node)
+        if gate_msg:
+            messages.error(request, gate_msg)
             return redirect("configs:list")
         binding.sync_status = "not_synced"
         binding.save(update_fields=["sync_status", "updated_at"])
@@ -562,6 +600,12 @@ class BindingVersionRestoreView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         if binding.node.is_locked:
             messages.error(request, f"节点 {binding.node.hostname} 已锁定，无法恢复")
             return redirect("configs:binding_versions", pk=binding.pk)
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(binding.node)
+        if gate_msg:
+            messages.error(request, gate_msg)
+            return redirect("configs:list")
 
         old_version = get_object_or_404(BindingVersion, pk=version_id, binding=binding)
         new_version_num = binding.current_version + 1
@@ -674,6 +718,12 @@ class BindingVersionCompareApplyView(LoginRequiredMixin, PermissionRequiredMixin
         if binding.node.is_locked:
             messages.error(request, f"节点 {binding.node.hostname} 已锁定")
             return redirect("configs:binding_versions", pk=binding.pk)
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(binding.node)
+        if gate_msg:
+            messages.error(request, gate_msg)
+            return redirect("configs:list")
 
         confirmed_content = request.POST.get("confirmed_content", "")
         is_confirmed = request.POST.get("confirm_change") == "yes"
@@ -758,11 +808,11 @@ class ConfigGlobPreviewView(LoginRequiredMixin, View):
 
         if node.is_locked:
             return JsonResponse({"success": False, "message": "节点已锁定"}, status=400)
-        if node.status != "online":
-            return JsonResponse(
-                {"success": False, "message": f"节点 {node.hostname} 非在线状态"},
-                status=400,
-            )
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(node)
+        if gate_msg:
+            return JsonResponse({"success": False, "message": gate_msg}, status=400)
 
         credential = _get_node_credential(node)
         if not credential:
@@ -873,11 +923,14 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
 
-        # 任选节点非在线则整批拒绝（对齐升级中心）
+        # 任选节点非在线或无 Nginx 则整批拒绝
+        from apps.nodes.services import nginx_ops_gate_message
+
         for node in nodes:
-            if node.status != "online":
+            gate_msg = nginx_ops_gate_message(node)
+            if gate_msg:
                 return JsonResponse(
-                    {"success": False, "message": f"节点 {node.hostname} 非在线状态"},
+                    {"success": False, "message": gate_msg},
                     status=400,
                 )
 
@@ -922,11 +975,11 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         node = get_object_or_404(Node, pk=node_id)
         if node.is_locked:
             return JsonResponse({"success": False, "message": "节点已锁定"})
-        if node.status != "online":
-            return JsonResponse(
-                {"success": False, "message": f"节点 {node.hostname} 非在线状态"},
-                status=400,
-            )
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(node)
+        if gate_msg:
+            return JsonResponse({"success": False, "message": gate_msg}, status=400)
 
         credential = _get_node_credential(node)
         if not credential:

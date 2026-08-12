@@ -471,12 +471,14 @@ class ReleaseExecutorMixin:
                 results.append((task, False))
             return results
 
-        if node.status != "online":
-            msg = f"节点 {node.hostname} 非在线状态"
+        from apps.nodes.services import nginx_ops_gate_message
+
+        gate_msg = nginx_ops_gate_message(node)
+        if gate_msg:
             for task in tasks:
-                self._fail_task_early(task, action, msg)
+                self._fail_task_early(task, action, gate_msg)
                 if on_task_done:
-                    on_task_done(task, False, msg)
+                    on_task_done(task, False, gate_msg)
                 results.append((task, False))
             return results
 
@@ -1014,7 +1016,9 @@ def _start_rollback_for_release_tasks(tasks, user):
         if task.node.is_locked or task.node.is_deleted:
             skipped += 1
             continue
-        if task.node.status != "online":
+        from apps.nodes.services import nginx_ops_gate_message
+
+        if nginx_ops_gate_message(task.node):
             skipped += 1
             continue
         if not task.binding:

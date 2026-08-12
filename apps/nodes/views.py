@@ -129,6 +129,8 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "status": node.status,
                     "environment": node.environment,
                     "nginx_version": node.nginx_version or "",
+                    "nginx_available": node.nginx_available,
+                    "nginx_status_label": node.nginx_status_label,
                     "has_credential": bool(node.credential_id),
                     "credential_username": (
                         node.credential.username if node.credential_id else ""
@@ -967,7 +969,9 @@ def get_node_detail(request):
                 "ip": node.ip,
                 "port": node.port,
                 "environment": node.get_environment_display(),
-                "nginx_version": node.nginx_version or "未获取",
+                "nginx_version": node.nginx_version or "",
+                "nginx_available": node.nginx_available,
+                "nginx_status_label": node.nginx_status_label,
                 "nginx_path": node.nginx_path or "默认",
                 "status": node.get_status_display(),
                 "is_locked": node.is_locked,

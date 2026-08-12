@@ -28,13 +28,26 @@
 | `credential` | 可空 FK |
 | `environment` | dev/test/prod |
 | `nginx_version`, `nginx_path` | 版本与二进制；默认路径可来自设置 |
-| `status` | online/offline/unknown |
+| `nginx_available` | null=未探测 / True=已检测到 / False=确认不可用（与 SSH `status` 独立，Q150） |
+| `last_nginx_probe_at` | 上次 Nginx `-v` 探测时间 |
+| `status` | online/offline/unknown（**仅 SSH 连通**） |
 | `last_probe_at` | 上次 SSH/采集探测成功时间；失败不清除（Q125） |
 | `is_locked` | 锁定 |
 | `is_deleted` 等 | 逻辑删除 |
 | Managers | `objects`=活跃；`all_objects`=含已删 |
 
-方法：`soft_delete(user)`、`restore()`。
+方法：`soft_delete(user)`、`restore()`、`nginx_status_label`、`allows_nginx_ops()`、`allows_install()`。
+
+**双维度展示**：列表 SSH 徽标与 Nginx 徽标分开展示；不会把「无 Nginx」写成 `offline`。
+
+**门禁（两维 AND，Q150）**：
+
+| SSH | Nginx | 同步/发布/回滚/升级/启停 | 安装 |
+|-----|-------|--------------------------|------|
+| offline/unknown | 任意 | 禁 | 禁 |
+| online | true | 允 | 允（弱提示可能覆盖） |
+| online | false | 禁 | 允 |
+| online | null | 禁 | 允 |
 
 同步主配置路径存 `ConfigSyncSetting.main_conf_path`（configs 应用）。
 
@@ -67,12 +80,14 @@
 - 单节点 `test/`、批量 `batch-test/`（上限 `node.batch_max_count`）。  
 - 创建 `TaskCenterTask`（`node_ssh_test` / `node_batch_test`），线程执行，更新 `Node.status`。  
 - 探测成功统一经 `mark_node_probe_success`：置 `online` 并写 `last_probe_at`（解锁测、系统信息/Nginx 版本采集、凭证启用测同路径）。  
+- **SSH 成功后一并执行 `nginx -v`**，经 `apply_nginx_probe_result` 写入 `nginx_available`/`nginx_version`；失败清空版本并触发绑定 orphan（Q150）。  
 - 进度：全局 overlay 轮询（Q39/Q40）。  
 - **不做**周期性自动 SSH（Q126）。
 
 ### 5.5 系统信息 / Nginx 版本
 
 - 详情弹窗内静默请求（Q43），异步 `node_system_info` / `node_nginx_version`。  
+- Nginx 版本任务成功/失败均走 `apply_nginx_probe_result`（失败不改 SSH `status`）。  
 - 结果写入 TaskCenter `result`（JSON/文本），列表可轮询刷新 DOM（Q40）。
 
 ### 5.6 Excel 导入
@@ -122,6 +137,7 @@ credentials、configs（同步路径）、releases、upgrade、task center、set
 | Q77 | 批量导入/删除与文案 |
 | Q125 | 列表探测时间（上次探测成功） |
 | Q126 | 周期性自动 SSH 不做 |
+| Q150 | SSH/Nginx 双维度状态与门禁 |
 
 ## 11. 待确认缺口
 

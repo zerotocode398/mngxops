@@ -180,7 +180,7 @@ def sync_discovered_configs(
 
 
 def _mark_orphaned_bindings(node, discovered_paths):
-    """标记远程已删除的绑定"""
+    """标记远程已删除的绑定（仅原 synced 且路径不在发现集中）。"""
     orphaned = []
     bindings = ConfigNodeBinding.objects.filter(
         node=node, sync_status="synced"
@@ -192,6 +192,28 @@ def _mark_orphaned_bindings(node, discovered_paths):
         orphaned.append(binding.config.name)
 
     return orphaned
+
+
+def mark_node_bindings_orphaned(node):
+    """
+    将节点上除 marked_deleted 外的绑定标为远程已删除。
+    用于 Nginx 确认不可用或发现结果为空时，消除「已同步」陈旧态。
+    """
+    qs = ConfigNodeBinding.objects.filter(node=node).exclude(
+        sync_status__in=("orphaned", "marked_deleted")
+    )
+    names = []
+    for binding in qs:
+        names.append(binding.config.name)
+        binding.sync_status = "orphaned"
+        binding.save(update_fields=["sync_status", "updated_at"])
+    if names:
+        logger.info(
+            "节点 %s 绑定已标为 orphaned: %s",
+            getattr(node, "hostname", node.pk),
+            ", ".join(names[:20]),
+        )
+    return names
 
 
 def _cleanup_marked_deleted_bindings(node, request_user):
@@ -378,6 +400,13 @@ def _sync_one_node(node, task_center_id, request_user):
         if node.status != "online":
             result["message"] = f"节点 {node.hostname} 非在线状态"
             return result
+        if node.nginx_available is not True:
+            result["message"] = (
+                f"节点 {node.hostname} 未检测到 Nginx"
+                if node.nginx_available is False
+                else f"节点 {node.hostname} 尚未探测 Nginx"
+            )
+            return result
         credential = _get_node_credential(node)
         if not credential:
             result["message"] = "未配置SSH凭证"
@@ -437,6 +466,10 @@ def _sync_one_node(node, task_center_id, request_user):
             result["deleted_names"] = deleted
             result["skipped_names"] = skipped
         else:
+            # 发现为空：标 orphan 消除陈旧「已同步」，再尽力清理 marked_deleted
+            orphaned_names = mark_node_bindings_orphaned(node)
+            result["orphaned"] = len(orphaned_names)
+            result["orphaned_names"] = orphaned_names
             _set_current_step(task_center_id, hostname, "清理标记删除")
             deleted = _cleanup_marked_deleted_bindings(node, request_user)
             result["deleted"] = len(deleted)
@@ -446,9 +479,14 @@ def _sync_one_node(node, task_center_id, request_user):
             result["message"] = "; ".join(result["errors"][:3])
             result["success"] = False
         elif not discovered:
-            if result["deleted"]:
+            if result["deleted"] or result["orphaned"]:
                 result["success"] = True
-                result["message"] = f"已删除 {result['deleted']} 个标记删除配置"
+                parts = []
+                if result["orphaned"]:
+                    parts.append(f"远程已删除 {result['orphaned']}")
+                if result["deleted"]:
+                    parts.append(f"已清理标记删除 {result['deleted']}")
+                result["message"] = "；".join(parts) if parts else "未发现配置文件"
             else:
                 result["message"] = "未发现配置文件"
                 result["success"] = False
@@ -677,10 +715,17 @@ def run_single_config_sync_task(
             mark_discovery_failed_configs(node, errors, request_user, task_id=task.id)
 
         if not discovered:
+            # 全量且发现为空时标 orphan；部分同步不批量 orphan
+            orphaned_names = []
+            if not is_partial:
+                orphaned_names = mark_node_bindings_orphaned(node)
             _set_current_step(task.id, hostname, "清理标记删除")
             deleted = _cleanup_marked_deleted_bindings(node, request_user)
             item_ok = 0
             item_fail = 0
+            for name in orphaned_names:
+                live_blocks.append(item_success(f"{name} (远程已删除)"))
+                item_ok += 1
             for name in deleted:
                 live_blocks.append(item_success(f"{name} (删除)"))
                 item_ok += 1
@@ -692,10 +737,11 @@ def run_single_config_sync_task(
                 task.detail = (
                     f"同步失败: 0 新增, 0 更新, {len(deleted)} 删除"
                 )
-            elif deleted:
+            elif deleted or orphaned_names:
                 task.status = "success"
                 task.detail = (
                     f"同步完成: 0 新增, 0 更新, {len(deleted)} 删除"
+                    + (f", {len(orphaned_names)} 远程已删除" if orphaned_names else "")
                 )
             else:
                 live_blocks.append(item_failed("同步", "未发现配置文件"))
