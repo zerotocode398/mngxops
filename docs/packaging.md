@@ -72,7 +72,7 @@ libpython3.6m.so.1.0
          │                                    │
          │  pyinstaller（在本机构建）           │  migrate → createsuperuser → 启动
          ▼                                    ▼
-   dist/mngxops(.exe)  ──拷贝──►   自动生成 db.sqlite3、.fernet_key、media/
+   dist/mngxops-<platform>-...  ──拷贝──►   migrate 后生成 db.sqlite3、.fernet_key、media/
 ```
 
 | 阶段 | 你在干什么 | 用什么 |
@@ -101,7 +101,7 @@ libpython3.6m.so.1.0
 
 | 文件/目录 | 作用 | 常规交付 |
 |-----------|------|----------|
-| `db.sqlite3` | 业务数据库 | `migrate` / 首次启动时自动建 |
+| `db.sqlite3` | 业务数据库 | 须执行 `migrate` 建库 |
 | `media/` | 上传文件（源码包等） | 用到上传功能时自动出现 |
 | `.fernet_key` | 加密 SSH 凭证用的本地密钥 | **首次运行自动生成，不用拷贝** |
 
@@ -117,8 +117,7 @@ libpython3.6m.so.1.0
 
 - 入口脚本：[`run_server.py`](../run_server.py)
 - 打包规格：[`mngxops.spec`](../mngxops.spec)
-- 业务依赖：[`requirements-3.9.6.txt`](../requirements-3.9.6.txt)
-- 打包依赖：[`requirements-packaging.txt`](../requirements-packaging.txt)（含 `waitress`、`pyinstaller`）
+- 依赖：[`requirements.txt`](../requirements.txt)（含业务包、`waitress`、`pyinstaller`；按 Python 版本用 PEP 508 选择钉死项）
 
 Python 版本：**3.9.6**（与项目约定一致）。
 
@@ -145,11 +144,9 @@ D:\PyCharm\联动优势\works\django-labs\venv3\Scripts\Activate.ps1
 
 # 若 pip 走坏代理报错，可先：
 # $env:NO_PROXY='*'
-# python -m pip install --proxy="" -r requirements-3.9.6.txt
-# python -m pip install --proxy="" -r requirements-packaging.txt
+# python -m pip install --proxy="" -r requirements.txt
 
-python -m pip install -r requirements-3.9.6.txt
-python -m pip install -r requirements-packaging.txt
+python -m pip install -r requirements.txt
 
 # 打包（约数分钟）
 pyinstaller --noconfirm mngxops.spec
@@ -157,8 +154,7 @@ pyinstaller --noconfirm mngxops.spec
 
 ### 4.3 产物
 
-- 原始：`dist\mngxops.exe`
-- 建议重命名：`dist\mngxops-windows-amd64.exe`
+- `dist\mngxops-windows-amd64.exe`（由 spec 按本机 OS/架构自动命名）
 
 ### 4.4 本机冒烟（空目录初始化）
 
@@ -166,9 +162,9 @@ pyinstaller --noconfirm mngxops.spec
 $env:MNGXOPS_HOME = "$env:TEMP\mngxops-win-smoke"
 New-Item -ItemType Directory -Force -Path $env:MNGXOPS_HOME | Out-Null
 
-.\dist\mngxops.exe migrate
-.\dist\mngxops.exe createsuperuser
-.\dist\mngxops.exe serve --host 127.0.0.1 --port 8000
+.\dist\mngxops-windows-amd64.exe migrate
+.\dist\mngxops-windows-amd64.exe createsuperuser
+.\dist\mngxops-windows-amd64.exe runserver 127.0.0.1:8000
 ```
 
 浏览器打开：`http://127.0.0.1:8000/login/`
@@ -197,21 +193,14 @@ cd /path/to/mngxops
 python3.9 -m venv .venv
 source .venv/bin/activate
 
-pip install -r requirements-3.9.6.txt
-pip install -r requirements-packaging.txt
+pip install -r requirements.txt
 
 pyinstaller --noconfirm mngxops.spec
 ```
 
 ### 5.3 产物
 
-- 原始：`dist/mngxops`
-- 建议重命名并赋权：
-
-```bash
-cp dist/mngxops dist/mngxops-linux-amd64
-chmod +x dist/mngxops-linux-amd64
-```
+- `dist/mngxops-linux-glibc-<ver>-amd64`（glibc 版本由构建机检测，例如 `2.17` / `2.28`）
 
 ### 5.4 本机冒烟（空目录初始化）
 
@@ -219,9 +208,9 @@ chmod +x dist/mngxops-linux-amd64
 export MNGXOPS_HOME=/tmp/mngxops-linux-amd64-smoke
 mkdir -p "$MNGXOPS_HOME"
 
-./dist/mngxops-linux-amd64 migrate
-./dist/mngxops-linux-amd64 createsuperuser
-./dist/mngxops-linux-amd64 serve --host 127.0.0.1 --port 8000
+./dist/mngxops-linux-glibc-*-amd64 migrate
+./dist/mngxops-linux-glibc-*-amd64 createsuperuser
+./dist/mngxops-linux-glibc-*-amd64 runserver 127.0.0.1:8000
 ```
 
 浏览器：`http://127.0.0.1:8000/login/`
@@ -250,14 +239,12 @@ cd /path/to/mngxops
 python3.9 -m venv .venv
 source .venv/bin/activate
 
-pip install -r requirements-3.9.6.txt
-pip install -r requirements-packaging.txt
+pip install -r requirements.txt
 
 pyinstaller --noconfirm mngxops.spec
-
-cp dist/mngxops dist/mngxops-linux-arm64
-chmod +x dist/mngxops-linux-arm64
 ```
+
+产物：`dist/mngxops-linux-glibc-<ver>-aarch64`。
 
 ### 6.3 本机冒烟（空目录初始化）
 
@@ -265,9 +252,9 @@ chmod +x dist/mngxops-linux-arm64
 export MNGXOPS_HOME=/tmp/mngxops-linux-arm64-smoke
 mkdir -p "$MNGXOPS_HOME"
 
-./dist/mngxops-linux-arm64 migrate
-./dist/mngxops-linux-arm64 createsuperuser
-./dist/mngxops-linux-arm64 serve --host 0.0.0.0 --port 8000
+./dist/mngxops-linux-glibc-*-aarch64 migrate
+./dist/mngxops-linux-glibc-*-aarch64 createsuperuser
+./dist/mngxops-linux-glibc-*-aarch64 runserver
 ```
 
 ---
@@ -280,41 +267,40 @@ mkdir -p "$MNGXOPS_HOME"
 2. 初始化库并创建管理员
 3. 启动服务，浏览器打开登录页
 
-| 步骤 | Windows | Linux（amd64 / arm64） |
+| 步骤 | Windows | Linux（amd64 / aarch64） |
 |------|---------|-------------------------|
-| 建库 | `mngxops-windows-amd64.exe migrate` | `./mngxops-linux-amd64 migrate`（ARM 用 `arm64` 文件名） |
+| 建库 | `mngxops-windows-amd64.exe migrate` | `./mngxops-linux-glibc-<ver>-amd64 migrate`（ARM 用 `aarch64`） |
 | 建管理员 | `...\createsuperuser` | `./... createsuperuser` |
-| 启动 | 直接运行 exe，或 `... serve --host 0.0.0.0 --port 8000` | 同上 |
+| 启动 | `... runserver` 或 `... runserver 0.0.0.0:8000` | 同上 |
 
 说明：
 
-- **无参数**直接运行 = 启动 Web（默认先自动 `migrate --noinput`），再另开终端做一次 `createsuperuser` 也可
+- **无参数**直接运行或 `run` / `runserver` = 启动 Web（默认 `0.0.0.0:1988`），**不会**自动 migrate
+- 须先 `migrate` 再建管理员、再启动；未 migrate 时 `createsuperuser` 会提示先执行 migrate
 - `createsuperuser` 需要在真实终端里交互输入用户名/密码
-- `.fernet_key` / `db.sqlite3` **不用事先准备**，首次运行会生成
-- 可用 `--no-migrate` 跳过启动前自动迁移
-- 启动后终端默认输出 **HTTP 访问日志**（类似 Apache combined）；可用 `--no-access-log` 关闭
-- 启动别名：`serve` / `run` / `runserver`（不是 `server`）
+- `.fernet_key` / `db.sqlite3` **不用事先准备**，`migrate` / 首次写密钥时会生成
+- 启动后终端输出 **HTTP 访问日志**（类似 Apache combined）
+- 启动别名：`run` / `runserver`（不是 `serve` / `server`）
 
 ```text
 # Windows 示例（空目录）
 mngxops-windows-amd64.exe migrate
 mngxops-windows-amd64.exe createsuperuser
-mngxops-windows-amd64.exe serve --host 0.0.0.0 --port 8000
+mngxops-windows-amd64.exe runserver
 
 # Linux 示例
-./mngxops-linux-arm64 migrate
-./mngxops-linux-arm64 createsuperuser
-./mngxops-linux-arm64 serve --host 0.0.0.0 --port 8000
+./mngxops-linux-glibc-2.28-aarch64 migrate
+./mngxops-linux-glibc-2.28-aarch64 createsuperuser
+./mngxops-linux-glibc-2.28-aarch64 runserver 0.0.0.0:8000
 ```
 
-登录页：`http://<主机>:8000/login/`
+登录页：`http://<主机>:1988/login/`（若指定了端口则用该端口）
 
 ### 环境变量（可选）
 
 | 变量 | 含义 |
 |------|------|
 | `MNGXOPS_HOME` | 数据目录（库、media、`.fernet_key`）；不设则用 exe 所在目录 |
-| `MNGXOPS_HOST` / `MNGXOPS_PORT` | 默认监听（也可用 `serve --host/--port`） |
 | `MNGXOPS_DEBUG` | `1` 打开 / `0` 关闭 DEBUG |
 | `MNGXOPS_SECRET_KEY` | Django `SECRET_KEY` |
 
@@ -335,11 +321,11 @@ A：可尝试清空代理后再装：
 
 ```powershell
 $env:NO_PROXY='*'
-python -m pip install --proxy="" -r requirements-packaging.txt
+python -m pip install --proxy="" -r requirements.txt
 ```
 
 **Q：要不要先准备 db 或密钥文件？**  
-A：常规新环境不需要。放二进制 → `migrate` → `createsuperuser` → 启动即可。
+A：常规新环境不需要。放二进制 → `migrate` → `createsuperuser` → `runserver` 即可。
 
 **Q：交付物里还有 `.py` 吗？**  
 A：客户机上看不到源码树；包内主要是字节码/依赖。这不等于军事级防逆向（`.pyc` 仍可能被还原）。
@@ -361,7 +347,7 @@ python manage.py runserver
 | [`mngxops.spec`](../mngxops.spec) | PyInstaller 规格 |
 | [`ngxops/runtime_paths.py`](../ngxops/runtime_paths.py) | 冻结/源码下资源与数据目录 |
 | [`utils/crypto.py`](../utils/crypto.py) | 凭证加密与 `.fernet_key` 路径 |
-| [`requirements-packaging.txt`](../requirements-packaging.txt) | 仅打包用依赖 |
+| [`requirements.txt`](../requirements.txt) | 业务 + Waitress + PyInstaller（按 Python 版本选择） |
 
 ---
 

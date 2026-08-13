@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """MngxOps 统一入口：默认启动 Web；支持 migrate / createsuperuser 等管理命令。"""
 
-import argparse
 import logging
 import os
 import sys
@@ -18,13 +17,30 @@ ALLOWED_MANAGE_COMMANDS = frozenset(
     }
 )
 
-SERVE_ALIASES = frozenset({"serve", "run", "runserver"})
+RUN_ALIASES = frozenset({"run", "runserver"})
+DEFAULT_HOST = "0.0.0.0"
+DEFAULT_PORT = 1988
 ACCESS_LOGGER = logging.getLogger("mngxops.access")
 
 
 def _setup_django_env():
     """设置 Django 配置模块。"""
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ngxops.settings")
+
+
+def _print_usage(stream=None):
+    """打印命令行用法。"""
+    if stream is None:
+        stream = sys.stdout
+    print(
+        "用法:\n"
+        "  mngxops                         启动 Web（默认 0.0.0.0:1988）\n"
+        "  mngxops run|runserver [addr]    启动 Web；addr 为端口或 ip:port\n"
+        "  mngxops migrate                 初始化 / 升级数据库\n"
+        "  mngxops createsuperuser         创建管理员\n"
+        "环境变量: MNGXOPS_HOME MNGXOPS_DEBUG MNGXOPS_SECRET_KEY",
+        file=stream,
+    )
 
 
 def _configure_logging():
@@ -41,40 +57,47 @@ def _configure_logging():
     )
 
 
+def _is_uninitialized_db(exc):
+    """判断是否为未 migrate 导致的缺表错误。"""
+    msg = str(exc).lower()
+    return "no such table" in msg or "does not exist" in msg
+
+
 def _run_manage(argv):
-    """转发到 Django 管理命令。"""
+    """转发到 Django 管理命令；缺表时给出友好提示。"""
     from django.core.management import execute_from_command_line
+    from django.db.utils import OperationalError, ProgrammingError
 
-    execute_from_command_line(["mngxops", *argv])
-
-
-def _parse_serve_args(argv):
-    """解析 serve 专用参数。"""
-    parser = argparse.ArgumentParser(prog="mngxops", description="MngxOps 服务入口")
-    parser.add_argument("--host", default=os.environ.get("MNGXOPS_HOST", "0.0.0.0"))
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.environ.get("MNGXOPS_PORT", "1988")),
-    )
-    parser.add_argument(
-        "--no-migrate",
-        action="store_true",
-        help="启动前不自动执行 migrate --noinput",
-    )
-    parser.add_argument(
-        "--no-access-log",
-        action="store_true",
-        help="关闭控制台 HTTP 访问日志",
-    )
-    return parser.parse_args(argv)
+    try:
+        execute_from_command_line(["mngxops", *argv])
+    except (OperationalError, ProgrammingError) as exc:
+        if _is_uninitialized_db(exc):
+            print("数据库尚未初始化，请先执行: mngxops migrate", file=sys.stderr)
+            sys.exit(1)
+        raise
 
 
-def _auto_migrate():
-    """启动前静默迁移数据库。"""
-    from django.core.management import call_command
+def _parse_bind_addr(argv):
+    """解析 run/runserver 地址：无参默认 0.0.0.0:1988，或端口 / ip:port。"""
+    if not argv:
+        return DEFAULT_HOST, DEFAULT_PORT
+    if len(argv) != 1 or argv[0].startswith("-"):
+        print("不支持的启动参数。请使用: mngxops runserver 或 mngxops runserver ip:port", file=sys.stderr)
+        _print_usage(sys.stderr)
+        sys.exit(2)
 
-    call_command("migrate", interactive=False, verbosity=1)
+    token = argv[0]
+    if token.isdigit():
+        return DEFAULT_HOST, int(token)
+    if ":" in token:
+        host, port_text = token.rsplit(":", 1)
+        if not port_text.isdigit():
+            print("端口无效: {}".format(token), file=sys.stderr)
+            sys.exit(2)
+        return host or DEFAULT_HOST, int(port_text)
+
+    print("地址格式无效，请使用端口或 ip:port，例如 1988 或 127.0.0.1:8000", file=sys.stderr)
+    sys.exit(2)
 
 
 class _AccessLogMiddleware:
@@ -101,7 +124,7 @@ class _AccessLogMiddleware:
             path = environ.get("PATH_INFO") or "/"
             query = environ.get("QUERY_STRING") or ""
             if query:
-                path = f"{path}?{query}"
+                path = "{}?{}".format(path, query)
             protocol = environ.get("SERVER_PROTOCOL") or "HTTP/1.0"
             stamp = datetime.now().strftime("%d/%b/%Y:%H:%M:%S")
             ACCESS_LOGGER.info(
@@ -115,65 +138,45 @@ class _AccessLogMiddleware:
             )
 
 
-def _run_serve(argv):
-    """使用 Waitress 启动 WSGI 服务。"""
-    args = _parse_serve_args(argv)
+def _run_web(argv):
+    """使用 Waitress 启动 WSGI 服务（不执行 migrate）。"""
+    host, port = _parse_bind_addr(argv)
     _configure_logging()
     _setup_django_env()
     import django
 
     django.setup()
-    if not args.no_migrate:
-        print("执行数据库迁移 (migrate --noinput)...")
-        _auto_migrate()
 
     from waitress import serve
     from ngxops.wsgi import application
 
-    app = application if args.no_access_log else _AccessLogMiddleware(application)
-    print(f"MngxOps 已启动: http://{args.host}:{args.port}/")
+    print("MngxOps 已启动: http://{}:{}/".format(host, port))
     print("管理命令示例: mngxops migrate | mngxops createsuperuser")
-    if not args.no_access_log:
-        print("访问日志已开启（可用 --no-access-log 关闭）")
-    serve(app, host=args.host, port=args.port)
+    serve(_AccessLogMiddleware(application), host=host, port=port)
 
 
 def main(argv=None):
-    """入口：无参/serve 启服务，白名单管理命令转发 Django。"""
+    """入口：无参/run/runserver 启服务，白名单管理命令转发 Django。"""
     if argv is None:
         argv = sys.argv[1:]
 
     _setup_django_env()
 
-    if not argv or argv[0] in SERVE_ALIASES:
-        serve_argv = argv[1:] if argv and argv[0] in SERVE_ALIASES else argv
-        # 兼容误传 runserver 的旧习惯：mngxops runserver 0.0.0.0:8000
-        if serve_argv and ":" in serve_argv[0] and not serve_argv[0].startswith("-"):
-            host_port = serve_argv[0]
-            serve_argv = serve_argv[1:]
-            if ":" in host_port:
-                host, port = host_port.rsplit(":", 1)
-                serve_argv = ["--host", host or "0.0.0.0", "--port", port, *serve_argv]
-        _run_serve(serve_argv)
+    if not argv or argv[0] in RUN_ALIASES:
+        web_argv = argv[1:] if argv and argv[0] in RUN_ALIASES else argv
+        _run_web(web_argv)
         return
 
     cmd = argv[0]
     if cmd in ("-h", "--help", "help"):
-        print(
-            "用法:\n"
-            "  mngxops                 启动 Web 服务（默认 0.0.0.0:1988）\n"
-            "  mngxops serve|run|runserver [--host H] [--port P] [--no-migrate] [--no-access-log]\n"
-            "  mngxops migrate\n"
-            "  mngxops createsuperuser\n"
-            "环境变量: MNGXOPS_HOME MNGXOPS_HOST MNGXOPS_PORT MNGXOPS_DEBUG MNGXOPS_SECRET_KEY"
-        )
+        _print_usage()
         return
 
     if cmd not in ALLOWED_MANAGE_COMMANDS:
         print(
-            f"不支持的命令: {cmd}\n"
-            f"允许: {', '.join(sorted(ALLOWED_MANAGE_COMMANDS))}，"
-            f"或 serve/run/runserver / 无参启动服务",
+            "不支持的命令: {}\n允许: {}，或 run/runserver / 无参启动服务".format(
+                cmd, ", ".join(sorted(ALLOWED_MANAGE_COMMANDS))
+            ),
             file=sys.stderr,
         )
         sys.exit(2)
