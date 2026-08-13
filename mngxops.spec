@@ -60,6 +60,7 @@ def _tree_datas(rel_dir):
 
 datas = []
 datas += _tree_datas("templates")
+datas += _tree_datas("static")
 
 # 各 app 的模板 / 迁移 / 管理命令 / 静态（若有）
 for app_dir in (ROOT / "apps").iterdir():

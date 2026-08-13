@@ -16,11 +16,24 @@ Including another URLconf
 """
 
 from django.contrib import admin
+from django.http import FileResponse, Http404
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from ngxops.runtime_paths import resource_dir
+
+
+def serve_favicon(request):
+    """返回站点图标，消除浏览器默认请求 /favicon.ico 的 404。"""
+    icon_path = resource_dir() / "static" / "favicon.png"
+    if not icon_path.is_file():
+        raise Http404
+    return FileResponse(icon_path.open("rb"), content_type="image/png")
+
+
 urlpatterns = [
+    path("favicon.ico", serve_favicon),
     path("admin/", admin.site.urls),
     path("", include("apps.dashboard.urls")),
     path("", include("apps.accounts.urls")),
