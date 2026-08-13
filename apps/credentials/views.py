@@ -1,6 +1,8 @@
+from datetime import datetime
+
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, View
 from django.urls import reverse_lazy, reverse
 from django.shortcuts import get_object_or_404, redirect
@@ -11,11 +13,67 @@ import threading
 
 from .forms import CredentialForm
 from .models import Credential, CredentialEnableTask
-from .services import _run_credential_enable_task
+from .services import (
+    _run_credential_enable_task,
+    apply_credential_import,
+    build_credential_export_bytes,
+    build_credential_import_template_bytes,
+    parse_credential_import_workbook,
+    validate_credential_import_rows,
+)
+from apps.audit.models import AuditLog
+from apps.audit.utils import _resolve_client_ip
 from apps.releases.models import TaskCenterTask
 from apps.users.permissions import PermissionRequiredMixin
 from apps.nodes.models import Node
 from utils.pagination import PerPagePaginationMixin
+
+
+def filter_credential_list_queryset(queryset, request):
+    """按凭证列表页相同条件筛选 queryset（搜索/认证方式/启用状态）。"""
+    search = request.GET.get("search", "").strip()
+    auth_type = request.GET.get("auth_type", "").strip()
+    status = request.GET.get("status", "").strip()
+
+    if search:
+        terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+        if terms:
+            for term in terms:
+                queryset = queryset.filter(
+                    Q(name__icontains=term) | Q(username__icontains=term)
+                )
+
+    if auth_type in ("password", "key"):
+        queryset = queryset.filter(auth_type=auth_type)
+
+    if status == "enabled":
+        queryset = queryset.filter(is_enabled=True)
+    elif status == "disabled":
+        queryset = queryset.filter(is_enabled=False)
+
+    return queryset
+
+
+def _parse_export_ids(request):
+    """解析导出勾选 ID（ids=1,2,3 或重复 id=）；无效项忽略。"""
+    raw = (request.GET.get("ids") or "").strip()
+    if not raw:
+        raw = ",".join(request.GET.getlist("id") or [])
+    ids = []
+    seen = set()
+    for part in raw.replace("，", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            cid = int(part)
+        except (TypeError, ValueError):
+            continue
+        if cid in seen:
+            continue
+        seen.add(cid)
+        ids.append(cid)
+    return ids
 
 
 class CredentialListView(
@@ -33,27 +91,7 @@ class CredentialListView(
     def get_queryset(self):
         """根据搜索词和筛选条件过滤凭证列表"""
         queryset = super().get_queryset().annotate(node_count=Count("node", distinct=True))
-        search = self.request.GET.get("search", "").strip()
-        auth_type = self.request.GET.get("auth_type", "").strip()
-        status = self.request.GET.get("status", "").strip()
-
-        if search:
-            terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
-            if terms:
-                for term in terms:
-                    queryset = queryset.filter(
-                        Q(name__icontains=term) | Q(username__icontains=term)
-                    )
-
-        if auth_type in ("password", "key"):
-            queryset = queryset.filter(auth_type=auth_type)
-
-        if status == "enabled":
-            queryset = queryset.filter(is_enabled=True)
-        elif status == "disabled":
-            queryset = queryset.filter(is_enabled=False)
-
-        return queryset
+        return filter_credential_list_queryset(queryset, self.request)
 
     def get_context_data(self, **kwargs):
         """向模板传递搜索和筛选状态"""
@@ -61,7 +99,157 @@ class CredentialListView(
         context["search"] = self.request.GET.get("search", "")
         context["auth_type"] = self.request.GET.get("auth_type", "")
         context["status"] = self.request.GET.get("status", "")
+        params = self.request.GET.copy()
+        params.pop("page", None)
+        params.pop("per_page", None)
+        context["export_query"] = params.urlencode()
         return context
+
+
+class CredentialExportView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """按勾选 ID 或当前筛选导出凭证 xlsx（含明文密码/私钥）"""
+
+    permission_resource = "credentials"
+    permission_action = "read"
+
+    def get(self, request):
+        """生成并下载凭证明文导出；有 ids 仅导勾选，否则按筛选全量"""
+        ids = _parse_export_ids(request)
+        queryset = Credential.objects.all()
+        if ids:
+            id_order = {cid: idx for idx, cid in enumerate(ids)}
+            credentials = list(queryset.filter(id__in=ids))
+            credentials.sort(key=lambda c: id_order.get(c.id, 0))
+            scope_label = "勾选"
+        else:
+            queryset = filter_credential_list_queryset(
+                queryset.order_by("-created_at"), request
+            )
+            credentials = list(queryset)
+            scope_label = "全量"
+
+        content = build_credential_export_bytes(credentials)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"credentials_export_{stamp}.xlsx"
+
+        names = [c.name for c in credentials if c.name]
+        name_preview = "、".join(names[:20])
+        if len(names) > 20:
+            name_preview = f"{name_preview} 等{len(names)}个"
+        detail = f"导出 {len(credentials)} 条（{scope_label}）"
+        if name_preview:
+            detail = f"{detail}：{name_preview}"
+
+        AuditLog.objects.create(
+            user=request.user,
+            module="凭证管理",
+            action="导出凭证",
+            ip=_resolve_client_ip(),
+            result="success",
+            detail=detail,
+        )
+
+        response = HttpResponse(
+            content,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
+class CredentialImportTemplateView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """下载凭证批量导入 Excel 模板"""
+
+    permission_resource = "credentials"
+    permission_action = "create"
+
+    def get(self, request):
+        """返回 xlsx 模板文件流"""
+        content = build_credential_import_template_bytes()
+        response = HttpResponse(
+            content,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+        response["Content-Disposition"] = (
+            'attachment; filename="credential_import_template.xlsx"'
+        )
+        return response
+
+
+class CredentialImportAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """上传 Excel 批量创建/更新凭证（整文件校验，失败不写入）"""
+
+    permission_resource = "credentials"
+    permission_action = "create"
+
+    def post(self, request):
+        """解析并导入凭证 Excel"""
+        upload = request.FILES.get("file")
+        if not upload:
+            return JsonResponse(
+                {"success": False, "message": "请选择要上传的 Excel 文件", "errors": []}
+            )
+        name = (upload.name or "").lower()
+        if not name.endswith(".xlsx"):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": "仅支持 .xlsx 格式",
+                    "errors": [{"row": 0, "message": "仅支持 .xlsx 格式"}],
+                }
+            )
+
+        rows, parse_errors = parse_credential_import_workbook(upload)
+        if parse_errors:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": "Excel 解析失败",
+                    "errors": parse_errors,
+                }
+            )
+
+        cleaned, errors = validate_credential_import_rows(rows, request.user)
+        if errors:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": f"校验未通过，共 {len(errors)} 条错误，未导入任何凭证",
+                    "errors": errors,
+                }
+            )
+
+        result = apply_credential_import(cleaned, request.user)
+        parts = []
+        if result["created"]:
+            parts.append(f"新建 {result['created']} 条")
+        if result["updated"]:
+            parts.append(f"更新 {result['updated']} 条")
+        message = "批量导入成功：" + "，".join(parts) if parts else "批量导入完成"
+
+        AuditLog.objects.create(
+            user=request.user,
+            module="凭证管理",
+            action="导入凭证",
+            ip=_resolve_client_ip(),
+            result="success",
+            detail=message,
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": message,
+                "created": result["created"],
+                "updated": result["updated"],
+                "total": result["total"],
+                "errors": [],
+            }
+        )
 
 
 class CredentialCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):

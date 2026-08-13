@@ -5,6 +5,13 @@ app_name = "credentials"
 
 urlpatterns = [
     path("", views.CredentialListView.as_view(), name="list"),
+    path("export/", views.CredentialExportView.as_view(), name="export"),
+    path(
+        "import/template/",
+        views.CredentialImportTemplateView.as_view(),
+        name="import_template",
+    ),
+    path("import/", views.CredentialImportAPIView.as_view(), name="import_api"),
     path("create/", views.CredentialCreateView.as_view(), name="create"),
     path("<int:pk>/edit/", views.CredentialUpdateView.as_view(), name="edit"),
     path("<int:pk>/delete/", views.CredentialDeleteView.as_view(), name="delete"),

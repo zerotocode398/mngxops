@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.db.models import Q
@@ -13,6 +15,7 @@ from .services import (
     _get_node_credential,
     apply_node_import,
     build_import_template_bytes,
+    build_node_export_bytes,
     create_or_restore_node,
     parse_node_import_workbook,
     run_batch_node_ssh_test,
@@ -22,11 +25,48 @@ from .services import (
     run_unlock_ssh_test,
     validate_node_import_rows,
 )
+from apps.audit.models import AuditLog
+from apps.audit.utils import _resolve_client_ip
 from apps.credentials.models import Credential
 from apps.releases.models import TaskCenterTask
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_setting
+
+
+def filter_node_list_queryset(queryset, request):
+    """按节点列表页相同条件筛选 queryset（搜索/组/环境/状态）。"""
+    search = request.GET.get("search", "").strip()
+    group_search = request.GET.get("group_search", "").strip()
+    env_filter = request.GET.get("environment", "").strip()
+    status_filter = request.GET.get("status", "").strip()
+
+    if search:
+        queryset = queryset.filter(
+            Q(hostname__icontains=search) | Q(ip__icontains=search)
+        )
+
+    if group_search:
+        tags = [
+            name.strip()
+            for name in group_search.replace("，", ",").split(",")
+            if name.strip()
+        ]
+        if tags:
+            for tag in tags:
+                queryset = queryset.filter(
+                    Q(groups__name__icontains=tag)
+                    | Q(hostname__icontains=tag)
+                    | Q(ip__icontains=tag)
+                )
+            queryset = queryset.distinct()
+
+    if env_filter:
+        queryset = queryset.filter(environment=env_filter)
+    if status_filter:
+        queryset = queryset.filter(status=status_filter)
+
+    return queryset
 
 
 # ========== 节点组视图（仅 Admin）==========
@@ -283,37 +323,7 @@ class NodeListView(
             .select_related("credential")
             .prefetch_related("groups")
         )
-        search = self.request.GET.get("search", "").strip()
-        group_search = self.request.GET.get("group_search", "").strip()
-        env_filter = self.request.GET.get("environment", "").strip()
-        status_filter = self.request.GET.get("status", "").strip()
-
-        if search:
-            queryset = queryset.filter(
-                Q(hostname__icontains=search) | Q(ip__icontains=search)
-            )
-
-        if group_search:
-            tags = [
-                name.strip()
-                for name in group_search.replace("，", ",").split(",")
-                if name.strip()
-            ]
-            if tags:
-                for tag in tags:
-                    queryset = queryset.filter(
-                        Q(groups__name__icontains=tag)
-                        | Q(hostname__icontains=tag)
-                        | Q(ip__icontains=tag)
-                    )
-                queryset = queryset.distinct()
-
-        if env_filter:
-            queryset = queryset.filter(environment=env_filter)
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-
-        return queryset
+        return filter_node_list_queryset(queryset, self.request)
 
     def get_context_data(self, **kwargs):
         """添加搜索条件、节点组、环境选项到模板上下文"""
@@ -334,7 +344,81 @@ class NodeListView(
             )
         except (TypeError, ValueError):
             context["batch_max_count"] = 3
+        params = self.request.GET.copy()
+        params.pop("page", None)
+        params.pop("per_page", None)
+        context["export_query"] = params.urlencode()
         return context
+
+
+class NodeExportView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """按勾选 ID 或当前筛选条件导出节点为 xlsx（表头对齐批量导入）"""
+
+    permission_resource = "nodes"
+    permission_action = "read"
+
+    def get(self, request):
+        """生成并下载节点导出文件；有 ids 仅导勾选，否则按筛选全量"""
+        ids = _parse_export_ids(request)
+        queryset = Node.objects.select_related(
+            "credential", "config_sync_setting"
+        ).prefetch_related("groups")
+        if ids:
+            # 勾选导出：仅导出指定 ID（保持勾选顺序）
+            id_order = {nid: idx for idx, nid in enumerate(ids)}
+            nodes = list(queryset.filter(id__in=ids))
+            nodes.sort(key=lambda n: id_order.get(n.id, 0))
+            scope_label = "勾选"
+        else:
+            queryset = filter_node_list_queryset(
+                queryset.order_by("-created_at"), request
+            )
+            nodes = list(queryset)
+            scope_label = "全量"
+
+        content = build_node_export_bytes(nodes)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"nodes_export_{stamp}.xlsx"
+
+        AuditLog.objects.create(
+            user=request.user,
+            module="节点管理",
+            action="导出节点",
+            ip=_resolve_client_ip(),
+            result="success",
+            detail=f"导出 {len(nodes)} 条（{scope_label}）",
+        )
+
+        response = HttpResponse(
+            content,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
+def _parse_export_ids(request):
+    """解析导出勾选 ID（ids=1,2,3 或重复 id=）；无效项忽略。"""
+    raw = (request.GET.get("ids") or "").strip()
+    if not raw:
+        raw = ",".join(request.GET.getlist("id") or [])
+    ids = []
+    seen = set()
+    for part in raw.replace("，", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            nid = int(part)
+        except (TypeError, ValueError):
+            continue
+        if nid in seen:
+            continue
+        seen.add(nid)
+        ids.append(nid)
+    return ids
 
 
 class NodeCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):

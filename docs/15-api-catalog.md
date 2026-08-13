@@ -31,6 +31,8 @@
 | 路径 | 说明 |
 |------|------|
 | `/credentials/` CRUD | 列表/创建/编辑/删除 |
+| `export/` | 勾选或筛选全量 xlsx 导出（含明文密码/私钥） |
+| `import/template/`、`import/` | Excel 模板与导入 **JSON** |
 | `<pk>/toggle-enable/` | 启用/禁用（启用触发异步测试） |
 | `<pk>/decrypt/` | **JSON** 解密展示 |
 | `<pk>/related-nodes/` | 关联节点 |
@@ -42,6 +44,7 @@
 | 路径 | 说明 |
 |------|------|
 | `/nodes/` CRUD、`batch-delete/` | 节点管理 |
+| `export/` | 勾选或筛选全量 xlsx 导出（表头对齐导入） |
 | `import/template/`、`import/` | Excel 模板与导入 **JSON** |
 | `lock/`、`test/`、`batch-test/` | 锁/SSH 测 |
 | `detail/`、`system-info/`、`nginx-version/` | 详情与异步采集 |

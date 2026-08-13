@@ -2,7 +2,7 @@
 
 ## 1. 模块目标与范围
 
-集中管理 SSH 密码/私钥凭证，加密存储；启用时对关联节点并发连通性测试；禁用时可将关联节点置离线。
+集中管理 SSH 密码/私钥凭证，加密存储；启用时对关联节点并发连通性测试；禁用时可将关联节点置离线；支持列表明文导出（Q158）。
 
 **不做**：凭证自动轮换、Vault 对接。
 
@@ -36,6 +36,8 @@
 | 路径 | 说明 |
 |------|------|
 | `/credentials/` CRUD | 列表/表单 |
+| `/credentials/export/` | 勾选或筛选全量 xlsx 导出（含明文） |
+| `import/template/`、`import/` | Excel 模板与导入 **JSON** |
 | `toggle-enable/` | 启用/禁用 |
 | `decrypt/` | 眼睛图标解密 **JSON** |
 | `related-nodes/` | 关联节点 |
@@ -67,10 +69,24 @@
 
 有权限用户请求 decrypt 接口获取明文用于表单回显（不落审计明文细节为佳）。
 
+### 5.5 Excel 导出
+
+1. 列表页「导出」（`credentials.read`）：有勾选仅导勾选；未勾选则确认后按筛选全量导出。  
+2. 勾选/全量导出均含明文密码或私钥；确认弹窗提示妥善保管。  
+3. 审计记「导出凭证」与条数/名称/勾选或全量，**不写**密码或私钥。
+
+### 5.6 Excel 导入
+
+1. 下载模板 `import/template/`；上传 `import/`（`credentials.create`）。  
+2. 表头与导出一致；整文件校验，失败整批不写。  
+3. 当前用户下同名则更新，否则新建；私钥经 paramiko 校验。  
+4. 审计记「导入凭证」摘要（新建/更新条数）。
+
 ## 6. 实现要点
 
 - 加密：[`utils/crypto.py`](../utils/crypto.py)。
 - 异步与进度：[`apps/credentials/views.py`](../apps/credentials/views.py)。
+- 导出/导入：[`apps/credentials/services.py`](../apps/credentials/services.py)。
 - 设置键：跨节点并发复用 `node.batch_max_count`（Q156）。
 
 ## 7. 前后端约定
@@ -96,7 +112,9 @@ nodes（FK credential）、task center、audit、settings。
 | Q68 | 表单与眼睛居中 |
 | Q97 | 无关联节点启用跳过测试任务 |
 | Q98 | 密钥认证切换修复 + 私钥文件导入 |
+| Q158 | 列表 xlsx 导出（明文密码/私钥 + 确认 + 审计不落密） |
+| Q159 | 导出勾选/全量确认；凭证批量导入 |
 
 ## 11. 待确认缺口
 
-无单独 Q。
+无单独 Q（导出/导入见 Q158/Q159）。

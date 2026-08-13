@@ -4,6 +4,7 @@ import ipaddress
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import timezone
 from openpyxl import Workbook, load_workbook
@@ -108,6 +109,13 @@ _ENV_ALIASES = {
     "production": "prod",
     "生产": "prod",
     "生产环境": "prod",
+}
+
+# 导出时写短中文，便于再导入
+_ENV_EXPORT_LABELS = {
+    "dev": "开发",
+    "test": "测试",
+    "prod": "生产",
 }
 
 
@@ -264,6 +272,44 @@ def create_or_restore_node(
     if groups:
         node.groups.set(groups)
     return node, False
+
+
+def build_node_export_bytes(nodes) -> bytes:
+    """按导入表头将节点列表导出为 xlsx 字节内容。"""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "节点导出"
+    ws.append(list(IMPORT_HEADERS))
+
+    for node in nodes:
+        group_names = "，".join(g.name for g in node.groups.all())
+        cred_name = ""
+        if node.credential_id and node.credential is not None:
+            cred_name = node.credential.name or ""
+        main_conf = ""
+        try:
+            setting = node.config_sync_setting
+        except ObjectDoesNotExist:
+            setting = None
+        if setting is not None:
+            main_conf = setting.main_conf_path or ""
+        ws.append(
+            [
+                node.hostname or "",
+                str(node.ip or ""),
+                node.port if node.port is not None else "",
+                _ENV_EXPORT_LABELS.get(node.environment, node.environment or ""),
+                node.nginx_path or "",
+                main_conf,
+                group_names,
+                cred_name,
+                node.description or "",
+            ]
+        )
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def build_import_template_bytes() -> bytes:

@@ -12,6 +12,13 @@
                 <div class="card-header node-list-header">
                     <h5 class="mb-0"><i class="bi bi-server"></i> 节点列表</h5>
                     <div class="node-list-actions">
+                        {% if user|has_perm_code:"nodes.read" %}
+                        <button type="button" class="btn btn-outline-secondary btn-sm me-2" id="nodeExportBtn"
+                            data-export-base="{% url 'nodes:export' %}"
+                            data-export-query="{{ export_query|default:'' }}">
+                            <i class="bi bi-download"></i> 批量导出
+                        </button>
+                        {% endif %}
                         {% if user|has_perm_code:"nodes.create" %}
                         <button type="button" class="btn btn-outline-primary btn-sm me-2" data-bs-toggle="modal" data-bs-target="#nodeBatchImportModal">
                             <i class="bi bi-upload"></i> 批量导入
@@ -473,6 +480,31 @@
 
         /* 初始化复选框逻辑 */
         initCheckboxLogic();
+
+        /* 导出：有勾选仅导勾选；未勾选则确认后按筛选全量导出 */
+        var nodeExportBtn = document.getElementById('nodeExportBtn');
+        if (nodeExportBtn) {
+            nodeExportBtn.addEventListener('click', function () {
+                var base = nodeExportBtn.getAttribute('data-export-base') || '';
+                var filterQuery = nodeExportBtn.getAttribute('data-export-query') || '';
+                var selectedIds = window.getSelectedNodeIds ? window.getSelectedNodeIds() : [];
+                if (selectedIds && selectedIds.length) {
+                    window.location.href = base + '?ids=' + selectedIds.join(',');
+                    return;
+                }
+                showConfirm(
+                    '确认全量导出',
+                    '将导出全量节点，是否继续？',
+                    function () {
+                        var url = base;
+                        if (filterQuery) {
+                            url += (url.indexOf('?') >= 0 ? '&' : '?') + filterQuery;
+                        }
+                        window.location.href = url;
+                    }
+                );
+            });
+        }
 
         /* 恢复显示 Nginx 版本 */
         document.querySelectorAll('.nginx-version-cell').forEach(function (cell) {

@@ -2,7 +2,7 @@
 
 ## 1. 模块目标与范围
 
-管理 Nginx 主机库存：CRUD、节点组、锁定、SSH 连通性测试、系统信息/Nginx 版本异步采集、Excel 批量导入、逻辑删除与同 IP 恢复。
+管理 Nginx 主机库存：CRUD、节点组、锁定、SSH 连通性测试、系统信息/Nginx 版本异步采集、Excel 批量导入/导出、逻辑删除与同 IP 恢复。
 
 **不做**：Agent 常驻采集、自动发现整网主机。
 
@@ -54,7 +54,7 @@
 ## 4. 页面与路由
 
 见 [15-api-catalog.md](15-api-catalog.md) 节点节。主模板：`nodes/list|create|edit|delete.html`、`group_*`。  
-列表：批量导入/删除文案（Q77）；**探测时间**列展示 `last_probe_at`（Q125）。
+列表：批量导入/删除文案（Q77）；**探测时间**列展示 `last_probe_at`（Q125）；导出 `GET /nodes/export/`（Q158）。
 
 ## 5. 用例 / 业务流程
 
@@ -96,7 +96,13 @@
 2. 上传整文件校验（openpyxl），失败则整单拒绝。  
 3. `apply_node_import`：同 IP 走恢复；默认环境/路径取系统设置（Q77）。
 
-### 5.7 节点组
+### 5.7 Excel 导出
+
+1. 列表页「导出」：`GET /nodes/export/`（`nodes.read`）。  
+2. 有勾选仅导勾选 ID；未勾选则确认后按当前筛选全量导出。  
+3. 表头与导入模板一致，便于回流；凭证列仅写凭证名称；审计记条数与勾选/全量。
+
+### 5.8 节点组
 
 CRUD；`manage-nodes` 维护组成员。
 
@@ -104,7 +110,7 @@ CRUD；`manage-nodes` 维护组成员。
 
 | 能力 | 锚点 |
 |------|------|
-| 导入/恢复 | `apps/nodes/services.py` |
+| 导入/恢复/导出 | `apps/nodes/services.py` |
 | SSH/采集 View | `apps/nodes/views.py` |
 | SSH 底层 | `utils/ssh.py` |
 | 设置 | `node.*`、`config.default_nginx_*` |
@@ -138,6 +144,8 @@ credentials、configs（同步路径）、releases、upgrade、task center、set
 | Q125 | 列表探测时间（上次探测成功） |
 | Q126 | 周期性自动 SSH 不做 |
 | Q150 | SSH/Nginx 双维度状态与门禁 |
+| Q158 | 列表 xlsx 导出（对齐导入表头） |
+| Q159 | 导出勾选/全量确认 |
 
 ## 11. 待确认缺口
 

@@ -11,6 +11,7 @@ urlpatterns = [
     ),
     path("api/groups/", views.NodeGroupListAPIView.as_view(), name="api_groups"),
     path("create/", views.NodeCreateView.as_view(), name="create"),
+    path("export/", views.NodeExportView.as_view(), name="export"),
     # 批量导入：模板下载 + 上传解析
     path(
         "import/template/",

@@ -86,19 +86,6 @@ class CredentialForm(forms.ModelForm):
 
     def _is_valid_private_key(self, key_str):
         """校验私钥是否为合法格式（RSA/DSA/ECDSA/Ed25519）"""
-        from io import StringIO
-        import paramiko
+        from .services import is_valid_private_key
 
-        key_types = [
-            paramiko.RSAKey,
-            paramiko.DSSKey,
-            paramiko.ECDSAKey,
-            paramiko.Ed25519Key,
-        ]
-        for key_type in key_types:
-            try:
-                key_type.from_private_key(StringIO(key_str))
-                return True
-            except Exception:
-                continue
-        return False
+        return is_valid_private_key(key_str)
