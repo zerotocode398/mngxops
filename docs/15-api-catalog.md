@@ -94,7 +94,10 @@
 |------|------|
 | `/nginx-service/` | 启停操作台页 |
 | `/nginx-service/history/` | 启停历史 |
+| `/nginx-service/task/<pk>/log/` | 启停任务详情 |
 | `api/execute/` | **JSON** 异步 start/stop/reload/restart |
+| `api/batch-progress/` | **JSON** 启停进度（`task_id` / `source_batch`） |
+| `api/task/<pk>/log/` | **JSON** 启停任务日志轮询 |
 
 ## 8c. Nginx 安装 `nginx-install`
 

@@ -6,10 +6,12 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import JsonResponse
-from django.views.generic import ListView, TemplateView, View
+from django.urls import reverse
+from django.views.generic import DetailView, ListView, TemplateView, View
 
 from apps.nodes.models import Node
 from apps.releases.models import TaskCenterTask
+from apps.releases.task_progress import _format_current_steps
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_recent_tasks_limit, get_setting
@@ -28,6 +30,57 @@ def _batch_max_count():
         return max(1, int(get_setting("node.batch_max_count", "3") or 3))
     except (TypeError, ValueError):
         return 3
+
+
+def _service_control_qs():
+    """仅 Nginx 启停类任务中心记录"""
+    return TaskCenterTask.objects.filter(operation_type="nginx_service_control")
+
+
+def _target_node_labels(task):
+    """将目标主机名与 IP 按下标配对为 hostname(ip) 列表"""
+    names = [x.strip() for x in (task.target_hostnames or "").split(",") if x.strip()]
+    ips = [x.strip() for x in (task.target_ips or "").split(",") if x.strip()]
+    n = max(len(names), len(ips))
+    labels = []
+    for i in range(n):
+        name = names[i] if i < len(names) else ""
+        ip = ips[i] if i < len(ips) else ""
+        if name and ip:
+            labels.append(f"{name}({ip})")
+        elif name or ip:
+            labels.append(name or ip)
+    return labels
+
+
+def _log_display_text(task):
+    """详情页日志：优先流水 log_output，历史任务回退结果树"""
+    text = (task.log_output or "").strip()
+    if text:
+        return text
+    return (task.result or "").strip()
+
+
+def _service_progress_dict(task):
+    """序列化启停任务进度与详情页链接"""
+    finished = task.status in ("success", "failed", "cancelled")
+    action = (task.target_configs or "").strip()
+    return {
+        "id": task.id,
+        "task_center_id": task.id,
+        "status": task.status,
+        "status_display": task.get_status_display(),
+        "progress": task.progress or 0,
+        "detail": task.detail or "",
+        "result": task.result or "",
+        "log_output": _log_display_text(task),
+        "current_steps": "" if finished else _format_current_steps(task.id),
+        "log_url": reverse("nginx_service:task_log", kwargs={"pk": task.id}),
+        "source_batch": task.source_batch or "",
+        "action": action,
+        "action_label": ACTION_LABELS.get(action, action or "-"),
+        "finished": finished,
+    }
 
 
 class NginxServiceIndexView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
@@ -210,3 +263,67 @@ class NginxServiceExecuteAPIView(LoginRequiredMixin, View):
                 "skipped": rejected,
             }
         )
+
+
+class NginxServiceTaskLogView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    """启停任务详情与完整执行日志页"""
+
+    model = TaskCenterTask
+    template_name = "nginx_service/task_log.html"
+    context_object_name = "task"
+    permission_resource = "nginx_service"
+    permission_action = "read"
+
+    def get_queryset(self):
+        """限定启停任务并预加载操作人"""
+        return _service_control_qs().select_related("trigger_user")
+
+    def get_context_data(self, **kwargs):
+        """注入动作标签、目标节点列表与日志展示文本"""
+        context = super().get_context_data(**kwargs)
+        action = (self.object.target_configs or "").strip()
+        context["action_label"] = ACTION_LABELS.get(action, action or "-")
+        context["log_output_display"] = _log_display_text(self.object)
+        context["target_node_labels"] = _target_node_labels(self.object)
+        return context
+
+
+class NginxServiceTaskLogAPIView(LoginRequiredMixin, View):
+    """返回单条启停任务日志（供详情页轮询）"""
+
+    def get(self, request, pk):
+        """读取启停任务状态与日志"""
+        if not user_has_permission(request.user, "nginx_service", "read"):
+            return JsonResponse({"success": False, "message": "无权限"}, status=403)
+        try:
+            task = _service_control_qs().get(pk=pk)
+        except TaskCenterTask.DoesNotExist:
+            return JsonResponse({"success": False, "message": "任务不存在"}, status=404)
+        payload = _service_progress_dict(task)
+        payload["success"] = True
+        return JsonResponse(payload)
+
+
+class NginxServiceBatchProgressAPIView(LoginRequiredMixin, View):
+    """按任务 id 或批次号返回启停执行进度"""
+
+    def get(self, request):
+        """读取进行中或已完成的启停任务进度"""
+        if not user_has_permission(request.user, "nginx_service", "read"):
+            return JsonResponse({"success": False, "message": "无权限"}, status=403)
+        task_id = (request.GET.get("task_id") or "").strip()
+        batch = (request.GET.get("source_batch") or "").strip()
+        qs = _service_control_qs()
+        task = None
+        if task_id:
+            try:
+                task = qs.get(pk=int(task_id))
+            except (TypeError, ValueError, TaskCenterTask.DoesNotExist):
+                task = None
+        elif batch:
+            task = qs.filter(source_batch=batch).order_by("-id").first()
+        if not task:
+            return JsonResponse({"success": False, "message": "任务不存在"}, status=404)
+        payload = _service_progress_dict(task)
+        payload["success"] = True
+        return JsonResponse(payload)

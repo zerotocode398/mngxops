@@ -34,6 +34,7 @@ class NginxServiceExecuteTests(TestCase):
             hostname="ngx-1",
             ip="10.0.0.11",
             status="online",
+            nginx_available=True,
             credential=self.cred,
             created_by=self.user,
         )
@@ -154,3 +155,68 @@ class NginxServiceExecuteTests(TestCase):
         tasks = list(resp.context["tasks"])
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0].source_batch, "OP-260807-0009")
+
+    def _make_service_task(self, **kwargs):
+        """创建一条启停 TaskCenter 记录"""
+        defaults = {
+            "operation_type": "nginx_service_control",
+            "status": "success",
+            "target_configs": "reload",
+            "target_hostnames": "ngx-1",
+            "target_ips": "10.0.0.11",
+            "source_batch": "OP-260814-0001",
+            "trigger_user": self.user,
+            "log_output": "[12:00:00] ngx-1 Nginx 重载 成功",
+        }
+        defaults.update(kwargs)
+        return TaskCenterTask.objects.create(**defaults)
+
+    def test_task_log_page_ok(self):
+        """启停任务详情页可访问"""
+        task = self._make_service_task()
+        resp = self.client.get(reverse("nginx_service:task_log", args=[task.id]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "启停任务详情")
+        self.assertContains(resp, "ngx-1 Nginx 重载 成功")
+
+    def test_task_log_rejects_other_type(self):
+        """非启停任务访问详情页 404"""
+        other = TaskCenterTask.objects.create(
+            operation_type="nginx_upgrade",
+            status="success",
+            trigger_user=self.user,
+        )
+        resp = self.client.get(reverse("nginx_service:task_log", args=[other.id]))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_batch_progress_includes_log_url(self):
+        """进度 API 返回 log_url 指向启停详情"""
+        task = self._make_service_task()
+        resp = self.client.get(
+            reverse("nginx_service:api_batch_progress"),
+            {"task_id": task.id},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertTrue(payload.get("success"))
+        self.assertEqual(
+            payload.get("log_url"),
+            reverse("nginx_service:task_log", args=[task.id]),
+        )
+
+    def test_task_log_api_forbidden_without_perm(self):
+        """无启停读权限时进度接口 403"""
+        task = self._make_service_task()
+        user_model = get_user_model()
+        other = user_model.objects.create_user(
+            username="noperm",
+            email="noperm@example.com",
+            password="pass1234",
+        )
+        self.client.force_login(other)
+        resp = self.client.get(
+            reverse("nginx_service:api_task_log", args=[task.id]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(resp.status_code, 403)

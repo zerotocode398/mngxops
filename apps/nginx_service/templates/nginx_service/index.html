@@ -28,6 +28,17 @@
     .node-chip .chip-x:hover { opacity: 1; }
     .action-hint { color: var(--gray-600, #6c757d); font-size: var(--fs-sm, 0.78rem); }
     tr.disabled-row { opacity: 0.55; }
+    .progress-placeholder { color: var(--gray-600); font-size: var(--fs-base); padding: 1.5rem 0.5rem; text-align: center; }
+    .node-progress-block { border: 1px solid var(--gray-200); border-radius: var(--br-md); margin-bottom: 0.75rem; overflow: hidden; }
+    .node-progress-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 12px; background: var(--gray-100); cursor: pointer; font-size: var(--fs-base);
+    }
+    .node-progress-body { padding: 8px 12px; border-top: 1px solid var(--gray-200); }
+    .service-step { display: flex; align-items: center; padding: 6px 10px; border-radius: var(--br-md); margin-bottom: 4px; font-family: var(--font-mono); font-size: var(--fs-sm); }
+    .service-step.success { background: #f0fff4; color: #155724; }
+    .service-step.running { background: #fff8e1; color: #856404; }
+    .service-step.failed { background: #fff5f5; color: #721c24; }
 </style>
 {% endblock %}
 
@@ -39,6 +50,8 @@
         </a>
     </div>
 
+    <div class="row">
+    <div class="col-md-7">
     <div class="card mb-3">
         <div class="card-header"><i class="bi bi-server"></i> 目标节点</div>
         <div class="card-body">
@@ -96,8 +109,33 @@
             </ul>
         </div>
     </div>
+    </div><!-- /.col-md-7 -->
 
-    <div class="card">
+    <div class="col-md-5">
+        <div class="card sticky-top" style="top: 20px;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 启停执行进度</h5>
+                <span id="progressPercent" class="badge bg-secondary d-none">0%</span>
+            </div>
+            <div class="card-body">
+                <div id="progressPlaceholder" class="progress-placeholder">
+                    <i class="bi bi-hourglass" style="font-size: 1.75rem;"></i>
+                    <p class="mt-2 mb-0">执行后在此查看进度</p>
+                </div>
+                <div id="progressLive" class="d-none">
+                    <div class="mb-2 small" id="batchNumberLabel"></div>
+                    <div class="progress mb-3" style="height: 8px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%"></div>
+                    </div>
+                    <p class="small text-muted mb-2" id="progressDetail"></p>
+                    <div id="serviceSteps"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div><!-- /.row -->
+
+    <div class="card mt-3">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="bi bi-list-task"></i> 最近启停任务</h5>
             <a href="{% url 'nginx_service:history' %}" class="btn btn-outline-secondary btn-sm">
@@ -157,9 +195,9 @@
                             <td>{{ task.trigger_user.username|default:"-" }}</td>
                             <td><small>{{ task.created_at|date:"m-d H:i" }}</small></td>
                             <td>
-                                <a class="btn btn-outline-secondary btn-sm" title="任务详情"
-                                   href="{% url 'releases:task_center_detail' task.id %}" target="_blank">
-                                    <i class="bi bi-eye"></i>
+                                <a class="btn btn-outline-info btn-sm" title="查看详情"
+                                   href="{% url 'nginx_service:task_log' task.id %}" target="_blank">
+                                    <i class="bi bi-file-text"></i>
                                 </a>
                             </td>
                         </tr>
@@ -236,11 +274,14 @@
     var CAN_EXECUTE = {{ can_execute|yesno:"true,false" }};
     var EXECUTE_URL = '{% url "nginx_service:api_execute" %}';
     var SEARCH_URL = '{% url "nodes:api_search_nodes" %}';
+    var PROGRESS_URL = '{% url "nginx_service:api_batch_progress" %}';
+    var POLL_MS = {{ sys_poll_interval_ms|default:2000 }};
 
     var selected = {};
     var draft = {};
     var lastSearchNodes = [];
     var searchTimer = null;
+    var progressTimer = null;
 
     function csrfToken() {
         var m = document.cookie.match(/csrftoken=([^;]+)/);
@@ -489,9 +530,6 @@
             msg += '<p class="text-danger small mb-0"><i class="bi bi-exclamation-triangle"></i> 可能导致业务流量中断，请确认窗口期。</p>';
         }
         showConfirm('确认' + labels[action] + ' Nginx', msg, function () {
-            if (typeof showAsyncProgressOverlay === 'function') {
-                showAsyncProgressOverlay('Nginx ' + labels[action]);
-            }
             fetch(EXECUTE_URL, {
                 method: 'POST',
                 headers: {
@@ -507,29 +545,173 @@
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (!result.success) {
-                        if (typeof closeAsyncProgressOverlay === 'function') {
-                            closeAsyncProgressOverlay();
-                        }
                         showAlert('执行失败', result.message || '操作失败');
                         return;
                     }
-                    if (result.async && result.task_center_id && typeof startAsyncProgressPolling === 'function') {
-                        startAsyncProgressPolling(result.task_center_id);
+                    if (result.async && result.task_center_id) {
+                        startServicePoll(result.task_center_id, result.source_batch);
                     } else {
-                        if (typeof closeAsyncProgressOverlay === 'function') {
-                            closeAsyncProgressOverlay();
-                        }
                         showAlert('已提交', result.message || '任务已创建');
                     }
                 })
                 .catch(function () {
-                    if (typeof closeAsyncProgressOverlay === 'function') {
-                        closeAsyncProgressOverlay();
-                    }
                     showAlert('执行失败', '网络错误');
                 });
         }, true, risky ? 'md' : 'sm');
     };
+
+    window.toggleNodeProgress = function (headerEl) {
+        var body = headerEl.parentElement.querySelector('.node-progress-body');
+        if (body) body.classList.toggle('d-none');
+    };
+
+    /** 解析结果树为按节点分组的进度块数据 */
+    function parseResultTree(resultText, currentSteps) {
+        var groups = [];
+        var current = null;
+        String(resultText || '').split('\n').forEach(function (line) {
+            var trimmed = line.trim();
+            if (!trimmed) return;
+            if (trimmed.indexOf('[节点] ') === 0) {
+                if (current) groups.push(current);
+                current = { name: trimmed.replace('[节点] ', ''), items: [] };
+            } else if (current && trimmed.indexOf('[进行中]') === 0) {
+                current.items.push({ name: trimmed.replace('[进行中]', '').trim(), status: 'running' });
+            } else if (current && trimmed.indexOf('[成功]') === 0) {
+                current.items.push({ name: trimmed.replace('[成功]', '').trim(), status: 'success' });
+            } else if (current && trimmed.indexOf('[失败]') === 0) {
+                var fname = trimmed.replace('[失败]', '').replace(/\s*-.*$/, '').trim();
+                current.items.push({ name: fname, status: 'failed' });
+            }
+        });
+        if (current) groups.push(current);
+        String(currentSteps || '').split('\n').forEach(function (line) {
+            var t = line.trim();
+            if (!t) return;
+            var parts = t.split(' · ');
+            var host = parts[0];
+            var step = parts.slice(1).join(' · ') || '执行中';
+            var found = null;
+            groups.forEach(function (g) {
+                if (g.name.indexOf(host) >= 0) found = g;
+            });
+            if (found) {
+                var hasRunning = found.items.some(function (i) { return i.status === 'running'; });
+                if (!hasRunning) found.items.push({ name: step, status: 'running' });
+            } else {
+                groups.push({ name: host, items: [{ name: step, status: 'running' }] });
+            }
+        });
+        return groups;
+    }
+
+    /** 渲染右栏节点进度块 */
+    function renderServiceProgress(data) {
+        var container = document.getElementById('serviceSteps');
+        var expanded = [];
+        container.querySelectorAll('.node-progress-block').forEach(function (block) {
+            var body = block.querySelector('.node-progress-body');
+            if (body && !body.classList.contains('d-none')) {
+                expanded.push(block.getAttribute('data-node-key') || '');
+            }
+        });
+        var hadBlocks = container.querySelectorAll('.node-progress-block').length > 0;
+        var groups = parseResultTree(data.result, data.finished ? '' : data.current_steps);
+        var logUrl = data.log_url || '';
+        var html = '';
+        groups.forEach(function (g, idx) {
+            var key = g.name;
+            var open;
+            if (!hadBlocks) open = idx === 0 ? '' : ' d-none';
+            else open = expanded.indexOf(key) >= 0 ? '' : ' d-none';
+            var allDone = g.items.length && g.items.every(function (c) { return c.status !== 'running'; });
+            var status = !allDone ? 'running'
+                : (g.items.every(function (c) { return c.status === 'success'; }) ? 'success' : 'failed');
+            var badgeCls = status === 'success' ? 'bg-success' : (status === 'failed' ? 'bg-danger' : 'bg-primary');
+            var badgeText = status === 'success' ? '成功' : (status === 'failed' ? '失败' : '执行中');
+            html += '<div class="node-progress-block" data-node-key="' + escapeHtml(key) + '">' +
+                '<div class="node-progress-header" onclick="toggleNodeProgress(this)">' +
+                '<span>' + escapeHtml(g.name) + '</span>' +
+                '<span><span class="badge ' + badgeCls + '">' + badgeText +
+                '</span> <i class="bi bi-chevron-down"></i></span></div>' +
+                '<div class="node-progress-body' + open + '">';
+            g.items.forEach(function (c) {
+                var icon = c.status === 'success'
+                    ? '<i class="bi bi-check-circle-fill me-1"></i>'
+                    : (c.status === 'running'
+                        ? '<i class="bi bi-arrow-repeat me-1"></i>'
+                        : '<i class="bi bi-x-circle-fill me-1"></i>');
+                html += '<div class="service-step ' + c.status + '">' + icon + escapeHtml(c.name) + '</div>';
+            });
+            if (logUrl) {
+                html += '<a class="small" href="' + escapeHtml(logUrl) + '" target="_blank" rel="noopener">查看完整日志</a>';
+            }
+            html += '</div></div>';
+        });
+        if (!html) {
+            html = '<div class="text-muted small">等待进度...</div>';
+            if (logUrl) {
+                html += '<a class="small" href="' + escapeHtml(logUrl) + '" target="_blank" rel="noopener">查看完整日志</a>';
+            }
+        }
+        container.innerHTML = html;
+    }
+
+    /** 展示右栏进度并轮询启停任务 */
+    function startServicePoll(taskId, batch) {
+        if (progressTimer) {
+            clearInterval(progressTimer);
+            progressTimer = null;
+        }
+        document.getElementById('progressPlaceholder').classList.add('d-none');
+        document.getElementById('progressLive').classList.remove('d-none');
+        document.getElementById('batchNumberLabel').textContent = batch ? ('批次 ' + batch) : '';
+        var pct = document.getElementById('progressPercent');
+        var bar = document.getElementById('progressBar');
+        pct.classList.remove('d-none');
+        pct.className = 'badge bg-primary';
+        bar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+        bar.style.width = '0%';
+        pct.textContent = '0%';
+        document.getElementById('progressDetail').textContent = '任务已创建，等待执行...';
+        document.getElementById('serviceSteps').innerHTML = '';
+
+        function apply(data) {
+            var progress = data.progress || 0;
+            bar.style.width = progress + '%';
+            pct.textContent = progress + '%';
+            document.getElementById('progressDetail').textContent = data.detail || '';
+            renderServiceProgress(data);
+            if (data.finished) {
+                bar.classList.remove('progress-bar-animated');
+                if (data.status === 'success') {
+                    bar.classList.add('bg-success');
+                    pct.className = 'badge bg-success';
+                } else {
+                    bar.classList.add('bg-warning');
+                    pct.className = 'badge bg-warning text-dark';
+                }
+                if (progressTimer) {
+                    clearInterval(progressTimer);
+                    progressTimer = null;
+                }
+            }
+        }
+
+        function tick() {
+            fetch(PROGRESS_URL + '?task_id=' + encodeURIComponent(taskId), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data || !data.success) return;
+                    apply(data);
+                })
+                .catch(function () { /* 静默重试 */ });
+        }
+        tick();
+        progressTimer = setInterval(tick, POLL_MS);
+    }
 
     document.getElementById('selectNodeModal').addEventListener('show.bs.modal', function () {
         draft = Object.assign({}, selected);

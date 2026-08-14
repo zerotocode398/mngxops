@@ -7,7 +7,11 @@ from django.utils import timezone
 from apps.nodes.models import Node
 from apps.releases.models import TaskCenterTask
 from apps.releases.task_cancel import finish_if_active, is_cancelled, update_if_active
-from apps.releases.task_progress import _clear_release_progress_state, _set_current_step
+from apps.releases.task_progress import (
+    _append_task_center_log,
+    _clear_release_progress_state,
+    _set_current_step,
+)
 from apps.releases.task_result import (
     build_tree_result,
     item_failed,
@@ -58,6 +62,22 @@ def _auth_kwargs(credential):
     return {"private_key": credential.get_private_key()}
 
 
+def _append_node_log(task_id, hostname, msg):
+    """向启停任务日志追加带时间与主机名的一行"""
+    stamp = timezone.now().strftime("%H:%M:%S")
+    _append_task_center_log(task_id, f"[{stamp}] {hostname} {msg}")
+
+
+def _ops_log_fn(task_id, hostname):
+    """构造 nginx_ops 过程日志回调，写入同一任务流水"""
+
+    def _log(msg):
+        if msg:
+            _append_node_log(task_id, hostname, msg)
+
+    return _log
+
+
 def _run_nginx_service_task(task_id, node_ids, action):
     """后台串行逐节点执行启停，刷活进度步骤与结果树"""
     action_label, action_fn = _ACTION_MAP[action]
@@ -93,24 +113,38 @@ def _run_nginx_service_task(task_id, node_ids, action):
                 if not cred or not cred.is_enabled:
                     fail_count += 1
                     node_blocks.append(item_failed(item_label, "凭证不可用"))
+                    _append_node_log(task_id, hostname, f"{item_label} 失败：凭证不可用")
                 else:
+                    nginx_path = (node.nginx_path or "").strip() or "PATH 中的 nginx"
+                    _append_node_log(
+                        task_id,
+                        hostname,
+                        f"SSH {cred.username}@{node.ip}:{node.port}  nginx_path={nginx_path}",
+                    )
                     ok, msg = action_fn(
                         node.ip,
                         node.port,
                         cred.username,
                         nginx_path=node.nginx_path or None,
+                        log_fn=_ops_log_fn(task_id, hostname),
                         **_auth_kwargs(cred),
                     )
                     if ok:
                         success_count += 1
                         node_blocks.append(item_success(item_label))
+                        extra = f"：{msg}" if msg else ""
+                        _append_node_log(task_id, hostname, f"{item_label} 成功{extra}")
                     else:
                         fail_count += 1
                         node_blocks.append(item_failed(item_label, msg or "执行失败"))
+                        _append_node_log(
+                            task_id, hostname, f"{item_label} 失败：{msg or '执行失败'}"
+                        )
             except Exception as exc:
                 logger.exception("Nginx %s 失败 node=%s", action, node.id)
                 fail_count += 1
                 node_blocks.append(item_failed(item_label, str(exc)))
+                _append_node_log(task_id, hostname, f"{item_label} 失败：{exc}")
 
             done += 1
             _set_current_step(task_id, hostname, None)

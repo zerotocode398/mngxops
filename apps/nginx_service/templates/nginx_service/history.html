@@ -109,10 +109,10 @@
                         <td>{{ task.trigger_user.username|default:"-" }}</td>
                         <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
                         <td>
-                            <a class="btn btn-outline-secondary btn-sm"
-                               href="{% url 'releases:task_center_detail' task.id %}"
+                            <a class="btn btn-outline-info btn-sm"
+                               href="{% url 'nginx_service:task_log' task.id %}"
                                target="_blank" title="查看详情">
-                                <i class="bi bi-eye"></i>
+                                <i class="bi bi-file-text"></i>
                             </a>
                         </td>
                     </tr>

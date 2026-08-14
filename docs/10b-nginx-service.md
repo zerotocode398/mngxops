@@ -4,7 +4,7 @@
 
 运维工具下与「Nginx 升级」同级的独立启停页：对已选在线节点执行 `start` / `stop` / `reload` / `restart`。
 
-底层复用 [`utils/nginx_ops.py`](../utils/nginx_ops.py)（systemctl 或二进制），经 TaskCenter 异步执行与进度遮罩反馈。
+底层复用 [`utils/nginx_ops.py`](../utils/nginx_ops.py)（systemctl 或二进制），经 TaskCenter 异步执行；操作台右栏展示「启停执行进度」，完整日志进入模块内「启停任务详情」。
 
 **不做**：Nginx 进程态常驻采集、节点列表行内启停按钮。
 
@@ -21,11 +21,14 @@
 
 | 路径 | 说明 |
 |------|------|
-| `/nginx-service/` | 启停操作台 + 最近启停任务 |
+| `/nginx-service/` | 启停操作台 + 右栏执行进度 + 最近启停任务 |
 | `/nginx-service/history/` | 启停历史 |
+| `/nginx-service/task/<pk>/log/` | 启停任务详情（完整执行日志） |
 | `POST /nginx-service/api/execute/` | 创建异步任务 |
+| `GET /nginx-service/api/batch-progress/` | 按 `task_id` / `source_batch` 轮询进度（含 `log_url`） |
+| `GET /nginx-service/api/task/<pk>/log/` | 详情页日志轮询 |
 
-模板：`nginx_service/index.html`、`history.html`。侧栏：运维工具 → Nginx 启停。
+模板：`nginx_service/index.html`、`history.html`、`task_log.html`。侧栏：运维工具 → Nginx 启停。
 
 最近任务条数复用 `dashboard.recent_tasks_count`（与升级/安装首页一致）。
 
@@ -33,8 +36,8 @@
 
 1. 弹窗多选节点（`/nodes/api/search-nodes/`）：仅 online + 有凭证 + `nginx_available=True` 可勾（Q150）；上限 `node.batch_max_count`。  
 2. 选择动作并确认（stop/restart 强提示；reload 说明平滑重载 ≠ 重启）。  
-3. API 校验门禁后创建 `TaskCenterTask(operation_type=nginx_service_control)`，写入来源批次 `OP-YYMMDD-NNNN`（当日自增），后台逐节点调用 `start_nginx`/`stop_nginx`/`reload_nginx`/`restart_nginx`。  
-4. 前端 `#asyncProgressOverlay` 轮询；结果树写入任务中心。  
+3. API 校验门禁后创建 `TaskCenterTask(operation_type=nginx_service_control)`，写入来源批次 `OP-YYMMDD-NNNN`（当日自增），后台逐节点调用 `start_nginx`/`stop_nginx`/`reload_nginx`/`restart_nginx`，并追加 `log_output`。  
+4. 前端右栏「启停执行进度」轮询 `api/batch-progress/`；「查看完整日志」打开 `/nginx-service/task/<id>/log/`。结果树仍写入任务中心。  
 5. **不**因 stop 将节点 `status` 标 offline。
 
 ## 5. 批次号与历史
@@ -57,4 +60,4 @@
 
 ## 8. 关联结论
 
-- Q131 / Q135 / Q137 / Q145（见 [`AGENTS.md`](../AGENTS.md)）
+- Q131 / Q135 / Q137 / Q145 / Q160（见 [`AGENTS.md`](../AGENTS.md)）
