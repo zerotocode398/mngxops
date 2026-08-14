@@ -85,7 +85,7 @@ Django `User`：`username` 限 `[-a-zA-Z0-9_]+`；中文放姓名字段（Q82）
 
 ## 7. 前后端约定
 
-- 页面无权：回首页 + 全局 `showAlert`（Q116）；AJAX 无权仍返回 JSON 403。
+- 页面无权：全局 `showAlert`（Q116）；同源 Referer 回跳来源页，否则留在当前 URL 渲染 403；AJAX 无权仍返回 JSON 403。
 - 侧栏「用户管理/角色/用户组」分别受权限控制；首页快捷入口/统计卡跳转亦按权限收口。
 
 ## 8. 异常与边界
@@ -105,7 +105,7 @@ accounts、audit、全业务 View 鉴权。
 | Q78 | 新增按钮 btn-sm |
 | Q82 | 路由改 pk、禁中文用户名 |
 | Q83 | 用户可选所属用户组 |
-| Q116 | 无权访问回首页 + showAlert |
+| Q116 | 无权 showAlert；回跳来源或留当前 URL |
 | Q117 | 权限矩阵勾选与 PermissionItem 启动 seed |
 | Q157 | Nginx 安装/启停/卸载独立权限；编辑用户侧栏 `user` 覆盖修复；矩阵资源列文案 |
 

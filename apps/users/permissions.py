@@ -1,5 +1,8 @@
+from urllib.parse import urlparse
+
 from django.http import JsonResponse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from .perm_defs import permission_code, all_permission_items
 from .models import UserProfile, UserGroup
@@ -30,14 +33,33 @@ def _normalize_forbidden_alert(message):
     return PERM_DENIED_TITLE, text
 
 
+def _safe_same_origin_referer(request):
+    """返回可回跳的同源 Referer；与当前无权 URL 相同则视为无效。"""
+    referer = request.META.get("HTTP_REFERER") or ""
+    if not referer:
+        return ""
+    if not url_has_allowed_host_and_scheme(
+        referer,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return ""
+    if urlparse(referer).path == request.path:
+        return ""
+    return referer
+
+
 def forbidden_response(request, message=None):
-    """无权访问：AJAX 返回 JSON；页面请求回首页并由前端 showAlert 提示"""
+    """无权访问：AJAX 返回 JSON；页面请求回跳来源或留在当前 URL 并 showAlert。"""
     title, body = _normalize_forbidden_alert(message)
     if is_ajax_request(request):
         return JsonResponse({"success": False, "message": body}, status=403)
 
     request.session[SESSION_PERM_DENIED_KEY] = {"title": title, "message": body}
-    return redirect("dashboard:index")
+    back_url = _safe_same_origin_referer(request)
+    if back_url:
+        return redirect(back_url)
+    return render(request, "403.html", status=403)
 
 
 def _get_user_role_ids(user):

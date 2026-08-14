@@ -104,7 +104,7 @@
 
 ### 5.8 节点组
 
-CRUD；`manage-nodes` 维护组成员。
+CRUD；`manage-nodes` 维护组成员。列表按钮与 `nodes.*` 对齐：新增=`create`，管理节点/编辑=`update`，删除=`delete`；仅 `read`/`create` 时操作列为空。
 
 ## 6. 实现要点
 
