@@ -281,6 +281,7 @@ mkdir -p "$MNGXOPS_HOME"
 - `.fernet_key` / `db.sqlite3` **不用事先准备**，`migrate` / 首次写密钥时会生成
 - 启动后终端输出 **HTTP 访问日志**（类似 Apache combined）
 - 启动别名：`run` / `runserver`（不是 `serve` / `server`）
+- 冻结默认 `DEBUG=False`：进程内托管 `/static/` 与 `/media/`，首次启动不必执行 `collectstatic` 也能加载站点图标（`/static/favicon.png`）
 
 ```text
 # Windows 示例（空目录）

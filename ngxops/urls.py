@@ -15,11 +15,14 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+import re
+
 from django.contrib import admin
+from django.contrib.staticfiles.views import serve as staticfiles_serve
 from django.http import FileResponse, Http404
-from django.urls import path, include
+from django.urls import include, path, re_path
 from django.conf import settings
-from django.conf.urls.static import static
+from django.views.static import serve as media_serve
 
 from ngxops.runtime_paths import resource_dir
 
@@ -50,5 +53,25 @@ urlpatterns = [
     path("settings/", include("apps.settings.urls")),
 ]
 
-# 单机交付无独立静态服务器时始终挂载 media（含冻结包 DEBUG=False）
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+def _mount_delivery_files():
+    """DEBUG=False 时由进程托管 /static/ 与 /media/（Waitress 无 StaticFilesHandler）。"""
+    static_prefix = settings.STATIC_URL.lstrip("/")
+    media_prefix = settings.MEDIA_URL.lstrip("/")
+    return [
+        re_path(
+            r"^%s(?P<path>.*)$" % re.escape(static_prefix),
+            staticfiles_serve,
+            {"insecure": True},
+        ),
+        re_path(
+            r"^%s(?P<path>.*)$" % re.escape(media_prefix),
+            media_serve,
+            {"document_root": str(settings.MEDIA_ROOT)},
+        ),
+    ]
+
+
+# django.conf.urls.static.static() 在 DEBUG=False 时返回空列表，不可用于冻结包
+if not settings.DEBUG:
+    urlpatterns += _mount_delivery_files()

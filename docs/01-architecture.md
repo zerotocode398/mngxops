@@ -129,7 +129,8 @@ sequenceDiagram
 ## 10. 静态与上传
 
 - `MEDIA`：源码包 `nginx_packages/`、用户头像 `avatar/` 等。
-- DEBUG 下由 Django 托管 media URL。
+- 源码 `DEBUG=True`：`manage.py runserver` 托管 `/static/` 与 `/media/`。
+- 二进制默认 `DEBUG=False`：Waitress 无 StaticFilesHandler；由 `urls.py` 用 staticfiles finder（`insecure=True`）托管 `/static/`，并用 `django.views.static.serve` 托管 `/media/`。首次启动不必 `collectstatic` 即可访问站点图标等打包资源。
 
 ## 11. 架构约束（实现即需求）
 
