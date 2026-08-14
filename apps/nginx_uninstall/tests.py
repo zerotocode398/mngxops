@@ -11,10 +11,13 @@ from apps.nginx_uninstall.services import (
     coalesce_delete_targets,
     create_uninstall_batch_from_data,
     derive_prefix_from_nginx_path,
+    detect_nginx_package_origin,
     extract_path_entries_from_nginx_v,
     is_dangerous_path,
     is_file_like_path,
+    is_shallow_prefix,
     is_under_path,
+    is_valid_package_name,
     normalize_remote_path,
     preview_nodes,
     resolve_nginx_tree_path,
@@ -40,6 +43,23 @@ class PathSafetyTests(SimpleTestCase):
         """正常 prefix 允许"""
         self.assertFalse(is_dangerous_path("/opt/app"))
         self.assertFalse(is_dangerous_path("/usr/local/nginx"))
+        self.assertFalse(is_dangerous_path("/data"))
+
+    def test_shallow_prefix(self):
+        """非系统根一级目录视为浅路径"""
+        self.assertTrue(is_shallow_prefix("/data"))
+        self.assertTrue(is_shallow_prefix("/app"))
+        self.assertFalse(is_shallow_prefix("/opt"))
+        self.assertFalse(is_shallow_prefix("/opt/app"))
+        self.assertFalse(is_shallow_prefix("/"))
+
+    def test_valid_package_name(self):
+        """合法包名与中文 rpm 报错句"""
+        self.assertTrue(is_valid_package_name("nginx"))
+        self.assertTrue(is_valid_package_name("nginx-core"))
+        self.assertFalse(is_valid_package_name("文件 /home/x 不属于任何软件包"))
+        self.assertFalse(is_valid_package_name("file is not owned by any package"))
+        self.assertFalse(is_valid_package_name(""))
 
     def test_derive_prefix_from_sbin(self):
         """由 sbin/nginx 推导 prefix"""
@@ -47,6 +67,67 @@ class PathSafetyTests(SimpleTestCase):
             derive_prefix_from_nginx_path("/opt/app/sbin/nginx"),
             "/opt/app",
         )
+
+
+class _FakeSSH:
+    """按命令片段返回 (ok, out) 的探测替身"""
+
+    def __init__(self, mapping):
+        self.mapping = mapping
+
+    def execute_command(self, cmd):
+        """按子串匹配返回探测结果"""
+        for key, value in self.mapping.items():
+            if key in cmd:
+                return value
+        return False, ""
+
+
+class DetectPackageOriginTests(SimpleTestCase):
+    """rpm/dpkg 包归属判定"""
+
+    def test_chinese_not_owned_is_source(self):
+        """中文不属于任何软件包视为源码安装"""
+        ssh = _FakeSSH({
+            "rpm -qf": (
+                True,
+                "文件 /home/umpay/ums/nginx/sbin/nginx 不属于任何软件包",
+            ),
+            "dpkg -S": (False, ""),
+        })
+        info = detect_nginx_package_origin(ssh, "/home/umpay/ums/nginx/sbin/nginx")
+        self.assertEqual(info["origin"], "source")
+        self.assertEqual(info["package"], "")
+
+    def test_english_not_owned_is_source(self):
+        """英文 not owned 视为源码安装"""
+        ssh = _FakeSSH({
+            "rpm -qf": (False, "file /usr/sbin/nginx is not owned by any package"),
+            "dpkg -S": (False, ""),
+        })
+        info = detect_nginx_package_origin(ssh, "/usr/sbin/nginx")
+        self.assertEqual(info["origin"], "source")
+
+    def test_rpm_package_name(self):
+        """合法 rpm 包名视为包安装"""
+        ssh = _FakeSSH({
+            "rpm -qf": (True, "nginx"),
+        })
+        info = detect_nginx_package_origin(ssh, "/usr/sbin/nginx")
+        self.assertEqual(info["origin"], "package")
+        self.assertEqual(info["mgr"], "rpm")
+        self.assertEqual(info["package"], "nginx")
+
+    def test_deb_package_name(self):
+        """合法 dpkg 包名视为包安装"""
+        ssh = _FakeSSH({
+            "rpm -qf": (False, ""),
+            "dpkg -S": (True, "nginx-core: /usr/sbin/nginx"),
+        })
+        info = detect_nginx_package_origin(ssh, "/usr/sbin/nginx")
+        self.assertEqual(info["origin"], "package")
+        self.assertEqual(info["mgr"], "deb")
+        self.assertEqual(info["package"], "nginx-core")
 
 
 class ResolveNginxTreePathTests(SimpleTestCase):

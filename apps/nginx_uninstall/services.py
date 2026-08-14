@@ -94,17 +94,43 @@ def normalize_remote_path(path):
 
 
 def is_dangerous_path(path):
-    """判断路径是否禁止删除（过短系统根等）"""
+    """判断路径是否禁止删除（空路径或系统根）"""
     p = normalize_remote_path(path)
     if not p:
         return True
-    if p in _FORBIDDEN_PATHS:
-        return True
-    # 至少两级路径，如 /opt/app
+    return p in _FORBIDDEN_PATHS
+
+
+def is_shallow_prefix(path):
+    """是否为非系统根的一级目录（如 /data）"""
+    p = normalize_remote_path(path)
+    if not p or p in _FORBIDDEN_PATHS:
+        return False
     parts = [x for x in p.split("/") if x]
-    if len(parts) < 2:
-        return True
-    return False
+    return len(parts) == 1
+
+
+# rpm/dpkg 合法包名；中文报错句不得当作包名
+_PKG_NAME_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
+_PKG_REJECT_MARKERS = (
+    "not owned",
+    "error",
+    "不属于",
+    "no path found",
+    "找不到",
+)
+
+
+def is_valid_package_name(name):
+    """判断 rpm/dpkg 输出是否为合法软件包名"""
+    text = (name or "").strip()
+    if not text or " " in text or "\t" in text or "\n" in text:
+        return False
+    low = text.lower()
+    for marker in _PKG_REJECT_MARKERS:
+        if marker in low or marker in text:
+            return False
+    return bool(_PKG_NAME_RE.fullmatch(text))
 
 
 def derive_prefix_from_nginx_path(nginx_path):
@@ -504,24 +530,23 @@ def detect_nginx_package_origin(ssh, nginx_path=""):
     quoted = shlex.quote(bin_path)
 
     ok, out = ssh.execute_command(
-        f"rpm -qf --queryformat '%{{NAME}}' {quoted} 2>/dev/null || true"
+        f"rpm -qf --queryformat '%{{NAME}}' {quoted} 2>/dev/null"
     )
     name = (out or "").strip().splitlines()
     name = name[-1].strip() if name else ""
-    low = name.lower()
-    if ok and name and "not owned" not in low and "error" not in low and "\n" not in name:
+    if ok and is_valid_package_name(name):
         result["origin"] = "package"
         result["mgr"] = "rpm"
         result["package"] = name
         return result
 
-    ok, out = ssh.execute_command(f"dpkg -S {quoted} 2>/dev/null || true")
+    ok, out = ssh.execute_command(f"dpkg -S {quoted} 2>/dev/null")
     text = (out or "").strip()
-    if ok and text and "no path found" not in text.lower():
+    if ok and text:
         first = text.splitlines()[0]
         left = first.split(":", 1)[0].strip()
         pkg_name = left.split(",")[0].strip()
-        if pkg_name:
+        if is_valid_package_name(pkg_name):
             result["origin"] = "package"
             result["mgr"] = "deb"
             result["package"] = pkg_name
@@ -712,6 +737,10 @@ def _preview_one_node(node, work_dir):
         paths = _setting_path_entries(node, work_dir)
 
     backup_path = backup_subdir_for_node(node)
+    if install_origin == "package" and not is_valid_package_name(package_name):
+        install_origin = "source"
+        package_mgr = ""
+        package_name = ""
     if install_origin == "package" and package_name:
         eligible = gate is None
     else:
@@ -720,6 +749,15 @@ def _preview_one_node(node, work_dir):
             and bool(prefix)
             and not is_dangerous_path(prefix)
         )
+    hint = ""
+    if not gate and not err:
+        if not eligible and not prefix:
+            hint = "无法解析安装路径"
+        elif not eligible and prefix and is_dangerous_path(prefix):
+            hint = f"禁止删除路径 {prefix}"
+    shallow = bool(
+        eligible and install_origin != "package" and is_shallow_prefix(prefix)
+    )
     return {
         "id": node.id,
         "hostname": node.hostname,
@@ -727,7 +765,8 @@ def _preview_one_node(node, work_dir):
         "nginx_path": node.nginx_path or "",
         "nginx_available": node.nginx_available,
         "eligible": eligible,
-        "gate_message": gate or err or "",
+        "gate_message": gate or err or hint,
+        "shallow_prefix": shallow,
         "prefix": prefix,
         "prefix_source": source,
         "backup_path": backup_path,
@@ -805,6 +844,7 @@ def preview_nodes(node_ids):
                     "nginx_available": getattr(node, "nginx_available", None) if node else None,
                     "eligible": False,
                     "gate_message": str(exc) or "预览失败",
+                    "shallow_prefix": False,
                     "prefix": "",
                     "prefix_source": "",
                     "backup_path": backup_subdir_for_node(node) if node else "",
@@ -975,7 +1015,7 @@ def create_uninstall_batch_from_data(user, data):
         origin = str(item.get("install_origin") or "").strip().lower()
         pkg_name = str(item.get("package_name") or "").strip()
         pkg_mgr = str(item.get("package_mgr") or "").strip()
-        is_pkg = origin == "package" and bool(pkg_name)
+        is_pkg = origin == "package" and is_valid_package_name(pkg_name)
         node_opts["install_origin"] = "package" if is_pkg else "source"
         node_opts["package_mgr"] = pkg_mgr if is_pkg else ""
         node_opts["package_name"] = pkg_name if is_pkg else ""
@@ -1241,16 +1281,21 @@ def _run_one_uninstall(task, stop_if_running):
         )
         # 创建时写入的包信息作回退
         if pkg_info.get("origin") != "package":
-            if options.get("install_origin") == "package" and options.get("package_name"):
+            fallback_name = options.get("package_name") or ""
+            if (
+                options.get("install_origin") == "package"
+                and is_valid_package_name(fallback_name)
+            ):
                 pkg_info = {
                     "origin": "package",
                     "mgr": options.get("package_mgr") or "",
-                    "package": options.get("package_name") or "",
+                    "package": fallback_name,
                     "binary": node.nginx_path or "",
                 }
 
         is_pkg = (
-            pkg_info.get("origin") == "package" and bool(pkg_info.get("package"))
+            pkg_info.get("origin") == "package"
+            and is_valid_package_name(pkg_info.get("package"))
         )
 
         if is_pkg:

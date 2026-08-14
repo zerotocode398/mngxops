@@ -368,6 +368,25 @@
         btn.disabled = !ok;
     }
 
+    /** 源码安装且 --prefix 为一级目录的节点 */
+    function shallowPrefixNodes() {
+        return previewNodes.filter(function (n) {
+            return n.eligible && n.shallow_prefix;
+        });
+    }
+
+    /** 一级安装目录删除范围告警 HTML */
+    function shallowPrefixConfirmHtml() {
+        var nodes = shallowPrefixNodes();
+        if (!nodes.length) return '';
+        var items = nodes.map(function (n) {
+            return '<li><code>' + escapeHtml(n.hostname) + '</code> · <code>' +
+                escapeHtml(n.prefix || '') + '</code></li>';
+        }).join('');
+        return '<p>以下节点安装目录仅为一级路径，卸载将删除整个目录，可能包含非 Nginx 数据：</p>' +
+            '<ul class="mb-0">' + items + '</ul>';
+    }
+
     function renderChips() {
         var wrap = document.getElementById('chipWrap');
         var hint = document.getElementById('emptyHint');
@@ -745,12 +764,15 @@
             var gate = n.gate_message
                 ? '<div class="small text-danger px-3 pb-2">' + escapeHtml(n.gate_message) + '</div>'
                 : '';
+            var shallowHint = n.shallow_prefix
+                ? '<div class="small text-muted px-3 pb-2">安装目录为一级路径，删除范围较大</div>'
+                : '';
             return '<div class="uninstall-node-block' + collapsed + '" data-node-id="' + n.id + '">' +
                 '<div class="node-header" role="button">' +
                 '<span><i class="bi bi-chevron-down chevron me-1"></i>' +
                 '<span class="node-identity">' + escapeHtml(n.hostname) +
                 '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span></span>' +
-                '<span>' + runBadge + originBadge + modeBadge + '</span></div>' + gate +
+                '<span>' + runBadge + originBadge + modeBadge + '</span></div>' + gate + shallowHint +
                 '<div class="node-body">' + renderPathRows(n) + '</div></div>';
         }).join('');
         list.querySelectorAll('.uninstall-node-block .node-header').forEach(function (hdr) {
@@ -866,6 +888,21 @@
         if (step === 3) {
             if (!previewNodes.some(function (n) { return n.eligible; })) {
                 showAlert('提示', '没有可卸载的节点');
+                return;
+            }
+            var shallowHtml = shallowPrefixConfirmHtml();
+            if (shallowHtml) {
+                showConfirm(
+                    '一级安装目录告警',
+                    shallowHtml,
+                    function () {
+                        setWizardStep(3);
+                        renderConfirm();
+                    },
+                    true,
+                    'md',
+                    '继续'
+                );
                 return;
             }
             setWizardStep(3);
@@ -1235,7 +1272,19 @@
                 n.install_origin !== 'package';
         });
         var pkgNodes = previewNodes.filter(function (n) { return n.install_origin === 'package'; });
+        var shallowHtml = shallowPrefixConfirmHtml();
         if (!running.length && !sysRisk.length && !pkgNodes.length) {
+            if (shallowHtml) {
+                showConfirm(
+                    '一级安装目录告警',
+                    shallowHtml,
+                    function () { doCreate(collectPayload(true)); },
+                    true,
+                    'md',
+                    '继续卸载'
+                );
+                return;
+            }
             doCreate(collectPayload(true));
             return;
         }
@@ -1279,6 +1328,9 @@
                 '<p class="mb-1">以下节点为非 root 且 systemctl 托管，请确认用户是否具备 systemctl 操作权限；' +
                 '若无权限，停止服务或清理 unit 可能失败：</p><ul class="mb-0">' + riskLis + '</ul>'
             );
+        }
+        if (shallowHtml) {
+            parts.push(shallowHtml);
         }
         var title = '卸载确认';
         var btn = running.length ? '停止并继续卸载' : '继续卸载';
