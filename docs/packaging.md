@@ -104,10 +104,15 @@ libpython3.6m.so.1.0
 | `db.sqlite3` | 业务数据库 | 须执行 `migrate` 建库 |
 | `media/` | 上传文件（源码包等） | 用到上传功能时自动出现 |
 | `.fernet_key` | 加密 SSH 凭证用的本地密钥 | **首次运行自动生成，不用拷贝** |
+| `.secret_key` | Django `SECRET_KEY`（未设环境变量时） | **首次运行自动生成**；勿跨环境拷贝 |
 
 模板、页面等只读资源已打进二进制，一般不用单独拷。
 
 `.fernet_key`：库里的 SSH 密码/私钥会加密存放，靠这个本地文件加解密。新环境空库时程序自己生成即可；开发态源码则写在 `utils/.fernet_key`（与二进制交付无关）。
+
+备份须同时保留 `db.sqlite3`、`.fernet_key`、`.secret_key`、`media/`。更换 `.secret_key` 后所有人需重新登录。
+
+反代 HTTPS 时请透传 `Host`（`proxy_set_header Host $host;`），并视情况设置 `MNGXOPS_HTTPS=1`。未配置 `MNGXOPS_ALLOWED_HOSTS` 时仍允许任意 Host（`*`），适合弹性公网 IP 事先未知；绑定 IP 或域名后可用逗号列表收口。
 
 ---
 
@@ -301,9 +306,12 @@ mngxops-windows-amd64.exe runserver
 
 | 变量 | 含义 |
 |------|------|
-| `MNGXOPS_HOME` | 数据目录（库、media、`.fernet_key`）；不设则用 exe 所在目录 |
+| `MNGXOPS_HOME` | 数据目录（库、media、`.fernet_key`、`.secret_key`）；不设则用 exe 所在目录 |
 | `MNGXOPS_DEBUG` | `1` 打开 / `0` 关闭 DEBUG |
-| `MNGXOPS_SECRET_KEY` | Django `SECRET_KEY` |
+| `MNGXOPS_SECRET_KEY` | Django `SECRET_KEY`；不设则用数据目录 `.secret_key` |
+| `MNGXOPS_ALLOWED_HOSTS` | 逗号分隔 Host 白名单；不设则为 `*`（另始终可本机 localhost） |
+| `MNGXOPS_HTTPS` | `1` 时 Session/CSRF Cookie 仅 HTTPS，并认 `X-Forwarded-Proto` |
+| `MNGXOPS_CSRF_TRUSTED_ORIGINS` | 逗号分隔额外 CSRF 来源，如 `https://1.2.3.4` |
 
 ### 二进制支持的管理命令
 

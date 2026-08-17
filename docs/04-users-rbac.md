@@ -44,7 +44,7 @@
 | `PermissionItem` | `code` 唯一，如 `configs.update` |
 | `UserGroup` | 角色名唯一；M2M permissions |
 | `UserTeam` | 组名唯一；members、roles |
-| `UserProfile` | 1:1 User；avatar、groups、direct_permissions、remark |
+| `UserProfile` | 1:1 User；avatar、groups、direct_permissions、remark、failed_login_count、login_locked_until |
 
 Django `User`：`username` 限 `[-a-zA-Z0-9_]+`；中文放姓名字段（Q82）。
 

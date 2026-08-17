@@ -27,6 +27,10 @@ GROUP_META = {
         "icon": "bi-rocket-takeoff",
         "description": "远程配置备份路径。",
     },
+    "登录": {
+        "icon": "bi-shield-lock",
+        "description": "连续登录失败次数与临时锁定时长。",
+    },
     "系统": {
         "icon": "bi-display",
         "description": "任务进度轮询、仪表盘刷新间隔与历史数据保留天数。",
@@ -52,6 +56,8 @@ UNIT_MAP = {
     "config.default_nginx_path": "",
     "config.default_nginx_bin": "",
     "release.backup_dir": "",
+    "auth.login_fail_lock_count": "次",
+    "auth.login_fail_lock_minutes": "分钟",
     "system.task_progress_poll_interval": "秒",
     "system.dashboard_refresh_interval": "秒",
     "system.retention_task_center_days": "天",

@@ -9,6 +9,7 @@
 | DB | 默认 SQLite（`db.sqlite3`） | `ngxops/settings.py` |
 | SSH | Paramiko 5.x | `utils/ssh.py` |
 | 加解密 | cryptography Fernet | `utils/crypto.py`，密钥文件 `utils/.fernet_key` |
+| Session 签名 | Django `SECRET_KEY` | 环境变量或数据目录 `.secret_key`（Q161） |
 | Excel | openpyxl | 节点批量导入 |
 | 前端 | Bootstrap 5 + 服务端模板 + 少量 JS | 无独立 SPA |
 
@@ -41,6 +42,7 @@ sequenceDiagram
 
 - **无 Celery/RQ**：长任务用 `threading.Thread(daemon=True)` 或 `ThreadPoolExecutor`。
 - **多 Worker 部署注意**：内存中的发布实时步骤缓存（如 `_RELEASE_CURRENT_STEPS`）仅本进程有效；进度以 DB 中 `TaskCenterTask` 为准。
+- **Web 启动清理**：加载 WSGI 时将遗留 `pending`/`running` 标失败（Q161），`migrate` 不执行。
 
 ## 3. URL 挂载
 

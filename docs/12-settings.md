@@ -59,6 +59,13 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 |-----|------|
 | `release.backup_dir` | 下次发布；实际 `{dir}/{hostname}/` |
 
+### 登录
+
+| key | 生效 |
+|-----|------|
+| `auth.login_fail_lock_count` | 下次登录立即；默认 5，范围 3～30；成功清零；不可为 0 |
+| `auth.login_fail_lock_minutes` | 下次登录立即；默认 15，范围 1～1440；管理员解锁立即生效 |
+
 ### 系统
 
 | key | 生效 |

@@ -86,6 +86,15 @@ PRESET_SETTINGS = [
      "label": "远程配置备份目录",
      "description": "配置发布前在远程节点上备份的根目录，实际路径为 {backup_dir}/{节点hostname}/（下次发布立即生效）",
      "sort_order": 42},
+    # 登录
+    {"key": "auth.login_fail_lock_count", "group": "登录", "type": "integer", "value": "5",
+     "label": "连续登录失败锁定次数",
+     "description": "同一账号连续密码错误达到该次数后临时锁定；登录成功则清零。下次登录立即生效。不提供 0（不可关闭）。管理员可在用户列表提前解锁。",
+     "sort_order": 50, "min_value": 3, "max_value": 30},
+    {"key": "auth.login_fail_lock_minutes", "group": "登录", "type": "integer", "value": "15",
+     "label": "登录失败锁定时长（分钟）",
+     "description": "达到失败次数后的临时锁定分钟数；到期后再次登录自动解除。下次登录立即生效。管理员解锁立即生效。",
+     "sort_order": 51, "min_value": 1, "max_value": 1440},
     # 系统
     {"key": "system.task_progress_poll_interval", "group": "系统", "type": "integer", "value": "2",
      "label": "任务进度轮询间隔（秒）",

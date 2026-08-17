@@ -86,15 +86,15 @@
                                         <div class="form-check form-switch">
                                             <input type="checkbox"
                                                 class="form-check-input user-toggle-checkbox"
-                                                {% if u.is_active %}checked{% endif %}
+                                                {% if u.login_enabled %}checked{% endif %}
                                                 data-toggle-url="{% url 'users:lock_toggle' u.pk %}"
                                                 data-username="{{ u.username }}"
-                                                data-is-active="{{ u.is_active|yesno:'true,false' }}"
+                                                data-is-active="{{ u.login_enabled|yesno:'true,false' }}"
                                                 {% if u.id == request.user.id %}disabled title="不能停用当前登录用户"{% endif %}
                                                 {% if u.is_superuser and not request.user.is_superuser %}disabled title="无权操作超级管理员"{% endif %}>
                                         </div>
                                         {% else %}
-                                        {% if u.is_active %}
+                                        {% if u.login_enabled %}
                                         <span class="badge bg-success">已启用</span>
                                         {% else %}
                                         <span class="badge bg-secondary">已停用</span>

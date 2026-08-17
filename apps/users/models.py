@@ -96,6 +96,12 @@ class UserProfile(models.Model):
         related_name="users",
     )
     remark = models.TextField(blank=True, verbose_name="备注")
+    failed_login_count = models.PositiveIntegerField(
+        default=0, verbose_name="连续登录失败次数",
+    )
+    login_locked_until = models.DateTimeField(
+        null=True, blank=True, verbose_name="登录临时锁定截止时间",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 

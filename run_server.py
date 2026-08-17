@@ -38,7 +38,8 @@ def _print_usage(stream=None):
         "  mngxops run|runserver [addr]    启动 Web；addr 为端口或 ip:port\n"
         "  mngxops migrate                 初始化 / 升级数据库\n"
         "  mngxops createsuperuser         创建管理员\n"
-        "环境变量: MNGXOPS_HOME MNGXOPS_DEBUG MNGXOPS_SECRET_KEY",
+        "环境变量: MNGXOPS_HOME MNGXOPS_DEBUG MNGXOPS_SECRET_KEY "
+        "MNGXOPS_ALLOWED_HOSTS MNGXOPS_HTTPS MNGXOPS_CSRF_TRUSTED_ORIGINS",
         file=stream,
     )
 

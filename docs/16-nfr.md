@@ -23,10 +23,11 @@
 
 | 项 | 现状 |
 |----|------|
-| 认证 | Session；锁定用户 `is_active=False` 不可登录 |
+| 认证 | Session；`is_active=False` 不可登录；连续失败达设置次数后临时锁定（Q161） |
 | 授权 | 自定义 RBAC；超管绕过 |
 | 凭证 | Fernet 加密存储；解密接口需登录权限 |
-| CSRF | Django 默认中间件 |
+| CSRF | Django 默认中间件；可选 `MNGXOPS_CSRF_TRUSTED_ORIGINS` / `MNGXOPS_HTTPS` |
+| SECRET_KEY | 优先 `MNGXOPS_SECRET_KEY`，否则数据目录 `.secret_key` 自动生成（Q161） |
 | 用户名 | 限制 `[-a-zA-Z0-9_]+`，避免中文导致路由问题（Q82） |
 | 审计 | CRUD 信号 + 登录日志 + 异步任务关联 |
 
@@ -53,5 +54,5 @@
 
 ## 7. 已知限制（产品层）
 
-- 无分布式任务队列；进程重启可能丢失未落库的内存进度片段（DB 状态以 worker 最后写入为准）。
+- 无分布式任务队列；进程重启可能丢失未落库的内存进度片段（DB 状态以 worker 最后写入为准）。Web 启动时将遗留 `pending`/`running` 标为失败（Q161），避免 Q93 堵发布；远端进程不自动收尾。
 - `conflict`/`syncing`/漂移检测等能力不完整（见 [`AGENTS.md`](../AGENTS.md) Q84–Q86）。

@@ -6,10 +6,14 @@ from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, View
 
+from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
+
 from .forms import UserCreateForm, UserUpdateForm, UserGroupForm, UserTeamForm
 from .models import UserProfile, UserGroup, UserTeam, PermissionItem
 from utils.pagination import PerPagePaginationMixin
 from .permissions import PermissionRequiredMixin
+from apps.accounts.login_lock import clear_login_fail_lock, user_login_enabled
 
 
 class UserListView(
@@ -35,11 +39,23 @@ class UserListView(
                 queryset.filter(username__icontains=search)
                 | queryset.filter(email__icontains=search)
             ).distinct()
-        return queryset.prefetch_related("profile__groups", "user_teams")
+        return queryset.select_related("profile").prefetch_related(
+            "profile__groups", "user_teams",
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["search"] = self.request.GET.get("search", "")
+        now = timezone.now()
+        for u in context["users"]:
+            temp_locked = False
+            try:
+                profile = u.profile
+            except ObjectDoesNotExist:
+                profile = None
+            if profile and profile.login_locked_until and profile.login_locked_until > now:
+                temp_locked = True
+            u.login_enabled = bool(u.is_active) and not temp_locked
         return context
 
 
@@ -139,21 +155,27 @@ class UserLockToggleView(LoginRequiredMixin, PermissionRequiredMixin, View):
             messages.error(request, message)
             return redirect("users:list")
 
-        if user == request.user:
+        if user == request.user and user_login_enabled(user):
             return _fail("不能停用当前登录用户")
         if user.is_superuser and not request.user.is_superuser:
             return _fail("无权操作超级管理员")
 
-        user.is_active = not user.is_active
-        user.save(update_fields=["is_active"])
-        if user.is_active:
-            msg = f"用户 {user.username} 已启用"
-        else:
+        currently_enabled = user_login_enabled(user)
+        if currently_enabled:
+            user.is_active = False
+            user.save(update_fields=["is_active"])
             msg = f"用户 {user.username} 已停用"
+            login_enabled = False
+        else:
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+            clear_login_fail_lock(user)
+            msg = f"用户 {user.username} 已启用"
+            login_enabled = True
 
         if is_ajax:
             return JsonResponse(
-                {"success": True, "is_active": user.is_active, "message": msg}
+                {"success": True, "is_active": login_enabled, "message": msg}
             )
         messages.success(request, msg)
         return redirect("users:list")

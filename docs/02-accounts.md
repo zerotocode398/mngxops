@@ -11,6 +11,7 @@
 - 登录页：匿名可访问。
 - 资料/改密：已登录用户；不额外要求 `users.*` 权限。
 - 锁定用户（`is_active=False`）不可登录。
+- 连续登录失败达到系统设置阈值后临时锁定（Q161）；到期自解或管理员在用户列表解锁。
 
 ## 3. 领域模型
 
@@ -32,9 +33,10 @@
 ### 5.1 登录
 
 1. 提交用户名密码（`LoginForm`）。
-2. 校验失败：写 `LoginLog(status=failed)`，区分 `user_not_found` / `wrong_password` / `user_locked` / `user_inactive`。
-3. 成功：建立 session；写 `LoginLog(success)`；可写 `AuditLog`。
-4. 跳转 `LOGIN_REDIRECT_URL`（仪表盘）。
+2. `is_active=False`：提示联系管理员；已临时锁定：提示等待或管理员解锁。
+3. 校验失败：写 `LoginLog(failed)`；存在的账号累加连续失败次数，达阈值写入 `login_locked_until`。成功则清零失败次数。
+4. 成功：建立 session；写 `LoginLog(success)`；可写 `AuditLog`。
+5. 跳转 `LOGIN_REDIRECT_URL`（仪表盘）。
 
 ### 5.2 登出
 

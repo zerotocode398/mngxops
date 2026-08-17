@@ -9,6 +9,12 @@ from django.views import View
 
 from apps.audit.models import LoginLog, AuditLog
 from .forms import LoginForm, CustomPasswordChangeForm
+from .login_lock import (
+    clear_login_fail_lock,
+    get_fail_lock_minutes,
+    is_temp_login_locked,
+    record_login_failure,
+)
 
 
 def _get_client_ip(request):
@@ -39,29 +45,44 @@ class LoginView(View):
         ip = _get_client_ip(request)
         user_agent = _get_user_agent(request)
 
-        # 在表单验证之前先检查用户是否被锁定
-        # Django AuthenticationForm.is_valid() 内部会因 is_active=False 而失败
-        # 我们需要在 is_valid 之前拦截，给出明确的锁定提示
-        if request.method == "POST" and username:
+        # is_valid 会因 is_active=False 失败，须先拦截给出锁定提示
+        target_user = None
+        if username:
             try:
                 target_user = User.objects.get(username=username)
-                if not target_user.is_active:
-                    LoginLog.objects.create(
-                        username=username,
-                        ip=ip,
-                        user_agent=user_agent,
-                        status="failed",
-                    )
-                    messages.error(request, "用户已锁定，请联系管理员")
-                    return render(request, self.template_name, {"form": form})
             except User.DoesNotExist:
-                pass
+                target_user = None
+
+        if target_user is not None and not target_user.is_active:
+            LoginLog.objects.create(
+                username=username,
+                ip=ip,
+                user_agent=user_agent,
+                status="failed",
+            )
+            messages.error(request, "用户已锁定，请联系管理员")
+            return render(request, self.template_name, {"form": form})
+
+        if target_user is not None and is_temp_login_locked(target_user):
+            LoginLog.objects.create(
+                username=username,
+                ip=ip,
+                user_agent=user_agent,
+                status="failed",
+            )
+            minutes = get_fail_lock_minutes()
+            messages.error(
+                request,
+                f"登录失败次数过多，请 {minutes} 分钟后再试或联系管理员解锁",
+            )
+            return render(request, self.template_name, {"form": form})
 
         if form.is_valid():
             username = form.cleaned_data.get("username")
             password = form.cleaned_data.get("password")
             user = authenticate(request, username=username, password=password)
             if user is not None:
+                clear_login_fail_lock(user)
                 login(request, user)
 
                 LoginLog.objects.create(
@@ -83,22 +104,29 @@ class LoginView(View):
                 messages.success(request, "登录成功")
                 next_url = request.GET.get("next", "dashboard:index")
                 return redirect(next_url)
-            else:
+
+        if target_user is not None:
+            record_login_failure(target_user)
+            if is_temp_login_locked(target_user):
                 LoginLog.objects.create(
                     username=username,
                     ip=ip,
                     user_agent=user_agent,
                     status="failed",
                 )
-                messages.error(request, "用户名或密码错误")
-        else:
-            LoginLog.objects.create(
-                username=username,
-                ip=ip,
-                user_agent=user_agent,
-                status="failed",
-            )
-            messages.error(request, "登录失败，请检查用户名或密码")
+                minutes = get_fail_lock_minutes()
+                messages.error(
+                    request,
+                    f"登录失败次数过多，请 {minutes} 分钟后再试或联系管理员解锁",
+                )
+                return render(request, self.template_name, {"form": form})
+        LoginLog.objects.create(
+            username=username,
+            ip=ip,
+            user_agent=user_agent,
+            status="failed",
+        )
+        messages.error(request, "用户名或密码错误")
         return render(request, self.template_name, {"form": form})
 
 
