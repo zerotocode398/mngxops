@@ -4,7 +4,13 @@
 import logging
 import os
 import sys
+import warnings
 from datetime import datetime
+
+# 静默 cryptography 在 Python 3.6 下导入时的 DeprecationWarning
+warnings.filterwarnings(
+    "ignore", message="Python 3.6 is no longer supported by the Python core team"
+)
 
 
 # 允许的 Django 管理命令（与交付约定对齐，避免暴露任意 manage 面）
@@ -144,6 +150,17 @@ def _run_web(argv):
     host, port = _parse_bind_addr(argv)
     _configure_logging()
     _setup_django_env()
+
+    from ngxops.runtime_paths import data_dir
+
+    db_path = data_dir() / "db.sqlite3"
+    if not db_path.is_file():
+        print(
+            "未发现数据库文件 {}，请先执行: mngxops migrate".format(db_path),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     import django
 
     django.setup()
