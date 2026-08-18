@@ -38,6 +38,11 @@
                             <i class="bi bi-terminal"></i> 启停任务详情
                         </a>
                         {% endif %}
+                        {% if openssh_task %}
+                        <a href="{% url 'openssh_upgrade:task_log' openssh_task.id %}" class="btn btn-outline-info" target="_blank">
+                            <i class="bi bi-terminal"></i> OpenSSH 任务详情
+                        </a>
+                        {% endif %}
                         <a href="{% url 'releases:history' %}" class="btn btn-outline-secondary">
                             <i class="bi bi-arrow-left"></i> 返回任务中心
                         </a>
@@ -58,6 +63,8 @@
                             <a href="{% url 'nginx_service:history' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
                             {% elif task.operation_type == 'nginx_uninstall' and task.source_batch %}
                             <a href="{% url 'nginx_uninstall:history' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
+                            {% elif task.operation_type == 'openssh_upgrade' and task.source_batch %}
+                            <a href="{% url 'openssh_upgrade:history' %}?search={{ task.source_batch|urlencode }}" class="text-decoration-none" target="_blank">{{ task.source_batch }}</a>
                             {% else %}
                             <code>{{ task.source_batch|default:'-' }}</code>
                             {% endif %}

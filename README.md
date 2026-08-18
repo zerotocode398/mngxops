@@ -53,6 +53,7 @@
 | 升级 | 在线且已有 Nginx | `UG-` | 四步向导：选节点与源码包 → 编译环境 → 编译参数/模块 → 确认；无 Nginx 时引导去安装 |
 | 启停 | 在线且 Nginx 可用 | `OP-` | start / stop / reload / restart |
 | 卸载 | 在线且 Nginx 可用 | `UN-` | 源码安装删树并可清 systemd unit；yum/apt 包走 remove。卸载后节点标 Nginx 不可用，绑定 orphaned |
+| OpenSSH 升级 | 在线且已配置凭证 | `OSI-` | 源码编译升级 sshd；失败自动回滚（备份+预验证+看门狗），绝不丢 SSH；手动回滚批次 `OSR-` |
 
 源码包与第三方模块包在升级模块中统一管理，安装向导只读复用。
 
@@ -152,6 +153,7 @@ python manage.py runserver 0.0.0.0:1988
 | Nginx 安装 | `/nginx-install/` | 全新源码安装 |
 | Nginx 启停 | `/nginx-service/` | start / stop / reload / restart |
 | Nginx 卸载 | `/nginx-uninstall/` | 卸载与路径清理 |
+| OpenSSH 升级 | `/openssh-upgrade/` | 源码升级与自动/手动回滚 |
 | 用户 / 角色 / 用户组 | `/users/`、`/users/roles/`、`/users/teams/` | RBAC |
 | 审计 | `/audit/`、`/audit/login/` | 操作与登录日志 |
 | 系统设置 | `/settings/` | 运行参数 |

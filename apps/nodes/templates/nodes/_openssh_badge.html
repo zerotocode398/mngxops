@@ -1,0 +1,6 @@
+{# OpenSSH 版本徽标 #}
+{% if openssh_version %}
+<span class="badge bg-info text-dark" title="OpenSSH {{ openssh_version }}">OpenSSH {{ openssh_version }}</span>
+{% else %}
+<span class="badge bg-secondary" title="尚未探测 OpenSSH 版本">未探测</span>
+{% endif %}

@@ -9,11 +9,11 @@ from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
 from apps.nodes.models import Node
-from apps.nodes.services import mark_node_probe_success
+from apps.nodes.services import apply_openssh_probe_result, mark_node_probe_success
 from apps.releases.models import TaskCenterTask
 from apps.releases.task_cancel import finish_if_active
 from utils.setting_service import get_setting
-from utils.ssh import test_ssh_connection
+from utils.ssh import get_openssh_version, test_ssh_connection
 
 from .models import Credential, CredentialEnableTask
 
@@ -499,7 +499,29 @@ def _run_credential_enable_task(task_id, credential_id):
                     )
                 if success:
                     mark_node_probe_success(node)
-                    node.save(update_fields=["status", "last_probe_at", "updated_at"])
+                    ossh_success, ossh_info = get_openssh_version(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        password=credential.get_password()
+                        if credential.auth_type == "password"
+                        else None,
+                        private_key=credential.get_private_key()
+                        if credential.auth_type == "key"
+                        else None,
+                    )
+                    apply_openssh_probe_result(
+                        node, ossh_success, ossh_info if ossh_success else ""
+                    )
+                    node.save(
+                        update_fields=[
+                            "status",
+                            "last_probe_at",
+                            "openssh_version",
+                            "last_openssh_probe_at",
+                            "updated_at",
+                        ]
+                    )
                 else:
                     node.status = "offline"
                     node.save(update_fields=["status", "updated_at"])

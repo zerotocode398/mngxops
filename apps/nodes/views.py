@@ -172,6 +172,7 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "nginx_available": node.nginx_available,
                     "nginx_status_label": node.nginx_status_label,
                     "nginx_path": node.nginx_path or "",
+                    "openssh_version": node.openssh_version or "",
                     "has_credential": bool(node.credential_id),
                     "credential_username": (
                         node.credential.username if node.credential_id else ""
@@ -1058,6 +1059,12 @@ def get_node_detail(request):
                 "nginx_available": node.nginx_available,
                 "nginx_status_label": node.nginx_status_label,
                 "nginx_path": node.nginx_path or "默认",
+                "openssh_version": node.openssh_version or "",
+                "last_openssh_probe_at": (
+                    node.last_openssh_probe_at.strftime("%Y-%m-%d %H:%M:%S")
+                    if node.last_openssh_probe_at
+                    else "-"
+                ),
                 "status": node.get_status_display(),
                 "is_locked": node.is_locked,
                 "description": node.description or "无描述",

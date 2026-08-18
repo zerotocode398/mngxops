@@ -1,6 +1,6 @@
 # mngxops 软件需求设计文档
 
-本文档集基于**当前代码实现**倒推整理（实现即基线需求），按功能模块拆分。历史交互优化结论见仓库根目录 [`AGENTS.md`](../AGENTS.md)（Q1–Q161 结论台账）。
+本文档集基于**当前代码实现**倒推整理（实现即基线需求），按功能模块拆分。历史交互优化结论见仓库根目录 [`AGENTS.md`](../AGENTS.md)（Q1–Q162 结论台账）。
 
 ## 阅读顺序
 
@@ -32,6 +32,7 @@
 | [10b-nginx-service.md](10b-nginx-service.md) | Nginx 启停 | `apps/nginx_service` |
 | [10c-nginx-install.md](10c-nginx-install.md) | Nginx 全新安装 | `apps/nginx_install` |
 | [10d-nginx-uninstall.md](10d-nginx-uninstall.md) | Nginx 卸载 | `apps/nginx_uninstall` |
+| [10e-openssh-upgrade.md](10e-openssh-upgrade.md) | OpenSSH 升级（含自动回滚） | `apps/openssh_upgrade` |
 | [11-audit.md](11-audit.md) | 操作审计 / 登录日志 | `apps/audit` |
 | [12-settings.md](12-settings.md) | 系统设置 | `apps/settings` |
 

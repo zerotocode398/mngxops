@@ -42,6 +42,14 @@ def apply_nginx_probe_result(node: Node, success: bool, version: str = "") -> No
     return node
 
 
+def apply_openssh_probe_result(node: Node, success: bool, version: str = "") -> Node:
+    """统一写入 OpenSSH 探测结果（不改 SSH status，不自动 save）。"""
+    node.last_openssh_probe_at = timezone.now()
+    if success and version:
+        node.openssh_version = version
+    return node
+
+
 def _orphan_bindings_after_nginx_missing(node: Node) -> None:
     """Nginx 确认不可用时，将该节点绑定标为远程已删除。"""
     try:
@@ -647,7 +655,7 @@ def run_unlock_ssh_test(task_id, node_ids):
         item_success,
         node_header,
     )
-    from utils.ssh import get_nginx_version, test_ssh_connection
+    from utils.ssh import get_nginx_version, get_openssh_version, test_ssh_connection
 
     node_list = list(Node.objects.filter(id__in=node_ids).order_by("id"))
     total = len(node_list)
@@ -710,6 +718,20 @@ def run_unlock_ssh_test(task_id, node_ids):
                     apply_nginx_probe_result(
                         node, version_success, version_info if version_success else ""
                     )
+                    ossh_success, ossh_info = get_openssh_version(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        password=credential.get_password()
+                        if credential.auth_type == "password"
+                        else None,
+                        private_key=credential.get_private_key()
+                        if credential.auth_type == "key"
+                        else None,
+                    )
+                    apply_openssh_probe_result(
+                        node, ossh_success, ossh_info if ossh_success else ""
+                    )
                     success_count += 1
                     node_blocks.append(node_header(node.ip, node.hostname))
                     node_blocks.append(item_success("SSH连接"))
@@ -758,7 +780,7 @@ def run_single_node_ssh_test(
         item_success,
         node_header,
     )
-    from utils.ssh import get_nginx_version, test_ssh_connection
+    from utils.ssh import get_nginx_version, get_openssh_version, test_ssh_connection
 
     credential = Credential.objects.get(pk=credential_id)
     _has_node = node_id is not None
@@ -807,6 +829,20 @@ def run_single_node_ssh_test(
             apply_nginx_probe_result(
                 _node, version_success, version_info if version_success else ""
             )
+            ossh_success, ossh_info = get_openssh_version(
+                host,
+                ssh_port,
+                credential.username,
+                password=credential.get_password()
+                if credential.auth_type == "password"
+                else None,
+                private_key=credential.get_private_key()
+                if credential.auth_type == "key"
+                else None,
+            )
+            apply_openssh_probe_result(
+                _node, ossh_success, ossh_info if ossh_success else ""
+            )
             _node.save()
         elif not success and _has_node:
             _node = Node.objects.get(id=_node_id)
@@ -849,7 +885,7 @@ def run_single_node_ssh_test(
 
 def _batch_test_one_node(node):
     """批量测活中的单节点 SSH 测试，返回结果字典"""
-    from utils.ssh import get_nginx_version, test_ssh_connection
+    from utils.ssh import get_nginx_version, get_openssh_version, test_ssh_connection
 
     try:
         if node.is_locked:
@@ -914,6 +950,24 @@ def _batch_test_one_node(node):
             )
             apply_nginx_probe_result(
                 node, version_success, version_info if version_success else ""
+            )
+            ossh_success, ossh_info = get_openssh_version(
+                node.ip,
+                node.port,
+                credential.username,
+                password=(
+                    credential.get_password()
+                    if credential.auth_type == "password"
+                    else None
+                ),
+                private_key=(
+                    credential.get_private_key()
+                    if credential.auth_type == "key"
+                    else None
+                ),
+            )
+            apply_openssh_probe_result(
+                node, ossh_success, ossh_info if ossh_success else ""
             )
         else:
             node.status = "offline"
@@ -1008,7 +1062,7 @@ def run_node_system_info_task(task_id, node_id, credential_id):
     import json
 
     from apps.releases.models import TaskCenterTask
-    from utils.ssh import get_system_info
+    from utils.ssh import get_openssh_version, get_system_info
 
     node = Node.objects.get(id=node_id)
     credential = Credential.objects.get(pk=credential_id)
@@ -1037,6 +1091,20 @@ def run_node_system_info_task(task_id, node_id, credential_id):
 
         if success:
             mark_node_probe_success(node)
+            ossh_success, ossh_info = get_openssh_version(
+                node.ip,
+                node.port,
+                credential.username,
+                password=credential.get_password()
+                if credential.auth_type == "password"
+                else None,
+                private_key=credential.get_private_key()
+                if credential.auth_type == "key"
+                else None,
+            )
+            apply_openssh_probe_result(
+                node, ossh_success, ossh_info if ossh_success else ""
+            )
             node.save()
         else:
             node.status = "offline"
@@ -1063,9 +1131,9 @@ def run_node_system_info_task(task_id, node_id, credential_id):
 
 
 def run_node_nginx_version_task(task_id, node_id, credential_id, nginx_path=None):
-    """后台检测节点 Nginx 版本并回写"""
+    """后台检测节点 Nginx/OpenSSH 版本并回写"""
     from apps.releases.models import TaskCenterTask
-    from utils.ssh import get_nginx_version
+    from utils.ssh import get_nginx_version, get_openssh_version
 
     node = Node.objects.get(id=node_id)
     credential = Credential.objects.get(pk=credential_id)
@@ -1097,11 +1165,27 @@ def run_node_nginx_version_task(task_id, node_id, credential_id, nginx_path=None
         if success:
             mark_node_probe_success(node)
             apply_nginx_probe_result(node, True, output)
+            ossh_success, ossh_info = get_openssh_version(
+                node.ip,
+                node.port,
+                credential.username,
+                password=credential.get_password()
+                if credential.auth_type == "password"
+                else None,
+                private_key=credential.get_private_key()
+                if credential.auth_type == "key"
+                else None,
+            )
+            apply_openssh_probe_result(
+                node, ossh_success, ossh_info if ossh_success else ""
+            )
             node.save(
                 update_fields=[
                     "nginx_version",
                     "nginx_available",
                     "last_nginx_probe_at",
+                    "openssh_version",
+                    "last_openssh_probe_at",
                     "status",
                     "last_probe_at",
                     "updated_at",

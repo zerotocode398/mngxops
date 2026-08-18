@@ -243,7 +243,7 @@ def format_task_center_summary(task):
             secondary = _extract_success_fail(result) or detail
         return primary or "-", secondary
 
-    if op in ("nginx_install", "nginx_service_control", "nginx_uninstall"):
+    if op in ("nginx_install", "nginx_service_control", "nginx_uninstall", "openssh_upgrade"):
         primary = _batch_or_hosts_primary(task)
         secondary = _extract_success_fail(detail) or _extract_success_fail(result)
         if not secondary:

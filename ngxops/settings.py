@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "apps.nginx_service",
     "apps.nginx_install",
     "apps.nginx_uninstall",
+    "apps.openssh_upgrade",
 ]
 
 MIDDLEWARE = [

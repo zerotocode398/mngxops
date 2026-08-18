@@ -204,6 +204,25 @@ def test_ssh_connection(host, port, username, password=None, private_key=None):
         return False, str(e)
 
 
+def get_openssh_version(host, port, username, password=None, private_key=None):
+    """获取远程节点的 OpenSSH 版本号（sshd -V 或 ssh -V）"""
+    import re
+
+    try:
+        with SSHClient(host, port, username, password, private_key) as ssh:
+            success, output = ssh.execute_command("sshd -V 2>&1 || ssh -V 2>&1")
+            if success:
+                m = re.search(r"OpenSSH_([0-9][A-Za-z0-9.\-]*)", output or "")
+                if m:
+                    return True, m.group(1)
+                if not output:
+                    return False, "无法获取 OpenSSH 版本信息"
+                return False, output
+            return False, output
+    except Exception as e:
+        return False, str(e)
+
+
 def get_nginx_version(
     host, port, username, password=None, private_key=None, nginx_path=None
 ):

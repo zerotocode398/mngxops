@@ -77,6 +77,19 @@ def _fail_uninstall_tasks():
     )
 
 
+def _fail_openssh_tasks():
+    """将 OpenSSH 升级/回滚任务非终态标为失败。"""
+    from apps.openssh_upgrade.models import OpenSSHUpgradeTask
+
+    now = timezone.now()
+    terminal = ("success", "failed", "rolled_back", "cancelled")
+    return OpenSSHUpgradeTask.objects.exclude(status__in=terminal).update(
+        status="failed",
+        error_message=RESTART_DETAIL,
+        finished_at=now,
+    )
+
+
 def cleanup_stale_running_tasks():
     """Web 启动时调用：中断库内遗留执行中任务，不触达远端。"""
     try:
@@ -85,13 +98,14 @@ def cleanup_stale_running_tasks():
         upg = _fail_upgrade_tasks()
         inst = _fail_install_tasks()
         un = _fail_uninstall_tasks()
+        ossh = _fail_openssh_tasks()
     except (OperationalError, ProgrammingError):
         logger.info("启动清理跳过：数据表尚未就绪")
         return 0
-    total = tc + rel + upg + inst + un
+    total = tc + rel + upg + inst + un + ossh
     if total:
         logger.warning(
-            "进程重启清理遗留任务: task_center=%s release=%s upgrade=%s install=%s uninstall=%s",
-            tc, rel, upg, inst, un,
+            "进程重启清理遗留任务: task_center=%s release=%s upgrade=%s install=%s uninstall=%s openssh=%s",
+            tc, rel, upg, inst, un, ossh,
         )
     return total

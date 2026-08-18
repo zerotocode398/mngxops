@@ -7,6 +7,7 @@ RESOURCE_CHOICES = (
     ("nginx_install", "Nginx \u5b89\u88c5"),
     ("nginx_service", "Nginx \u542f\u505c"),
     ("nginx_uninstall", "Nginx \u5378\u8f7d"),
+    ("openssh_upgrade", "OpenSSH \u5347\u7ea7"),
     ("users", "\u7528\u6237\u7ba1\u7406"),
     ("roles", "\u89d2\u8272\u7ba1\u7406"),
     ("teams", "\u7528\u6237\u7ec4\u7ba1\u7406"),
@@ -69,6 +70,12 @@ PERM_DISPLAY_NAMES = {
         "create": "\u521b\u5efa\u5378\u8f7d\u4efb\u52a1",
         "update": "\u7f16\u8f91\u5378\u8f7d",
         "delete": "\u5220\u9664\u5378\u8f7d\u8bb0\u5f55",
+    },
+    "openssh_upgrade": {
+        "read": "\u5347\u7ea7\u9996\u9875/\u5386\u53f2\u67e5\u770b",
+        "create": "\u521b\u5efa OpenSSH \u5347\u7ea7\u4efb\u52a1",
+        "update": "\u6267\u884c OpenSSH \u56de\u6eda",
+        "delete": "\u5220\u9664\u5347\u7ea7\u8bb0\u5f55",
     },
     "users": {
         "read": "\u7528\u6237\u67e5\u770b",

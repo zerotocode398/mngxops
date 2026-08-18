@@ -89,6 +89,12 @@ class Node(models.Model):
     last_probe_at = models.DateTimeField(
         null=True, blank=True, verbose_name="上次探测成功时间",
     )
+    openssh_version = models.CharField(
+        max_length=50, blank=True, verbose_name="OpenSSH版本",
+    )
+    last_openssh_probe_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="上次OpenSSH探测时间",
+    )
     is_locked = models.BooleanField(default=False, verbose_name="已锁定")
     description = models.TextField(blank=True, verbose_name="描述")
     is_deleted = models.BooleanField(default=False, db_index=True, verbose_name="已删除")

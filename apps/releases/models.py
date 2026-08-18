@@ -122,6 +122,7 @@ class TaskCenterTask(models.Model):
         ("nginx_service_control", "Nginx 服务启停"),
         ("nginx_install", "Nginx 全新安装"),
         ("nginx_uninstall", "Nginx 卸载"),
+        ("openssh_upgrade", "OpenSSH 升级"),
         ("other", "其他任务"),
     )
 

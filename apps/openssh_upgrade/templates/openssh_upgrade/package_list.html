@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}OpenSSH 源码包管理 - MngxOps{% endblock %}
+{% block page_title %}<i class="bi bi-archive"></i> OpenSSH 源码包管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0"><i class="bi bi-box"></i> 源码包列表</h5>
+    <div class="d-flex gap-2">
+        {% if user|has_perm_code:"openssh_upgrade.create" %}
+        <a href="{% url 'openssh_upgrade:package_upload' %}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg"></i> 上传源码包
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if packages %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 data-table">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 18%;">包名称</th>
+                        <th style="width: 22%;">描述</th>
+                        <th style="width: 12%;">版本</th>
+                        <th style="width: 10%;">文件大小</th>
+                        <th style="width: 14%;">MD5（前8位）</th>
+                        <th style="width: 12%;">上传时间</th>
+                        <th style="width: 8%;">上传人</th>
+                        <th style="width: 12%;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for pkg in packages %}
+                    <tr>
+                        <td>{{ pkg.name }}</td>
+                        <td class="text-truncate" {% if pkg.description %}title="{{ pkg.description }}"{% endif %} style="max-width: 0;">
+                            {% if pkg.description %}{{ pkg.description }}{% else %}<span class="text-muted">-</span>{% endif %}
+                        </td>
+                        <td><code>{{ pkg.version }}</code></td>
+                        <td>{{ pkg.file_size|filesizeformat }}</td>
+                        <td><code>{{ pkg.file_md5|slice:":8" }}...</code></td>
+                        <td>{{ pkg.created_at|date:"m-d H:i" }}</td>
+                        <td>{{ pkg.uploaded_by.username }}</td>
+                        <td>
+                            {% if user|has_perm_code:"openssh_upgrade.create" %}
+                            <button type="button" class="btn btn-sm btn-outline-danger" title="删除"
+                                onclick="submitPostConfirm('确认删除', '确定删除此源码包？', '{% url 'openssh_upgrade:api_package_delete' pkg.id %}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-inbox"></i>
+            <p>暂无源码包，请先上传 OpenSSH 源码包后再进行升级操作。</p>
+            {% if user|has_perm_code:"openssh_upgrade.create" %}
+            <a href="{% url 'openssh_upgrade:package_upload' %}" class="btn btn-primary mt-2">
+                <i class="bi bi-upload"></i> 上传源码包
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if is_paginated %}
+<div class="d-flex justify-content-between align-items-center mt-3">
+    <form method="get" class="d-flex align-items-center gap-2">
+        <label class="form-label mb-0 small">每页</label>
+        <select name="per_page" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            {% for opt in per_page_options %}
+            <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+        <span class="small text-muted">条</span>
+    </form>
+    {% include "includes/pagination.html" %}
+</div>
+{% endif %}
+{% endblock %}

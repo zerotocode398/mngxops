@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% load permission_tags %}
+
+{% block title %}OpenSSH 任务日志 - {{ task.node.hostname }}{% endblock %}
+{% block page_title %}<i class="bi bi-file-text"></i> OpenSSH 任务详情 - {{ task.node.hostname }}{% endblock %}
+
+{% block content %}
+<style>
+    .task-detail-body { font-size: var(--fs-base); line-height: 1.5; }
+    .task-detail-body .text-muted { font-size: var(--fs-sm); }
+    .task-info-row {
+        display: flex; align-items: baseline; gap: 8px; min-width: 0;
+        padding: 6px 0; border-bottom: 1px solid var(--gray-100);
+    }
+    .task-info-row:last-child { border-bottom: none; }
+    .task-info-label { flex: 0 0 110px; color: var(--gray-600); white-space: nowrap; font-size: var(--fs-sm); }
+    .task-info-value { flex: 1; min-width: 0; word-break: break-all; font-size: var(--fs-base); }
+    .openssh-log-body {
+        max-height: 500px;
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: var(--fs-xs);
+    }
+</style>
+<div class="container-fluid">
+
+<div class="mb-3">
+    <a href="{% url 'openssh_upgrade:history' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回历史
+    </a>
+    <a href="{% url 'openssh_upgrade:center' %}" class="btn btn-sm btn-outline-primary ms-2">
+        <i class="bi bi-arrow-up-circle"></i> 升级中心
+    </a>
+    {% if task.task_center_id %}
+    <a href="{% url 'releases:task_center_detail' task.task_center_id %}" class="btn btn-sm btn-outline-secondary ms-2" target="_blank">
+        <i class="bi bi-box-arrow-up-right"></i> 任务中心
+    </a>
+    {% endif %}
+    {% if can_rollback and request.user|has_perm_code:"openssh_upgrade.update" %}
+    <button type="button" class="btn btn-sm btn-warning ms-2" id="btnRollback"
+            data-task-id="{{ task.id }}"
+            data-hostname="{{ task.node.hostname }}"
+            data-version="{{ task.current_version|default:'' }}">
+        <i class="bi bi-arrow-counterclockwise"></i> 手动回滚
+    </button>
+    {% endif %}
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="mb-0"><i class="bi bi-list-task"></i> 任务信息</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="taskStatusBadge" class="badge
+                        {% if task.status == 'success' %}bg-success
+                        {% elif task.status == 'failed' %}bg-danger
+                        {% elif task.status == 'rolled_back' %}bg-warning text-dark
+                        {% elif task.status == 'cancelled' %}bg-secondary
+                        {% else %}bg-info{% endif %}">
+                        {{ task.get_status_display }}
+                    </span>
+                    <span id="taskProgressBadge" class="badge bg-primary {% if task.status == 'success' or task.status == 'failed' or task.status == 'rolled_back' or task.status == 'cancelled' %}d-none{% endif %}">
+                        {{ task.progress }}%
+                    </span>
+                </div>
+            </div>
+            <div class="card-body task-detail-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="task-info-row">
+                            <span class="task-info-label">操作</span>
+                            <span class="task-info-value">{{ task.get_action_display }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">目标节点</span>
+                            <span class="task-info-value">{{ task.node.hostname }} ({{ task.node.ip }})</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">版本</span>
+                            <span class="task-info-value code-font">
+                                {{ task.current_version|default:"?" }} → {{ task.target_version|default:"?" }}
+                            </span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">备份目录</span>
+                            <span class="task-info-value code-font">{{ task.backup_dir|default:"-" }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">工作目录</span>
+                            <span class="task-info-value code-font">{{ task.remote_work_dir|default:"-" }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">当前步骤</span>
+                            <span class="task-info-value" id="taskCurrentStep">{{ task.current_step|default:"-" }}</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="task-info-row">
+                            <span class="task-info-label">批次号</span>
+                            <span class="task-info-value"><code>{{ task.batch_number|default:"-" }}</code></span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">源码包</span>
+                            <span class="task-info-value code-font">{{ task.source_package.name|default:"-" }}（{{ task.source_package.version|default:"-" }}）</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">托管方式</span>
+                            <span class="task-info-value">{{ task.manage_mode|default:"-" }}{% if task.manage_unit %}（{{ task.manage_unit }}）{% endif %}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">预验证端口</span>
+                            <span class="task-info-value">{{ task.test_port|default:0 }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">回滚宽限</span>
+                            <span class="task-info-value">{{ task.reconnect_grace_seconds|default:60 }} 秒</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">操作人</span>
+                            <span class="task-info-value">{{ task.operator.username|default:"-" }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">创建时间</span>
+                            <span class="task-info-value">{{ task.created_at|date:"Y-m-d H:i:s" }}</span>
+                        </div>
+                        <div class="task-info-row">
+                            <span class="task-info-label">完成时间</span>
+                            <span class="task-info-value">{{ task.finished_at|date:"Y-m-d H:i:s"|default:"-" }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if task.configure_opts %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear"></i> configure 参数</h5>
+            </div>
+            <div class="card-body task-detail-body">
+                <code class="code-font">{{ task.configure_opts }}</code>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-file-text"></i> 完整执行日志</h5>
+            </div>
+            <div class="card-body">
+                <pre id="opensshLogBody" class="nginx-v-output openssh-log-body code-font">{{ log_output_display|default:"暂无日志" }}</pre>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<div class="modal fade" id="rollbackModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-counterclockwise"></i> 确认手动回滚</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">
+                    将停止 <code>sshd</code>，从备份目录恢复二进制与 <code>/etc/ssh</code> 后重启，并重新连接验证。
+                </p>
+                <p class="mb-2">节点：<code>{{ task.node.hostname }} ({{ task.node.ip }})</code></p>
+                <p class="mb-0">备份目录：<code class="code-font">{{ task.backup_dir|default:"-" }}</code></p>
+                <p class="text-danger small mt-2 mb-0">回滚期间该节点短暂不可连接，请确认当前连接不是经由该节点建立。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning btn-sm" id="btnRollbackConfirm">
+                    <i class="bi bi-arrow-counterclockwise"></i> 确认回滚
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    function scrollLogToBottom() {
+        var logEl = document.getElementById('opensshLogBody');
+        if (!logEl) return;
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                logEl.scrollTop = logEl.scrollHeight;
+                try {
+                    logEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                } catch (e) {
+                    logEl.scrollIntoView(false);
+                }
+            });
+        });
+    }
+
+    scrollLogToBottom();
+
+    var TERMINAL = { success: 1, failed: 1, rolled_back: 1, cancelled: 1 };
+    var initialStatus = '{{ task.status|escapejs }}';
+    if (TERMINAL[initialStatus]) return;
+
+    var progressUrl = '{% url "openssh_upgrade:api_task_log" task.id %}';
+    var pollTimer = null;
+    var lastLogLen = -1;
+
+    function statusBadgeClass(status) {
+        if (status === 'success') return 'badge bg-success';
+        if (status === 'failed') return 'badge bg-danger';
+        if (status === 'rolled_back') return 'badge bg-warning text-dark';
+        if (status === 'cancelled') return 'badge bg-secondary';
+        return 'badge bg-info';
+    }
+
+    function applyProgress(data) {
+        var badge = document.getElementById('taskStatusBadge');
+        if (badge) {
+            badge.className = statusBadgeClass(data.status);
+            badge.textContent = data.status_display || data.status || '';
+        }
+        var pct = document.getElementById('taskProgressBadge');
+        if (pct) {
+            pct.textContent = (data.progress != null ? data.progress : 0) + '%';
+            if (TERMINAL[data.status]) pct.classList.add('d-none');
+            else pct.classList.remove('d-none');
+        }
+        var stepEl = document.getElementById('taskCurrentStep');
+        if (stepEl) stepEl.textContent = data.current_step || '-';
+        var logEl = document.getElementById('opensshLogBody');
+        if (logEl) {
+            var text = String(data.log_output || '').replace(/^\s+|\s+$/g, '');
+            if (!text) text = '暂无日志';
+            if (text.length !== lastLogLen || logEl.textContent !== text) {
+                logEl.textContent = text;
+                lastLogLen = text.length;
+                scrollLogToBottom();
+            }
+        }
+        if (TERMINAL[data.status] && pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            scrollLogToBottom();
+        }
+    }
+
+    function pollOnce() {
+        fetch(progressUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data && data.success !== false) applyProgress(data);
+            })
+            .catch(function () { /* 静默重试 */ });
+    }
+
+    pollOnce();
+    pollTimer = setInterval(pollOnce, {{ sys_poll_interval_ms|default:2000 }});
+
+    var rollbackBtn = document.getElementById('btnRollback');
+    if (rollbackBtn) {
+        rollbackBtn.addEventListener('click', function () {
+            var modal = new bootstrap.Modal(document.getElementById('rollbackModal'));
+            modal.show();
+        });
+    }
+    var rollbackConfirm = document.getElementById('btnRollbackConfirm');
+    if (rollbackConfirm) {
+        rollbackConfirm.addEventListener('click', function () {
+            var taskId = rollbackBtn ? rollbackBtn.getAttribute('data-task-id') : '';
+            if (!taskId) return;
+            fetch('{% url "openssh_upgrade:api_rollback" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ nodes: [{ id: taskId }] })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    var modal = bootstrap.Modal.getInstance(document.getElementById('rollbackModal'));
+                    if (modal) modal.hide();
+                    if (!data.success) {
+                        showAlert('提示', data.message || '回滚创建失败');
+                        return;
+                    }
+                    showAlert('提示', data.message || '回滚任务已创建', function () {
+                        window.location.href = '{% url "openssh_upgrade:history" %}';
+                    });
+                })
+                .catch(function () {
+                    showAlert('提示', '请求失败，请重试');
+                });
+        });
+    }
+})();
+</script>
+{% endblock %}

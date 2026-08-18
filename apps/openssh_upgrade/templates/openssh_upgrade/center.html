@@ -1,0 +1,977 @@
+{% extends "base.html" %}
+
+{% block title %}OpenSSH 升级中心 - MngxOps{% endblock %}
+{% block page_title %}<i class="bi bi-shield-lock"></i> OpenSSH 升级中心{% endblock %}
+
+{% block extra_head %}
+<style>
+    .selected-box {
+        min-height: 56px;
+        border: 1px solid var(--gray-200, #e9ecef);
+        border-radius: var(--br-md, 0.5rem);
+        background: #fff;
+        padding: 0.65rem 0.75rem;
+    }
+    .node-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: #eef1ff;
+        color: #3d4db8;
+        border: 1px solid #c9d0f8;
+        border-radius: var(--br-sm, 4px);
+        padding: 0.2rem 0.55rem;
+        font-size: var(--fs-sm, 0.78rem);
+        margin: 0.15rem;
+    }
+    .node-chip .chip-x { cursor: pointer; opacity: 0.7; }
+    .node-chip .chip-x:hover { opacity: 1; }
+    tr.disabled-row { opacity: 0.55; }
+    .wizard-steps {
+        display: flex; gap: 0; margin-bottom: 1rem;
+        border-radius: var(--br-md); overflow: hidden; border: 1px solid var(--gray-200);
+    }
+    .wizard-step-item {
+        flex: 1; text-align: center; padding: 0.65rem 0.5rem; font-size: var(--fs-base);
+        background: var(--gray-100); color: var(--gray-600);
+        border-right: 1px solid var(--gray-200);
+    }
+    .wizard-step-item:last-child { border-right: none; }
+    .wizard-step-item.active { background: var(--primary); color: #fff; }
+    .wizard-step-item.done { background: rgba(102, 126, 234, 0.12); color: var(--primary); }
+    .wizard-step-item .step-num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.35rem; height: 1.35rem; border-radius: 50%;
+        background: rgba(0,0,0,0.08); font-size: var(--fs-sm); margin-right: 4px;
+    }
+    .wizard-step-item.active .step-num { background: rgba(255,255,255,0.25); }
+    .wizard-panel { display: none; }
+    .wizard-panel.active { display: block; }
+    .kv-info-box {
+        padding: 12px 14px; background: var(--gray-100); border-radius: var(--br-md);
+        border: 1px solid var(--gray-200); font-size: var(--fs-base);
+    }
+    .kv-info-row {
+        display: flex; gap: 0.75rem; padding: 0.25rem 0;
+        border-bottom: 1px dashed var(--gray-200);
+    }
+    .kv-info-row:last-child { border-bottom: none; }
+    .kv-info-label { width: 7rem; flex-shrink: 0; color: var(--gray-600); }
+    .os-node-block {
+        border: 1px solid var(--gray-200); border-radius: var(--br-md);
+        margin-bottom: 0.75rem; background: #fff; overflow: hidden;
+    }
+    .os-node-block .node-header {
+        display: flex; flex-wrap: wrap; align-items: center;
+        justify-content: space-between; gap: 0.5rem;
+        padding: 0.75rem 1rem; cursor: pointer; user-select: none;
+    }
+    .os-node-block .node-header:hover { background: var(--gray-100); }
+    .os-node-block .chevron { transition: transform var(--transition-fast, 0.15s); color: var(--gray-600); }
+    .os-node-block.collapsed .chevron { transform: rotate(-90deg); }
+    .os-node-block .node-body { padding: 0 1rem 0.85rem; }
+    .os-node-block.collapsed .node-body { display: none; }
+    .progress-placeholder { color: var(--gray-600); font-size: var(--fs-base); padding: 1.5rem 0.5rem; text-align: center; }
+    .node-progress-block { border: 1px solid var(--gray-200); border-radius: var(--br-md); margin-bottom: 0.75rem; overflow: hidden; }
+    .node-progress-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 12px; background: var(--gray-100); cursor: pointer; font-size: var(--fs-base);
+    }
+    .node-progress-body { padding: 8px 12px; border-top: 1px solid var(--gray-200); }
+    .upgrade-step {
+        display: flex; align-items: center; padding: 8px 12px; border-radius: var(--br-md);
+        margin-bottom: 4px; font-family: var(--font-mono); font-size: var(--fs-base);
+    }
+    .upgrade-step.success { background: #f0fff4; color: #155724; }
+    .upgrade-step.running { background: #fff8e1; color: #856404; }
+    .upgrade-step.failed { background: #fff5f5; color: #721c24; }
+    .upgrade-step.pending { background: var(--gray-100); color: var(--gray-600); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-end align-items-center mb-3 flex-wrap gap-2">
+        <a href="{% url 'openssh_upgrade:index' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> 返回
+        </a>
+        <a href="{% url 'openssh_upgrade:history' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-clock-history"></i> 历史
+        </a>
+    </div>
+
+    <div class="alert alert-danger py-2 small mb-3" role="alert">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        升级将替换 <code>sshd</code> 并重启服务。平台会先备份、预验证并在宽限期内自动回滚，但若网络/远端异常仍存在断连风险，请谨慎操作。
+    </div>
+
+    <div class="row">
+        <div class="col-md-7">
+            <div class="wizard-steps" id="wizardSteps">
+                <div class="wizard-step-item active" data-step="1"><span class="step-num">1</span>选择目标</div>
+                <div class="wizard-step-item" data-step="2"><span class="step-num">2</span>探测与配置</div>
+                <div class="wizard-step-item" data-step="3"><span class="step-num">3</span>确认执行</div>
+            </div>
+
+            <div class="wizard-panel active" id="step1">
+                <div class="card mb-3">
+                    <div class="card-header"><i class="bi bi-1-circle"></i> 选择目标节点与源码包</div>
+                    <div class="card-body">
+                        <div class="selected-box mb-2" id="selectedBox">
+                            <span class="text-muted small" id="emptyHint">请选择在线且已配置凭证的节点（最多 {{ batch_max_count }} 台）</span>
+                            <div id="chipWrap"></div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap align-items-center">
+                            <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#selectNodeModal">
+                                <i class="bi bi-search"></i> <span id="btnSelectLabel">选择节点</span>
+                            </button>
+                            <label class="form-label mb-0 small">源码包：</label>
+                            <select class="form-select form-select-sm" id="packageSelect" style="width:240px;">
+                                <option value="">-- 请选择 OpenSSH 源码包 --</option>
+                                {% for pkg in packages %}
+                                <option value="{{ pkg.id }}">openssh-{{ pkg.version }}（{{ pkg.name }}）</option>
+                                {% endfor %}
+                            </select>
+                            <a href="{% url 'openssh_upgrade:packages' %}" class="btn btn-outline-secondary btn-sm" target="_blank">
+                                <i class="bi bi-archive"></i> 源码包管理
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-primary btn-sm" id="btnToStep2" disabled onclick="goStep(2)">
+                        下一步 <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="wizard-panel" id="step2">
+                <div class="card mb-3">
+                    <div class="card-header"><i class="bi bi-2-circle"></i> 探测结果与升级配置</div>
+                    <div class="card-body">
+                        <div id="previewList">
+                            <div class="text-muted text-center py-3">加载预览…</div>
+                        </div>
+                        <div class="card mt-3">
+                            <div class="card-header py-2"><i class="bi bi-gear"></i> 升级配置</div>
+                            <div class="card-body">
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label small mb-1">编译工作目录</label>
+                                        <input type="text" class="form-control form-control-sm" id="cfgWorkDir"
+                                               value="{{ defaults.work_dir }}">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small mb-1">预验证端口</label>
+                                        <input type="number" class="form-control form-control-sm" id="cfgTestPort"
+                                               value="{{ defaults.test_port }}" min="0" max="65535">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small mb-1">回滚宽限(秒)</label>
+                                        <input type="number" class="form-control form-control-sm" id="cfgGrace"
+                                               value="{{ defaults.reconnect_grace_seconds }}" min="10" max="600">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small mb-1">并行编译 -j</label>
+                                        <input type="number" class="form-control form-control-sm" id="cfgMakeJobs"
+                                               value="{{ defaults.make_jobs }}" min="1" max="32">
+                                    </div>
+                                    <div class="col-md-12">
+                                        <label class="form-label small mb-1">configure 参数（--prefix/--sysconfdir 固定为系统布局）</label>
+                                        <input type="text" class="form-control form-control-sm" id="cfgOpts"
+                                               value="{{ defaults.configure_opts }}">
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="cfgAutoRollback" checked>
+                                            <label class="form-check-label small" for="cfgAutoRollback">
+                                                失败自动回滚（看门狗宽限内自动恢复旧版本）
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(1)">
+                        <i class="bi bi-chevron-left"></i> 上一步
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" id="btnToStep3" disabled onclick="goStep(3)">
+                        下一步 <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="wizard-panel" id="step3">
+                <div class="card mb-3">
+                    <div class="card-header"><i class="bi bi-3-circle"></i> 确认执行</div>
+                    <div class="card-body">
+                        <div class="kv-info-box mb-3" id="confirmMeta"></div>
+                        <div id="confirmSummary"></div>
+                        <div class="form-check mb-2 mt-3">
+                            <input class="form-check-input" type="checkbox" id="confirmDanger">
+                            <label class="form-check-label text-danger" for="confirmDanger">
+                                我已知晓升级存在断连风险，且已确认失败将自动回滚
+                            </label>
+                        </div>
+                        <p class="small text-muted mb-0">
+                            升级前将备份二进制与 <code>/etc/ssh</code>；切换后平台重新连接验证新版本，超时由看门狗自动还原旧版本。
+                        </p>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="goStep(2)">
+                        <i class="bi bi-chevron-left"></i> 上一步
+                    </button>
+                    {% if can_execute %}
+                    <button type="button" class="btn btn-danger btn-sm" id="btnStartUpgrade" disabled onclick="startUpgrade()">
+                        <i class="bi bi-arrow-up-circle"></i> 开始升级
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-5">
+            <div class="card sticky-top" style="top: 20px;">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-speedometer2"></i> 升级执行进度</h5>
+                    <span id="progressPercent" class="badge bg-secondary d-none">0%</span>
+                </div>
+                <div class="card-body">
+                    <div id="progressPlaceholder" class="progress-placeholder">
+                        <i class="bi bi-hourglass" style="font-size: 1.75rem;"></i>
+                        <p class="mt-2 mb-0">确认后开始升级，进度将在此展示</p>
+                    </div>
+                    <div id="progressLive" class="d-none">
+                        <div class="mb-2 small" id="batchNumberLabel"></div>
+                        <div class="progress mb-3" style="height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width: 0%"></div>
+                        </div>
+                        <div id="upgradeSteps"></div>
+                        <div class="mt-3 d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-outline-danger d-none" id="btnCancelUpgrade" onclick="cancelUpgrade()">
+                                <i class="bi bi-stop-circle"></i> 取消（仅未切换阶段生效）
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="selectNodeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-search"></i> 选择目标节点</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="tag-input-wrapper form-control form-control-sm" id="searchWrap">
+                        <input type="text" class="tag-input-field" id="searchField"
+                               placeholder="搜索主机名、IP 或节点组，回车添加标签" autocomplete="off">
+                    </div>
+                    <input type="hidden" id="searchHidden">
+                </div>
+                <div class="table-responsive modal-table-scroll">
+                    <table class="table table-sm table-bordered table-hover data-table modal-picker-table mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th style="width:6%"><input type="checkbox" id="selectAll" title="全选本页可选"></th>
+                            <th style="width:26%">主机名</th>
+                            <th style="width:20%">IP</th>
+                            <th style="width:22%">节点组</th>
+                            <th style="width:26%">状态 / OpenSSH</th>
+                        </tr>
+                        </thead>
+                        <tbody id="nodeTbody">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    <i class="bi bi-search"></i>
+                                    <p class="mt-1 mb-0">打开后加载节点…</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between mt-2">
+                    <small class="text-muted">共 <span id="resultCount">0</span> · 已勾 <span id="pickedCount">0</span> · 上限 {{ batch_max_count }}</small>
+                    <small class="text-muted">仅可选在线且已配置凭证的节点</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="confirmSelection()">
+                    <i class="bi bi-check-lg"></i> 确认选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var MAX_BATCH = {{ batch_max_count|default:3 }};
+    var CAN_EXECUTE = {{ can_execute|yesno:"true,false" }};
+    var PREVIEW_URL = '{% url "openssh_upgrade:api_preview" %}';
+    var CREATE_URL = '{% url "openssh_upgrade:api_create" %}';
+    var PROGRESS_URL = '{% url "openssh_upgrade:api_batch_progress" %}';
+    var SEARCH_URL = '{% url "nodes:api_search_nodes" %}';
+    var CANCEL_URL_TMPL = '{% url "releases:task_center_cancel" 0 %}'.replace('/0/', '/{id}/');
+    var POLL_MS = {{ sys_poll_interval_ms|default:2000 }};
+
+    var selected = {};
+    var draft = {};
+    var previewNodes = [];
+    var draftSelections = {};
+    var lastSearchNodes = [];
+    var searchTimer = null;
+    var pollTimer = null;
+    var currentBatch = '';
+    var currentTaskCenterId = null;
+    var expandedProgressIds = {};
+
+    function csrfToken() {
+        var m = document.cookie.match(/csrftoken=([^;]+)/);
+        return m ? m[1] : '';
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function canSelect(node) {
+        return node.status === 'online' && !!node.has_credential && !node.is_locked;
+    }
+
+    function selectedCount() { return Object.keys(selected).length; }
+    function draftCount() { return Object.keys(draft).length; }
+
+    function setWizardStep(step) {
+        document.querySelectorAll('#wizardSteps .wizard-step-item').forEach(function (el) {
+            var n = parseInt(el.getAttribute('data-step'), 10);
+            el.classList.remove('active', 'done');
+            if (n === step) el.classList.add('active');
+            else if (n < step) el.classList.add('done');
+        });
+        document.querySelectorAll('.wizard-panel').forEach(function (el) {
+            el.classList.toggle('active', el.id === 'step' + step);
+        });
+    }
+
+    function syncStep1() {
+        var btn = document.getElementById('btnToStep2');
+        var pkg = document.getElementById('packageSelect').value;
+        if (btn) btn.disabled = selectedCount() === 0 || !pkg;
+    }
+
+    function syncStep2Next() {
+        var btn = document.getElementById('btnToStep3');
+        if (!btn) return;
+        btn.disabled = !previewNodes.some(function (n) { return n.eligible; });
+    }
+
+    function syncStartBtn() {
+        var btn = document.getElementById('btnStartUpgrade');
+        if (!btn) return;
+        var ok = CAN_EXECUTE && document.getElementById('confirmDanger').checked &&
+            previewNodes.some(function (n) { return n.eligible; });
+        btn.disabled = !ok;
+    }
+
+    function renderChips() {
+        var wrap = document.getElementById('chipWrap');
+        var hint = document.getElementById('emptyHint');
+        var ids = Object.keys(selected);
+        if (!ids.length) {
+            wrap.innerHTML = '';
+            hint.style.display = '';
+        } else {
+            hint.style.display = 'none';
+            wrap.innerHTML = ids.map(function (id) {
+                var n = selected[id];
+                return '<span class="node-chip">' + escapeHtml(n.hostname) +
+                    ' <code class="small">' + escapeHtml(n.ip) + '</code>' +
+                    ' <i class="bi bi-x chip-x" data-id="' + id + '"></i></span>';
+            }).join('');
+            wrap.querySelectorAll('.chip-x').forEach(function (x) {
+                x.addEventListener('click', function () {
+                    delete selected[x.getAttribute('data-id')];
+                    renderChips();
+                });
+            });
+        }
+        document.getElementById('btnSelectLabel').textContent =
+            ids.length ? ('选择节点（已选 ' + ids.length + '）') : '选择节点';
+        syncStep1();
+    }
+
+    function toggleDraft(node, checked) {
+        var key = String(node.id);
+        if (checked) {
+            if (!draft[key] && draftCount() >= MAX_BATCH) {
+                showAlert('提示', '<p class="text-warning mb-0">最多只能勾选 ' + MAX_BATCH + ' 个节点</p>');
+                return false;
+            }
+            draft[key] = node;
+        } else {
+            delete draft[key];
+        }
+        document.getElementById('pickedCount').textContent = String(draftCount());
+        return true;
+    }
+
+    function statusBadge(node) {
+        var html = '';
+        if (node.status === 'online') html = '<span class="badge bg-success">在线</span>';
+        else if (node.status === 'offline') html = '<span class="badge bg-danger">离线</span>';
+        else html = '<span class="badge bg-secondary">未知</span>';
+        if (!node.has_credential) html += ' <span class="badge bg-warning text-dark">无凭证</span>';
+        if (node.openssh_version) {
+            html += ' <span class="badge bg-primary">' + escapeHtml(node.openssh_version) + '</span>';
+        } else {
+            html += ' <span class="badge bg-secondary">未知版本</span>';
+        }
+        return html;
+    }
+
+    function renderTable(nodes) {
+        lastSearchNodes = nodes || [];
+        var tbody = document.getElementById('nodeTbody');
+        document.getElementById('resultCount').textContent = String(lastSearchNodes.length);
+        document.getElementById('pickedCount').textContent = String(draftCount());
+        if (!lastSearchNodes.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">' +
+                '<i class="bi bi-inbox"></i><p class="mt-1 mb-0">未找到匹配的节点</p></td></tr>';
+            return;
+        }
+        var html = '';
+        lastSearchNodes.forEach(function (node) {
+            var selectable = canSelect(node);
+            var checked = draft[String(node.id)] ? ' checked' : '';
+            if (!selectable) checked = '';
+            var groups = '';
+            if (node.groups && node.groups.length) {
+                node.groups.forEach(function (g) {
+                    groups += '<span class="badge bg-info text-dark me-1">' + escapeHtml(g.name) + '</span>';
+                });
+            } else {
+                groups = '<span class="text-muted small">-</span>';
+            }
+            html += '<tr class="' + (selectable ? '' : 'disabled-row') + '" data-node-id="' + node.id + '"' +
+                (selectable ? '' : ' data-disabled="1"') + '>' +
+                '<td><input type="checkbox" class="os-node-cb" value="' + node.id + '"' + checked +
+                (selectable ? '' : ' disabled') + '></td>' +
+                '<td><span class="node-identity">' + escapeHtml(node.hostname) + '</span></td>' +
+                '<td><code>' + escapeHtml(node.ip) + '</code></td>' +
+                '<td>' + groups + '</td>' +
+                '<td class="text-nowrap">' + statusBadge(node) + '</td></tr>';
+        });
+        tbody.innerHTML = html;
+        tbody.querySelectorAll('.os-node-cb').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                var node = lastSearchNodes.find(function (n) { return String(n.id) === String(cb.value); });
+                if (!node) return;
+                if (!toggleDraft(node, cb.checked)) cb.checked = false;
+            });
+        });
+        if (typeof bindModalTableRowToggle === 'function') {
+            bindModalTableRowToggle(tbody, '.os-node-cb');
+        }
+    }
+
+    function doSearch() {
+        var search = document.getElementById('searchHidden').value || '';
+        var tbody = document.getElementById('nodeTbody');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">' +
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div>搜索中...</td></tr>';
+        fetch(SEARCH_URL + '?search=' + encodeURIComponent(search), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (result) { renderTable(result.nodes || []); })
+            .catch(function () {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">加载失败</td></tr>';
+            });
+    }
+
+    function updateSearchHidden() {
+        var wrapper = document.getElementById('searchWrap');
+        var field = document.getElementById('searchField');
+        var hidden = document.getElementById('searchHidden');
+        var tags = [];
+        wrapper.querySelectorAll('.tag-item').forEach(function (el) {
+            var t = (el.getAttribute('data-tag') || el.textContent || '').replace(/×$/, '').trim();
+            if (t) tags.push(t);
+        });
+        var cur = (field.value || '').trim();
+        if (cur) tags.push(cur);
+        hidden.value = tags.join(',');
+    }
+
+    window.confirmSelection = function () {
+        selected = Object.assign({}, draft);
+        renderChips();
+        var modal = bootstrap.Modal.getInstance(document.getElementById('selectNodeModal'));
+        if (modal) modal.hide();
+    };
+
+    window.goStep = function (step) {
+        if (step === 2) {
+            if (!selectedCount()) { showAlert('提示', '请先选择节点'); return; }
+            if (!document.getElementById('packageSelect').value) {
+                showAlert('提示', '请选择源码包');
+                return;
+            }
+            setWizardStep(2);
+            loadPreview();
+            return;
+        }
+        if (step === 3) {
+            if (!previewNodes.some(function (n) { return n.eligible; })) {
+                showAlert('提示', '没有可升级的节点');
+                return;
+            }
+            setWizardStep(3);
+            renderConfirm();
+            return;
+        }
+        setWizardStep(step);
+    };
+
+    function renderPreview() {
+        var list = document.getElementById('previewList');
+        if (!previewNodes.length) {
+            list.innerHTML = '<div class="text-muted text-center py-3">无节点</div>';
+            syncStep2Next();
+            return;
+        }
+        list.innerHTML = previewNodes.map(function (n, i) {
+            var collapsed = i === 0 ? '' : ' collapsed';
+            var gate = n.gate_message
+                ? '<div class="small text-danger px-3 pb-2">' + escapeHtml(n.gate_message) + '</div>'
+                : '';
+            var origin = '';
+            if (n.package_origin === 'package') {
+                origin = ' <span class="badge bg-success" title="' +
+                    escapeHtml((n.package_mgr || '') + ' ' + (n.package_name || '')) +
+                    '">包安装</span>';
+            } else if (n.eligible) {
+                origin = ' <span class="badge bg-dark">源码安装</span>';
+            }
+            var mode = '';
+            if (n.manage_mode === 'systemctl') {
+                mode = ' <span class="badge bg-info text-dark">systemctl(' + escapeHtml(n.manage_unit || 'sshd') + ')</span>';
+            } else if (n.manage_mode === 'binary') {
+                mode = ' <span class="badge bg-secondary">二进制</span>';
+            }
+            var ver = n.current_version
+                ? '<span class="badge bg-primary">' + escapeHtml(n.current_version) + '</span>'
+                : '<span class="badge bg-secondary">版本未知</span>';
+            var port = ' <span class="badge bg-light text-dark border">端口 ' + (n.sshd_port || 22) + '</span>';
+            var rootBadge = n.is_root ? ' <span class="badge bg-warning text-dark">root</span>' :
+                (n.use_sudo ? ' <span class="badge bg-warning text-dark">sudo</span>' : '');
+            return '<div class="os-node-block' + collapsed + '" data-node-id="' + n.id + '">' +
+                '<div class="node-header" role="button">' +
+                '<span><i class="bi bi-chevron-down chevron me-1"></i>' +
+                '<span class="node-identity">' + escapeHtml(n.hostname) +
+                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span></span>' +
+                '<span>' + ver + port + rootBadge + origin + mode + '</span></div>' + gate +
+                '<div class="node-body"><div class="small text-muted">' +
+                '二进制: <code class="small">' + escapeHtml(n.sshd_binary || '/usr/sbin/sshd') + '</code> · ' +
+                '配置: <code class="small">' + escapeHtml(n.sshd_config_path || '/etc/ssh/sshd_config') + '</code></div>' +
+                (n.deps_missing && n.deps_missing.length
+                    ? '<div class="small text-danger mt-1">缺少依赖: ' + escapeHtml(n.deps_missing.join(', ')) + '</div>'
+                    : '') +
+                (n.disk_free_kb ? '<div class="small text-muted mt-1">磁盘可用: ' + Math.round(n.disk_free_kb / 1024) + ' MB</div>' : '') +
+                '</div></div>';
+        }).join('');
+        list.querySelectorAll('.os-node-block .node-header').forEach(function (hdr) {
+            hdr.addEventListener('click', function () {
+                hdr.parentElement.classList.toggle('collapsed');
+            });
+        });
+        syncStep2Next();
+    }
+
+    function loadPreview() {
+        var list = document.getElementById('previewList');
+        list.innerHTML = '<div class="text-muted text-center py-3">' +
+            '<div class="spinner-border spinner-border-sm text-primary me-2"></div>正在探测…</div>';
+        var ids = Object.keys(selected).map(function (k) { return parseInt(k, 10); });
+        fetch(PREVIEW_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ node_ids: ids })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) {
+                    list.innerHTML = '<div class="text-danger text-center py-3">' +
+                        escapeHtml(data.message || '预览失败') + '</div>';
+                    previewNodes = [];
+                    syncStep2Next();
+                    return;
+                }
+                previewNodes = data.nodes || [];
+                renderPreview();
+            })
+            .catch(function () {
+                list.innerHTML = '<div class="text-danger text-center py-3">预览请求失败</div>';
+                previewNodes = [];
+                syncStep2Next();
+            });
+    }
+
+    function renderConfirm() {
+        var eligible = previewNodes.filter(function (n) { return n.eligible; });
+        var pkgSel = document.getElementById('packageSelect');
+        var pkgText = pkgSel.options[pkgSel.selectedIndex] ? pkgSel.options[pkgSel.selectedIndex].text : '';
+        var auto = document.getElementById('cfgAutoRollback').checked;
+        document.getElementById('confirmMeta').innerHTML =
+            '<div class="kv-info-row"><div class="kv-info-label">操作</div><div>OpenSSH 升级（失败自动回滚）</div></div>' +
+            '<div class="kv-info-row"><div class="kv-info-label">源码包</div><div>' + escapeHtml(pkgText) + '</div></div>' +
+            '<div class="kv-info-row"><div class="kv-info-label">节点数</div><div>' + eligible.length + '</div></div>' +
+            '<div class="kv-info-row"><div class="kv-info-label">工作目录</div><div><code>' +
+            escapeHtml(document.getElementById('cfgWorkDir').value) + '</code></div></div>' +
+            '<div class="kv-info-row"><div class="kv-info-label">预验证端口</div><div>' +
+            escapeHtml(document.getElementById('cfgTestPort').value || '0（跳过）') + '</div></div>' +
+            '<div class="kv-info-row"><div class="kv-info-label">回滚宽限</div><div>' +
+            escapeHtml(document.getElementById('cfgGrace').value) + ' 秒' + (auto ? '' : '（已关闭自动回滚！）') + '</div></div>';
+
+        document.getElementById('confirmSummary').innerHTML = eligible.map(function (n) {
+            return '<div class="os-node-block" data-node-id="' + n.id + '">' +
+                '<div class="node-body pt-2">' +
+                '<span class="node-identity">' + escapeHtml(n.hostname) +
+                '<small class="text-muted">(' + escapeHtml(n.ip) + ')</small></span> ' +
+                '<span class="badge bg-primary">' + escapeHtml(n.current_version || '?') + '</span>' +
+                ' → <span class="badge bg-success">' + escapeHtml(pkgText.split('（')[0].replace('openssh-', '')) + '</span></div></div>';
+        }).join('') || '<div class="text-muted">无</div>';
+        syncStartBtn();
+    }
+
+    function collectPayload() {
+        var nodes = [];
+        previewNodes.forEach(function (n) {
+            if (!n.eligible) return;
+            nodes.push({ id: n.id, probe: n });
+        });
+        return {
+            nodes: nodes,
+            package_id: document.getElementById('packageSelect').value,
+            work_dir: document.getElementById('cfgWorkDir').value.trim(),
+            test_port: parseInt(document.getElementById('cfgTestPort').value, 10) || 0,
+            reconnect_grace_seconds: parseInt(document.getElementById('cfgGrace').value, 10) || 60,
+            configure_opts: document.getElementById('cfgOpts').value.trim(),
+            make_jobs: parseInt(document.getElementById('cfgMakeJobs').value, 10) || 4,
+            auto_rollback: document.getElementById('cfgAutoRollback').checked
+        };
+    }
+
+    function showProgressPanel(batch, tcId) {
+        currentBatch = batch || '';
+        currentTaskCenterId = tcId;
+        document.getElementById('progressPlaceholder').classList.add('d-none');
+        document.getElementById('progressLive').classList.remove('d-none');
+        document.getElementById('progressPercent').classList.remove('d-none', 'bg-secondary', 'bg-success', 'bg-danger');
+        document.getElementById('progressPercent').classList.add('bg-primary');
+        document.getElementById('batchNumberLabel').innerHTML =
+            '批次 <code>' + escapeHtml(batch || '-') + '</code>';
+        var bar = document.getElementById('progressBar');
+        bar.classList.add('progress-bar-animated', 'progress-bar-striped');
+        bar.classList.remove('bg-success', 'bg-danger');
+        bar.style.width = '0%';
+        var cancelBtn = document.getElementById('btnCancelUpgrade');
+        if (cancelBtn) cancelBtn.classList.remove('d-none');
+    }
+
+    function showCreatingSkeleton() {
+        expandedProgressIds = {};
+        showProgressPanel('', null);
+        document.getElementById('batchNumberLabel').innerHTML = '批次 <code>创建中…</code>';
+        document.getElementById('progressPercent').textContent = '0%';
+        var skeleton = previewNodes.filter(function (n) { return n.eligible; }).map(function (n, idx) {
+            return {
+                task_id: 'creating-' + n.id,
+                id: 'creating-' + n.id,
+                hostname: n.hostname,
+                ip: n.ip,
+                status: 'pending',
+                status_display: idx === 0 ? '创建中' : '等待中',
+                progress: 0,
+                log_url: ''
+            };
+        });
+        renderBatchProgress(skeleton);
+    }
+
+    function resetProgressPanel() {
+        expandedProgressIds = {};
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        currentBatch = '';
+        currentTaskCenterId = null;
+        document.getElementById('progressLive').classList.add('d-none');
+        document.getElementById('progressPlaceholder').classList.remove('d-none');
+        document.getElementById('upgradeSteps').innerHTML = '';
+        var cancelBtn = document.getElementById('btnCancelUpgrade');
+        if (cancelBtn) cancelBtn.classList.add('d-none');
+    }
+
+    function truncateErrorLines(msg, maxLines) {
+        var text = String(msg || '').replace(/\r\n/g, '\n').trim();
+        if (!text) return '未知错误';
+        var lines = text.split('\n');
+        var limit = maxLines || 5;
+        if (lines.length <= limit) return text;
+        return lines.slice(0, limit).join('\n') + '\n…';
+    }
+
+    var OS_STEPS = [
+        { key: 'pending', label: '连接远程', step: 1 },
+        { key: 'probing', label: '预检探测', step: 2 },
+        { key: 'building', label: '上传编译 (staging)', step: 3 },
+        { key: 'verifying', label: '预验证新二进制', step: 4 },
+        { key: 'backing_up', label: '备份旧版本', step: 5 },
+        { key: 'switching', label: '切换并重启 sshd', step: 6 },
+        { key: 'confirming', label: '连接实证', step: 7 }
+    ];
+
+    function buildStepHtml(data) {
+        var html = '';
+        var isFailed = data.status === 'failed' || data.status === 'rolled_back';
+        var isSuccess = data.status === 'success';
+        var isCancelled = data.status === 'cancelled';
+        var order = { pending: 1, probing: 2, building: 3, verifying: 4, backing_up: 5, switching: 6, confirming: 7 };
+        var cur = order[data.status] || 0;
+        OS_STEPS.forEach(function (s) {
+            var cls = 'pending', icon = '<i class="bi bi-hourglass-split"></i>';
+            if (isSuccess || (cur && s.step < cur)) {
+                cls = 'success'; icon = '<i class="bi bi-check-circle-fill"></i>';
+            } else if (s.key === data.status) {
+                cls = 'running'; icon = '<i class="bi bi-arrow-repeat"></i>';
+            }
+            if (isFailed && s.key === data.status) {
+                cls = 'failed'; icon = '<i class="bi bi-x-circle-fill"></i>';
+            }
+            if ((isFailed || isCancelled) && cur && s.step > cur) {
+                cls = 'pending'; icon = '<i class="bi bi-hourglass-split"></i>';
+            }
+            html += '<div class="upgrade-step ' + cls + '">' + icon + ' ' + s.step + '. ' + s.label + '</div>';
+        });
+        if (isSuccess) {
+            html += '<div class="upgrade-step success"><i class="bi bi-check-circle-fill"></i> 升级成功（新版本已验证）</div>';
+        }
+        if (data.status === 'rolled_back') {
+            html += '<div class="upgrade-step failed"><i class="bi bi-arrow-counterclockwise"></i> 已自动回滚</div>';
+        }
+        if (isFailed && data.status === 'failed') {
+            html += '<div class="upgrade-step failed" style="align-items:flex-start;white-space:pre-wrap;">' +
+                '<i class="bi bi-x-circle-fill me-1"></i><span>失败:\n' +
+                escapeHtml(truncateErrorLines(data.error_message, 5)) + '</span></div>';
+        }
+        if (isCancelled) {
+            html += '<div class="upgrade-step failed"><i class="bi bi-x-circle-fill"></i> 已取消</div>';
+        }
+        return html;
+    }
+
+    function getExpandedOsTaskIds() {
+        var ids = [];
+        document.querySelectorAll('#upgradeSteps .node-progress-block').forEach(function (block) {
+            var body = block.querySelector('.node-progress-body');
+            if (body && !body.classList.contains('d-none')) {
+                ids.push(String(block.getAttribute('data-task-id') || ''));
+            }
+        });
+        return ids.filter(Boolean);
+    }
+
+    function syncExpandedProgressFromDom() {
+        expandedProgressIds = {};
+        getExpandedOsTaskIds().forEach(function (id) { expandedProgressIds[id] = true; });
+    }
+
+    function updateProgressHeader(block, t) {
+        var badge = block.querySelector('.node-progress-header .badge');
+        var pctEl = block.querySelector('.node-progress-pct');
+        var badgeCls = 'bg-secondary';
+        if (t.status === 'success') badgeCls = 'bg-success';
+        else if (t.status === 'failed' || t.status === 'rolled_back' || t.status === 'cancelled') badgeCls = 'bg-danger';
+        else if (t.status !== 'pending') badgeCls = 'bg-primary';
+        if (badge) {
+            badge.className = 'badge ' + badgeCls;
+            badge.textContent = t.status_display || t.status || '';
+        }
+        if (pctEl) pctEl.textContent = (t.progress || 0) + '%';
+    }
+
+    function renderBatchProgress(tasks) {
+        syncExpandedProgressFromDom();
+        var wrap = document.getElementById('upgradeSteps');
+        wrap.innerHTML = (tasks || []).map(function (t) {
+            var key = String(t.task_id || t.id || '');
+            var collapsed = !expandedProgressIds[key] ? ' collapsed' : '';
+            var isFailed = t.status === 'failed' || t.status === 'rolled_back';
+            var isSuccess = t.status === 'success';
+            var badgeCls = 'bg-secondary';
+            if (isSuccess) badgeCls = 'bg-success';
+            else if (isFailed || t.status === 'cancelled') badgeCls = 'bg-danger';
+            else if (t.status !== 'pending') badgeCls = 'bg-primary';
+            var logLink = t.log_url
+                ? '<a class="btn btn-outline-info btn-sm" target="_blank" href="' + t.log_url + '">' +
+                  '<i class="bi bi-terminal"></i> 完整日志</a>'
+                : '';
+            return '<div class="node-progress-block' + collapsed + '" data-task-id="' + key + '">' +
+                '<div class="node-progress-header" role="button">' +
+                '<span><i class="bi bi-chevron-down chevron me-1"></i>' +
+                '<span class="node-identity">' + escapeHtml(t.hostname || '') +
+                '<small class="text-muted">(' + escapeHtml(t.ip || '') + ')</small></span></span>' +
+                '<span><span class="badge ' + badgeCls + '">' + escapeHtml(t.status_display || t.status || '') + '</span>' +
+                ' <span class="node-progress-pct small text-muted">' + (t.progress || 0) + '%</span></span></div>' +
+                '<div class="node-progress-body">' + buildStepHtml(t) + '</div>' +
+                '<div class="px-3 pb-2">' + logLink + '</div></div>';
+        }).join('') || '<div class="text-muted text-center py-3">无任务</div>';
+
+        wrap.querySelectorAll('.node-progress-header').forEach(function (hdr) {
+            hdr.addEventListener('click', function () {
+                hdr.parentElement.classList.toggle('collapsed');
+                syncExpandedProgressFromDom();
+            });
+        });
+    }
+
+    function pollBatchProgress() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (!currentBatch) return;
+        fetch(PROGRESS_URL + '?batch=' + encodeURIComponent(currentBatch), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) return;
+                var bar = document.getElementById('progressBar');
+                var pct = data.progress || 0;
+                bar.style.width = pct + '%';
+                document.getElementById('progressPercent').textContent = pct + '%';
+                if (data.finished) {
+                    bar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                    bar.classList.add(data.fail_count ? 'bg-danger' : 'bg-success');
+                    var cancelBtn = document.getElementById('btnCancelUpgrade');
+                    if (cancelBtn) cancelBtn.classList.add('d-none');
+                    pollTimer = null;
+                } else {
+                    pollTimer = setTimeout(pollBatchProgress, POLL_MS);
+                }
+                renderBatchProgress(data.tasks || []);
+            })
+            .catch(function () {
+                pollTimer = setTimeout(pollBatchProgress, POLL_MS);
+            });
+    }
+
+    window.startUpgrade = function () {
+        var payload = collectPayload();
+        showCreatingSkeleton();
+        fetch(CREATE_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(payload)
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) {
+                    resetProgressPanel();
+                    showAlert('提示', escapeHtml(data.message || '创建失败'));
+                    return;
+                }
+                currentBatch = data.source_batch || '';
+                currentTaskCenterId = data.task_center_id;
+                document.getElementById('batchNumberLabel').innerHTML =
+                    '批次 <code>' + escapeHtml(currentBatch) + '</code>';
+                pollBatchProgress();
+            })
+            .catch(function () {
+                resetProgressPanel();
+                showAlert('提示', '创建任务失败，请重试');
+            });
+    };
+
+    window.cancelUpgrade = function () {
+        if (!currentTaskCenterId) return;
+        showConfirm(
+            '取消升级',
+            '<p class="mb-0">取消后未切换的节点将跳过；已进入切换阶段（备份后）的节点会完成当前安全流程。</p>',
+            function () {
+                fetch(CANCEL_URL_TMPL.replace('{id}', currentTaskCenterId), {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrfToken(), 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function (r) { return r.json(); }).catch(function () {});
+            },
+            true,
+            'md',
+            '确认取消'
+        );
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var pkgSel = document.getElementById('packageSelect');
+        if (pkgSel) pkgSel.addEventListener('change', syncStep1);
+        var field = document.getElementById('searchField');
+        if (field) {
+            field.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    updateSearchHidden();
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(doSearch, 300);
+                }
+            });
+            field.addEventListener('input', function () {
+                updateSearchHidden();
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(doSearch, 400);
+            });
+        }
+        var confirmDanger = document.getElementById('confirmDanger');
+        if (confirmDanger) confirmDanger.addEventListener('change', syncStartBtn);
+        var modalEl = document.getElementById('selectNodeModal');
+        if (modalEl) {
+            modalEl.addEventListener('show.bs.modal', function () {
+                doSearch();
+            });
+        }
+        var selectAll = document.getElementById('selectAll');
+        if (selectAll) {
+            selectAll.addEventListener('change', function () {
+                var checked = selectAll.checked;
+                lastSearchNodes.forEach(function (node) {
+                    if (!canSelect(node)) return;
+                    var key = String(node.id);
+                    if (checked && !draft[key] && draftCount() >= MAX_BATCH) return;
+                    if (checked) draft[key] = node; else delete draft[key];
+                });
+                renderTable(lastSearchNodes);
+                selectAll.checked = false;
+            });
+        }
+    });
+})();
+</script>
+{% endblock %}

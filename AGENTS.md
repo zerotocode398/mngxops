@@ -1,4 +1,4 @@
-# mngxops 优化点台账（Q1–Q161）
+# mngxops 优化点台账（Q1–Q162）
 
 本文档记录历史优化点结论，供 Agent / 开发快速检索。**不修改业务逻辑时请以本文件结论为准。**
 
@@ -100,6 +100,12 @@
 | Q158 | 节点/凭证列表 xlsx 导出（凭证明文） | 已完成 |
 | Q159 | 导出勾选/全量确认；凭证批量导入 | 已完成 |
 | Q161 | 登录失败锁定 / 启动清 running / SECRET_KEY 与 Host | 已完成 |
+
+### 运维工具 · OpenSSH 升级
+
+| 编号 | 摘要 | 状态 |
+|------|------|------|
+| Q162 | 运维工具 OpenSSH 升级（源码编译，失败自动回滚） | 已完成 |
 
 ### Nginx 升级 / 系统设置 / 导航 / 仪表盘
 
@@ -258,6 +264,7 @@
 | Q159 | 导出勾选/全量确认；凭证批量导入 | 已完成 |
 | Q160 | 启停完整日志指向启停任务详情；右栏执行进度 | 已完成 |
 | Q161 | 登录失败锁定 / 启动清 running / SECRET_KEY 与 Host | 已完成 |
+| Q162 | 运维工具 OpenSSH 升级（源码编译，失败自动回滚） | 已完成 |
 
 ---
 
@@ -1403,4 +1410,17 @@
   1. 连续失败达 `auth.login_fail_lock_count`（默认 5）锁定 `auth.login_fail_lock_minutes`（默认 15）；成功清零；到期自解；用户列表开关可提前解锁。
   2. WSGI 启动将遗留 pending/running 的任务中心/发布/升级/安装/卸载标 `failed`（不杀远端）。
   3. `SECRET_KEY` 优先环境变量，否则 `DATA_DIR/.secret_key` 自动生成；`MNGXOPS_ALLOWED_HOSTS` 未设则仍为 `*`；`MNGXOPS_HTTPS` / `MNGXOPS_CSRF_TRUSTED_ORIGINS` 可选。
+- **状态**：已完成
+
+### Q162 · 运维工具 · OpenSSH 升级（源码编译，失败自动回滚）
+
+- **问题**：运维工具缺 OpenSSH 升级入口；sshd 是唯一远程通道，升级失败且不可回滚时节点将彻底失联。
+- **处理**：
+  1. 侧栏新增「OpenSSH 升级」；应用 `apps/openssh_upgrade`；首页对齐升级运维台；中心三步向导（选择目标 → 探测与配置 → 确认执行）+ 右栏「升级执行进度」（对齐升级，不用全局 overlay）。
+  2. 安全模型四段式：①预检探测（版本/来源/托管/root 或免密 sudo/磁盘/依赖/端口）；②DESTDIR 编译到 staging + 新二进制 `sshd -t` 校验现有配置 + 备用端口真实连接预验证；③完整备份二进制与 `/etc/ssh`（host keys 只备份不覆盖）+ 生成看门狗回滚脚本（`nohup setsid` 调度）+ 替换二进制重启 sshd；④平台全新连接重连实证，成功写 OK 标记解除看门狗，失败宽限内自动回滚并标 `rolled_back`。
+  3. 门禁：仅 SSH online + 已配置凭证 + 未锁定；源码编译需 root 或免密 sudo；包安装节点提示走系统包管理器。
+  4. TaskCenter `openssh_upgrade`；批次升级 `OSI-YYMMDD-NNNN`、回滚 `OSR-YYMMDD-NNNN`；批次进度轮询 + 协作取消（进入备份后完成当前安全流程）+ 启动清遗留 + `system.retention_openssh_task_days`(90) 数据保留。
+  5. 权限资源 `openssh_upgrade`（read/create/update 回滚/delete）：仅创建 PermissionItem 行，**不自动迁移** `upgrade.*` 授权（风险最高操作，需管理员显式勾选）。
+  6. 手动回滚：历史/详情对有备份清单的任务发起，恢复备份 + 重启 + 重连实证，独立 `OSR-` 批次。
+  7. Node 新增 `openssh_version` / `last_openssh_probe_at`；升级成功后回写；节点列表新增 OpenSSH 徽标列，详情弹窗展示；各 SSH 测活路径（单测/批测/解锁/系统信息/版本检测/凭证启用）连接成功时同步探测并回写 OpenSSH 版本（失败不清除）。
 - **状态**：已完成

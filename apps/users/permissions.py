@@ -127,6 +127,10 @@ def task_center_limited_ops_for_user(user):
         user, "nginx_uninstall", "create"
     ):
         ops.append("nginx_uninstall")
+    if user_has_permission(user, "openssh_upgrade", "read") or user_has_permission(
+        user, "openssh_upgrade", "create"
+    ):
+        ops.append("openssh_upgrade")
     return ops
 
 

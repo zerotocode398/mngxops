@@ -109,6 +109,7 @@
                                     <th style="width: 7%;">状态</th>
                                     <th style="width: 12%;">探测时间</th>
                                     <th style="width: 12%;">Nginx</th>
+                                    <th style="width: 13%;">OpenSSH</th>
                                     <th style="width: 16%;">操作</th>
                                 </tr>
                             </thead>
@@ -164,6 +165,9 @@
                                             data-nginx-available="{% if node.nginx_available is True %}true{% elif node.nginx_available is False %}false{% else %}null{% endif %}">
                                             {{ node.nginx_status_label }}
                                         </code>
+                                    </td>
+                                    <td>
+                                        {% include "nodes/_openssh_badge.html" with openssh_version=node.openssh_version %}
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
@@ -322,6 +326,11 @@
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="detectVersionBtn" onclick="detectNginxVersion()">
                                 <i class="bi bi-arrow-repeat"></i> 重新检测版本
                             </button>
+                        </div>
+                        <div class="mb-3">
+                            <h6 class="text-muted"><i class="bi bi-shield-lock"></i> OpenSSH 信息</h6>
+                            <p>版本: <code id="detailOpenSshVersion">-</code></p>
+                            <p class="small text-muted">上次探测: <span id="detailOpenSshProbeAt">-</span></p>
                         </div>
                         <hr>
                         <div>
@@ -948,6 +957,8 @@
             document.getElementById('detailLastProbeAt').textContent = info.last_probe_at || '-';
             document.getElementById('detailNginxVersion').textContent = formatNginxVersion(info.nginx_version);
             document.getElementById('detailNginxPath').textContent = info.nginx_path;
+            document.getElementById('detailOpenSshVersion').textContent = info.openssh_version || '-';
+            document.getElementById('detailOpenSshProbeAt').textContent = info.last_openssh_probe_at || '-';
 
             /* 编辑按钮 */
             var editUrl = '{% url "nodes:edit" 999999 %}'.replace('999999', info.id);

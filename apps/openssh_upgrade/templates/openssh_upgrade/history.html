@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}OpenSSH 升级历史 - MngxOps{% endblock %}
+{% block page_title %}<i class="bi bi-clock-history"></i> OpenSSH 升级历史{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">升级 / 回滚历史记录</h5>
+    <a href="{% url 'openssh_upgrade:center' %}" class="btn btn-primary btn-sm">
+        <i class="bi bi-arrow-up-circle"></i> 升级中心
+    </a>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end" id="opensshHistoryForm">
+            <div class="col-md-4">
+                <div class="tag-input-wrapper form-control form-control-sm" id="opensshHistoryTagWrapper">
+                    <input type="text" class="tag-input-field"
+                        placeholder="搜索节点名、IP、版本或批次">
+                </div>
+                <input type="hidden" name="search" id="opensshHistorySearchHidden" value="{{ search }}">
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-select form-select-sm" onchange="document.getElementById('opensshHistoryForm').submit()">
+                    <option value="">全部状态</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('opensshHistoryForm').submit()">
+                    {% for opt in per_page_options %}
+                    <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }} 条/页</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                {% if search or status_filter %}
+                <a href="{% url 'openssh_upgrade:history' %}" class="btn btn-sm btn-outline-secondary w-100">
+                    <i class="bi bi-x-circle"></i> 清空
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if tasks %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0 data-table">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 12%;">批次</th>
+                        <th style="width: 8%;">操作</th>
+                        <th style="width: 18%;">目标节点</th>
+                        <th style="width: 16%;">版本</th>
+                        <th style="width: 10%;">状态</th>
+                        <th style="width: 8%;">进度</th>
+                        <th style="width: 10%;">操作人</th>
+                        <th style="width: 14%;">创建时间</th>
+                        <th style="width: 10%;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for task in tasks %}
+                    <tr>
+                        <td><code class="small">{{ task.batch_number }}</code></td>
+                        <td>
+                            {% if task.action == "rollback" %}
+                            <span class="badge bg-secondary">回滚</span>
+                            {% else %}
+                            <span class="badge bg-primary">升级</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="node-info-cell">
+                                <span class="node-identity">
+                                    {{ task.node.hostname }}<small class="text-muted">({{ task.node.ip }})</small>
+                                </span>
+                                {% if task.node.is_deleted %}
+                                <span class="badge bg-secondary">已删除</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="text-nowrap">
+                            {% if task.action == "upgrade" %}
+                            <code class="small">{{ task.current_version|default:"?" }} → {{ task.target_version|default:"?" }}</code>
+                            {% else %}
+                            <code class="small">回滚至 {{ task.current_version|default:"?" }}</code>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if task.status == "success" %}
+                            <span class="badge bg-success">成功</span>
+                            {% elif task.status == "failed" %}
+                            <span class="badge bg-danger">失败</span>
+                            {% elif task.status == "rolled_back" %}
+                            <span class="badge bg-warning text-dark">已自动回滚</span>
+                            {% elif task.status == "cancelled" %}
+                            <span class="badge bg-secondary">已取消</span>
+                            {% else %}
+                            <span class="badge bg-info">{{ task.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td><small>{{ task.progress }}%</small></td>
+                        <td>{{ task.operator.username|default:"-" }}</td>
+                        <td><small>{{ task.created_at|date:"Y-m-d H:i" }}</small></td>
+                        <td>
+                            <a class="btn btn-outline-secondary btn-sm"
+                               href="{% url 'openssh_upgrade:task_log' task.id %}"
+                               target="_blank" title="查看详情">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state py-5"><i class="bi bi-inbox"></i><p>暂无记录</p></div>
+        {% endif %}
+    </div>
+</div>
+
+{% if is_paginated %}
+<div class="d-flex justify-content-between align-items-center mt-3">
+    <form method="get" class="d-flex align-items-center gap-2">
+        <input type="hidden" name="search" value="{{ search }}">
+        <input type="hidden" name="status" value="{{ status_filter }}">
+        <label class="form-label mb-0 small">每页</label>
+        <select name="per_page" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+            {% for opt in per_page_options %}
+            <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }} 条/页</option>
+            {% endfor %}
+        </select>
+        <span class="small text-muted">条</span>
+    </form>
+    {% include "includes/pagination.html" with page_obj=page_obj %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var wrapper = document.getElementById('opensshHistoryTagWrapper');
+    var hidden = document.getElementById('opensshHistorySearchHidden');
+    var form = document.getElementById('opensshHistoryForm');
+    if (!wrapper || !hidden || !form) return;
+    if (typeof initTagInput === 'function') {
+        initTagInput(wrapper, {
+            initial: (hidden.value || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+            onChange: function (tags) {
+                hidden.value = (tags || []).join(',');
+                form.submit();
+            }
+        });
+    } else {
+        // 兜底：无全局 tag-input 时按回车提交
+        var field = wrapper.querySelector('input');
+        if (field) {
+            field.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    hidden.value = field.value.trim();
+                    form.submit();
+                }
+            });
+        }
+    }
+})();
+</script>
+{% endblock %}

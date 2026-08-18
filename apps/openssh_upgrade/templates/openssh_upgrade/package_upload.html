@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}上传 OpenSSH 源码包 - MngxOps{% endblock %}
+{% block page_title %}<i class="bi bi-upload"></i> 上传 OpenSSH 源码包{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-box-seam"></i> 上传源码包（.tar.gz / .tgz）</div>
+            <div class="card-body">
+                <form id="pkgUploadForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">包名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="pkgName" required
+                               placeholder="如 OpenSSH 9.8p1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">版本号 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="pkgVersion" required
+                               placeholder="如 9.8p1">
+                        <div class="form-text">用于展示与版本对比；建议与文件名中的版本一致。</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">源码包文件 <span class="text-danger">*</span>（≤ {{ package_max_size_mb }}MB）</label>
+                        <input type="file" class="form-control form-control-sm" id="pkgFile" required accept=".tar.gz,.tgz">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">描述</label>
+                        <textarea class="form-control form-control-sm" id="pkgDesc" rows="2"
+                                  placeholder="可选，说明来源/用途等"></textarea>
+                    </div>
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{% url 'openssh_upgrade:packages' %}" class="btn btn-outline-secondary btn-sm">取消</a>
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="bi bi-upload"></i> 上传
+                        </button>
+                    </div>
+                </form>
+                <div id="uploadMsg" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var form = document.getElementById('pkgUploadForm');
+    if (!form) return;
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var msg = document.getElementById('uploadMsg');
+        msg.className = 'mt-3';
+        msg.innerHTML = '<div class="d-flex align-items-center gap-2 text-muted"><div class="spinner-border spinner-border-sm"></div>上传中…</div>';
+        var fd = new FormData();
+        fd.append('name', document.getElementById('pkgName').value.trim());
+        fd.append('version', document.getElementById('pkgVersion').value.trim());
+        fd.append('description', document.getElementById('pkgDesc').value.trim());
+        fd.append('package_file', document.getElementById('pkgFile').files[0]);
+        fetch('{% url "openssh_upgrade:api_package_upload" %}', {
+            method: 'POST',
+            body: fd,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    msg.className = 'mt-3 alert alert-success py-2';
+                    msg.innerHTML = '上传成功，即将返回列表…';
+                    setTimeout(function () { window.location.href = '{% url "openssh_upgrade:packages" %}'; }, 800);
+                } else {
+                    msg.className = 'mt-3 alert alert-danger py-2';
+                    msg.innerHTML = data.message || '上传失败';
+                }
+            })
+            .catch(function () {
+                msg.className = 'mt-3 alert alert-danger py-2';
+                msg.innerHTML = '请求失败，请重试';
+            });
+    });
+})();
+</script>
+{% endblock %}

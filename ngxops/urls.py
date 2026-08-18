@@ -50,6 +50,7 @@ urlpatterns = [
     path("nginx-service/", include("apps.nginx_service.urls")),
     path("nginx-install/", include("apps.nginx_install.urls")),
     path("nginx-uninstall/", include("apps.nginx_uninstall.urls")),
+    path("openssh-upgrade/", include("apps.openssh_upgrade.urls")),
     path("settings/", include("apps.settings.urls")),
 ]
 

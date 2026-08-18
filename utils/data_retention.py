@@ -32,7 +32,19 @@ _RETENTION_KEYS = {
     "audit_log": "system.retention_audit_log_days",
     "login_log": "system.retention_login_log_days",
     "upgrade_task": "system.retention_upgrade_task_days",
+    "openssh_task": "system.retention_openssh_task_days",
 }
+
+# OpenSSH 升级/回滚任务进行中状态（无独立 running，按阶段排除）
+_OPENSSH_ACTIVE_STATUSES = (
+    "pending",
+    "probing",
+    "building",
+    "verifying",
+    "backing_up",
+    "switching",
+    "confirming",
+)
 
 
 def _retention_days(key):
@@ -60,6 +72,7 @@ def purge_expired_data():
         "audit_log": 0,
         "login_log": 0,
         "upgrade_task": 0,
+        "openssh_task": 0,
     }
 
     days = _retention_days(_RETENTION_KEYS["task_center"])
@@ -104,16 +117,29 @@ def purge_expired_data():
         )
         result["upgrade_task"] = deleted
 
+    days = _retention_days(_RETENTION_KEYS["openssh_task"])
+    if days > 0:
+        cutoff = now - timedelta(days=days)
+        from apps.openssh_upgrade.models import OpenSSHUpgradeTask
+
+        deleted, _ = (
+            OpenSSHUpgradeTask.objects.filter(created_at__lt=cutoff)
+            .exclude(status__in=_OPENSSH_ACTIVE_STATUSES)
+            .delete()
+        )
+        result["openssh_task"] = deleted
+
     total = sum(result.values())
     if total:
         logger.info(
             "数据保留清理完成: task_center=%s release_history=%s audit_log=%s "
-            "login_log=%s upgrade_task=%s",
+            "login_log=%s upgrade_task=%s openssh_task=%s",
             result["task_center"],
             result["release_history"],
             result["audit_log"],
             result["login_log"],
             result["upgrade_task"],
+            result["openssh_task"],
         )
     return result
 
