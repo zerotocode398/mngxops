@@ -38,16 +38,26 @@ def _print_usage(stream=None):
     """打印命令行用法。"""
     if stream is None:
         stream = sys.stdout
-    print(
-        "用法:\n"
-        "  mngxops                         启动 Web（默认 0.0.0.0:1988）\n"
-        "  mngxops run|runserver [addr]    启动 Web；addr 为端口或 ip:port\n"
-        "  mngxops migrate                 初始化 / 升级数据库\n"
-        "  mngxops createsuperuser         创建管理员\n"
-        "环境变量: MNGXOPS_HOME MNGXOPS_DEBUG MNGXOPS_SECRET_KEY "
-        "MNGXOPS_ALLOWED_HOSTS MNGXOPS_HTTPS MNGXOPS_CSRF_TRUSTED_ORIGINS",
-        file=stream,
-    )
+    lines = [
+        "用法:",
+        "  mngxops                         启动 Web（默认 0.0.0.0:1988）",
+        "  mngxops run|runserver [addr]    启动 Web；addr 为端口或 ip:port",
+        "  mngxops migrate                 初始化 / 升级数据库",
+        "  mngxops createsuperuser         创建管理员",
+        "环境变量:",
+    ]
+    env_vars = [
+        ("MNGXOPS_HOME", "可写数据目录（db.sqlite3/media/密钥），默认当前路径"),
+        ("MNGXOPS_DEBUG", "开启 Django 调试模式（1/true/yes/on）"),
+        ("MNGXOPS_SECRET_KEY", "Django 密钥，未设置时自动生成 .secret_key"),
+        ("MNGXOPS_ALLOWED_HOSTS", "允许的主机（逗号分隔），默认 *"),
+        ("MNGXOPS_HTTPS", "启用 HTTPS 安全 Cookie（1/true/yes/on）"),
+        ("MNGXOPS_CSRF_TRUSTED_ORIGINS", "额外信任的 CSRF 来源（逗号分隔）"),
+    ]
+    width = max(len(name) for name, _ in env_vars)
+    for name, desc in env_vars:
+        lines.append("  {}{}  {}".format(name, " " * (width - len(name)), desc))
+    print("\n".join(lines), file=stream)
 
 
 def _configure_logging():
