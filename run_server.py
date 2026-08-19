@@ -25,7 +25,7 @@ ALLOWED_MANAGE_COMMANDS = frozenset(
 
 RUN_ALIASES = frozenset({"run", "runserver"})
 DEFAULT_HOST = "0.0.0.0"
-DEFAULT_PORT = 1988
+DEFAULT_PORT = 11993
 ACCESS_LOGGER = logging.getLogger("mngxops.access")
 
 
@@ -35,24 +35,27 @@ def _setup_django_env():
 
 
 def _print_usage(stream=None):
-    """打印命令行用法。"""
+    """Print command usage."""
     if stream is None:
         stream = sys.stdout
+
     lines = [
-        "用法:",
-        "  mngxops                         启动 Web（默认 0.0.0.0:1988）",
-        "  mngxops run|runserver [addr]    启动 Web；addr 为端口或 ip:port",
-        "  mngxops migrate                 初始化 / 升级数据库",
-        "  mngxops createsuperuser         创建管理员",
-        "环境变量:",
+        "Usage:",
+        "  mngxops                         Start Web server (0.0.0.0:11993)",
+        "  mngxops run|runserver [addr]    Start Web server at specified address",
+        "                                  addr: port or ip:port",
+        "  mngxops migrate                 Initialize database",
+        "  mngxops createsuperuser         Create admin user",
+        "Environment variables:",
     ]
+
     env_vars = [
-        ("MNGXOPS_HOME", "可写数据目录（db.sqlite3/media/密钥），默认当前路径"),
-        ("MNGXOPS_DEBUG", "开启 Django 调试模式（1/true/yes/on）"),
-        ("MNGXOPS_SECRET_KEY", "Django 密钥，未设置时自动生成 .secret_key"),
-        ("MNGXOPS_ALLOWED_HOSTS", "允许的主机（逗号分隔），默认 *"),
-        ("MNGXOPS_HTTPS", "启用 HTTPS 安全 Cookie（1/true/yes/on）"),
-        ("MNGXOPS_CSRF_TRUSTED_ORIGINS", "额外信任的 CSRF 来源（逗号分隔）"),
+        ("MNGXOPS_HOME", "  Data directory, defaults to current directory"),
+        ("MNGXOPS_DEBUG", "  Enable debug mode (1/true/yes/on)"),
+        ("MNGXOPS_SECRET_KEY", "  Django secret key, auto-generated if unset"),
+        ("MNGXOPS_ALLOWED_HOSTS", "  Allowed hosts, comma-separated, default *"),
+        ("MNGXOPS_HTTPS", "  Enable HTTPS secure cookies (1/true/yes/on)"),
+        ("MNGXOPS_CSRF_TRUSTED_ORIGINS", "  Trusted CSRF origins, comma-separated"),
     ]
     width = max(len(name) for name, _ in env_vars)
     for name, desc in env_vars:
@@ -89,17 +92,23 @@ def _run_manage(argv):
         execute_from_command_line(["mngxops", *argv])
     except (OperationalError, ProgrammingError) as exc:
         if _is_uninitialized_db(exc):
-            print("数据库尚未初始化，请先执行: mngxops migrate", file=sys.stderr)
+            print(
+                "database not initialized, please initialize it first: mngxops migrate",
+                file=sys.stderr,
+            )
             sys.exit(1)
         raise
 
 
 def _parse_bind_addr(argv):
-    """解析 run/runserver 地址：无参默认 0.0.0.0:1988，或端口 / ip:port。"""
+    """解析 run/runserver 地址：无参默认 0.0.0.0:11993，或端口 / ip:port。"""
     if not argv:
         return DEFAULT_HOST, DEFAULT_PORT
     if len(argv) != 1 or argv[0].startswith("-"):
-        print("不支持的启动参数。请使用: mngxops runserver 或 mngxops runserver ip:port", file=sys.stderr)
+        print(
+            "Unsupported start parameter. Please use: mngxops runserver or mngxops runserver ip:port",
+            file=sys.stderr,
+        )
         _print_usage(sys.stderr)
         sys.exit(2)
 
@@ -109,11 +118,14 @@ def _parse_bind_addr(argv):
     if ":" in token:
         host, port_text = token.rsplit(":", 1)
         if not port_text.isdigit():
-            print("端口无效: {}".format(token), file=sys.stderr)
+            print("Invalid port number: {}".format(token), file=sys.stderr)
             sys.exit(2)
         return host or DEFAULT_HOST, int(port_text)
 
-    print("地址格式无效，请使用端口或 ip:port，例如 1988 或 127.0.0.1:8000", file=sys.stderr)
+    print(
+        "Invalid address format. Please use port or ip:port, e.g. 11993 or 127.0.0.1:8000",
+        file=sys.stderr,
+    )
     sys.exit(2)
 
 
@@ -166,7 +178,9 @@ def _run_web(argv):
     db_path = data_dir() / "db.sqlite3"
     if not db_path.is_file():
         print(
-            "未发现数据库文件 {}，请先执行: mngxops migrate".format(db_path),
+            "Database file not found {}, please initialize it first: mngxops migrate".format(
+                db_path
+            ),
             file=sys.stderr,
         )
         sys.exit(1)
@@ -178,8 +192,8 @@ def _run_web(argv):
     from waitress import serve
     from ngxops.wsgi import application
 
-    print("MngxOps 已启动: http://{}:{}/".format(host, port))
-    print("管理命令示例: mngxops migrate | mngxops createsuperuser")
+    print("MngxOps started: http://{}:{}/".format(host, port))
+    print("Management commands example: mngxops migrate | mngxops createsuperuser")
     serve(_AccessLogMiddleware(application), host=host, port=port)
 
 
@@ -202,7 +216,7 @@ def main(argv=None):
 
     if cmd not in ALLOWED_MANAGE_COMMANDS:
         print(
-            "不支持的命令: {}\n允许: {}，或 run/runserver / 无参启动服务".format(
+            "Unsupported command: {}\nAllowed: {} or run/runserver / no arguments".format(
                 cmd, ", ".join(sorted(ALLOWED_MANAGE_COMMANDS))
             ),
             file=sys.stderr,
