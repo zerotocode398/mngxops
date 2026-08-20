@@ -9,6 +9,7 @@
 | 跨节点并行 / 勾选上限 | `node.batch_max_count`：节点批量测解锁、凭证启用测试、配置同步、发布、Nginx 升级/安装/启停/卸载；发布同节点内串行多配置后一次 reload（Q80/Q156） |
 | SSH 超时 | `node.ssh_connect_timeout`；失败可 `node.detect_retries` |
 | 发布门禁 | **已知约束**：存在任意 `ReleaseTask.status=running` 时阻断新批次自动执行（Q93 结论：维持） |
+| 配置列表首屏 | 数据库先筛选/分页，只预取当前页节点的绑定与分组；全局绑定状态一次聚合，避免全量绑定逐节点查询（Q162） |
 
 进程内线程模型：单机多 Django Worker 时，线程与内存态进度不跨进程共享。
 

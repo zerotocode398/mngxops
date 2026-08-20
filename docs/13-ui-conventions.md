@@ -120,7 +120,7 @@
 | 弹窗表 | `.modal-picker-table` + `bindModalTableRowToggle` | 行点击勾选；滚动区 `max-height: 60vh`；picker 宜 `modal-lg` + `modal-dialog-scrollable` |
 | 弹窗 ID | 模块前缀 | 避免冲突（Q42） |
 | 弹窗页脚 | `.modal-footer .btn` | 统一小号（等同 `btn-sm`，Q149） |
-| 标签搜索 | `.tag-input-wrapper` | 白底；选中 tag 用 `--primary`；多标签 AND（Q23） |
+| 标签搜索 | `.tag-input-wrapper` | 白底；选中 tag 用 `--primary`；中英文逗号拆分、多标签 AND；`data-partial-search="true"` 时 fetch 替换主内容区并 pushState，失败退回整页 GET（Q23/Q162） |
 | Toast | `.toast-container-global` | 右上；success/danger/warning/info 对应语义色 |
 | 进度遮罩 | `#asyncProgressOverlay` | 同步/发布/回滚/节点测试等共用；可传 `batchNumber` / `showSkipFailed` / `onClose`（Q149） |
 | 状态徽标 | `.badge-status-*` | 见 §6 |
@@ -184,7 +184,7 @@
 | 发布中心 | 两步选择；节点行点击展开绑定；路径 Modal 预览 `modal-xl`；状态过滤栏；进度用全局 `#asyncProgressOverlay` |
 | 发布历史 | 按批次分页；三级勾选联动；批量回滚明细 `modal-lg` |
 | 任务中心 | 摘要窄列省略（全文看详情）；无横向滚动；筛选 onchange；操作 icon-only；详情结果树失败置顶；批次超链新窗口 |
-| 配置列表 | 返回保持节点展开；未绑定标签区；状态过滤标签见 §6.4 |
+| 配置列表 | 返回保持节点展开；未绑定标签区；状态过滤标签见 §6.4；仅预取当前页绑定，恢复多个展开项不播放批量动画（Q162） |
 | 设置页 | 左导航右 side-by-side；未保存离开确认；`?group=` + localStorage |
 | 升级中心 | 四步向导；再进入从第 1 步空白开始；sessionStorage 仅续看进行中批次（Q113） |
 | 节点详情 | 静默采集系统信息，不用全屏遮罩（Q43） |

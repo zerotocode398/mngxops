@@ -79,7 +79,7 @@ stateDiagram-v2
 
 ## 5. 页面与路由
 
-主列表：`/configs/` 节点可展开 + 未绑定标签区（Q1/Q4）。  
+主列表：`/configs/` 节点可展开 + 未绑定标签区（Q1/Q4）。节点、配置名、远程路径标签搜索支持多标签 AND；数据库先筛选并分页，仅加载当前页绑定/节点组，多个节点恢复展开时不播放批量动画（Q162）。  
 绑定创建弹窗多选节点（Q3）。  
 版本：仅 `/configs/bindings/<pk>/versions/…` 与 compare/apply（Q95）。  
 同步向导：`/configs/sync/`。
