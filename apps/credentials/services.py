@@ -9,11 +9,11 @@ from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
 from apps.nodes.models import Node
-from apps.nodes.services import mark_node_probe_success
+from apps.nodes.services import mark_node_probe_success, apply_nginx_probe_result
 from apps.releases.models import TaskCenterTask
 from apps.releases.task_cancel import finish_if_active
 from utils.setting_service import get_setting
-from utils.ssh import test_ssh_connection
+from utils.ssh import test_ssh_connection, get_nginx_version
 
 from .models import Credential, CredentialEnableTask
 
@@ -499,7 +499,36 @@ def _run_credential_enable_task(task_id, credential_id):
                     )
                 if success:
                     mark_node_probe_success(node)
-                    node.save(update_fields=["status", "last_probe_at", "updated_at"])
+                    nginx_path = node.nginx_path if node.nginx_path else None
+                    version_success, version_info = get_nginx_version(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        password=(
+                            credential.get_password()
+                            if credential.auth_type == "password"
+                            else None
+                        ),
+                        private_key=(
+                            credential.get_private_key()
+                            if credential.auth_type == "key"
+                            else None
+                        ),
+                        nginx_path=nginx_path,
+                    )
+                    apply_nginx_probe_result(
+                        node, version_success, version_info if version_success else ""
+                    )
+                    node.save(
+                        update_fields=[
+                            "status",
+                            "last_probe_at",
+                            "nginx_available",
+                            "nginx_version",
+                            "last_nginx_probe_at",
+                            "updated_at",
+                        ]
+                    )
                 else:
                     node.status = "offline"
                     node.save(update_fields=["status", "updated_at"])

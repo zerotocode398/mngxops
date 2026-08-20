@@ -349,10 +349,15 @@ class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, Vi
         is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
         if credential.is_enabled:
-            # 禁用凭证：设为禁用，所有关联节点标记为离线
+            # 禁用凭证：设为禁用，所有关联节点标记为离线，Nginx 探测状态重置为未探测
             credential.is_enabled = False
             credential.save(update_fields=["is_enabled", "updated_at"])
-            affected = Node.objects.filter(credential=credential).update(status="offline")
+            affected = Node.objects.filter(credential=credential).update(
+                status="offline",
+                nginx_available=None,
+                nginx_version="",
+                last_nginx_probe_at=None,
+            )
             messages.success(
                 request,
                 f"凭证 {credential.name} 已禁用，{affected} 个关联节点状态已更新为离线",
