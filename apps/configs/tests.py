@@ -1,7 +1,11 @@
-from django.test import SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 from unittest.mock import patch
 
 from utils.ssh import discover_nginx_configs
+from apps.nodes.models import Node
+from apps.configs.models import Config, ConfigNodeBinding
 
 
 class DiscoverNginxConfigsTests(SimpleTestCase):
@@ -107,4 +111,59 @@ class DiscoverNginxConfigsTests(SimpleTestCase):
 			},
 		)
 		self.assertTrue(any("include 递归超限" in e for e in errors))
+
+
+class ConfigListTagSearchTests(TestCase):
+	def setUp(self):
+		user_model = get_user_model()
+		self.user = user_model.objects.create_superuser(
+			username="admin", email="admin@example.com", password="pass1234"
+		)
+		self.client.force_login(self.user)
+
+		self.node_a = Node.objects.create(
+			hostname="web-prod-1", ip="10.0.0.11", created_by=self.user
+		)
+		self.node_b = Node.objects.create(
+			hostname="api-stage-1", ip="10.0.0.21", created_by=self.user
+		)
+
+		self.config = Config.objects.create(
+			name="nginx.conf", created_by=self.user
+		)
+		ConfigNodeBinding.objects.create(
+			config=self.config,
+			node=self.node_a,
+			remote_path="/etc/nginx/nginx.conf",
+			content="worker_processes 1;",
+		)
+
+	def _node_ids(self, response):
+		return {node.id for node in response.context["nodes"]}
+
+	def test_search_multi_tags_use_and_logic(self):
+		response = self.client.get(
+			reverse("configs:list"), {"search": "web-prod-1,10.0.0.11"}
+		)
+		self.assertEqual(response.status_code, 200)
+		self.assertSetEqual(self._node_ids(response), {self.node_a.id})
+
+	def test_search_multi_tags_unmatched_filters_out(self):
+		response = self.client.get(
+			reverse("configs:list"), {"search": "web-prod-1,10.0.0.99"}
+		)
+		self.assertEqual(response.status_code, 200)
+		self.assertSetEqual(self._node_ids(response), set())
+
+	def test_search_matches_config_name(self):
+		response = self.client.get(reverse("configs:list"), {"search": "nginx.conf"})
+		self.assertEqual(response.status_code, 200)
+		self.assertSetEqual(self._node_ids(response), {self.node_a.id})
+
+	def test_search_supports_full_width_comma(self):
+		response = self.client.get(
+			reverse("configs:list"), {"search": "web-prod-1，10.0.0.99"}
+		)
+		self.assertEqual(response.status_code, 200)
+		self.assertSetEqual(self._node_ids(response), set())
 

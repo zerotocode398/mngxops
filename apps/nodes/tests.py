@@ -104,6 +104,34 @@ class NodeListTagSearchTests(TestCase):
 		ids = {item["id"] for item in payload.get("data", [])}
 		self.assertSetEqual(ids, {self.node_b.id})
 
+	def test_search_matches_group_name(self):
+		response = self.client.get(reverse("nodes:list"), {"search": "prod"})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertSetEqual(self._node_ids(response), {self.node_a.id})
+
+	def test_search_multi_tags_use_and_logic(self):
+		response = self.client.get(
+			reverse("nodes:list"), {"search": "web-prod-1,10.0.0.11"}
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertSetEqual(self._node_ids(response), {self.node_a.id})
+
+	def test_search_multi_tags_unmatched_filters_out(self):
+		response = self.client.get(
+			reverse("nodes:list"), {"search": "web-prod-1,10.0.0.99"}
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertSetEqual(self._node_ids(response), set())
+
+	def test_search_supports_full_width_comma(self):
+		response = self.client.get(reverse("nodes:list"), {"search": "prod，stage"})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertSetEqual(self._node_ids(response), set())
+
 	def test_batch_test_creates_async_task_center_record(self):
 		self.node_a.is_locked = True
 		self.node_a.save(update_fields=["is_locked"])

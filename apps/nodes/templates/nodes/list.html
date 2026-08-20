@@ -33,20 +33,12 @@
                     <!-- 搜索筛选区 -->
                     <form method="get" class="mb-3" id="searchForm" autocomplete="off">
                         <div class="row g-2">
-                            <div class="col-md-4">
+                            <div class="col-md-7">
                                 <div class="tag-input-wrapper form-control form-control-sm" id="nodeSearchTagWrapper">
                                     <input type="text" class="tag-input-field" id="nodeSearchField"
                                         placeholder="搜索主机名、IP 或节点组" autocomplete="off">
                                 </div>
                                 <input type="hidden" name="search" id="nodeSearchHidden" value="{{ search }}">
-                            </div>
-                            <div class="col-md-3">
-                                <select name="group_search" id="groupSearch" class="form-select form-select-sm" onchange="document.getElementById('searchForm').submit()">
-                                    <option value="">所有节点组</option>
-                                    {% for g in node_groups_list %}
-                                    <option value="{{ g.name }}" {% if group_search == g.name %}selected{% endif %}>{{ g.name }}</option>
-                                    {% endfor %}
-                                </select>
                             </div>
                             <div class="col-md-2">
                                 <select name="environment" id="envFilter" class="form-select form-select-sm" onchange="document.getElementById('searchForm').submit()">
@@ -457,13 +449,15 @@
             if (v) cell.textContent = formatNginxVersion(v);
         });
 
-        /* 节点组徽标点击筛选 */
+        /* 节点组徽标点击筛选：将组名追加为搜索标签并提交 */
         document.querySelectorAll('.group-filter-badge').forEach(function (badge) {
             badge.addEventListener('click', function (e) {
                 e.stopPropagation();
-                var gs = document.getElementById('groupSearch');
-                if (gs) {
-                    gs.value = this.getAttribute('data-group-name');
+                var groupName = this.getAttribute('data-group-name');
+                var hidden = document.getElementById('nodeSearchHidden');
+                if (hidden && groupName) {
+                    var current = hidden.value.trim();
+                    hidden.value = current ? current + ',' + groupName : groupName;
                     document.getElementById('searchForm').submit();
                 }
             });

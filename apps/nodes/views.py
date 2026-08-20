@@ -31,6 +31,7 @@ from apps.credentials.models import Credential
 from apps.releases.models import TaskCenterTask
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.pagination import PerPagePaginationMixin
+from utils.search import split_search_tags
 from utils.setting_service import get_setting
 
 
@@ -42,9 +43,12 @@ def filter_node_list_queryset(queryset, request):
     status_filter = request.GET.get("status", "").strip()
 
     if search:
-        queryset = queryset.filter(
-            Q(hostname__icontains=search) | Q(ip__icontains=search)
-        )
+        for term in split_search_tags(search):
+            queryset = queryset.filter(
+                Q(hostname__icontains=term)
+                | Q(ip__icontains=term)
+                | Q(groups__name__icontains=term)
+            ).distinct()
 
     if group_search:
         tags = [
@@ -139,10 +143,7 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         queryset = Node.objects.filter(is_locked=False).prefetch_related("groups")
 
         if search:
-            terms = [
-                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
-            ]
-            for term in terms:
+            for term in split_search_tags(search):
                 queryset = queryset.filter(
                     Q(hostname__icontains=term) | Q(ip__icontains=term) | Q(groups__name__icontains=term)
                 )
@@ -334,7 +335,6 @@ class NodeListView(
         context["status_filter"] = self.request.GET.get("status", "")
         context["env_choices"] = dict(Node.ENV_CHOICES)
         context["status_choices"] = dict(Node.STATUS_CHOICES)
-        context["node_groups_list"] = NodeGroup.objects.all().order_by("name")
         context["node_groups"] = {
             node.id: list(node.groups.all()) for node in context["nodes"]
         }
@@ -940,14 +940,12 @@ class NodeListAPIView(LoginRequiredMixin, View):
         )
 
         if search:
-            terms = [
-                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
-            ]
-            if terms:
-                for term in terms:
-                    queryset = queryset.filter(
-                        Q(hostname__icontains=term) | Q(ip__icontains=term)
-                    )
+            for term in split_search_tags(search):
+                queryset = queryset.filter(
+                    Q(hostname__icontains=term)
+                    | Q(ip__icontains=term)
+                    | Q(groups__name__icontains=term)
+                ).distinct()
         if group_search:
             tags = [
                 name.strip()

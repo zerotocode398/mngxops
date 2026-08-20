@@ -36,6 +36,7 @@ from .services import (
     _start_rollback_for_release_tasks,
 )
 from utils.pagination import PerPagePaginationMixin
+from utils.search import split_search_tags
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +182,7 @@ class ReleaseListView(
         batch = self.request.GET.get("batch", "")
         node_ip = self.request.GET.get("node_ip", "")
         if search:
-            terms = [t.strip() for t in search.split(",") if t.strip()]
-            for term in terms:
+            for term in split_search_tags(search):
                 queryset = queryset.filter(
                     Q(config__name__icontains=term)
                     | Q(node__hostname__icontains=term)
@@ -321,8 +321,7 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
         status_filter = self.request.GET.get("status", "")
         operation_type = self.request.GET.get("operation_type", "")
         if search:
-            tags = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
-            for tag in tags:
+            for tag in split_search_tags(search):
                 queryset = queryset.filter(
                     Q(source_batch__icontains=tag)
                     | Q(target_hostnames__icontains=tag)
@@ -1040,8 +1039,7 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
         queryset = Node.objects.all().prefetch_related("groups")
 
         if search:
-            terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
-            for term in terms:
+            for term in split_search_tags(search):
                 queryset = queryset.filter(
                     Q(hostname__icontains=term)
                     | Q(ip__icontains=term)

@@ -1,6 +1,7 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
@@ -12,6 +13,7 @@ from django.utils import timezone
 from .forms import UserCreateForm, UserUpdateForm, UserGroupForm, UserTeamForm
 from .models import UserProfile, UserGroup, UserTeam, PermissionItem
 from utils.pagination import PerPagePaginationMixin
+from utils.search import split_search_tags
 from .permissions import PermissionRequiredMixin
 from apps.accounts.login_lock import clear_login_fail_lock, user_login_enabled
 
@@ -35,10 +37,10 @@ class UserListView(
         queryset = super().get_queryset()
         search = self.request.GET.get("search", "")
         if search:
-            queryset = (
-                queryset.filter(username__icontains=search)
-                | queryset.filter(email__icontains=search)
-            ).distinct()
+            for term in split_search_tags(search):
+                queryset = queryset.filter(
+                    Q(username__icontains=term) | Q(email__icontains=term)
+                ).distinct()
         return queryset.select_related("profile").prefetch_related(
             "profile__groups", "user_teams",
         )
@@ -241,7 +243,8 @@ class UserGroupListView(
         queryset = super().get_queryset().prefetch_related("permissions")
         search = self.request.GET.get("search", "")
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            for term in split_search_tags(search):
+                queryset = queryset.filter(name__icontains=term)
         return queryset
 
     def get_context_data(self, **kwargs):

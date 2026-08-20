@@ -58,7 +58,7 @@
                                 <tr>
                                     <td>{{ group.name }}</td>
                                     <td>
-                                        <a href="{% url 'nodes:list' %}?group_search={{ group.name|urlencode }}" class="btn btn-sm btn-outline-primary node-count-btn group-node-count-link" title="查看该组节点列表">
+                                        <a href="{% url 'nodes:list' %}?search={{ group.name|urlencode }}" class="btn btn-sm btn-outline-primary node-count-btn group-node-count-link" title="查看该组节点列表">
                                             {{ group.nodes.count }}
                                         </a>
                                     </td>

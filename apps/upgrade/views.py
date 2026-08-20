@@ -38,6 +38,7 @@ from .services import (
 from apps.users.permissions import PermissionRequiredMixin
 from utils.nav_context import append_nav_query, get_sidebar_nav, nav_context
 from utils.pagination import PerPagePaginationMixin
+from utils.search import split_search_tags
 from utils.setting_service import get_recent_tasks_limit, get_setting
 from apps.nodes.models import Node
 from apps.nodes.services import _get_node_credential
@@ -843,13 +844,14 @@ class UpgradeHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePag
         queryset = super().get_queryset().select_related("node", "operator", "source_package")
         search = self.request.GET.get("search", "")
         if search:
-            queryset = queryset.filter(
-                Q(node__hostname__icontains=search)
-                | Q(node__ip__icontains=search)
-                | Q(target_version__icontains=search)
-                | Q(current_version__icontains=search)
-                | Q(batch_number__icontains=search)
-            )
+            for term in split_search_tags(search):
+                queryset = queryset.filter(
+                    Q(node__hostname__icontains=term)
+                    | Q(node__ip__icontains=term)
+                    | Q(target_version__icontains=term)
+                    | Q(current_version__icontains=term)
+                    | Q(batch_number__icontains=term)
+                )
         status_filter = self.request.GET.get("status", "")
         if status_filter == "running":
             # 进行中 = 非终态（与首页统计一致）

@@ -6,6 +6,7 @@ from django.views.generic import ListView
 from apps.users.permissions import PermissionRequiredMixin
 from .models import AuditLog, LoginLog
 from utils.pagination import PerPagePaginationMixin
+from utils.search import split_search_tags
 
 
 # 模块名 → 业务列表 URL name（无任务中心 ID 时的软链）
@@ -30,13 +31,6 @@ MODULE_LINK_MAP = {
     "任务中心": "releases:history",
     "登录管理": "audit:login_list",
 }
-
-
-def _split_search_tags(search):
-    """将逗号分隔的搜索标签拆成非空列表。"""
-    if not search:
-        return []
-    return [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
 
 
 def resolve_audit_module_link(log):
@@ -74,7 +68,7 @@ class AuditLogListView(
         date_to = self.request.GET.get("date_to", "")
 
         # 多标签 AND：每词匹配用户名 / 动作 / 详情
-        for term in _split_search_tags(search):
+        for term in split_search_tags(search):
             queryset = queryset.filter(
                 Q(user__username__icontains=term)
                 | Q(action__icontains=term)
@@ -132,7 +126,7 @@ class LoginLogListView(
         date_from = self.request.GET.get("date_from", "")
         date_to = self.request.GET.get("date_to", "")
 
-        for term in _split_search_tags(search):
+        for term in split_search_tags(search):
             queryset = queryset.filter(
                 Q(username__icontains=term) | Q(ip__icontains=term)
             )

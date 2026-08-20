@@ -14,6 +14,7 @@ from apps.upgrade.builtin_modules import BUILTIN_ADD_MODULES
 from apps.upgrade.models import NginxSourcePackage, NginxThirdPartyModulePackage
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.pagination import PerPagePaginationMixin
+from utils.search import split_search_tags
 from utils.setting_service import get_recent_tasks_limit, get_setting
 
 from .models import NginxInstallTask
@@ -132,13 +133,14 @@ class NginxInstallHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPa
         )
         search = (self.request.GET.get("search") or "").strip()
         if search:
-            qs = qs.filter(
-                Q(node__hostname__icontains=search)
-                | Q(node__ip__icontains=search)
-                | Q(target_version__icontains=search)
-                | Q(target_prefix__icontains=search)
-                | Q(batch_number__icontains=search)
-            )
+            for term in split_search_tags(search):
+                qs = qs.filter(
+                    Q(node__hostname__icontains=term)
+                    | Q(node__ip__icontains=term)
+                    | Q(target_version__icontains=term)
+                    | Q(target_prefix__icontains=term)
+                    | Q(batch_number__icontains=term)
+                )
         status = (self.request.GET.get("status") or "").strip()
         if status == "running":
             qs = qs.exclude(status__in=["success", "failed", "cancelled"])

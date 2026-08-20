@@ -10,6 +10,7 @@ from django.views.generic import DetailView, ListView, TemplateView, View
 
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.pagination import PerPagePaginationMixin
+from utils.search import split_search_tags
 from utils.setting_service import get_recent_tasks_limit
 
 from .models import NginxUninstallTask
@@ -122,13 +123,14 @@ class NginxUninstallHistoryView(
         )
         search = (self.request.GET.get("search") or "").strip()
         if search:
-            qs = qs.filter(
-                Q(node__hostname__icontains=search)
-                | Q(node__ip__icontains=search)
-                | Q(resolved_prefix__icontains=search)
-                | Q(batch_number__icontains=search)
-                | Q(backup_path__icontains=search)
-            )
+            for term in split_search_tags(search):
+                qs = qs.filter(
+                    Q(node__hostname__icontains=term)
+                    | Q(node__ip__icontains=term)
+                    | Q(resolved_prefix__icontains=term)
+                    | Q(batch_number__icontains=term)
+                    | Q(backup_path__icontains=term)
+                )
         status = (self.request.GET.get("status") or "").strip()
         if status == "running":
             qs = qs.exclude(status__in=["success", "failed", "cancelled"])

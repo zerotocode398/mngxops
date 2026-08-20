@@ -24,6 +24,7 @@ from .services import (
 from apps.users.permissions import PermissionRequiredMixin
 from apps.releases.models import TaskCenterTask
 from utils.pagination import PerPagePaginationMixin
+from utils.search import split_search_tags
 from utils.setting_service import get_setting
 
 
@@ -92,12 +93,13 @@ class ConfigListView(
         group_id = self.request.GET.get("group_id", "")
 
         if search:
-            queryset = queryset.filter(
-                Q(hostname__icontains=search)
-                | Q(ip__icontains=search)
-                | Q(config_bindings__config__name__icontains=search)
-                | Q(config_bindings__remote_path__icontains=search)
-            ).distinct()
+            for term in split_search_tags(search):
+                queryset = queryset.filter(
+                    Q(hostname__icontains=term)
+                    | Q(ip__icontains=term)
+                    | Q(config_bindings__config__name__icontains=term)
+                    | Q(config_bindings__remote_path__icontains=term)
+                ).distinct()
         if group_id:
             queryset = queryset.filter(groups__id=group_id).distinct()
         return queryset
@@ -854,9 +856,12 @@ class ConfigSyncWizardView(
         group_search = self.request.GET.get("group_search", "").strip()
 
         if search:
-            queryset = queryset.filter(
-                Q(hostname__icontains=search) | Q(ip__icontains=search)
-            )
+            for term in split_search_tags(search):
+                queryset = queryset.filter(
+                    Q(hostname__icontains=term)
+                    | Q(ip__icontains=term)
+                    | Q(groups__name__icontains=term)
+                ).distinct()
         if group_search:
             tags = [name.strip() for name in group_search.replace("，", ",").split(",") if name.strip()]
             if tags:

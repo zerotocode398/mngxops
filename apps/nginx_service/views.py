@@ -14,6 +14,7 @@ from apps.releases.models import TaskCenterTask
 from apps.releases.task_progress import _format_current_steps
 from apps.users.permissions import PermissionRequiredMixin, user_has_permission
 from utils.pagination import PerPagePaginationMixin
+from utils.search import split_search_tags
 from utils.setting_service import get_recent_tasks_limit, get_setting
 
 from .services import (
@@ -126,13 +127,14 @@ class NginxServiceHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPa
         ).select_related("trigger_user")
         search = (self.request.GET.get("search") or "").strip()
         if search:
-            qs = qs.filter(
-                Q(target_hostnames__icontains=search)
-                | Q(target_ips__icontains=search)
-                | Q(target_configs__icontains=search)
-                | Q(detail__icontains=search)
-                | Q(source_batch__icontains=search)
-            )
+            for term in split_search_tags(search):
+                qs = qs.filter(
+                    Q(target_hostnames__icontains=term)
+                    | Q(target_ips__icontains=term)
+                    | Q(target_configs__icontains=term)
+                    | Q(detail__icontains=term)
+                    | Q(source_batch__icontains=term)
+                )
         status = (self.request.GET.get("status") or "").strip()
         if status == "running":
             qs = qs.exclude(status__in=["success", "failed", "cancelled"])
