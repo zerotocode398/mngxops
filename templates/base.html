@@ -1075,7 +1075,9 @@
                     {% endfor %}
                     {% endif %}
 
+                    <div id="mngxopsPageContent">
                     {% block content %}{% endblock %}
+                    </div>
                 </div>
             </div>
     </div>
@@ -1477,7 +1479,13 @@
             var hidden = typeof hiddenSelector === 'string' ? document.querySelector(hiddenSelector) : hiddenSelector;
             var form = typeof formSelector === 'string' ? document.querySelector(formSelector) : formSelector;
 
-            if (!wrapper || !hidden || !form) return;
+            if (!wrapper || !hidden || !form || wrapper.dataset.tagSearchInitialized === 'true') return;
+            wrapper.dataset.tagSearchInitialized = 'true';
+
+            function submitSearch() {
+                if (window.submitPartialListForm && window.submitPartialListForm(form)) return;
+                form.submit();
+            }
 
             var field = wrapper.querySelector('.tag-input-field');
             if (!field) {
@@ -1516,7 +1524,7 @@
                     badge.remove();
                     updateHidden();
                     setTimeout(focusFieldWithCaret, 0);
-                    form.submit();
+                    submitSearch();
                 });
                 wrapper.insertBefore(badge, field);
                 updateHidden();
@@ -1538,7 +1546,7 @@
                     }
                     updateHidden();
                     setTimeout(focusFieldWithCaret, 0);
-                    form.submit();
+                        submitSearch();
                 }
                 if (e.key === 'Backspace' && field.value === '') {
                     var badges = wrapper.querySelectorAll('.tag-badge');
@@ -1546,7 +1554,7 @@
                         badges[badges.length - 1].remove();
                         updateHidden();
                         setTimeout(focusFieldWithCaret, 0);
-                        form.submit();
+                        submitSearch();
                     }
                 }
             });
@@ -1566,6 +1574,51 @@
 
             focusFieldWithCaret();
         };
+
+        /* 标签查询只更新主内容区，保留侧栏与全局组件。失败时仍走原有整页 GET。 */
+        window.submitPartialListForm = function(form) {
+            if (!form || form.dataset.partialSearch !== 'true' || !window.fetch) return false;
+            var url = new URL(form.action || window.location.href, window.location.origin);
+            new FormData(form).forEach(function(value, key) {
+                if (value !== '') url.searchParams.set(key, value);
+                else url.searchParams.delete(key);
+            });
+            url.searchParams.delete('page');
+
+            var pageContent = document.getElementById('mngxopsPageContent');
+            if (!pageContent) return false;
+            pageContent.setAttribute('aria-busy', 'true');
+            pageContent.classList.add('partial-loading');
+            fetch(url.toString(), { headers: { 'X-Partial': '1' }, credentials: 'same-origin' })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.text();
+                })
+                .then(function(html) {
+                    var doc = new DOMParser().parseFromString(html, 'text/html');
+                    var nextContent = doc.getElementById('mngxopsPageContent');
+                    if (!nextContent) throw new Error('缺少页面内容');
+                    pageContent.innerHTML = nextContent.innerHTML;
+                    window.history.pushState({}, '', url.pathname + url.search);
+                    document.dispatchEvent(new CustomEvent('mngxops:partial-loaded'));
+                })
+                .catch(function() {
+                    window.location.assign(url.toString());
+                })
+                .finally(function() {
+                    pageContent.removeAttribute('aria-busy');
+                    pageContent.classList.remove('partial-loading');
+                });
+            return true;
+        };
+
+        document.addEventListener('mngxops:partial-loaded', function () {
+            document.querySelectorAll('form[data-partial-search="true"]').forEach(function (form) {
+                var wrapper = form.querySelector('.tag-input-wrapper');
+                var hidden = form.querySelector('input[type="hidden"][name="search"]');
+                if (wrapper && hidden) window.initTagSearch(wrapper, hidden, form);
+            });
+        });
 
         /* ========== 侧边栏 & 分页 ========== */
         document.addEventListener('DOMContentLoaded', function () {

@@ -26,7 +26,7 @@
                 </div>
                 <div class="card-body">
                     <!-- 搜索筛选区 -->
-                    <form method="get" id="configSearchForm" class="mb-3" autocomplete="off">
+                    <form method="get" id="configSearchForm" class="mb-3" autocomplete="off" data-partial-search="true">
                         <div class="row g-2">
                             <div class="col-md-5">
                                 <div class="tag-input-wrapper form-control form-control-sm" id="configSearchTagWrapper">
@@ -336,6 +336,9 @@
 
 {% block extra_js %}
 <style>
+.accordion-collapse.config-restore-no-transition {
+    transition: none !important;
+}
     /* 状态筛选标签 */
     .config-status-label {
         padding: 5px 12px;
@@ -400,7 +403,7 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
+    function initConfigListPage() {
         initTagSearch('#configSearchTagWrapper', '#configSearchHidden', '#configSearchForm');
 
         var accordion = document.getElementById('configAccordion');
@@ -409,7 +412,9 @@
             accordion.addEventListener('hidden.bs.collapse', saveExpandedNodes);
         }
         restoreExpandedNodes();
-    });
+    }
+    document.addEventListener('DOMContentLoaded', initConfigListPage);
+    document.addEventListener('mngxops:partial-loaded', initConfigListPage);
 
     (function() {
         var currentUrl = window.location.href;
@@ -432,10 +437,17 @@
 
     function restoreExpandedNodes() {
         var ids = (sessionStorage.getItem('configs_expanded_nodes') || '').split(',').filter(Boolean);
+        var disableAnimation = ids.length > 1;
         ids.forEach(function (id) {
             var el = document.getElementById('collapse' + id);
             if (el) {
+                if (disableAnimation) el.classList.add('config-restore-no-transition');
                 new bootstrap.Collapse(el, { toggle: false }).show();
+                if (disableAnimation) {
+                    requestAnimationFrame(function () {
+                        el.classList.remove('config-restore-no-transition');
+                    });
+                }
             }
         });
     }

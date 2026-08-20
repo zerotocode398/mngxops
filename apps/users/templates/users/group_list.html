@@ -18,7 +18,7 @@
                     {% endif %}
                 </div>
                 <div class="card-body">
-                    <form method="get" class="mb-3" id="searchForm" autocomplete="off">
+<form method="get" class="mb-3" id="searchForm" autocomplete="off" data-partial-search="true">
                         <div class="row g-2">
                             <div class="col-md-8">
                                 <div class="tag-input-wrapper form-control form-control-sm" id="roleSearchTagWrapper">
@@ -249,13 +249,15 @@
 <style>
 </style>
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
+    function initRoleListPage() {
         initTagSearch('#roleSearchTagWrapper', '#roleSearchHidden', '#searchForm');
 
         // 管理用户弹窗：点击行切换勾选
         document.querySelectorAll('[id^="manageUsersModal"] tbody').forEach(function (tbody) {
             bindModalTableRowToggle(tbody, '.user-check');
         });
-    });
+    }
+    document.addEventListener('DOMContentLoaded', initRoleListPage);
+    document.addEventListener('mngxops:partial-loaded', initRoleListPage);
 </script>
 {% endblock %}

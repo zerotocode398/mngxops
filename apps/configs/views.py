@@ -5,8 +5,7 @@ import threading
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
-from django.core.paginator import Paginator
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q, prefetch_related_objects
 from django.http import JsonResponse
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse_lazy, reverse
@@ -55,18 +54,15 @@ def _build_node_stats(node):
 def _build_global_status_counts():
     """构建全局绑定状态计数（排除已逻辑删除节点）"""
     base = ConfigNodeBinding.objects.filter(node__is_deleted=False)
-    total = base.count()
-    pending = base.filter(sync_status__in=["not_synced", "modified"]).count()
-    conflict = base.filter(sync_status="conflict").count()
-    orphaned = base.filter(sync_status="orphaned").count()
-    failed = base.filter(sync_status="failed").count()
-    syncing = base.filter(sync_status="syncing").count()
-    marked_deleted = base.filter(sync_status="marked_deleted").count()
-    return {
-        "total": total, "pending": pending, "conflict": conflict,
-        "orphaned": orphaned, "failed": failed, "syncing": syncing,
-        "marked_deleted": marked_deleted,
-    }
+    return base.aggregate(
+        total=Count("id"),
+        pending=Count("id", filter=Q(sync_status__in=["not_synced", "modified"])),
+        conflict=Count("id", filter=Q(sync_status="conflict")),
+        orphaned=Count("id", filter=Q(sync_status="orphaned")),
+        failed=Count("id", filter=Q(sync_status="failed")),
+        syncing=Count("id", filter=Q(sync_status="syncing")),
+        marked_deleted=Count("id", filter=Q(sync_status="marked_deleted")),
+    )
 
 
 # ==================== 配置标签 CRUD ====================
@@ -86,11 +82,12 @@ class ConfigListView(
         from apps.nodes.models import Node
         queryset = (
             Node.objects.filter(is_locked=False)
-            .prefetch_related("config_bindings__config", "groups")
+            .select_related("credential")
             .order_by("hostname")
         )
         search = self.request.GET.get("search", "").strip()
         group_id = self.request.GET.get("group_id", "")
+        sync_status = self.request.GET.get("sync_status", "").strip()
 
         if search:
             for term in split_search_tags(search):
@@ -102,56 +99,65 @@ class ConfigListView(
                 ).distinct()
         if group_id:
             queryset = queryset.filter(groups__id=group_id).distinct()
+        if sync_status:
+            if sync_status == "pending":
+                queryset = queryset.filter(
+                    config_bindings__sync_status__in=["not_synced", "modified"]
+                ).distinct()
+            else:
+                queryset = queryset.filter(
+                    config_bindings__sync_status=sync_status
+                ).distinct()
         return queryset
 
     def get_context_data(self, **kwargs):
-        from apps.nodes.models import Node, NodeGroup
+        from apps.nodes.models import NodeGroup
 
         context = super().get_context_data(**kwargs)
-        all_nodes = list(self.get_queryset())
         sync_status = self.request.GET.get("sync_status", "").strip()
         search = self.request.GET.get("search", "").strip()
         group_id = self.request.GET.get("group_id", "").strip()
 
+        # ListView 已在此处完成数据库分页；只为当前页节点加载关联数据，
+        # 避免先读取全部节点/绑定后再分页造成首屏阻塞。
+        nodes = list(context["nodes"])
+        prefetch_related_objects(
+            nodes,
+            "groups",
+            Prefetch(
+                "config_bindings",
+                queryset=ConfigNodeBinding.objects.select_related("config").order_by(
+                    "config__name"
+                ),
+            ),
+        )
+
         node_bindings_map = {}
         node_stats_map = {}
 
-        for node in all_nodes:
-            bindings_qs = ConfigNodeBinding.objects.filter(
-                node=node
-            ).select_related("config").order_by("config__name")
-
-            if sync_status:
-                if sync_status == "pending":
-                    bindings_qs = bindings_qs.filter(
-                        sync_status__in=["not_synced", "modified"]
-                    )
-                else:
-                    bindings_qs = bindings_qs.filter(sync_status=sync_status)
-
-            bindings = list(bindings_qs)
-            if not bindings and sync_status:
-                continue
+        for node in nodes:
+            all_bindings = list(node.config_bindings.all())
+            if sync_status == "pending":
+                bindings = [
+                    binding
+                    for binding in all_bindings
+                    if binding.sync_status in ("not_synced", "modified")
+                ]
+            elif sync_status:
+                bindings = [
+                    binding
+                    for binding in all_bindings
+                    if binding.sync_status == sync_status
+                ]
+            else:
+                bindings = all_bindings
 
             node_bindings_map[node.id] = bindings
             node_stats_map[node.id] = _build_node_stats(node)
 
-        if sync_status:
-            filtered_nodes = [n for n in all_nodes if n.id in node_bindings_map]
-        else:
-            filtered_nodes = all_nodes
-
-        per_page = self.get_paginate_by(None)
-        paginator = Paginator(filtered_nodes, per_page)
-        page_num = self.request.GET.get("page", 1)
-        page_obj = paginator.get_page(page_num)
-
-        context["nodes"] = page_obj.object_list
+        context["nodes"] = nodes
         context["node_bindings_map"] = node_bindings_map
         context["node_stats_map"] = node_stats_map
-        context["page_obj"] = page_obj
-        context["is_paginated"] = page_obj.has_other_pages()
-        context["per_page"] = per_page
         context["per_page_options"] = self.per_page_options
         context["search"] = search
         context["group_id"] = group_id

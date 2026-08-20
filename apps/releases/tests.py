@@ -113,12 +113,14 @@ class ReleaseCreateJSONAPITests(TestCase):
             hostname="node-a",
             ip="10.10.0.11",
             status="online",
+            nginx_available=True,
             created_by=self.user,
         )
         self.node_b = Node.objects.create(
             hostname="node-b",
             ip="10.10.0.12",
             status="online",
+            nginx_available=True,
             created_by=self.user,
         )
 

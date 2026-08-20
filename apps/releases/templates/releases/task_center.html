@@ -17,7 +17,7 @@
                     {% endif %}
                 </div>
                 <div class="card-body">
-                    <form method="get" class="row g-2 mb-3" id="taskCenterSearchForm">
+                    <form method="get" class="row g-2 mb-3" id="taskCenterSearchForm" data-partial-search="true">
                         <div class="col-md-4">
                             <div class="tag-input-wrapper form-control form-control-sm" id="taskCenterSearchTagWrapper">
                                 <input type="text" class="tag-input-field" id="taskCenterSearchField" placeholder="搜索主机名或 IP 或批次号">
@@ -236,7 +236,8 @@
                     e.preventDefault();
                     var text = field.value.trim();
                     if (text) { createBadge(text); field.value = ''; }
-                    updateHidden(); setTimeout(focusFieldWithCaret, 0); form.submit();
+                    updateHidden(); setTimeout(focusFieldWithCaret, 0);
+                    if (!(window.submitPartialListForm && window.submitPartialListForm(form))) form.submit();
                 }
                 if (e.key === 'Backspace' && field.value === '') {
                     var badges = wrapper.querySelectorAll('.tag-badge');
@@ -328,6 +329,11 @@
             });
         }
         bindCancelButtons();
+        document.addEventListener('mngxops:partial-loaded', function () {
+            initTaskCenterSearchTagInput();
+            bindCancelButtons();
+            pollTaskCenterProgress();
+        });
     })();
 </script>
 {% endblock %}

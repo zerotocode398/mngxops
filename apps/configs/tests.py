@@ -136,6 +136,7 @@ class ConfigListTagSearchTests(TestCase):
 			node=self.node_a,
 			remote_path="/etc/nginx/nginx.conf",
 			content="worker_processes 1;",
+			created_by=self.user,
 		)
 
 	def _node_ids(self, response):

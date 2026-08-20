@@ -26,7 +26,7 @@
                 </div>
                 <div class="card-body">
                     {% csrf_token %}
-                    <form method="get" class="row g-2 mb-3" id="searchForm" autocomplete="off">
+                    <form method="get" class="row g-2 mb-3" id="searchForm" autocomplete="off" data-partial-search="true">
                         <div class="col-md-6">
                             <div class="tag-input-wrapper form-control form-control-sm" id="releaseHistorySearchTagWrapper">
                                 <input type="text" class="tag-input-field" id="releaseHistorySearchField"
@@ -358,7 +358,7 @@
         }
     })();
 
-    document.addEventListener('DOMContentLoaded', function() {
+    function initReleaseHistoryPage() {
         initTagSearch('#releaseHistorySearchTagWrapper', '#releaseHistorySearchHidden', '#searchForm');
 
         var countEl = document.getElementById('selectedRollbackCount');
@@ -797,6 +797,8 @@
                 vpCopyBtn.disabled = false;
             }, 2000);
         }
-    });
+    }
+    document.addEventListener('DOMContentLoaded', initReleaseHistoryPage);
+    document.addEventListener('mngxops:partial-loaded', initReleaseHistoryPage);
 </script>
 {% endblock %}

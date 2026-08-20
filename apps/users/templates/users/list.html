@@ -17,7 +17,7 @@
                     {% endif %}
                 </div>
                 <div class="card-body">
-                    <form method="get" class="mb-3" id="searchForm" autocomplete="off">
+<form method="get" class="mb-3" id="searchForm" autocomplete="off" data-partial-search="true">
                         {% csrf_token %}
                         <div class="row g-2">
                             <div class="col-md-8">
@@ -179,7 +179,7 @@ function sendUserToggleRequest(url, checkbox) {
         });
 }
 
-document.addEventListener('DOMContentLoaded', function () {
+function initUserListPage() {
     initTagSearch('#userSearchTagWrapper', '#userSearchHidden', '#searchForm');
 
     document.querySelectorAll('.user-toggle-checkbox').forEach(function (checkbox) {
@@ -210,6 +210,8 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     });
-});
+}
+document.addEventListener('DOMContentLoaded', initUserListPage);
+document.addEventListener('mngxops:partial-loaded', initUserListPage);
 </script>
 {% endblock %}
