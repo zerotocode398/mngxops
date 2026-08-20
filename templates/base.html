@@ -1065,7 +1065,7 @@
                     </div>
                 </nav>
 
-                <div class="p-4">
+                <div id="page-main" class="p-4">
                     {% if messages %}
                     {% for message in messages %}
                     <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
@@ -1471,6 +1471,142 @@
             };
         })();
 
+        /* ========== 局部刷新（列表筛选/分页不重载侧栏） ========== */
+        window.loadPageMain = function(url, pushState) {
+            var container = document.getElementById('page-main');
+            if (!container) { window.location.href = url; return; }
+            fetch(url, {
+                headers: { 'X-Partial': '1', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function(html) {
+                container.innerHTML = html;
+                if (pushState !== false) {
+                    try { history.pushState({}, '', url); } catch(e) {}
+                }
+                window._rebindPartialPage();
+            })
+            .catch(function() { window.location.href = url; });
+        };
+
+        window.submitListFormPartial = function(form) {
+            if (!form || !form.dataset.partialList) { form.submit(); return; }
+            var container = document.getElementById('page-main');
+            if (!container) { form.submit(); return; }
+            var url = form.action || window.location.href;
+            var method = (form.method || 'GET').toUpperCase();
+            var body = null;
+            var searchParams = new URLSearchParams(new FormData(form)).toString();
+
+            if (method === 'GET') {
+                url = url.split('?')[0] + (searchParams ? '?' + searchParams : '');
+            } else {
+                body = new URLSearchParams(new FormData(form));
+            }
+
+            fetch(url, {
+                method: method,
+                headers: method === 'GET' ? { 'X-Partial': '1', 'X-Requested-With': 'XMLHttpRequest' }
+                    : { 'X-Partial': '1', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value },
+                body: method === 'GET' ? null : body
+            })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function(html) {
+                container.innerHTML = html;
+                try { history.pushState({}, '', url); } catch(e) {}
+                window._rebindPartialPage();
+            })
+            .catch(function() { form.submit(); });
+        };
+
+        window._rebindPartialPage = function() {
+            var container = document.getElementById('page-main');
+            if (!container) return;
+            container.querySelectorAll('form[data-partial-list="1"]').forEach(function(form) {
+                if (form.dataset.partialBound === '1') return;
+                form.dataset.partialBound = '1';
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    window.submitListFormPartial(form);
+                });
+                form.querySelectorAll('input.tag-input-field').forEach(function(field) {
+                    if (field.dataset.partialBound === '1') return;
+                    field.dataset.partialBound = '1';
+                    field.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            var text = field.value.trim();
+                            if (text) {
+                                var wrapper = field.closest('.tag-input-wrapper');
+                                var hidden = form.querySelector('input[type="hidden"][name="search"]');
+                                if (wrapper && hidden && typeof window.initTagSearch === 'function') {
+                                    window.initTagSearch(wrapper, hidden, form);
+                                }
+                            }
+                            window.submitListFormPartial(form);
+                        }
+                    });
+                });
+                form.querySelectorAll('select[name="per_page"], select[name="group_id"], select[name="sync_status"]').forEach(function(sel) {
+                    if (sel.dataset.partialChangeBound === '1') return;
+                    sel.dataset.partialChangeBound = '1';
+                    sel.addEventListener('change', function() {
+                        var pageInput = form.querySelector('input[name="page"]');
+                        if (pageInput) pageInput.value = '1';
+                        window.submitListFormPartial(form);
+                    });
+                });
+                form.querySelectorAll('.tag-input-wrapper').forEach(function(wrapper) {
+                    delete wrapper.dataset.tagSearchInit;
+                    var hidden = form.querySelector('input[type="hidden"][name="search"]');
+                    if (hidden && typeof window.initTagSearch === 'function') {
+                        window.initTagSearch(wrapper, hidden, form);
+                    }
+                });
+            });
+            container.querySelectorAll('a[data-partial-nav="1"]').forEach(function(a) {
+                if (a.dataset.partialBound === '1') return;
+                a.dataset.partialBound = '1';
+                a.addEventListener('click', function(e) {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.target === '_blank') return;
+                    e.preventDefault();
+                    window.loadPageMain(a.href, true);
+                });
+            });
+            container.querySelectorAll('.pagination a[href]').forEach(function(a) {
+                if (a.dataset.partialBound === '1') return;
+                a.dataset.partialBound = '1';
+                a.addEventListener('click', function(e) {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    window.loadPageMain(a.href, true);
+                });
+            });
+            container.querySelectorAll('select[name="per_page"]').forEach(function(sel) {
+                if (sel.dataset.partialPerPageBound === '1') return;
+                sel.dataset.partialPerPageBound = '1';
+                if (sel.closest('form[data-partial-list="1"]')) return;
+                sel.addEventListener('change', function() {
+                    var url = new URL(window.location.href);
+                    url.searchParams.set('per_page', sel.value);
+                    url.searchParams.set('page', '1');
+                    window.loadPageMain(url.pathname + url.search, true);
+                });
+            });
+        };
+
+        window.addEventListener('popstate', function() {
+            if (document.getElementById('page-main')) {
+                window.loadPageMain(window.location.href, false);
+            }
+        });
+
         /* ========== 统一标签搜索组件 ========== */
         window.initTagSearch = function(wrapperSelector, hiddenSelector, formSelector) {
             var wrapper = typeof wrapperSelector === 'string' ? document.querySelector(wrapperSelector) : wrapperSelector;
@@ -1478,6 +1614,16 @@
             var form = typeof formSelector === 'string' ? document.querySelector(formSelector) : formSelector;
 
             if (!wrapper || !hidden || !form) return;
+            if (wrapper.dataset.tagSearchInit === '1') return;
+            wrapper.dataset.tagSearchInit = '1';
+
+            function doSubmit() {
+                if (form.dataset.partialList === '1') {
+                    window.submitListFormPartial(form);
+                } else {
+                    form.submit();
+                }
+            }
 
             var field = wrapper.querySelector('.tag-input-field');
             if (!field) {
@@ -1516,7 +1662,7 @@
                     badge.remove();
                     updateHidden();
                     setTimeout(focusFieldWithCaret, 0);
-                    form.submit();
+                    doSubmit();
                 });
                 wrapper.insertBefore(badge, field);
                 updateHidden();
@@ -1538,7 +1684,7 @@
                     }
                     updateHidden();
                     setTimeout(focusFieldWithCaret, 0);
-                    form.submit();
+                    doSubmit();
                 }
                 if (e.key === 'Backspace' && field.value === '') {
                     var badges = wrapper.querySelectorAll('.tag-badge');
@@ -1546,7 +1692,7 @@
                         badges[badges.length - 1].remove();
                         updateHidden();
                         setTimeout(focusFieldWithCaret, 0);
-                        form.submit();
+                        doSubmit();
                     }
                 }
             });
@@ -1796,8 +1942,10 @@
             autoExpandParentMenus();
             highlightActiveLink();
 
-            // 分页每页条数切换
+            window._rebindPartialPage();
+
             document.querySelectorAll('select[name="per_page"]').forEach(function (el) {
+                if (el.closest('form[data-partial-list="1"]')) return;
                 el.addEventListener('change', function () {
                     const form = el.closest('form');
                     if (form) {

@@ -26,7 +26,8 @@
                 </div>
                 <div class="card-body">
                     <!-- 搜索筛选区 -->
-                    <form method="get" id="configSearchForm" class="mb-3" autocomplete="off">
+                    <form method="get" id="configSearchForm" class="mb-3" autocomplete="off" data-partial-list="1">
+                        <input type="hidden" name="page" value="1">
                         <div class="row g-2">
                             <div class="col-md-5">
                                 <div class="tag-input-wrapper form-control form-control-sm" id="configSearchTagWrapper">
@@ -36,7 +37,7 @@
                                 <input type="hidden" name="search" id="configSearchHidden" value="{{ search }}">
                             </div>
                             <div class="col-md-3">
-                                <select name="group_id" class="form-select form-select-sm" onchange="document.getElementById('configSearchForm').submit()">
+                                <select name="group_id" class="form-select form-select-sm">
                                     <option value="">全部节点组</option>
                                     {% for g in groups %}
                                     <option value="{{ g.id }}" {% if group_id == g.id|stringformat:"s" %}selected{% endif %}>
@@ -46,7 +47,7 @@
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('configSearchForm').submit()">
+                                <select name="per_page" class="form-select form-select-sm">
                                     {% for size in per_page_options %}
                                     <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 节点/页</option>
                                     {% endfor %}
@@ -65,23 +66,28 @@
                     <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
                         <span class="text-muted small me-1">状态:</span>
                         <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}"
-                           class="badge config-status-label {% if not sync_status %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
+                           class="badge config-status-label {% if not sync_status %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none"
+                           data-partial-nav="1">
                             全部 {{ status_counts.total }}
                         </a>
                         <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=pending"
-                           class="badge config-status-label config-status-pending {% if sync_status == 'pending' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
+                           class="badge config-status-label config-status-pending {% if sync_status == 'pending' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none"
+                           data-partial-nav="1">
                             <i class="bi bi-pencil"></i>待推送 {{ status_counts.pending }}
                         </a>
                         <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=orphaned"
-                           class="badge config-status-label config-status-orphaned {% if sync_status == 'orphaned' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
+                           class="badge config-status-label config-status-orphaned {% if sync_status == 'orphaned' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none"
+                           data-partial-nav="1">
                             <i class="bi bi-inbox"></i>远程删除 {{ status_counts.orphaned }}
                         </a>
                         <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=failed"
-                           class="badge config-status-label config-status-failed {% if sync_status == 'failed' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
+                           class="badge config-status-label config-status-failed {% if sync_status == 'failed' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none"
+                           data-partial-nav="1">
                             <i class="bi bi-x-circle-fill"></i>失败 {{ status_counts.failed }}
                         </a>
                         <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=marked_deleted"
-                           class="badge config-status-label config-status-marked {% if sync_status == 'marked_deleted' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
+                           class="badge config-status-label config-status-marked {% if sync_status == 'marked_deleted' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none"
+                           data-partial-nav="1">
                             <i class="bi bi-trash"></i>标记删除 {{ status_counts.marked_deleted }}
                         </a>
                     </div>

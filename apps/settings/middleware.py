@@ -1,19 +1,20 @@
-"""系统设置相关中间件"""
+from django.utils.deprecation import MiddlewareMixin
+
+
+class PartialResponseMiddleware(MiddlewareMixin):
+    """检测 X-Partial 请求头，标记 request.is_partial 供视图使用。
+
+    前端在局部刷新时发送 X-Partial: 1 头，视图据此切换为局部模板，
+    仅返回主内容区 HTML，避免侧栏等壳层重载。
+    """
+
+    def process_request(self, request):
+        request.is_partial = request.headers.get("X-Partial") == "1"
 
 
 class DataRetentionMiddleware:
-    """登录用户请求时，每日最多触发一次过期数据清理（后台线程）"""
-
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        """已认证请求触发 maybe_run_daily_purge"""
-        user = getattr(request, "user", None)
-        if user is not None and getattr(user, "is_authenticated", False):
-            try:
-                from utils.data_retention import maybe_run_daily_purge
-                maybe_run_daily_purge()
-            except Exception:
-                pass
         return self.get_response(request)

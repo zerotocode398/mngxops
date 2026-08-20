@@ -80,6 +80,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.audit.middleware.CurrentUserMiddleware",
     "apps.audit.middleware.AjaxErrorMiddleware",
+    "apps.settings.middleware.PartialResponseMiddleware",
     "apps.settings.middleware.DataRetentionMiddleware",
 ]
 
