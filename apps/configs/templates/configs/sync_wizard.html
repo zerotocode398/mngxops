@@ -56,6 +56,19 @@
                         </div>
                     </form>
 
+                    <!-- Nginx筛选标签 -->
+                    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+                        <span class="text-muted small me-1">Nginx:</span>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_search %}group_search={{ group_search }}&{% endif %}per_page={{ per_page }}"
+                           class="badge config-status-label config-status-nginx-active {% if nginx_available == 'true' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
+                            <i class="bi bi-check-circle"></i>已识别 {{ nginx_available_count }}
+                        </a>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_search %}group_search={{ group_search }}&{% endif %}nginx_available=all&per_page={{ per_page }}"
+                           class="badge config-status-label {% if nginx_available == 'all' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
+                            全部节点 {{ total_nodes_count }}
+                        </a>
+                    </div>
+
                     <div class="table-responsive">
                         <table class="table table-hover table-sm data-table sync-wizard-table">
                             <thead>
@@ -303,6 +316,24 @@
             transform: rotate(360deg);
         }
     }
+
+    .config-status-label {
+        padding: 5px 12px;
+        font-size: var(--fs-sm);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .config-status-label:hover {
+        opacity: 0.85;
+    }
+    .config-status-active {
+        color: #fff !important;
+        font-weight: 500;
+        background-color: #6c757d;
+        border-color: #6c757d;
+    }
+    .config-status-active.config-status-nginx-active { background-color: #198754; border-color: #198754; }
 </style>
 <script>
     var MAX_BATCH = {{ batch_max_count|default:3 }};

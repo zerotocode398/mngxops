@@ -1,4 +1,5 @@
 """配置管理视图 - 适配 ConfigNodeBinding 模型"""
+
 import difflib
 import json
 import threading
@@ -30,8 +31,13 @@ from utils.setting_service import get_setting
 def _build_node_stats(node):
     """构建单个节点的绑定状态统计"""
     stats = {
-        "total": 0, "pending": 0, "conflict": 0, "orphaned": 0,
-        "failed": 0, "syncing": 0, "marked_deleted": 0,
+        "total": 0,
+        "pending": 0,
+        "conflict": 0,
+        "orphaned": 0,
+        "failed": 0,
+        "syncing": 0,
+        "marked_deleted": 0,
     }
     for b in node.config_bindings.all():
         stats["total"] += 1
@@ -62,18 +68,24 @@ def _build_global_status_counts():
     syncing = base.filter(sync_status="syncing").count()
     marked_deleted = base.filter(sync_status="marked_deleted").count()
     return {
-        "total": total, "pending": pending, "conflict": conflict,
-        "orphaned": orphaned, "failed": failed, "syncing": syncing,
+        "total": total,
+        "pending": pending,
+        "conflict": conflict,
+        "orphaned": orphaned,
+        "failed": failed,
+        "syncing": syncing,
         "marked_deleted": marked_deleted,
     }
 
 
 # ==================== 配置标签 CRUD ====================
 
+
 class ConfigListView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
     """配置列表 - 以节点为基准展示绑定（每个节点展开显示其所有配置绑定）"""
+
     template_name = "configs/list.html"
     context_object_name = "nodes"
     paginate_by = None
@@ -83,6 +95,7 @@ class ConfigListView(
 
     def get_queryset(self):
         from apps.nodes.models import Node
+
         queryset = (
             Node.objects.filter(is_locked=False)
             .prefetch_related("config_bindings__config", "groups")
@@ -100,6 +113,11 @@ class ConfigListView(
             ).distinct()
         if group_id:
             queryset = queryset.filter(groups__id=group_id).distinct()
+
+        nginx_available = self.request.GET.get("nginx_available", "true").strip()
+        if nginx_available == "true":
+            queryset = queryset.filter(nginx_available=True)
+
         return queryset
 
     def get_context_data(self, **kwargs):
@@ -110,14 +128,17 @@ class ConfigListView(
         sync_status = self.request.GET.get("sync_status", "").strip()
         search = self.request.GET.get("search", "").strip()
         group_id = self.request.GET.get("group_id", "").strip()
+        nginx_available = self.request.GET.get("nginx_available", "true").strip()
 
         node_bindings_map = {}
         node_stats_map = {}
 
         for node in all_nodes:
-            bindings_qs = ConfigNodeBinding.objects.filter(
-                node=node
-            ).select_related("config").order_by("config__name")
+            bindings_qs = (
+                ConfigNodeBinding.objects.filter(node=node)
+                .select_related("config")
+                .order_by("config__name")
+            )
 
             if sync_status:
                 if sync_status == "pending":
@@ -154,15 +175,25 @@ class ConfigListView(
         context["search"] = search
         context["group_id"] = group_id
         context["sync_status"] = sync_status
-        context["has_any_filter"] = bool(search or group_id or sync_status)
+        context["nginx_available"] = nginx_available
+        context["has_any_filter"] = bool(
+            search or group_id or sync_status or nginx_available == "all"
+        )
         context["groups"] = NodeGroup.objects.all().order_by("name")
         context["status_counts"] = _build_global_status_counts()
 
-        # 未绑定的配置标签（无 filter 时才展示）
+        all_unlocked = Node.objects.filter(is_locked=False)
+        context["nginx_available_count"] = all_unlocked.filter(
+            nginx_available=True
+        ).count()
+        context["total_nodes_count"] = all_unlocked.count()
+
         if not (search or group_id or sync_status):
-            context["unbound_configs"] = Config.objects.filter(
-                bindings__isnull=True
-            ).select_related("created_by").order_by("-created_at")
+            context["unbound_configs"] = (
+                Config.objects.filter(bindings__isnull=True)
+                .select_related("created_by")
+                .order_by("-created_at")
+            )
         else:
             context["unbound_configs"] = []
         return context
@@ -170,6 +201,7 @@ class ConfigListView(
 
 class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     """创建配置标签：无 node_id 跳绑定创建页，有 node_id 自动绑定到该节点"""
+
     model = Config
     form_class = ConfigForm
     template_name = "configs/create.html"
@@ -223,12 +255,15 @@ class ConfigCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
                 f"配置标签 {self.object.name} 已创建并绑定到节点 {node.hostname}",
             )
         else:
-            messages.success(self.request, f"配置标签 {self.object.name} 创建成功，请绑定节点")
+            messages.success(
+                self.request, f"配置标签 {self.object.name} 创建成功，请绑定节点"
+            )
         return response
 
 
 class ConfigEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     """编辑配置标签"""
+
     model = Config
     form_class = ConfigForm
     template_name = "configs/edit.html"
@@ -245,6 +280,7 @@ class ConfigEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
 
 class ConfigDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """删除配置标签（级联删除所有绑定）"""
+
     permission_resource = "configs"
     permission_action = "delete"
 
@@ -262,6 +298,7 @@ class ConfigDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 class ConfigDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     """配置标签详情"""
+
     model = Config
     template_name = "configs/detail.html"
     context_object_name = "config"
@@ -270,23 +307,29 @@ class ConfigDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 
     def get_queryset(self):
         """预加载绑定与节点关联"""
-        return super().get_queryset().prefetch_related(
-            "bindings__node", "bindings__versions"
+        return (
+            super()
+            .get_queryset()
+            .prefetch_related("bindings__node", "bindings__versions")
         )
 
     def get_context_data(self, **kwargs):
         """注入绑定的最新版本信息"""
         context = super().get_context_data(**kwargs)
         config = self.object
-        bindings = config.bindings.filter(node__is_deleted=False).select_related(
-            "node"
-        ).order_by("node__hostname")
+        bindings = (
+            config.bindings.filter(node__is_deleted=False)
+            .select_related("node")
+            .order_by("node__hostname")
+        )
         context["bindings"] = bindings
 
         latest_version = None
         for binding in bindings:
             bv = binding.versions.order_by("-version").first()
-            if bv and (latest_version is None or bv.created_at > latest_version.created_at):
+            if bv and (
+                latest_version is None or bv.created_at > latest_version.created_at
+            ):
                 latest_version = bv
         context["latest_version"] = latest_version
         return context
@@ -294,8 +337,10 @@ class ConfigDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
 
 # ==================== 配置节点绑定 CRUD ====================
 
+
 class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     """创建配置-节点绑定，支持批量绑定多个节点"""
+
     model = ConfigNodeBinding
     form_class = BindingForm
     template_name = "configs/binding_create.html"
@@ -315,11 +360,11 @@ class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         from apps.nodes.models import Node
+
         # 仅展示可依赖 Nginx 的节点（在线且已检测到）
-        context["all_nodes"] = (
-            Node.objects.filter(is_locked=False, status="online", nginx_available=True)
-            .order_by("hostname")
-        )
+        context["all_nodes"] = Node.objects.filter(
+            is_locked=False, status="online", nginx_available=True
+        ).order_by("hostname")
         return context
 
     def post(self, request, *args, **kwargs):
@@ -335,7 +380,11 @@ class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
 
         nodes = []
         if node_ids:
-            nodes = list(Node.objects.filter(id__in=node_ids, is_locked=False).order_by("hostname"))
+            nodes = list(
+                Node.objects.filter(id__in=node_ids, is_locked=False).order_by(
+                    "hostname"
+                )
+            )
         elif form.cleaned_data.get("node"):
             nodes = [form.cleaned_data["node"]]
 
@@ -383,6 +432,7 @@ class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
 
 class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     """编辑绑定内容 → version+1"""
+
     model = ConfigNodeBinding
     form_class = BindingForm
     template_name = "configs/binding_edit.html"
@@ -420,10 +470,16 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
                 for field, errs in form.errors.items():
                     for e in errs:
                         errors.append(f"{form.fields[field].label}: {e}")
-                return JsonResponse({
-                    "success": False,
-                    "message": "请检查输入：" + "; ".join(errors) if errors else "表单验证失败",
-                })
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "message": (
+                            "请检查输入：" + "; ".join(errors)
+                            if errors
+                            else "表单验证失败"
+                        ),
+                    }
+                )
             return self.form_invalid(form)
 
         if request.POST.get("confirm_save") == "yes":
@@ -462,11 +518,13 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
 
         success_msg = f"绑定 {self.object.config.name} @ {self.object.node.hostname} 保存成功（v{new_version}）"
         if is_ajax:
-            return JsonResponse({
-                "success": True,
-                "message": success_msg,
-                "redirect": reverse("configs:list"),
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": success_msg,
+                    "redirect": reverse("configs:list"),
+                }
+            )
         messages.success(self.request, success_msg)
         return redirect("configs:list")
 
@@ -480,6 +538,7 @@ class BindingEditView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
 
 class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """解除绑定：not_synced/orphaned 直接物理删除，其他标记为 marked_deleted"""
+
     permission_resource = "configs"
     permission_action = "delete"
 
@@ -494,7 +553,9 @@ class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         # 无 Nginx 时：任何状态均物理删除，避免 marked_deleted 挂起无法远程 rm
         if binding.node.nginx_available is not True:
             binding.delete()
-            messages.success(request, f"绑定 {label} 已删除（节点无可用 Nginx，未清理远程）")
+            messages.success(
+                request, f"绑定 {label} 已删除（节点无可用 Nginx，未清理远程）"
+            )
             return redirect("configs:list")
 
         if binding.sync_status in ("not_synced", "orphaned"):
@@ -503,12 +564,15 @@ class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         else:
             binding.sync_status = "marked_deleted"
             binding.save(update_fields=["sync_status", "updated_at"])
-            messages.success(request, f"绑定 {label} 已标记删除，下次同步时将清理远程文件")
+            messages.success(
+                request, f"绑定 {label} 已标记删除，下次同步时将清理远程文件"
+            )
         return redirect("configs:list")
 
 
 class BindingRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """恢复已标记删除的绑定"""
+
     permission_resource = "configs"
     permission_action = "update"
 
@@ -525,12 +589,15 @@ class BindingRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return redirect("configs:list")
         binding.sync_status = "not_synced"
         binding.save(update_fields=["sync_status", "updated_at"])
-        messages.success(request, f"绑定 {binding.config.name} @ {binding.node.hostname} 已恢复")
+        messages.success(
+            request, f"绑定 {binding.config.name} @ {binding.node.hostname} 已恢复"
+        )
         return redirect("configs:list")
 
 
 class BindingDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     """绑定详情"""
+
     model = ConfigNodeBinding
     template_name = "configs/binding_detail.html"
     context_object_name = "binding"
@@ -540,10 +607,12 @@ class BindingDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView)
 
 # ==================== 版本历史 ====================
 
+
 class BindingVersionListView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
     """绑定版本历史"""
+
     model = BindingVersion
     template_name = "configs/versions.html"
     context_object_name = "versions"
@@ -569,6 +638,7 @@ class BindingVersionListView(
 
 class BindingVersionDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     """版本详情"""
+
     model = BindingVersion
     template_name = "configs/version_detail.html"
     context_object_name = "version"
@@ -589,6 +659,7 @@ class BindingVersionDetailView(LoginRequiredMixin, PermissionRequiredMixin, Deta
 
 class BindingVersionRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """恢复到指定版本"""
+
     permission_resource = "configs"
     permission_action = "update"
 
@@ -633,6 +704,7 @@ class BindingVersionRestoreView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 
 # ==================== 差异对比 ====================
 
+
 def _build_split_diff_rows(base_content, target_content):
     base_lines = base_content.splitlines()
     target_lines = target_content.splitlines()
@@ -642,13 +714,15 @@ def _build_split_diff_rows(base_content, target_content):
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == "equal":
             for offset, line in enumerate(base_lines[i1:i2]):
-                rows.append({
-                    "type": "equal",
-                    "left_no": i1 + offset + 1,
-                    "left": line,
-                    "right_no": j1 + offset + 1,
-                    "right": line,
-                })
+                rows.append(
+                    {
+                        "type": "equal",
+                        "left_no": i1 + offset + 1,
+                        "left": line,
+                        "right_no": j1 + offset + 1,
+                        "right": line,
+                    }
+                )
             continue
         left_block = base_lines[i1:i2]
         right_block = target_lines[j1:j2]
@@ -656,18 +730,21 @@ def _build_split_diff_rows(base_content, target_content):
         for idx in range(max_len):
             left_line = left_block[idx] if idx < len(left_block) else ""
             right_line = right_block[idx] if idx < len(right_block) else ""
-            rows.append({
-                "type": tag,
-                "left_no": (i1 + idx + 1) if idx < len(left_block) else "",
-                "left": left_line,
-                "right_no": (j1 + idx + 1) if idx < len(right_block) else "",
-                "right": right_line,
-            })
+            rows.append(
+                {
+                    "type": tag,
+                    "left_no": (i1 + idx + 1) if idx < len(left_block) else "",
+                    "left": left_line,
+                    "right_no": (j1 + idx + 1) if idx < len(right_block) else "",
+                    "right": right_line,
+                }
+            )
     return rows
 
 
 class BindingVersionCompareView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """绑定版本差异对比"""
+
     permission_resource = "configs"
     permission_action = "read"
 
@@ -686,7 +763,9 @@ class BindingVersionCompareView(LoginRequiredMixin, PermissionRequiredMixin, Vie
         if selected_base and selected_target and selected_base != selected_target:
             base_obj = get_object_or_404(versions, id=selected_base)
             target_obj = get_object_or_404(versions, id=selected_target)
-            split_diff_rows = _build_split_diff_rows(base_obj.content, target_obj.content)
+            split_diff_rows = _build_split_diff_rows(
+                base_obj.content, target_obj.content
+            )
             has_diff = base_obj.content != target_obj.content
             draft_content = target_obj.content
 
@@ -707,6 +786,7 @@ class BindingVersionCompareView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 
 class BindingVersionCompareApplyView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """应用版本差异"""
+
     permission_resource = "configs"
     permission_action = "update"
 
@@ -756,32 +836,38 @@ class BindingVersionCompareApplyView(LoginRequiredMixin, PermissionRequiredMixin
 
 # ==================== API 视图 ====================
 
+
 class ConfigByNodesAPIView(LoginRequiredMixin, View):
     """根据节点列表获取配置"""
 
     def get(self, request):
         from apps.nodes.models import Node
+
         node_ids = request.GET.getlist("node_ids")
         if not node_ids:
             return JsonResponse({"configs": []})
 
         nodes = Node.objects.filter(id__in=node_ids)
-        bindings = ConfigNodeBinding.objects.filter(
-            node__in=nodes
-        ).select_related("config", "node").order_by("config__name", "node__hostname")
+        bindings = (
+            ConfigNodeBinding.objects.filter(node__in=nodes)
+            .select_related("config", "node")
+            .order_by("config__name", "node__hostname")
+        )
 
         data = []
         for b in bindings:
-            data.append({
-                "id": b.id,
-                "config_id": b.config_id,
-                "config_name": b.config.name,
-                "node_id": b.node_id,
-                "node_hostname": b.node.hostname,
-                "version": b.current_version,
-                "sync_status": b.sync_status,
-                "remote_path": b.remote_path,
-            })
+            data.append(
+                {
+                    "id": b.id,
+                    "config_id": b.config_id,
+                    "config_name": b.config.name,
+                    "node_id": b.node_id,
+                    "node_hostname": b.node.hostname,
+                    "version": b.current_version,
+                    "sync_status": b.sync_status,
+                    "remote_path": b.remote_path,
+                }
+            )
         return JsonResponse({"configs": data})
 
 
@@ -816,10 +902,16 @@ class ConfigGlobPreviewView(LoginRequiredMixin, View):
 
         credential = _get_node_credential(node)
         if not credential:
-            return JsonResponse({"success": False, "message": "未配置SSH凭证"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "未配置SSH凭证"}, status=400
+            )
 
         setting = get_or_create_sync_setting(node)
-        main_conf_path = request.POST.get("main_conf_path") or setting.main_conf_path or default_nginx_conf_path()
+        main_conf_path = (
+            request.POST.get("main_conf_path")
+            or setting.main_conf_path
+            or default_nginx_conf_path()
+        )
         if main_conf_path and main_conf_path != setting.main_conf_path:
             setting.main_conf_path = main_conf_path
             setting.save(update_fields=["main_conf_path"])
@@ -833,6 +925,7 @@ class ConfigGlobPreviewView(LoginRequiredMixin, View):
 
 # ==================== 同步向导（保留兼容） ====================
 
+
 class ConfigSyncWizardView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
@@ -844,6 +937,7 @@ class ConfigSyncWizardView(
 
     def get_queryset(self):
         from apps.nodes.models import Node
+
         queryset = (
             Node.objects.filter(is_locked=False)
             .select_related("created_by")
@@ -858,7 +952,11 @@ class ConfigSyncWizardView(
                 Q(hostname__icontains=search) | Q(ip__icontains=search)
             )
         if group_search:
-            tags = [name.strip() for name in group_search.replace("，", ",").split(",") if name.strip()]
+            tags = [
+                name.strip()
+                for name in group_search.replace("，", ",").split(",")
+                if name.strip()
+            ]
             if tags:
                 for tag in tags:
                     queryset = queryset.filter(
@@ -867,6 +965,11 @@ class ConfigSyncWizardView(
                         | Q(ip__icontains=tag)
                     )
                 queryset = queryset.distinct()
+
+        nginx_available = self.request.GET.get("nginx_available", "true").strip()
+        if nginx_available == "true":
+            queryset = queryset.filter(nginx_available=True)
+
         return queryset
 
     def get_context_data(self, **kwargs):
@@ -874,6 +977,7 @@ class ConfigSyncWizardView(
         nodes = context["nodes"]
         search = self.request.GET.get("search", "")
         group_search = self.request.GET.get("group_search", "")
+        nginx_available = self.request.GET.get("nginx_available", "true").strip()
 
         node_stats = {}
         node_sync_paths = {}
@@ -889,12 +993,24 @@ class ConfigSyncWizardView(
                 "orphaned": bindings.filter(sync_status="orphaned").count(),
                 "modified": bindings.filter(sync_status="modified").count(),
                 "total": bindings.count(),
-                "last_sync": bindings.exclude(last_sync_time__isnull=True).order_by("-last_sync_time").first(),
+                "last_sync": bindings.exclude(last_sync_time__isnull=True)
+                .order_by("-last_sync_time")
+                .first(),
             }
             setting = get_or_create_sync_setting(node)
-            node_sync_paths[node.id] = setting.main_conf_path if setting.main_conf_path else ""
+            node_sync_paths[node.id] = (
+                setting.main_conf_path if setting.main_conf_path else ""
+            )
             node_groups[node.id] = list(node.groups.all())
 
+        from apps.nodes.models import Node
+
+        all_unlocked = Node.objects.filter(is_locked=False)
+        context["nginx_available"] = nginx_available
+        context["nginx_available_count"] = all_unlocked.filter(
+            nginx_available=True
+        ).count()
+        context["total_nodes_count"] = all_unlocked.count()
         context["node_stats"] = node_stats
         context["node_sync_paths"] = node_sync_paths
         context["node_groups"] = node_groups
@@ -919,7 +1035,9 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         MAX_BATCH = int(get_setting("node.batch_max_count", "3"))
         if len(node_ids) > MAX_BATCH:
-            return JsonResponse({"success": False, "message": f"最多只能勾选 {MAX_BATCH} 个节点"})
+            return JsonResponse(
+                {"success": False, "message": f"最多只能勾选 {MAX_BATCH} 个节点"}
+            )
 
         max_workers = MAX_BATCH
         nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
@@ -952,12 +1070,16 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
         thread.start()
 
-        return JsonResponse({
-            "success": True,
-            "async": True,
-            "task_center_id": task_center.id,
-            "task_center_detail_url": reverse("releases:task_center_detail", kwargs={"pk": task_center.id}),
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "async": True,
+                "task_center_id": task_center.id,
+                "task_center_detail_url": reverse(
+                    "releases:task_center_detail", kwargs={"pk": task_center.id}
+                ),
+            }
+        )
 
 
 class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -987,7 +1109,11 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
             return JsonResponse({"success": False, "message": "未配置SSH凭证"})
 
         setting = get_or_create_sync_setting(node)
-        main_conf_path = data.get("main_conf_path") or setting.main_conf_path or default_nginx_conf_path()
+        main_conf_path = (
+            data.get("main_conf_path")
+            or setting.main_conf_path
+            or default_nginx_conf_path()
+        )
         if main_conf_path and main_conf_path != setting.main_conf_path:
             setting.main_conf_path = main_conf_path
             setting.save(update_fields=["main_conf_path"])
@@ -1029,12 +1155,16 @@ class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         )
         thread.start()
 
-        return JsonResponse({
-            "success": True,
-            "async": True,
-            "task_center_id": task_center.id,
-            "task_center_detail_url": reverse("releases:task_center_detail", kwargs={"pk": task_center.id}),
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "async": True,
+                "task_center_id": task_center.id,
+                "task_center_detail_url": reverse(
+                    "releases:task_center_detail", kwargs={"pk": task_center.id}
+                ),
+            }
+        )
 
 
 class ConfigSyncProgressView(LoginRequiredMixin, View):
@@ -1047,25 +1177,30 @@ class ConfigSyncProgressView(LoginRequiredMixin, View):
         try:
             task = TaskCenterTask.objects.get(pk=int(task_id))
         except (ValueError, TaskCenterTask.DoesNotExist):
-            return JsonResponse({
-                "success": True,
-                "progress": {"completed": 0, "total": 100, "nodes": {}},
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "progress": {"completed": 0, "total": 100, "nodes": {}},
+                }
+            )
 
-        return JsonResponse({
-            "success": True,
-            "progress": {
-                "completed": task.progress or 0,
-                "total": 100,
-                "detail": task.detail or "",
-                "status": task.status,
-                "nodes": {},
-            },
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "progress": {
+                    "completed": task.progress or 0,
+                    "total": 100,
+                    "detail": task.detail or "",
+                    "status": task.status,
+                    "nodes": {},
+                },
+            }
+        )
 
 
 class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """更新配置（兼容旧URL）"""
+
     permission_resource = "configs"
     permission_action = "update"
 
@@ -1076,6 +1211,7 @@ class ConfigUpdateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 class ConfigNodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """删除节点下配置（兼容旧URL）"""
+
     permission_resource = "configs"
     permission_action = "delete"
 
