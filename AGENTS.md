@@ -38,6 +38,7 @@
 | Q114 | 离线/未知节点禁止同步与发布/回滚 | 已完成 |
 | Q127 | 周期性自动配置同步不做 | 已关闭（结论） |
 | Q150 | SSH/Nginx 双维度状态与门禁（卸载后 orphaned） | 已完成 |
+| Q162 | 配置列表/配置同步默认展示 Nginx 已识别节点 | 已完成 |
 
 ### 发布中心 / 发布历史
 
@@ -1403,4 +1404,12 @@
   1. 连续失败达 `auth.login_fail_lock_count`（默认 5）锁定 `auth.login_fail_lock_minutes`（默认 15）；成功清零；到期自解；用户列表开关可提前解锁。
   2. WSGI 启动将遗留 pending/running 的任务中心/发布/升级/安装/卸载标 `failed`（不杀远端）。
   3. `SECRET_KEY` 优先环境变量，否则 `DATA_DIR/.secret_key` 自动生成；`MNGXOPS_ALLOWED_HOSTS` 未设则仍为 `*`；`MNGXOPS_HTTPS` / `MNGXOPS_CSRF_TRUSTED_ORIGINS` 可选。
+
+### Q162 · 配置管理/配置同步 · 默认展示 Nginx 已识别节点
+
+- **问题**：配置列表页和配置同步页默认展示所有未锁定节点（含离线/无 Nginx/未探测），用户需手动筛选 Nginx 可用节点才能执行同步、编辑等操作；无 Nginx 节点仅可查看/解除绑定，大量占用列表空间。
+- **处理**：
+  1. **配置列表**（`ConfigListView`）：`get_queryset` 新增 `nginx_available` URL 参数，默认 `"true"` → `queryset.filter(nginx_available=True)`；`nginx_available=all` 时不过滤。前端状态筛选栏上方新增 Nginx 筛选标签行：「已识别 N」（绿色，默认选中）和「全部节点 N」。`has_any_filter` 仅当 `nginx_available == "all"` 时触发"清空"按钮。`get_context_data` 传递 `nginx_available`、`nginx_available_count`、`total_nodes_count`。
+  2. **配置同步**（`ConfigSyncWizardView`）：同上模式，`get_queryset` 默认 `nginx_available=True` 过滤；搜索栏下方新增 Nginx 筛选标签行；`sync_wizard.html` 补充 `config-status-label` CSS 样式。规格 e.g. `nginx_available` 参数。
+  3. 两页面`nginx_available` 参数默认均为 `"true"`，URL 中不显式携带时等同于默认视图；切换状态筛选时保留 `nginx_available` 参数；搜索不受 Nginx 过滤影响。
 - **状态**：已完成
