@@ -79,10 +79,15 @@
                     {% if target_nodes %}
                     <div class="mb-3">
                         <div class="small fw-semibold mb-1"><i class="bi bi-server"></i> 目标节点（{{ target_nodes|length }} 台）</div>
-                        <div class="d-flex flex-wrap gap-1">
+                        <div class="d-flex flex-wrap gap-1 align-items-center" id="targetNodesContainer">
                             {% for node in target_nodes %}
-                            <span class="badge badge-outline">{{ node }}</span>
+                            <span class="badge badge-outline target-node-item{% if forloop.counter > 3 %} d-none{% endif %}">{{ node }}</span>
                             {% endfor %}
+                            {% if target_nodes|length > 3 %}
+                            <button type="button" class="btn btn-link btn-sm p-0 ms-1 target-node-toggle" id="toggleTargetNodes">
+                                <i class="bi bi-chevron-down"></i> 展开全部（{{ target_nodes|length|add:"-3" }} 台）
+                            </button>
+                            {% endif %}
                         </div>
                     </div>
                     {% endif %}
@@ -226,6 +231,22 @@
                 showAlert('取消失败', '取消请求失败');
             });
         }, true, 'md');
+    });
+})();
+(function () {
+    var toggleBtn = document.getElementById('toggleTargetNodes');
+    if (!toggleBtn) return;
+    var expanded = false;
+    var nodeItems = document.querySelectorAll('.target-node-item');
+    var hiddenCount = nodeItems.length - 3;
+    toggleBtn.addEventListener('click', function () {
+        expanded = !expanded;
+        nodeItems.forEach(function (el, i) {
+            if (i >= 3) el.classList.toggle('d-none', !expanded);
+        });
+        toggleBtn.innerHTML = expanded
+            ? '<i class="bi bi-chevron-up"></i> 收起'
+            : '<i class="bi bi-chevron-down"></i> 展开全部（' + hiddenCount + ' 台）';
     });
 })();
 </script>
