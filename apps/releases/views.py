@@ -1183,7 +1183,6 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
 
             stats_qs = (
                 ConfigNodeBinding.objects.filter(node_id__in=node_ids)
-                .exclude(sync_status="marked_deleted")
                 .values("node_id")
                 .annotate(
                     total_bindings=Count("id"),
@@ -1236,10 +1235,8 @@ class ReleaseNodeBindingsAPIView(LoginRequiredMixin, View):
     """获取指定节点的所有绑定详情（含版本列表）"""
 
     def get(self, request, node_id):
-        # 标记删除的绑定不可发布，不返回给发布中心勾选
         bindings = (
             ConfigNodeBinding.objects.filter(node_id=node_id)
-            .exclude(sync_status="marked_deleted")
             .select_related("config")
             .order_by("config__name")
         )

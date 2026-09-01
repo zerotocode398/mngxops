@@ -227,6 +227,8 @@
     .sync-badge-conflict { background: #fff3cd; color: #856404; }
     .sync-badge-failed { background: #f8d7da; color: #721c24; }
     .sync-badge-syncing { background: #d1ecf1; color: #0c5460; }
+    .sync-badge-marked-deleted { background: #fce4ec; color: #c2185b; }
+    .sync-badge-orphaned { background: #e8eaf6; color: #283593; }
 
     .path-link { cursor: pointer; color: var(--primary); }
     .path-link:hover { text-decoration: underline; }
@@ -675,6 +677,8 @@
             else if (isFailed) { syncLabel = '<i class="bi bi-x-circle-fill"></i> 失败'; syncCls = 'sync-badge-failed'; }
             else if (b.sync_status === 'synced') { syncLabel = '<i class="bi bi-check-circle-fill text-success"></i> 已同步'; syncCls = 'sync-badge-synced'; }
             else if (b.sync_status === 'syncing') { syncLabel = '<i class="bi bi-arrow-repeat"></i> 同步中'; syncCls = 'sync-badge-syncing'; }
+            else if (b.sync_status === 'marked_deleted') { syncLabel = '<i class="bi bi-trash"></i> 标记删除'; syncCls = 'sync-badge-marked-deleted'; }
+            else if (b.sync_status === 'orphaned') { syncLabel = '<i class="bi bi-inbox"></i> 远程删除'; syncCls = 'sync-badge-orphaned'; }
             else { syncLabel = b.sync_status; }
 
             // 节点被勾选后 → 展开时自动勾选所有绑定

@@ -1,4 +1,5 @@
 """发布执行与回滚启动服务（自 views 迁出，业务逻辑不变）。"""
+
 import logging
 import threading
 from datetime import datetime
@@ -70,7 +71,9 @@ def _start_release_executor(task_ids, task_center_id):
 class ReleaseExecutorMixin:
     """发布执行核心逻辑 - 适配 ConfigNodeBinding"""
 
-    def _make_task_logger(self, task, node, log_lines, task_center_id=None, log_lock=None):
+    def _make_task_logger(
+        self, task, node, log_lines, task_center_id=None, log_lock=None
+    ):
         """构造单任务日志写入器（增量写 ReleaseTask + TaskCenter）"""
 
         def add_log(msg, milestone=False, step=None):
@@ -96,8 +99,16 @@ class ReleaseExecutorMixin:
 
         return add_log
 
-    def _mark_task_failed(self, task, action, log_lines, msg, task_center_id=None,
-                          log_lock=None, node=None):
+    def _mark_task_failed(
+        self,
+        task,
+        action,
+        log_lines,
+        msg,
+        task_center_id=None,
+        log_lock=None,
+        node=None,
+    ):
         """标记任务失败并写历史"""
         task.status = "failed"
         if log_lines:
@@ -120,26 +131,33 @@ class ReleaseExecutorMixin:
         self._record_history(task, action, task.result)
         return False, msg
 
-    def _deploy_release_config(
-        self, task, action, step_kwargs, task_center_id=None, log_lock=None,
-        seed_log_lines=None, note_ssh_reuse=False,
+    def _deploy_release_delete(
+        self,
+        task,
+        action,
+        step_kwargs,
+        task_center_id=None,
+        log_lock=None,
+        config_label="",
+        remote_path="",
+        add_log=None,
+        node=None,
+        config=None,
+        log_lines=None,
+        note_ssh_reuse=False,
     ):
-        """备份+上传+nginx -t（不 reload）；成功返回 pending 字典"""
-        node = task.node
-        config = task.config
-        content = task.content_to_publish if task.content_to_publish else ""
-        remote_path = task.remote_path or (task.binding.remote_path if task.binding else "")
-        log_lines = list(seed_log_lines or [])
-        config_label = config.name
-        add_log = self._make_task_logger(
-            task, node, log_lines, task_center_id=task_center_id, log_lock=log_lock,
-        )
+        """发布 marked_deleted 绑定：删除远程配置文件 + nginx -t"""
+        version_label = f"v{task.publish_version}" if task.publish_version else "latest"
 
         def _fail(msg):
-            """标记失败并记录历史"""
             return self._mark_task_failed(
-                task, action, log_lines, msg,
-                task_center_id=task_center_id, log_lock=log_lock, node=node,
+                task,
+                action,
+                log_lines or [],
+                msg,
+                task_center_id=task_center_id,
+                log_lock=log_lock,
+                node=node,
             )
 
         if not remote_path:
@@ -154,7 +172,199 @@ class ReleaseExecutorMixin:
             add_log(
                 "复用本节点 SSH 会话",
                 milestone=True,
-                step=_release_step_label("已连接", config_label, task.publish_version, remote_path),
+                step=_release_step_label(
+                    "已连接", config_label, task.publish_version, remote_path
+                ),
+            )
+        if task_center_id and is_cancelled(task_center_id):
+            return _fail("任务已取消")
+
+        add_log(
+            f"开始删除远程配置: {config.name} {version_label} → {node.hostname}",
+            milestone=True,
+            step=_release_step_label(
+                "开始删除", config_label, task.publish_version, remote_path
+            ),
+        )
+        add_log(f"目标路径: {remote_path}")
+
+        exists_ok, exists_msg = check_remote_file_size(
+            file_path=remote_path,
+            **step_kwargs,
+        )
+        if exists_ok:
+            add_log(f"远程文件存在（{exists_msg}），准备删除")
+        else:
+            add_log(f"远程文件不存在或无法访问: {exists_msg}")
+
+        if task_center_id and is_cancelled(task_center_id):
+            return _fail("任务已取消")
+
+        add_log(
+            "正在删除远程配置文件...",
+            milestone=True,
+            step=_release_step_label(
+                "删除中", config_label, task.publish_version, remote_path
+            ),
+        )
+        remove_ok, remove_msg = remove_remote_file(
+            file_path=remote_path,
+            **step_kwargs,
+        )
+        if not remove_ok:
+            add_log(
+                f"删除失败: {remove_msg}",
+                milestone=True,
+                step=_release_step_label(
+                    "删除失败", config_label, task.publish_version, remote_path
+                ),
+            )
+            return _fail(f"删除远程文件失败: {remove_msg}")
+
+        add_log(f"删除成功: {remove_msg}")
+
+        verify_ok, verify_msg = check_remote_file_size(
+            file_path=remote_path,
+            **step_kwargs,
+        )
+        if verify_ok:
+            add_log(
+                f"警告: 文件删除后仍可读取 ({verify_msg})，可能未完全删除",
+                milestone=True,
+                step=_release_step_label(
+                    "删除异常", config_label, task.publish_version, remote_path
+                ),
+            )
+            return _fail(f"文件删除后仍存在: {verify_msg}")
+        add_log(f"已确认文件已删除")
+
+        add_log(
+            "删除完成",
+            milestone=True,
+            step=_release_step_label(
+                "删除完成", config_label, task.publish_version, remote_path
+            ),
+        )
+
+        add_log(
+            "正在执行 nginx -t ...",
+            milestone=True,
+            step=_release_step_label(
+                "nginx -t", config_label, task.publish_version, remote_path
+            ),
+        )
+        nginx_path = node.nginx_path or None
+        success, test_output = execute_nginx_test(
+            config_path=remote_path,
+            nginx_path=nginx_path,
+            **step_kwargs,
+        )
+        add_log(test_output)
+        if not success:
+            add_log(
+                "nginx -t 失败（文件已删除，请检查 nginx 配置是否仍引用此文件）",
+                milestone=True,
+                step=_release_step_label(
+                    "nginx -t 失败", config_label, task.publish_version, remote_path
+                ),
+            )
+            return _fail(f"nginx -t 失败: {test_output}")
+
+        add_log(
+            "nginx -t 通过，等待本节点统一 reload（未运行则 start）",
+            milestone=True,
+            step=_release_step_label(
+                "待 reload", config_label, task.publish_version, remote_path
+            ),
+        )
+        pending = {
+            "task": task,
+            "action": action,
+            "backup_result": None,
+            "remote_path": remote_path,
+            "target_md5": None,
+            "log_lines": log_lines or [],
+            "add_log": add_log,
+            "version_label": version_label,
+            "publish_version": task.publish_version,
+            "config_label": config_label,
+            "is_delete": True,
+        }
+        return True, pending
+
+    def _deploy_release_config(
+        self,
+        task,
+        action,
+        step_kwargs,
+        task_center_id=None,
+        log_lock=None,
+        seed_log_lines=None,
+        note_ssh_reuse=False,
+    ):
+        """备份+上传+nginx -t（不 reload）；成功返回 pending 字典
+
+        marked_deleted 绑定走删除流程：删除远程文件 + nginx -t，不备份不上传。
+        """
+        node = task.node
+        config = task.config
+        content = task.content_to_publish if task.content_to_publish else ""
+        remote_path = task.remote_path or (
+            task.binding.remote_path if task.binding else ""
+        )
+        log_lines = list(seed_log_lines or [])
+        config_label = config.name
+        add_log = self._make_task_logger(
+            task,
+            node,
+            log_lines,
+            task_center_id=task_center_id,
+            log_lock=log_lock,
+        )
+
+        def _fail(msg):
+            """标记失败并记录历史"""
+            return self._mark_task_failed(
+                task,
+                action,
+                log_lines,
+                msg,
+                task_center_id=task_center_id,
+                log_lock=log_lock,
+                node=node,
+            )
+
+        if task.binding and task.binding.sync_status == "marked_deleted":
+            return self._deploy_release_delete(
+                task,
+                action,
+                step_kwargs,
+                task_center_id=task_center_id,
+                log_lock=log_lock,
+                config_label=config_label,
+                remote_path=remote_path,
+                add_log=add_log,
+                node=node,
+                config=config,
+                log_lines=log_lines,
+                note_ssh_reuse=note_ssh_reuse,
+            )
+
+        if not remote_path:
+            return _fail("未指定远程路径")
+
+        task.status = "running"
+        if not task.started_at:
+            task.started_at = datetime.now()
+        task.save(update_fields=["status", "started_at"])
+
+        if note_ssh_reuse:
+            add_log(
+                "复用本节点 SSH 会话",
+                milestone=True,
+                step=_release_step_label(
+                    "已连接", config_label, task.publish_version, remote_path
+                ),
             )
         if task_center_id and is_cancelled(task_center_id):
             return _fail("任务已取消")
@@ -163,7 +373,9 @@ class ReleaseExecutorMixin:
         add_log(
             f"开始发布: {config.name} {version_label} → {node.hostname}",
             milestone=True,
-            step=_release_step_label("开始发布", config_label, task.publish_version, remote_path),
+            step=_release_step_label(
+                "开始发布", config_label, task.publish_version, remote_path
+            ),
         )
         add_log(f"目标路径: {remote_path}")
 
@@ -171,7 +383,9 @@ class ReleaseExecutorMixin:
             add_log(
                 "配置内容为空，中止发布",
                 milestone=True,
-                step=_release_step_label("内容为空", config_label, task.publish_version, remote_path),
+                step=_release_step_label(
+                    "内容为空", config_label, task.publish_version, remote_path
+                ),
             )
             return _fail(f"配置 {config.name} {version_label} 内容为空，无法发布")
 
@@ -181,7 +395,9 @@ class ReleaseExecutorMixin:
         add_log(
             "正在备份原配置...",
             milestone=True,
-            step=_release_step_label("备份中", config_label, task.publish_version, remote_path),
+            step=_release_step_label(
+                "备份中", config_label, task.publish_version, remote_path
+            ),
         )
         success, backup_result = backup_remote_file(
             file_path=remote_path,
@@ -197,10 +413,13 @@ class ReleaseExecutorMixin:
                 add_log(
                     f"备份成功: {backup_result}",
                     milestone=True,
-                    step=_release_step_label("备份完成", config_label, task.publish_version, remote_path),
+                    step=_release_step_label(
+                        "备份完成", config_label, task.publish_version, remote_path
+                    ),
                 )
                 backup_size_ok, backup_size_msg = check_remote_file_size(
-                    file_path=backup_result, **step_kwargs,
+                    file_path=backup_result,
+                    **step_kwargs,
                 )
                 add_log(f"备份文件大小: {backup_size_msg}")
                 if not backup_size_ok:
@@ -209,13 +428,17 @@ class ReleaseExecutorMixin:
                 add_log(
                     "远程文件不存在，跳过备份（首次发布）",
                     milestone=True,
-                    step=_release_step_label("跳过备份", config_label, task.publish_version, remote_path),
+                    step=_release_step_label(
+                        "跳过备份", config_label, task.publish_version, remote_path
+                    ),
                 )
         else:
             add_log(
                 f"备份失败: {backup_result}",
                 milestone=True,
-                step=_release_step_label("备份失败", config_label, task.publish_version, remote_path),
+                step=_release_step_label(
+                    "备份失败", config_label, task.publish_version, remote_path
+                ),
             )
             return _fail(f"备份失败: {backup_result}")
 
@@ -233,16 +456,22 @@ class ReleaseExecutorMixin:
         add_log(
             "正在上传到临时中转文件...",
             milestone=True,
-            step=_release_step_label("上传中", config_label, task.publish_version, remote_path),
+            step=_release_step_label(
+                "上传中", config_label, task.publish_version, remote_path
+            ),
         )
         success, upload_result = upload_file_via_sftp(
-            remote_path=tmp_path, content=content, **step_kwargs,
+            remote_path=tmp_path,
+            content=content,
+            **step_kwargs,
         )
         if not success:
             add_log(
                 f"上传到临时中转文件失败: {upload_result}",
                 milestone=True,
-                step=_release_step_label("上传失败", config_label, task.publish_version, remote_path),
+                step=_release_step_label(
+                    "上传失败", config_label, task.publish_version, remote_path
+                ),
             )
             return _fail(f"上传到临时中转文件失败: {upload_result}")
 
@@ -253,7 +482,9 @@ class ReleaseExecutorMixin:
             add_log(
                 "临时中转文件为空，中止发布",
                 milestone=True,
-                step=_release_step_label("上传为空", config_label, task.publish_version, remote_path),
+                step=_release_step_label(
+                    "上传为空", config_label, task.publish_version, remote_path
+                ),
             )
             _cleanup_tmp()
             return _fail(f"临时中转文件为空: {size_msg}")
@@ -261,29 +492,37 @@ class ReleaseExecutorMixin:
         # 复制到目标路径
         add_log(f"从临时中转文件复制到目标路径 {remote_path} ...")
         copy_ok, copy_msg = copy_remote_file(
-            src_path=tmp_path, dst_path=remote_path, **step_kwargs,
+            src_path=tmp_path,
+            dst_path=remote_path,
+            **step_kwargs,
         )
         if not copy_ok:
             add_log(
                 f"复制失败: {copy_msg}",
                 milestone=True,
-                step=_release_step_label("复制失败", config_label, task.publish_version, remote_path),
+                step=_release_step_label(
+                    "复制失败", config_label, task.publish_version, remote_path
+                ),
             )
             add_log("正在回滚备份...")
-            self._rollback_backup(backup_result, remote_path, step_kwargs, log_lines, add_log)
+            self._rollback_backup(
+                backup_result, remote_path, step_kwargs, log_lines, add_log
+            )
             _cleanup_tmp()
             return _fail(f"复制失败: {copy_msg}")
 
         # 校验
         add_log("验证目标文件大小...")
         target_ok, target_msg = check_remote_file_size(
-            file_path=remote_path, **step_kwargs,
+            file_path=remote_path,
+            **step_kwargs,
         )
         add_log(f"目标文件大小: {target_msg}")
         add_log("校验文件 md5...")
         tmp_md5_ok, tmp_md5 = check_remote_file_md5(file_path=tmp_path, **step_kwargs)
         target_md5_ok, target_md5 = check_remote_file_md5(
-            file_path=remote_path, **step_kwargs,
+            file_path=remote_path,
+            **step_kwargs,
         )
         add_log(f"临时文件 md5: {tmp_md5}")
         add_log(f"目标 md5: {target_md5}")
@@ -296,9 +535,13 @@ class ReleaseExecutorMixin:
             add_log(
                 "目标文件为空，正在回滚备份...",
                 milestone=True,
-                step=_release_step_label("校验失败", config_label, task.publish_version, remote_path),
+                step=_release_step_label(
+                    "校验失败", config_label, task.publish_version, remote_path
+                ),
             )
-            self._rollback_backup(backup_result, remote_path, step_kwargs, log_lines, add_log)
+            self._rollback_backup(
+                backup_result, remote_path, step_kwargs, log_lines, add_log
+            )
             _cleanup_tmp()
             return _fail(f"目标文件为空: {target_msg}")
 
@@ -308,33 +551,45 @@ class ReleaseExecutorMixin:
         add_log(
             "上传成功",
             milestone=True,
-            step=_release_step_label("上传完成", config_label, task.publish_version, remote_path),
+            step=_release_step_label(
+                "上传完成", config_label, task.publish_version, remote_path
+            ),
         )
 
         # nginx -t（本配置校验；reload 延后到节点级）
         add_log(
             "正在执行 nginx -t ...",
             milestone=True,
-            step=_release_step_label("nginx -t", config_label, task.publish_version, remote_path),
+            step=_release_step_label(
+                "nginx -t", config_label, task.publish_version, remote_path
+            ),
         )
         nginx_path = node.nginx_path or None
         success, test_output = execute_nginx_test(
-            config_path=remote_path, nginx_path=nginx_path, **step_kwargs,
+            config_path=remote_path,
+            nginx_path=nginx_path,
+            **step_kwargs,
         )
         add_log(test_output)
         if not success:
             add_log(
                 "nginx -t 失败，正在回滚备份...",
                 milestone=True,
-                step=_release_step_label("nginx -t 失败", config_label, task.publish_version, remote_path),
+                step=_release_step_label(
+                    "nginx -t 失败", config_label, task.publish_version, remote_path
+                ),
             )
-            self._rollback_backup(backup_result, remote_path, step_kwargs, log_lines, add_log)
+            self._rollback_backup(
+                backup_result, remote_path, step_kwargs, log_lines, add_log
+            )
             return _fail(f"nginx -t 失败: {test_output}")
 
         add_log(
             "nginx -t 通过，等待本节点统一 reload（未运行则 start）",
             milestone=True,
-            step=_release_step_label("待 reload", config_label, task.publish_version, remote_path),
+            step=_release_step_label(
+                "待 reload", config_label, task.publish_version, remote_path
+            ),
         )
         pending = {
             "task": task,
@@ -351,9 +606,27 @@ class ReleaseExecutorMixin:
         return True, pending
 
     def _rollback_pending_items(self, pending_items, step_kwargs, reason):
-        """回滚本节点本批次已上传但未生效的配置"""
+        """回滚本节点本批次已上传但未生效的配置（删除类绑定无法回滚，仅标记失败）"""
         for item in pending_items:
             add_log = item["add_log"]
+            if item.get("is_delete"):
+                add_log(
+                    f"因{reason}，本配置为删除操作无法回滚（远程文件已删除）",
+                    milestone=True,
+                    step=_release_step_label(
+                        "回滚跳过",
+                        item["config_label"],
+                        item.get("publish_version"),
+                        item["remote_path"],
+                    ),
+                )
+                task = item["task"]
+                task.status = "failed"
+                task.result = "\n".join(item["log_lines"])
+                task.finished_at = datetime.now()
+                task.save()
+                self._record_history(task, item["action"], task.result)
+                continue
             add_log(
                 f"因{reason}，回滚本配置...",
                 milestone=True,
@@ -379,7 +652,12 @@ class ReleaseExecutorMixin:
             self._record_history(task, item["action"], task.result)
 
     def _finalize_node_reload(
-        self, node, pending_items, step_kwargs, task_center_id=None, log_lock=None,
+        self,
+        node,
+        pending_items,
+        step_kwargs,
+        task_center_id=None,
+        log_lock=None,
     ):
         """本节点统一 reload；成功则全部标成功，失败则回滚全部 pending"""
         if not pending_items:
@@ -387,7 +665,8 @@ class ReleaseExecutorMixin:
 
         nginx_path = node.nginx_path or None
         reload_step = _release_step_label(
-            "本节点统一 reload/start", extra=f"{len(pending_items)} 个配置",
+            "本节点统一 reload/start",
+            extra=f"{len(pending_items)} 个配置",
         )
         # 以首个 pending 写里程碑，并广播到各任务日志
         lead = pending_items[0]
@@ -397,10 +676,14 @@ class ReleaseExecutorMixin:
             step=reload_step,
         )
         for item in pending_items[1:]:
-            item["add_log"]("本节点全部配置已通过 nginx -t，正在统一 reload（未运行则 start）...")
+            item["add_log"](
+                "本节点全部配置已通过 nginx -t，正在统一 reload（未运行则 start）..."
+            )
 
         success, reload_output = execute_nginx_reload(
-            nginx_path=nginx_path, start_if_stopped=True, **step_kwargs,
+            nginx_path=nginx_path,
+            start_if_stopped=True,
+            **step_kwargs,
         )
         for item in pending_items:
             item["add_log"](reload_output)
@@ -431,7 +714,9 @@ class ReleaseExecutorMixin:
         lead["add_log"](
             "reload 失败，正在回滚本节点本批次全部配置...",
             milestone=True,
-            step=_release_step_label("reload 失败", extra=f"{len(pending_items)} 个配置"),
+            step=_release_step_label(
+                "reload 失败", extra=f"{len(pending_items)} 个配置"
+            ),
         )
         for item in pending_items[1:]:
             item["add_log"]("reload 失败，正在回滚本节点本批次全部配置...")
@@ -448,7 +733,12 @@ class ReleaseExecutorMixin:
             self._fail_task_early(task, action, reason)
 
     def _execute_node_release_batch(
-        self, tasks, action, task_center_id=None, log_lock=None, on_task_done=None,
+        self,
+        tasks,
+        action,
+        task_center_id=None,
+        log_lock=None,
+        on_task_done=None,
     ):
         """同节点批量发布：共用一条 SSH，全部 -t 通过后统一 reload
 
@@ -510,8 +800,11 @@ class ReleaseExecutorMixin:
             first = tasks[0]
             first_logs = []
             first_add = self._make_task_logger(
-                first, node, first_logs,
-                task_center_id=task_center_id, log_lock=log_lock,
+                first,
+                node,
+                first_logs,
+                task_center_id=task_center_id,
+                log_lock=log_lock,
             )
             first.status = "running"
             first.started_at = datetime.now()
@@ -530,14 +823,21 @@ class ReleaseExecutorMixin:
                     step=_release_step_label("连接失败"),
                 )
                 self._mark_task_failed(
-                    first, action, first_logs, f"SSH 连接失败: {e}",
-                    task_center_id=task_center_id, log_lock=log_lock, node=node,
+                    first,
+                    action,
+                    first_logs,
+                    f"SSH 连接失败: {e}",
+                    task_center_id=task_center_id,
+                    log_lock=log_lock,
+                    node=node,
                 )
                 if on_task_done:
                     on_task_done(first, False, f"SSH 连接失败: {e}")
                 results.append((first, False))
                 self._skip_remaining_tasks(
-                    tasks[1:], action, f"SSH 连接失败，跳过本节点其余配置: {e}",
+                    tasks[1:],
+                    action,
+                    f"SSH 连接失败，跳过本节点其余配置: {e}",
                 )
                 for task in tasks[1:]:
                     if on_task_done:
@@ -582,8 +882,11 @@ class ReleaseExecutorMixin:
                     continue
 
                 ok, payload = self._deploy_release_config(
-                    task, action, step_kwargs,
-                    task_center_id=task_center_id, log_lock=log_lock,
+                    task,
+                    action,
+                    step_kwargs,
+                    task_center_id=task_center_id,
+                    log_lock=log_lock,
                     seed_log_lines=first_logs if idx == 0 else None,
                     note_ssh_reuse=(idx > 0),
                 )
@@ -599,7 +902,8 @@ class ReleaseExecutorMixin:
                     # 先回滚此前已上传 pending，再标记当前失败（进度树按上传顺序收尾）
                     if pending_items:
                         self._rollback_pending_items(
-                            pending_items, step_kwargs,
+                            pending_items,
+                            step_kwargs,
                             f"后续配置失败({task.config.name})",
                         )
                         for item in pending_items:
@@ -617,7 +921,9 @@ class ReleaseExecutorMixin:
                 if task_center_id and is_cancelled(task_center_id):
                     cancel_msg = "任务已取消，跳过统一 reload"
                     self._rollback_pending_items(
-                        pending_items, step_kwargs, "任务已取消",
+                        pending_items,
+                        step_kwargs,
+                        "任务已取消",
                     )
                     for item in pending_items:
                         t = item["task"]
@@ -631,8 +937,11 @@ class ReleaseExecutorMixin:
                         results.append((t, False))
                     return results
                 reload_ok = self._finalize_node_reload(
-                    node, pending_items, step_kwargs,
-                    task_center_id=task_center_id, log_lock=log_lock,
+                    node,
+                    pending_items,
+                    step_kwargs,
+                    task_center_id=task_center_id,
+                    log_lock=log_lock,
                 )
                 for item in pending_items:
                     task = item["task"]
@@ -655,29 +964,49 @@ class ReleaseExecutorMixin:
     def _execute_release(self, task, action, task_center_id=None, log_lock=None):
         """执行单条发布/回滚（兼容入口：走同节点批次逻辑）"""
         batch_results = self._execute_node_release_batch(
-            [task], action,
-            task_center_id=task_center_id, log_lock=log_lock,
+            [task],
+            action,
+            task_center_id=task_center_id,
+            log_lock=log_lock,
         )
         if not batch_results:
             return False, "无任务"
         task, ok = batch_results[0]
         version_label = f"v{task.publish_version}" if task.publish_version else "latest"
         if ok:
-            return True, f"配置 {task.config.name} {version_label} 发布到 {task.node.hostname} 成功"
-        return False, f"配置 {task.config.name} {version_label} 发布到 {task.node.hostname} 失败"
+            return (
+                True,
+                f"配置 {task.config.name} {version_label} 发布到 {task.node.hostname} 成功",
+            )
+        return (
+            False,
+            f"配置 {task.config.name} {version_label} 发布到 {task.node.hostname} 失败",
+        )
 
     def _on_release_success(self, task, remote_md5):
-        """发布成功后回写绑定状态"""
+        """发布成功后回写绑定状态
+
+        marked_deleted 绑定在远程文件删除后物理删除本地记录；
+        普通绑定回写 synced 状态与 md5。
+        """
         binding = task.binding
         if not binding:
+            return
+        if binding.sync_status == "marked_deleted":
+            binding.delete()
             return
         binding.synced_version = task.publish_version or binding.current_version
         binding.remote_content_hash = remote_md5
         binding.sync_status = "synced"
         binding.last_sync_time = timezone.now()
-        binding.save(update_fields=[
-            "synced_version", "remote_content_hash", "sync_status", "last_sync_time",
-        ])
+        binding.save(
+            update_fields=[
+                "synced_version",
+                "remote_content_hash",
+                "sync_status",
+                "last_sync_time",
+            ]
+        )
 
     def _record_history(self, task, action, result):
         """写入发布操作历史"""
@@ -691,8 +1020,11 @@ class ReleaseExecutorMixin:
             result=result,
         )
 
-    def _rollback_backup(self, backup_result, config_file_path, kwargs, log_lines, add_log=None):
+    def _rollback_backup(
+        self, backup_result, config_file_path, kwargs, log_lines, add_log=None
+    ):
         """发布失败回滚：有备份则还原，无备份（首次发布）则删除新文件"""
+
         def _note(msg):
             if add_log:
                 add_log(msg)
@@ -707,13 +1039,16 @@ class ReleaseExecutorMixin:
                 _note(f"无原备份，清理新文件失败: {msg}")
             return
         backup_size_ok, backup_size_msg = check_remote_file_size(
-            file_path=backup_result, **kwargs,
+            file_path=backup_result,
+            **kwargs,
         )
         if not backup_size_ok:
             _note("警告: 备份文件为空，跳过回滚")
             return
         rollback_ok, rollback_msg = restore_backup_file(
-            backup_path=backup_result, original_path=config_file_path, **kwargs,
+            backup_path=backup_result,
+            original_path=config_file_path,
+            **kwargs,
         )
         if rollback_ok:
             _note("回滚完成")
@@ -745,15 +1080,21 @@ def _run_release_tasks(task_ids, task_center_id=None):
     if task_center_id:
         _clear_release_progress_state(task_center_id)
         TaskCenterTask.objects.filter(pk=task_center_id).update(
-            status="running", started_at=timezone.now(), progress=0,
-            log_output="", result="",
+            status="running",
+            started_at=timezone.now(),
+            progress=0,
+            log_output="",
+            result="",
         )
 
     node_tasks = {}
     for task_id in task_ids:
         try:
             task = ReleaseTask.objects.select_related(
-                "node", "config", "binding", "operator",
+                "node",
+                "config",
+                "binding",
+                "operator",
             ).get(pk=task_id)
             node_key = f"{task.node.ip} ({task.node.hostname})"
             if node_key not in node_tasks:
@@ -783,8 +1124,11 @@ def _run_release_tasks(task_ids, task_center_id=None):
 
         for task in tasks:
             _live_tree_set_running(
-                task_center_id, node_key, task.config.name,
-                task.publish_version, log_lock,
+                task_center_id,
+                node_key,
+                task.config.name,
+                task.publish_version,
+                log_lock,
             )
 
         def _on_done(task, ok, reason, _nk=node_key):
@@ -793,7 +1137,9 @@ def _run_release_tasks(task_ids, task_center_id=None):
             if ok:
                 success += 1
                 node_success += 1
-                detail_lines.append(f"  [成功] {task.config.name} v{task.publish_version}")
+                detail_lines.append(
+                    f"  [成功] {task.config.name} v{task.publish_version}"
+                )
             else:
                 failed += 1
                 node_failed += 1
@@ -802,8 +1148,13 @@ def _run_release_tasks(task_ids, task_center_id=None):
                     f" - 失败原因: {reason}"
                 )
             _live_tree_set_done(
-                task_center_id, _nk, task.config.name, ok,
-                version=task.publish_version, reason=reason, lock=log_lock,
+                task_center_id,
+                _nk,
+                task.config.name,
+                ok,
+                version=task.publish_version,
+                reason=reason,
+                lock=log_lock,
             )
             if task_center_id:
                 done = success + failed
@@ -814,8 +1165,10 @@ def _run_release_tasks(task_ids, task_center_id=None):
                 )
 
         executor._execute_node_release_batch(
-            tasks, action,
-            task_center_id=task_center_id, log_lock=log_lock,
+            tasks,
+            action,
+            task_center_id=task_center_id,
+            log_lock=log_lock,
             on_task_done=_on_done,
         )
         if tasks:
@@ -830,12 +1183,16 @@ def _run_release_tasks(task_ids, task_center_id=None):
         status = "success" if failed == 0 else "failed"
         result_lines = [f"执行完成：成功 {success}，失败 {failed}，共 {total}"]
         for nk, nr in node_results.items():
-            result_lines.append(f"[节点摘要] {nk}: 成功 {nr['success']}, 失败 {nr['failed']}")
+            result_lines.append(
+                f"[节点摘要] {nk}: 成功 {nr['success']}, 失败 {nr['failed']}"
+            )
         result_lines.extend(detail_lines)
 
         finish_if_active(
             task_center_id,
-            status=status, progress=100, finished_at=timezone.now(),
+            status=status,
+            progress=100,
+            finished_at=timezone.now(),
             result="\n".join(result_lines),
             detail=f"执行完成：成功 {success}，失败 {failed}，共 {total}",
         )
@@ -858,15 +1215,21 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
     if task_center_id:
         _clear_release_progress_state(task_center_id)
         TaskCenterTask.objects.filter(pk=task_center_id).update(
-            status="running", started_at=timezone.now(), progress=0,
-            log_output="", result="",
+            status="running",
+            started_at=timezone.now(),
+            progress=0,
+            log_output="",
+            result="",
         )
 
     node_tasks = {}
     for task_id in task_ids:
         try:
             task = ReleaseTask.objects.select_related(
-                "node", "config", "binding", "operator",
+                "node",
+                "config",
+                "binding",
+                "operator",
             ).get(pk=task_id)
             node_key = f"{task.node.ip} ({task.node.hostname})"
             if node_key not in node_tasks:
@@ -889,7 +1252,12 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
                     t.save(update_fields=["status", "result", "finished_at"])
                 with state_lock:
                     state["failed"] += 1
-            return node_key, 0, len(tasks), [f"[节点] {node_key}", f"  [失败] {cancel_msg}"]
+            return (
+                node_key,
+                0,
+                len(tasks),
+                [f"[节点] {node_key}", f"  [失败] {cancel_msg}"],
+            )
 
         node_success = 0
         node_failed = 0
@@ -897,8 +1265,11 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
 
         for t in tasks:
             _live_tree_set_running(
-                task_center_id, node_key, t.config.name,
-                t.publish_version, log_lock,
+                task_center_id,
+                node_key,
+                t.config.name,
+                t.publish_version,
+                log_lock,
             )
 
         def _on_done(task, ok, reason):
@@ -908,7 +1279,9 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
                 if ok:
                     state["success"] += 1
                     node_success += 1
-                    node_lines.append(f"  [成功] {task.config.name} v{task.publish_version}")
+                    node_lines.append(
+                        f"  [成功] {task.config.name} v{task.publish_version}"
+                    )
                 else:
                     state["failed"] += 1
                     node_failed += 1
@@ -927,13 +1300,20 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
                         ),
                     )
             _live_tree_set_done(
-                task_center_id, node_key, task.config.name, ok,
-                version=task.publish_version, reason=reason, lock=log_lock,
+                task_center_id,
+                node_key,
+                task.config.name,
+                ok,
+                version=task.publish_version,
+                reason=reason,
+                lock=log_lock,
             )
 
         executor._execute_node_release_batch(
-            tasks, action,
-            task_center_id=task_center_id, log_lock=log_lock,
+            tasks,
+            action,
+            task_center_id=task_center_id,
+            log_lock=log_lock,
             on_task_done=_on_done,
         )
         if tasks:
@@ -951,7 +1331,10 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
             try:
                 node_key, node_success, node_failed, node_lines = future.result()
                 detail_lines.extend(node_lines)
-                node_results[node_key] = {"success": node_success, "failed": node_failed}
+                node_results[node_key] = {
+                    "success": node_success,
+                    "failed": node_failed,
+                }
             except Exception as e:
                 logger.error(f"并行节点执行异常: {e}")
 
@@ -963,14 +1346,20 @@ def _run_release_tasks_parallel(task_ids, task_center_id=None, max_workers=3):
             _clear_release_progress_state(task_center_id)
             return
         status = "success" if failed == 0 else "failed"
-        result_lines = [f"执行完成（并行模式）：成功 {success}，失败 {failed}，共 {total}"]
+        result_lines = [
+            f"执行完成（并行模式）：成功 {success}，失败 {failed}，共 {total}"
+        ]
         for nk, nr in node_results.items():
-            result_lines.append(f"[节点摘要] {nk}: 成功 {nr['success']}, 失败 {nr['failed']}")
+            result_lines.append(
+                f"[节点摘要] {nk}: 成功 {nr['success']}, 失败 {nr['failed']}"
+            )
         result_lines.extend(detail_lines)
 
         finish_if_active(
             task_center_id,
-            status=status, progress=100, finished_at=timezone.now(),
+            status=status,
+            progress=100,
+            finished_at=timezone.now(),
             result="\n".join(result_lines),
             detail=f"执行完成：成功 {success}，失败 {failed}，共 {total}",
         )
@@ -1030,7 +1419,11 @@ def _start_rollback_for_release_tasks(tasks, user):
         if publish_ver is None:
             skipped += 1
             continue
-        prev = binding.versions.filter(version__lt=publish_ver).order_by("-version").first()
+        prev = (
+            binding.versions.filter(version__lt=publish_ver)
+            .order_by("-version")
+            .first()
+        )
         if not prev:
             skipped += 1
             continue
@@ -1049,7 +1442,10 @@ def _start_rollback_for_release_tasks(tasks, user):
         rollback_task_ids.append(new_task.id)
 
     if not rollback_task_ids:
-        return False, "未生成任何回滚任务（所选任务均无上一版本、同绑定已去重、节点已锁定或已删除）"
+        return (
+            False,
+            "未生成任何回滚任务（所选任务均无上一版本、同绑定已去重、节点已锁定或已删除）",
+        )
 
     started = len(rollback_task_ids)
     detail = f"批量回滚：{started} 个任务"
@@ -1057,6 +1453,7 @@ def _start_rollback_for_release_tasks(tasks, user):
         detail += f"（跳过 {skipped} 个）"
 
     from apps.releases.task_result import targets_from_release_tasks
+
     targets = targets_from_release_tasks(rollback_task_ids)
     task_center = TaskCenterTask.objects.create(
         operation_type="release_rollback",
