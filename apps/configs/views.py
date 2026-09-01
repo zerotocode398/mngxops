@@ -105,12 +105,16 @@ class ConfigListView(
         group_id = self.request.GET.get("group_id", "")
 
         if search:
-            queryset = queryset.filter(
-                Q(hostname__icontains=search)
-                | Q(ip__icontains=search)
-                | Q(config_bindings__config__name__icontains=search)
-                | Q(config_bindings__remote_path__icontains=search)
-            ).distinct()
+            terms = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
+            for term in terms:
+                queryset = queryset.filter(
+                    Q(hostname__icontains=term)
+                    | Q(ip__icontains=term)
+                    | Q(config_bindings__config__name__icontains=term)
+                    | Q(config_bindings__remote_path__icontains=term)
+                ).distinct()
         if group_id:
             queryset = queryset.filter(groups__id=group_id).distinct()
 
@@ -133,6 +137,12 @@ class ConfigListView(
         node_bindings_map = {}
         node_stats_map = {}
 
+        search_terms = (
+            [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+            if search
+            else []
+        )
+
         for node in all_nodes:
             bindings_qs = (
                 ConfigNodeBinding.objects.filter(node=node)
@@ -149,6 +159,20 @@ class ConfigListView(
                     bindings_qs = bindings_qs.filter(sync_status=sync_status)
 
             bindings = list(bindings_qs)
+
+            if search_terms:
+                filtered_bindings = [
+                    b
+                    for b in bindings
+                    if any(
+                        term.lower() in (b.config.name or "").lower()
+                        or term.lower() in (b.remote_path or "").lower()
+                        for term in search_terms
+                    )
+                ]
+                if filtered_bindings:
+                    bindings = filtered_bindings
+
             if not bindings and sync_status:
                 continue
 
