@@ -234,9 +234,27 @@ def get_nginx_version(
 
 
 def read_remote_file(
-    host, port, username, password=None, private_key=None, file_path=None
+    host,
+    port,
+    username,
+    password=None,
+    private_key=None,
+    file_path=None,
+    ssh_client=None,
 ):
-    """读取远程节点的文件内容"""
+    """读取远程节点的文件内容
+
+    ssh_client: 可选，已建立连接的 SSHClient 实例，传入时复用该连接
+    """
+    if ssh_client is not None:
+        try:
+            success, output = ssh_client.execute_command(f"cat {file_path}")
+            if not success:
+                return False, f"读取失败: {output}"
+            return True, output
+        except Exception as e:
+            return False, str(e)
+
     try:
         with SSHClient(host, port, username, password, private_key) as ssh:
             success, output = ssh.execute_command(f"cat {file_path}")
@@ -248,9 +266,27 @@ def read_remote_file(
 
 
 def expand_remote_glob(
-    host, port, username, password=None, private_key=None, pattern=None
+    host,
+    port,
+    username,
+    password=None,
+    private_key=None,
+    pattern=None,
+    ssh_client=None,
 ):
-    """展开远程节点的文件通配符模式，返回匹配文件列表"""
+    """展开远程节点的文件通配符模式，返回匹配文件列表
+
+    ssh_client: 可选，已建立连接的 SSHClient 实例，传入时复用该连接
+    """
+    if ssh_client is not None:
+        try:
+            success, output = ssh_client.execute_command(f"ls {pattern} 2>/dev/null")
+            if not success:
+                return []
+            return [f.strip() for f in output.strip().split("\n") if f.strip()]
+        except Exception:
+            return []
+
     try:
         with SSHClient(host, port, username, password, private_key) as ssh:
             success, output = ssh.execute_command(f"ls {pattern} 2>/dev/null")
@@ -274,6 +310,7 @@ def discover_nginx_configs(
     """递归发现远程节点的Nginx配置文件（包括include引入的配置）
 
     cancel_check: 可选无参回调，返回 True 时中止发现（协作取消）
+    整个发现过程复用同一条 SSH 连接，避免 per-file 重复握手。
     """
     import posixpath
     import re
@@ -311,65 +348,87 @@ def discover_nginx_configs(
             return str(posixpath.normpath(include_path))
         return str(posixpath.normpath(posixpath.join(current_dir, include_path)))
 
-    pending = [(str(nginx_conf_path), 0)]
-    seen = set()
-    depth_limited = set()
+    # 建立一条 SSH 连接，整个发现过程复用
+    ssh = SSHClient(host, port, username, password, private_key)
+    ok, err = ssh.connect()
+    if not ok:
+        errors.append(f"SSH 连接失败: {err}")
+        return results, errors
 
-    while pending:
-        if cancel_check and cancel_check():
-            errors.append("任务已取消，中止配置发现")
-            break
-        current_path, current_depth = pending.pop(0)
-        if current_path in seen:
-            continue
-        seen.add(current_path)
+    try:
+        pending = [(str(nginx_conf_path), 0)]
+        seen = set()
+        depth_limited = set()
 
-        success, content = read_remote_file(
-            host, port, username, password, private_key, current_path
-        )
-        if not success:
-            errors.append(f"读取 {current_path} 失败: {content}")
-            continue
+        while pending:
+            if cancel_check and cancel_check():
+                errors.append("任务已取消，中止配置发现")
+                break
+            current_path, current_depth = pending.pop(0)
+            if current_path in seen:
+                continue
+            seen.add(current_path)
 
-        current_name = current_path.split("/")[-1]
-        if current_path == nginx_conf_path or not is_builtin_file(current_path):
-            results.append(
-                {
-                    "path": current_path,
-                    "name": current_name,
-                    "content": content,
-                }
+            success, content = read_remote_file(
+                host,
+                port,
+                username,
+                password,
+                private_key,
+                current_path,
+                ssh_client=ssh,
             )
-
-        current_dir = posixpath.dirname(current_path) or "/"
-        for match in include_pattern.finditer(content):
-            include_path = normalize_include_path(match.group(1), current_dir)
-            if not include_path:
+            if not success:
+                errors.append(f"读取 {current_path} 失败: {content}")
                 continue
 
-            if "*" in include_path:
-                files = expand_remote_glob(
-                    host, port, username, password, private_key, include_path
+            current_name = current_path.split("/")[-1]
+            if current_path == nginx_conf_path or not is_builtin_file(current_path):
+                results.append(
+                    {
+                        "path": current_path,
+                        "name": current_name,
+                        "content": content,
+                    }
                 )
-            else:
-                files = [include_path]
 
-            for f_path in files:
-                normalized_f_path: str = str(f_path).strip().strip("\"'")
-                if not normalized_f_path:
+            current_dir = posixpath.dirname(current_path) or "/"
+            for match in include_pattern.finditer(content):
+                include_path = normalize_include_path(match.group(1), current_dir)
+                if not include_path:
                     continue
-                if is_builtin_file(normalized_f_path):
-                    continue
-                if normalized_f_path not in seen:
-                    next_depth = current_depth + 1
-                    if next_depth > max_include_depth:
-                        if normalized_f_path not in depth_limited:
-                            errors.append(
-                                f"include 递归超限（>{max_include_depth}）：{normalized_f_path}"
-                            )
-                            depth_limited.add(normalized_f_path)
+
+                if "*" in include_path:
+                    files = expand_remote_glob(
+                        host,
+                        port,
+                        username,
+                        password,
+                        private_key,
+                        include_path,
+                        ssh_client=ssh,
+                    )
+                else:
+                    files = [include_path]
+
+                for f_path in files:
+                    normalized_f_path: str = str(f_path).strip().strip("\"'")
+                    if not normalized_f_path:
                         continue
-                    pending.append((str(normalized_f_path), next_depth))
+                    if is_builtin_file(normalized_f_path):
+                        continue
+                    if normalized_f_path not in seen:
+                        next_depth = current_depth + 1
+                        if next_depth > max_include_depth:
+                            if normalized_f_path not in depth_limited:
+                                errors.append(
+                                    f"include 递归超限（>{max_include_depth}）：{normalized_f_path}"
+                                )
+                                depth_limited.add(normalized_f_path)
+                            continue
+                        pending.append((str(normalized_f_path), next_depth))
+    finally:
+        ssh.close()
 
     return results, errors
 
@@ -462,7 +521,9 @@ def get_system_info(host, port, username, password=None, private_key=None):
         return False, str(e)
 
 
-def _acquire_ssh_client(host, port, username, password=None, private_key=None, client=None):
+def _acquire_ssh_client(
+    host, port, username, password=None, private_key=None, client=None
+):
     """获取可用 SSH 客户端，返回 (client, should_close)"""
     if client is not None:
         return client, False
@@ -484,7 +545,12 @@ def upload_file_via_sftp(
     owns = False
     try:
         client, owns = _acquire_ssh_client(
-            host, port, username, password, private_key, client=client,
+            host,
+            port,
+            username,
+            password,
+            private_key,
+            client=client,
         )
         sftp = client.open_sftp()
         try:
@@ -556,7 +622,12 @@ def backup_remote_file(
     owns = False
     try:
         client, owns = _acquire_ssh_client(
-            host, port, username, password, private_key, client=client,
+            host,
+            port,
+            username,
+            password,
+            private_key,
+            client=client,
         )
         # 首次发布时远程尚无目标文件，跳过备份
         _, stdout, stderr = client.exec_command(f"test -f {file_path}")
@@ -604,7 +675,12 @@ def remove_remote_file(
     owns = False
     try:
         client, owns = _acquire_ssh_client(
-            host, port, username, password, private_key, client=client,
+            host,
+            port,
+            username,
+            password,
+            private_key,
+            client=client,
         )
         _, stdout, stderr = client.exec_command(f"rm -f {file_path}")
         exit_code = stdout.channel.recv_exit_status()
@@ -636,7 +712,12 @@ def restore_backup_file(
     owns = False
     try:
         client, owns = _acquire_ssh_client(
-            host, port, username, password, private_key, client=client,
+            host,
+            port,
+            username,
+            password,
+            private_key,
+            client=client,
         )
         _, stdout, stderr = client.exec_command(f"cp {backup_path} {original_path}")
         exit_code = stdout.channel.recv_exit_status()
@@ -667,7 +748,12 @@ def check_remote_file_size(
     owns = False
     try:
         client, owns = _acquire_ssh_client(
-            host, port, username, password, private_key, client=client,
+            host,
+            port,
+            username,
+            password,
+            private_key,
+            client=client,
         )
         _, stdout, stderr = client.exec_command(f"wc -c < {file_path}")
         out = stdout.read().decode("utf-8").strip()
@@ -701,7 +787,12 @@ def copy_remote_file(
     owns = False
     try:
         client, owns = _acquire_ssh_client(
-            host, port, username, password, private_key, client=client,
+            host,
+            port,
+            username,
+            password,
+            private_key,
+            client=client,
         )
         _, stdout, stderr = client.exec_command(f"cp {src_path} {dst_path}")
         exit_code = stdout.channel.recv_exit_status()
@@ -732,7 +823,12 @@ def check_remote_file_md5(
     owns = False
     try:
         client, owns = _acquire_ssh_client(
-            host, port, username, password, private_key, client=client,
+            host,
+            port,
+            username,
+            password,
+            private_key,
+            client=client,
         )
         _, stdout, stderr = client.exec_command(f"md5sum {file_path}")
         out = stdout.read().decode("utf-8").strip()
@@ -766,7 +862,12 @@ def execute_nginx_test(
     owns = False
     try:
         client, owns = _acquire_ssh_client(
-            host, port, username, password, private_key, client=client,
+            host,
+            port,
+            username,
+            password,
+            private_key,
+            client=client,
         )
         nginx_bin = nginx_path or "nginx"
         command = f"{nginx_bin} -t"
