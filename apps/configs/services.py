@@ -87,6 +87,9 @@ def _ensure_binding(
             remark="发现导入" if source == "discovered" else "手动导入",
             created_by=request_user,
         )
+        if content and not config.template_content:
+            config.template_content = content
+            config.save(update_fields=["template_content", "updated_at"])
         return "created", binding
 
     # 已存在，检查内容是否变化

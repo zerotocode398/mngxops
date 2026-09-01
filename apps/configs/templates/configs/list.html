@@ -99,173 +99,98 @@
                         </a>
                     </div>
 
-                    <!-- Accordion 节点列表 -->
+                    <!-- 节点列表表格 -->
                     {% if nodes %}
-                    <div class="accordion" id="configAccordion">
-                        {% for node in nodes %}
-                        {% with bindings=node_bindings_map|dict_get:node.id %}
-                        {% with stats=node_stats_map|dict_get:node.id %}
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="heading{{ node.id }}">
-                                <button class="accordion-button collapsed" type="button"
-                                    data-bs-toggle="collapse" data-bs-target="#collapse{{ node.id }}"
-                                    aria-expanded="false" aria-controls="collapse{{ node.id }}">
-                                    <div class="d-flex align-items-center gap-2 w-100 me-3">
-                                        <div class="node-info-cell">
-                                            <span class="node-identity">{{ node.hostname }}<small class="text-muted">({{ node.ip }}:{{ node.port }})</small></span>
-                                            {% if node.groups.exists %}
-                                            {% for grp in node.groups.all %}
-                                            <span class="badge bg-info text-dark">{{ grp.name }}</span>
-                                            {% endfor %}
-                                            {% endif %}
-                                            {% include "nodes/_status_badge.html" with status=node.status %}
-                                            {% if node.nginx_available is False %}
-                                            {% include "nodes/_nginx_badge.html" with nginx_available=node.nginx_available nginx_version=node.nginx_version badge_title="未检测到 Nginx，仅可查看/解除绑定" %}
-                                            {% else %}
-                                            {% include "nodes/_nginx_badge.html" with nginx_available=node.nginx_available nginx_version=node.nginx_version %}
-                                            {% endif %}
-                                        </div>
-                                        <span class="ms-auto"></span>
-                                        <span class="badge bg-info">{{ stats.total }}配置</span>
-                                        {% if stats.pending %}<span class="badge config-badge-pending"><i class="bi bi-pencil"></i>{{ stats.pending }}</span>{% endif %}
-                                        {% if stats.orphaned %}<span class="badge config-badge-orphaned"><i class="bi bi-inbox"></i>{{ stats.orphaned }}</span>{% endif %}
-                                        {% if stats.failed %}<span class="badge config-badge-failed"><i class="bi bi-x-circle-fill"></i>{{ stats.failed }}</span>{% endif %}
-                                        {% if stats.marked_deleted %}<span class="badge config-badge-marked"><i class="bi bi-trash"></i>{{ stats.marked_deleted }}</span>{% endif %}
-                                    </div>
-                                </button>
-                            </h2>
-                            <div id="collapse{{ node.id }}"
-                                class="accordion-collapse collapse"
-                                aria-labelledby="heading{{ node.id }}">
-                                <div class="accordion-body p-0">
-                                    <div class="table-responsive">
-                                        <table class="table table-hover table-sm mb-0 data-table config-list-table">
-                                            <thead class="table-light">
-                                                <tr>
-                                                    <th style="width: 18%;">配置名称</th>
-                                                    <th style="width: 28%;">远程路径</th>
-                                                    <th style="width: 6%;">版本</th>
-                                                    <th style="width: 10%;">状态</th>
-                                                    <th style="width: 14%;">最后同步</th>
-                                                    <th style="width: 24%;">操作</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {% for binding in bindings %}
-                                                <tr>
-                                                    <td>
-                                                        <code>{{ binding.config.name }}</code>
-                                                    </td>
-                                                    <td>
-                                                        <small class="text-muted">{{ binding.remote_path }}</small>
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge bg-info">V{{ binding.current_version }}</span>
-                                                    </td>
-                                                    <td>
-                                                        {% if binding.sync_status == 'synced' %}
-                                                        <span class="badge config-badge-synced"><i class="bi bi-check-circle-fill"></i> 已同步</span>
-                                                        {% elif binding.sync_status == 'syncing' %}
-                                                        {% if binding.last_sync_task_id %}
-                                                        <a href="{% url 'releases:task_center_detail' binding.last_sync_task_id %}"
-                                                            class="badge config-badge-syncing text-decoration-none" title="查看任务详情">
-                                                            <i class="bi bi-arrow-repeat"></i> 同步中
-                                                        </a>
-                                                        {% else %}
-                                                        <span class="badge config-badge-syncing"><i class="bi bi-arrow-repeat"></i> 同步中</span>
-                                                        {% endif %}
-                                                        {% elif binding.sync_status == 'not_synced' or binding.sync_status == 'modified' %}
-                                                        <span class="badge config-badge-pending"><i class="bi bi-pencil"></i> 待推送</span>
-                                                        {% elif binding.sync_status == 'conflict' %}
-                                                        <span class="badge config-badge-conflict"><i class="bi bi-exclamation-triangle-fill"></i> 冲突</span>
-                                                        {% elif binding.sync_status == 'orphaned' %}
-                                                        <span class="badge config-badge-orphaned"><i class="bi bi-inbox"></i> 远程已删除</span>
-                                                        {% elif binding.sync_status == 'failed' %}
-                                                        {% if binding.last_sync_task_id %}
-                                                        <a href="{% url 'releases:task_center_detail' binding.last_sync_task_id %}"
-                                                            class="badge config-badge-failed text-decoration-none" title="查看任务详情">
-                                                            <i class="bi bi-x-circle-fill"></i> 失败
-                                                        </a>
-                                                        {% else %}
-                                                        <span class="badge config-badge-failed"><i class="bi bi-x-circle-fill"></i> 失败</span>
-                                                        {% endif %}
-                                                        {% elif binding.sync_status == 'marked_deleted' %}
-                                                        <span class="badge config-badge-marked"><i class="bi bi-trash"></i> 已标记删除</span>
-                                                        {% else %}
-                                                        <span class="badge bg-light text-dark">{{ binding.sync_status }}</span>
-                                                        {% endif %}
-                                                    </td>
-                                                    <td>
-                                                        <small>
-                                                            {% if binding.last_sync_time %}
-                                                            {{ binding.last_sync_time|date:"Y-m-d H:i" }}
-                                                            {% else %}
-                                                            -
-                                                            {% endif %}
-                                                        </small>
-                                                    </td>
-                                                    <td>
-                                                        <div class="btn-group btn-group-sm">
-                                                            {% if binding.sync_status == 'marked_deleted' %}
-                                                            {% if node.nginx_available is True %}
-                                                            <form method="post" action="{% url 'configs:binding_restore' binding.id %}" style="display:inline">
-                                                                {% csrf_token %}
-                                                                <button type="submit" class="btn btn-outline-success" title="恢复此绑定">
-                                                                    <i class="bi bi-arrow-counterclockwise"></i> 恢复
-                                                                </button>
-                                                            </form>
-                                                            {% endif %}
-                                                            {% if user|has_perm_code:"configs.delete" %}
-                                                            <button type="button" class="btn btn-outline-danger"
-                                                                title="解除绑定"
-                                                                onclick="openDeleteModal('{{ binding.config.name|escapejs }}', '{{ node.hostname|escapejs }}', '{% url 'configs:binding_delete' binding.id %}', '{{ binding.sync_status }}')">
-                                                                <i class="bi bi-trash"></i>
-                                                            </button>
-                                                            {% endif %}
-                                                            {% elif binding.sync_status != 'syncing' %}
-                                                            {% if node.nginx_available is True %}
-                                                            {% if user|has_perm_code:"configs.update" %}
-                                                            <a href="{% url 'configs:binding_edit' binding.id %}"
-                                                                class="btn btn-outline-primary" title="编辑内容">
-                                                                <i class="bi bi-pencil"></i>
-                                                            </a>
-                                                            {% endif %}
-                                                            <a href="{% url 'configs:binding_compare' binding.id %}"
-                                                                class="btn btn-outline-info" title="版本对比">
-                                                                <i class="bi bi-file-diff"></i>
-                                                            </a>
-                                                            {% endif %}
-                                                            <a href="{% url 'configs:binding_versions' binding.id %}"
-                                                                class="btn btn-outline-secondary" title="版本历史">
-                                                                <i class="bi bi-clock-history"></i>
-                                                            </a>
-                                                            {% if user|has_perm_code:"configs.delete" %}
-                                                            <button type="button" class="btn btn-outline-danger"
-                                                                title="解除绑定"
-                                                                onclick="openDeleteModal('{{ binding.config.name|escapejs }}', '{{ node.hostname|escapejs }}', '{% url 'configs:binding_delete' binding.id %}', '{{ binding.sync_status }}')">
-                                                                <i class="bi bi-trash"></i>
-                                                            </button>
-                                                            {% endif %}
-                                                            {% endif %}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                                {% empty %}
-                                                <tr>
-                                                    <td colspan="6" class="text-center text-muted py-3">
-                                                        暂无绑定数据
-                                                    </td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        {% endwith %}
-                        {% endwith %}
-                        {% endfor %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm align-middle mb-0 data-table config-node-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 16%;">主机名</th>
+                                    <th style="width: 12%;">IP 地址</th>
+                                    <th style="width: 12%;">节点组</th>
+                                    <th style="width: 6%;">状态</th>
+                                    <th style="width: 8%;">Nginx</th>
+                                    <th style="width: 6%;">配置数</th>
+                                    <th style="width: 6%;">待推送</th>
+                                    <th style="width: 6%;">失败</th>
+                                    <th style="width: 6%;">远程删除</th>
+                                    <th style="width: 6%;">标记删除</th>
+                                    <th style="width: 16%;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for node in nodes %}
+                                {% with stats=node_stats_map|dict_get:node.id %}
+                                <tr class="config-node-row" data-href="{% url 'configs:node_detail' node.id %}{% if list_query_string %}?list_query={{ list_query_string|urlencode }}{% endif %}">
+                                    <td>
+                                        <a href="{% url 'configs:node_detail' node.id %}{% if list_query_string %}?list_query={{ list_query_string|urlencode }}{% endif %}"
+                                           class="text-decoration-none fw-bold node-name-link">
+                                            {{ node.hostname }}
+                                        </a>
+                                    </td>
+                                    <td><small class="text-muted">{{ node.ip }}:{{ node.port }}</small></td>
+                                    <td>
+                                        {% if node.groups.exists %}
+                                        {% for grp in node.groups.all %}
+                                        <span class="badge bg-info text-dark">{{ grp.name }}</span>
+                                        {% endfor %}
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{% include "nodes/_status_badge.html" with status=node.status %}</td>
+                                    <td>
+                                        {% if node.nginx_available is False %}
+                                        {% include "nodes/_nginx_badge.html" with nginx_available=node.nginx_available nginx_version=node.nginx_version badge_title="未检测到 Nginx" %}
+                                        {% else %}
+                                        {% include "nodes/_nginx_badge.html" with nginx_available=node.nginx_available nginx_version=node.nginx_version %}
+                                        {% endif %}
+                                    </td>
+                                    <td><span class="badge bg-secondary">{{ stats.total }}</span></td>
+                                    <td>
+                                        {% if stats.pending %}
+                                        <span class="badge config-badge-pending"><i class="bi bi-pencil"></i>{{ stats.pending }}</span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if stats.failed %}
+                                        <span class="badge config-badge-failed"><i class="bi bi-x-circle-fill"></i>{{ stats.failed }}</span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if stats.orphaned %}
+                                        <span class="badge config-badge-orphaned"><i class="bi bi-inbox"></i>{{ stats.orphaned }}</span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if stats.marked_deleted %}
+                                        <span class="badge config-badge-marked"><i class="bi bi-trash"></i>{{ stats.marked_deleted }}</span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'configs:node_detail' node.id %}{% if list_query_string %}?list_query={{ list_query_string|urlencode }}{% endif %}"
+                                           class="btn btn-outline-secondary btn-sm" title="查看配置详情">
+                                            <i class="bi bi-box-arrow-in-right"></i> 配置
+                                        </a>
+                                        {% if node.nginx_available is True and user|has_perm_code:"configs.update" %}
+                                        <a href="{% url 'configs:sync_wizard' %}?node_id={{ node.id }}" class="btn btn-outline-info btn-sm" title="同步配置">
+                                            <i class="bi bi-cloud-download"></i>
+                                        </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endwith %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
 
                     <!-- 分页 -->
@@ -293,24 +218,40 @@
 
                     {% if unbound_configs %}
                     <hr class="my-3">
-                    <div class="mb-2">
-                        <strong><i class="bi bi-tags"></i> 未绑定的配置标签</strong>
-                        <small class="text-muted ms-2">（{{ unbound_configs|length }} 个）</small>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <strong><i class="bi bi-tags"></i> 未绑定的配置标签</strong>
+                            <small class="text-muted ms-2">（{{ unbound_configs|length }} 个）</small>
+                        </div>
+                        {% if user|has_perm_code:"configs.delete" %}
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="unboundBatchDeleteBtn"
+                                title="批量删除选中配置标签" onclick="batchDeleteUnboundConfigs()" disabled>
+                            <i class="bi bi-trash"></i> 批量删除
+                        </button>
+                        {% endif %}
                     </div>
                     <div class="table-responsive">
                         <table class="table table-hover table-sm mb-0 data-table config-list-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width: 22%;">配置名称</th>
-                                    <th style="width: 30%;">默认远程路径</th>
-                                    <th style="width: 14%;">创建人</th>
-                                    <th style="width: 14%;">创建时间</th>
-                                    <th style="width: 20%;">操作</th>
+                                    <th style="width: 3%;">
+                                        <input type="checkbox" class="form-check-input" id="unboundSelectAll"
+                                               title="全选/取消全选" onchange="toggleUnboundSelectAll(this)">
+                                    </th>
+                                    <th style="width: 20%;">配置名称</th>
+                                    <th style="width: 28%;">默认远程路径</th>
+                                    <th style="width: 12%;">创建人</th>
+                                    <th style="width: 12%;">创建时间</th>
+                                    <th style="width: 25%;">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for cfg in unbound_configs %}
                                 <tr>
+                                    <td>
+                                        <input type="checkbox" class="form-check-input unbound-checkbox"
+                                               value="{{ cfg.id }}" onchange="updateUnboundBatchDeleteBtn()">
+                                    </td>
                                     <td><code>{{ cfg.name }}</code></td>
                                     <td><small class="text-muted">{{ cfg.default_remote_path|default:"—" }}</small></td>
                                     <td><small>{{ cfg.created_by.username }}</small></td>
@@ -342,14 +283,15 @@
     </div>
 </div>
 
-<!-- 解除绑定 / 删除配置标签（隐藏表单，由 showConfirm 触发） -->
-<form method="post" id="deleteBindingForm" action="#" class="d-none">{% csrf_token %}</form>
 <form method="post" id="unboundDeleteForm" action="#" class="d-none">{% csrf_token %}</form>
+<form method="post" id="unboundBatchDeleteForm" action="{% url 'configs:batch_delete' %}" class="d-none">
+    {% csrf_token %}
+    <input type="hidden" name="ids" id="unboundBatchDeleteIds" value="">
+</form>
 {% endblock %}
 
 {% block extra_js %}
 <style>
-    /* 状态筛选标签 */
     .config-status-label {
         padding: 5px 12px;
         font-size: var(--fs-sm);
@@ -366,8 +308,6 @@
         background-color: #6c757d;
         border-color: #6c757d;
     }
-
-    /* 状态筛选标签激活色 */
     .config-status-active.config-status-pending { background-color: var(--primary); border-color: var(--primary); }
     .config-status-active.config-status-conflict { background-color: #fd7e14; border-color: #fd7e14; }
     .config-status-active.config-status-orphaned { background-color: #6c757d; border-color: #6c757d; }
@@ -376,7 +316,6 @@
     .config-status-active.config-status-marked { background-color: #e83e8c; border-color: #e83e8c; }
     .config-status-active.config-status-nginx-active { background-color: #198754; border-color: #198754; }
 
-    /* 状态徽标（行内） */
     .config-badge-pending { background: #cce5ff; color: #004085; border: 1px solid #b8daff; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
     .config-badge-synced { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
     .config-badge-conflict { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
@@ -385,27 +324,23 @@
     .config-badge-syncing { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
     .config-badge-marked { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 3px 8px; border-radius: 4px; font-size: var(--fs-xs); }
 
-    /* Accordion header */
-    .accordion-button:not(.collapsed) {
-        background-color: #f8f9fa;
+    .config-node-row {
+        cursor: pointer;
+    }
+    .config-node-row:hover {
+        background-color: #f0f4f8;
+    }
+    .config-node-row td {
+        vertical-align: middle;
+    }
+    .node-name-link {
+        color: var(--bs-body-color);
+    }
+    .node-name-link:hover {
+        color: var(--primary);
     }
 </style>
 <script>
-    function openDeleteModal(configName, nodeName, deleteUrl, syncStatus) {
-        var hint = '解除后将标记为"已标记删除"，下次同步时会清理远程文件。';
-        if (syncStatus === 'not_synced') {
-            hint = '该绑定从未同步到远程，删除后不可恢复。';
-        } else if (syncStatus === 'orphaned') {
-            hint = '远程已无此文件，仅删除本地记录。';
-        }
-        var msg = '确定要解除 ' + configName + ' 在节点 ' + nodeName + ' 上的绑定吗？' + hint;
-        showConfirm('解除绑定', msg, function () {
-            var form = document.getElementById('deleteBindingForm');
-            form.setAttribute('action', deleteUrl);
-            form.submit();
-        }, false, 'md');
-    }
-
     function openUnboundDeleteModal(configName, deleteUrl) {
         showConfirm('删除配置标签', '确定要删除配置标签 ' + configName + ' 吗？该标签没有绑定节点，删除后不可恢复。', function () {
             var form = document.getElementById('unboundDeleteForm');
@@ -414,15 +349,48 @@
         });
     }
 
+    function toggleUnboundSelectAll(checkbox) {
+        var checkboxes = document.querySelectorAll('.unbound-checkbox');
+        checkboxes.forEach(function(cb) {
+            cb.checked = checkbox.checked;
+        });
+        updateUnboundBatchDeleteBtn();
+    }
+
+    function updateUnboundBatchDeleteBtn() {
+        var checked = document.querySelectorAll('.unbound-checkbox:checked');
+        var btn = document.getElementById('unboundBatchDeleteBtn');
+        var selectAll = document.getElementById('unboundSelectAll');
+        if (btn) {
+            btn.disabled = checked.length === 0;
+        }
+        if (selectAll) {
+            var all = document.querySelectorAll('.unbound-checkbox');
+            selectAll.checked = all.length > 0 && checked.length === all.length;
+        }
+    }
+
+    function batchDeleteUnboundConfigs() {
+        var checked = document.querySelectorAll('.unbound-checkbox:checked');
+        if (checked.length === 0) return;
+        var ids = [];
+        checked.forEach(function(cb) { ids.push(cb.value); });
+        showConfirm('批量删除配置标签', '确定要删除选中的 ' + ids.length + ' 个未绑定配置标签吗？删除后不可恢复。', function () {
+            document.getElementById('unboundBatchDeleteIds').value = ids.join(',');
+            document.getElementById('unboundBatchDeleteForm').submit();
+        }, false, 'md');
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         initTagSearch('#configSearchTagWrapper', '#configSearchHidden', '#configSearchForm');
 
-        var accordion = document.getElementById('configAccordion');
-        if (accordion) {
-            accordion.addEventListener('shown.bs.collapse', saveExpandedNodes);
-            accordion.addEventListener('hidden.bs.collapse', saveExpandedNodes);
-        }
-        restoreExpandedNodes();
+        document.querySelectorAll('.config-node-row').forEach(function (row) {
+            row.addEventListener('click', function (e) {
+                if (e.target.closest('a, button, form, input')) return;
+                var href = this.getAttribute('data-href');
+                if (href) window.location.href = href;
+            });
+        });
     });
 
     (function() {
@@ -431,27 +399,5 @@
             sessionStorage.setItem('configs_list_query', currentUrl);
         }
     })();
-
-    function saveExpandedNodes() {
-        var expanded = [];
-        document.querySelectorAll('#configAccordion .accordion-collapse.show').forEach(function (el) {
-            expanded.push(el.id.replace('collapse', ''));
-        });
-        if (expanded.length) {
-            sessionStorage.setItem('configs_expanded_nodes', expanded.join(','));
-        } else {
-            sessionStorage.removeItem('configs_expanded_nodes');
-        }
-    }
-
-    function restoreExpandedNodes() {
-        var ids = (sessionStorage.getItem('configs_expanded_nodes') || '').split(',').filter(Boolean);
-        ids.forEach(function (id) {
-            var el = document.getElementById('collapse' + id);
-            if (el) {
-                new bootstrap.Collapse(el, { toggle: false }).show();
-            }
-        });
-    }
 </script>
 {% endblock %}

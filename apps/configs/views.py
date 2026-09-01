@@ -24,6 +24,7 @@ from .services import (
 )
 from apps.users.permissions import PermissionRequiredMixin
 from apps.releases.models import TaskCenterTask
+from apps.nodes.models import Node
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_setting
 
@@ -103,6 +104,7 @@ class ConfigListView(
         )
         search = self.request.GET.get("search", "").strip()
         group_id = self.request.GET.get("group_id", "")
+        sync_status = self.request.GET.get("sync_status", "").strip()
 
         if search:
             terms = [
@@ -117,6 +119,16 @@ class ConfigListView(
                 ).distinct()
         if group_id:
             queryset = queryset.filter(groups__id=group_id).distinct()
+
+        if sync_status:
+            if sync_status == "pending":
+                queryset = queryset.filter(
+                    config_bindings__sync_status__in=["not_synced", "modified"]
+                ).distinct()
+            else:
+                queryset = queryset.filter(
+                    config_bindings__sync_status=sync_status
+                ).distinct()
 
         nginx_available = self.request.GET.get("nginx_available", "true").strip()
         if nginx_available == "true":
@@ -134,63 +146,17 @@ class ConfigListView(
         group_id = self.request.GET.get("group_id", "").strip()
         nginx_available = self.request.GET.get("nginx_available", "true").strip()
 
-        node_bindings_map = {}
-        node_stats_map = {}
-
-        search_terms = (
-            [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
-            if search
-            else []
-        )
-
-        for node in all_nodes:
-            bindings_qs = (
-                ConfigNodeBinding.objects.filter(node=node)
-                .select_related("config")
-                .order_by("config__name")
-            )
-
-            if sync_status:
-                if sync_status == "pending":
-                    bindings_qs = bindings_qs.filter(
-                        sync_status__in=["not_synced", "modified"]
-                    )
-                else:
-                    bindings_qs = bindings_qs.filter(sync_status=sync_status)
-
-            bindings = list(bindings_qs)
-
-            if search_terms:
-                filtered_bindings = [
-                    b
-                    for b in bindings
-                    if any(
-                        term.lower() in (b.config.name or "").lower()
-                        or term.lower() in (b.remote_path or "").lower()
-                        for term in search_terms
-                    )
-                ]
-                if filtered_bindings:
-                    bindings = filtered_bindings
-
-            if not bindings and sync_status:
-                continue
-
-            node_bindings_map[node.id] = bindings
-            node_stats_map[node.id] = _build_node_stats(node)
-
-        if sync_status:
-            filtered_nodes = [n for n in all_nodes if n.id in node_bindings_map]
-        else:
-            filtered_nodes = all_nodes
+        node_stats_map = {node.id: _build_node_stats(node) for node in all_nodes}
 
         per_page = self.get_paginate_by(None)
-        paginator = Paginator(filtered_nodes, per_page)
+        paginator = Paginator(all_nodes, per_page)
         page_num = self.request.GET.get("page", 1)
         page_obj = paginator.get_page(page_num)
 
+        list_query_params = self.request.GET.copy()
+        list_query_params.pop("page", None)
+
         context["nodes"] = page_obj.object_list
-        context["node_bindings_map"] = node_bindings_map
         context["node_stats_map"] = node_stats_map
         context["page_obj"] = page_obj
         context["is_paginated"] = page_obj.has_other_pages()
@@ -205,6 +171,7 @@ class ConfigListView(
         )
         context["groups"] = NodeGroup.objects.all().order_by("name")
         context["status_counts"] = _build_global_status_counts()
+        context["list_query_string"] = list_query_params.urlencode()
 
         all_unlocked = Node.objects.filter(is_locked=False)
         context["nginx_available_count"] = all_unlocked.filter(
@@ -220,6 +187,76 @@ class ConfigListView(
             )
         else:
             context["unbound_configs"] = []
+        return context
+
+
+class ConfigNodeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+    """节点配置详情页 — 展示单个节点的全部配置绑定"""
+
+    model = Node
+    template_name = "configs/node_detail.html"
+    context_object_name = "node"
+    pk_url_kwarg = "node_id"
+    permission_resource = "configs"
+    permission_action = "read"
+
+    def get_queryset(self):
+        return super().get_queryset().filter(is_locked=False).prefetch_related("groups")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        node = self.object
+
+        search = self.request.GET.get("search", "").strip()
+        sync_status = self.request.GET.get("sync_status", "").strip()
+
+        bindings_qs = (
+            ConfigNodeBinding.objects.filter(node=node)
+            .select_related("config")
+            .order_by("config__name")
+        )
+
+        if sync_status:
+            if sync_status == "pending":
+                bindings_qs = bindings_qs.filter(
+                    sync_status__in=["not_synced", "modified"]
+                )
+            else:
+                bindings_qs = bindings_qs.filter(sync_status=sync_status)
+        else:
+            bindings_qs = bindings_qs.exclude(sync_status="marked_deleted")
+
+        if search:
+            terms = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
+            for term in terms:
+                bindings_qs = bindings_qs.filter(
+                    Q(config__name__icontains=term) | Q(remote_path__icontains=term)
+                )
+
+        per_page = self.request.GET.get("per_page", "10")
+        try:
+            per_page = int(per_page)
+        except (ValueError, TypeError):
+            per_page = 10
+        per_page = max(1, min(per_page, 100))
+
+        paginator = Paginator(bindings_qs, per_page)
+        page = self.request.GET.get("page", "1")
+        try:
+            page_obj = paginator.page(page)
+        except Exception:
+            page_obj = paginator.page(1)
+
+        context["bindings"] = page_obj.object_list
+        context["page_obj"] = page_obj
+        context["per_page"] = str(per_page)
+        context["per_page_options"] = [10, 20, 50]
+        context["stats"] = _build_node_stats(node)
+        context["search"] = search
+        context["sync_status"] = sync_status
+        context["list_query_string"] = self.request.GET.get("list_query", "")
         return context
 
 
@@ -320,6 +357,33 @@ class ConfigDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
         return redirect("configs:list")
 
 
+class ConfigBatchDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """批量删除未绑定配置标签"""
+
+    permission_resource = "configs"
+    permission_action = "delete"
+
+    def post(self, request):
+        ids = request.POST.get("ids", "").strip()
+        fallback = reverse("configs:list")
+        if not ids:
+            messages.error(request, "未选择要删除的配置标签")
+            return redirect(fallback)
+
+        id_list = [i.strip() for i in ids.split(",") if i.strip().isdigit()]
+        if not id_list:
+            messages.error(request, "无效的配置标签 ID")
+            return redirect(fallback)
+
+        configs = Config.objects.filter(pk__in=id_list, bindings__isnull=True)
+        count = configs.count()
+        for cfg in configs:
+            cfg.delete()
+
+        messages.success(request, f"已批量删除 {count} 个未绑定配置标签")
+        return redirect(fallback)
+
+
 class ConfigDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     """配置标签详情"""
 
@@ -378,7 +442,16 @@ class BindingCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
             config = get_object_or_404(Config, pk=config_id)
             initial["config"] = config
             initial["remote_path"] = config.default_remote_path
-            initial["content"] = config.template_content
+            content = config.template_content
+            if not content:
+                last_binding = (
+                    ConfigNodeBinding.objects.filter(config=config)
+                    .order_by("-updated_at")
+                    .first()
+                )
+                if last_binding:
+                    content = last_binding.content
+            initial["content"] = content
         return initial
 
     def get_context_data(self, **kwargs):
@@ -573,14 +646,17 @@ class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def post(self, request, pk):
         binding = get_object_or_404(ConfigNodeBinding, pk=pk)
         label = f"{binding.config.name} @ {binding.node.hostname}"
+        next_url = request.POST.get("next", "").strip()
+        default_redirect = reverse(
+            "configs:node_detail", kwargs={"node_id": binding.node.id}
+        )
 
-        # 无 Nginx 时：任何状态均物理删除，避免 marked_deleted 挂起无法远程 rm
         if binding.node.nginx_available is not True:
             binding.delete()
             messages.success(
                 request, f"绑定 {label} 已删除（节点无可用 Nginx，未清理远程）"
             )
-            return redirect("configs:list")
+            return redirect(next_url or default_redirect)
 
         if binding.sync_status in ("not_synced", "orphaned"):
             binding.delete()
@@ -591,7 +667,7 @@ class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
             messages.success(
                 request, f"绑定 {label} 已标记删除，下次同步时将清理远程文件"
             )
-        return redirect("configs:list")
+        return redirect(next_url or default_redirect)
 
 
 class BindingRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View):
@@ -602,21 +678,54 @@ class BindingRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def post(self, request, pk):
         binding = get_object_or_404(ConfigNodeBinding, pk=pk)
+        next_url = request.POST.get("next", "").strip()
+        default_redirect = (
+            f"{reverse('configs:node_detail', kwargs={'node_id': binding.node.id})}"
+        )
+
         if binding.sync_status != "marked_deleted":
             messages.error(request, "该绑定未处于标记删除状态")
-            return redirect("configs:list")
+            return redirect(next_url or default_redirect)
         from apps.nodes.services import nginx_ops_gate_message
 
         gate_msg = nginx_ops_gate_message(binding.node)
         if gate_msg:
             messages.error(request, gate_msg)
-            return redirect("configs:list")
+            return redirect(next_url or default_redirect)
         binding.sync_status = "not_synced"
         binding.save(update_fields=["sync_status", "updated_at"])
         messages.success(
             request, f"绑定 {binding.config.name} @ {binding.node.hostname} 已恢复"
         )
-        return redirect("configs:list")
+        return redirect(next_url or default_redirect)
+
+
+class BindingBatchDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """批量物理删除绑定"""
+
+    permission_resource = "configs"
+    permission_action = "delete"
+
+    def post(self, request):
+        ids = request.POST.get("ids", "").strip()
+        next_url = request.POST.get("next", "").strip()
+        fallback = next_url or request.META.get("HTTP_REFERER", reverse("configs:list"))
+        if not ids:
+            messages.error(request, "未选择要删除的绑定")
+            return redirect(fallback)
+
+        id_list = [i.strip() for i in ids.split(",") if i.strip().isdigit()]
+        if not id_list:
+            messages.error(request, "无效的绑定 ID")
+            return redirect(fallback)
+
+        bindings = ConfigNodeBinding.objects.filter(pk__in=id_list)
+        count = len(bindings)
+        for b in bindings:
+            b.delete()
+
+        messages.success(request, f"已批量删除 {count} 个绑定")
+        return redirect(fallback)
 
 
 class BindingDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
