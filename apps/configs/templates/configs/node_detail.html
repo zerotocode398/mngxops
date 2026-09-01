@@ -86,10 +86,11 @@
                             </div>
                             <div class="col-md-2">
                                 <select name="sync_status" class="form-select form-select-sm" onchange="this.form.submit()">
-                                    <option value="">全部状态</option>
+                                    <option value="all" {% if sync_status == 'all' or sync_status == '' %}selected{% endif %}>全部状态</option>
                                     <option value="pending" {% if sync_status == 'pending' %}selected{% endif %}>待推送</option>
-                                    <option value="orphaned" {% if sync_status == 'orphaned' %}selected{% endif %}>远程删除</option>
+                                    <option value="synced" {% if sync_status == 'synced' %}selected{% endif %}>已同步</option>
                                     <option value="failed" {% if sync_status == 'failed' %}selected{% endif %}>失败</option>
+                                    <option value="orphaned" {% if sync_status == 'orphaned' %}selected{% endif %}>远程删除</option>
                                     <option value="marked_deleted" {% if sync_status == 'marked_deleted' %}selected{% endif %}>标记删除</option>
                                 </select>
                             </div>

@@ -85,6 +85,10 @@
                            class="badge config-status-label config-status-pending {% if sync_status == 'pending' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
                             <i class="bi bi-pencil"></i>待推送 {{ status_counts.pending }}
                         </a>
+                        <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=synced{% if nginx_available == 'all' %}&nginx_available=all{% endif %}"
+                           class="badge config-status-label config-status-synced {% if sync_status == 'synced' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
+                            <i class="bi bi-check-circle"></i>已同步 {{ status_counts.synced }}
+                        </a>
                         <a href="?{% if search %}search={{ search }}&{% endif %}{% if group_id %}group_id={{ group_id }}&{% endif %}per_page={{ per_page }}&sync_status=orphaned{% if nginx_available == 'all' %}&nginx_available=all{% endif %}"
                            class="badge config-status-label config-status-orphaned {% if sync_status == 'orphaned' %}config-status-active{% else %}badge-outline{% endif %} text-decoration-none">
                             <i class="bi bi-inbox"></i>远程删除 {{ status_counts.orphaned }}
@@ -308,6 +312,7 @@
         background-color: #6c757d;
         border-color: #6c757d;
     }
+    .config-status-active.config-status-synced { background-color: #198754; border-color: #198754; }
     .config-status-active.config-status-pending { background-color: var(--primary); border-color: var(--primary); }
     .config-status-active.config-status-conflict { background-color: #fd7e14; border-color: #fd7e14; }
     .config-status-active.config-status-orphaned { background-color: #6c757d; border-color: #6c757d; }

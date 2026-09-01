@@ -691,6 +691,14 @@
             var newUrl = window.location.pathname;
             window.history.replaceState({}, '', newUrl);
         }
+
+        {% if pre_select_node_id %}
+        var cb = document.querySelector('.node-checkbox[value="{{ pre_select_node_id }}"]');
+        if (cb && !cb.disabled) {
+            cb.checked = true;
+            updateBatchCount();
+        }
+        {% endif %}
     });
 </script>
 

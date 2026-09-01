@@ -63,18 +63,16 @@ def _build_global_status_counts():
     base = ConfigNodeBinding.objects.filter(node__is_deleted=False)
     total = base.count()
     pending = base.filter(sync_status__in=["not_synced", "modified"]).count()
-    conflict = base.filter(sync_status="conflict").count()
+    synced = base.filter(sync_status="synced").count()
     orphaned = base.filter(sync_status="orphaned").count()
     failed = base.filter(sync_status="failed").count()
-    syncing = base.filter(sync_status="syncing").count()
     marked_deleted = base.filter(sync_status="marked_deleted").count()
     return {
         "total": total,
         "pending": pending,
-        "conflict": conflict,
+        "synced": synced,
         "orphaned": orphaned,
         "failed": failed,
-        "syncing": syncing,
         "marked_deleted": marked_deleted,
     }
 
@@ -216,15 +214,13 @@ class ConfigNodeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVi
             .order_by("config__name")
         )
 
-        if sync_status:
+        if sync_status and sync_status != "all":
             if sync_status == "pending":
                 bindings_qs = bindings_qs.filter(
                     sync_status__in=["not_synced", "modified"]
                 )
             else:
                 bindings_qs = bindings_qs.filter(sync_status=sync_status)
-        else:
-            bindings_qs = bindings_qs.exclude(sync_status="marked_deleted")
 
         if search:
             terms = [
@@ -1150,6 +1146,9 @@ class ConfigSyncWizardView(
         context["search"] = search
         context["group_search"] = group_search
         context["batch_max_count"] = int(get_setting("node.batch_max_count", "3"))
+        pre_select_node_id = self.request.GET.get("node_id", "").strip()
+        if pre_select_node_id and pre_select_node_id.isdigit():
+            context["pre_select_node_id"] = int(pre_select_node_id)
         return context
 
 
