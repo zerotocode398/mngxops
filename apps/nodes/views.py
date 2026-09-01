@@ -42,9 +42,14 @@ def filter_node_list_queryset(queryset, request):
     status_filter = request.GET.get("status", "").strip()
 
     if search:
-        queryset = queryset.filter(
-            Q(hostname__icontains=search) | Q(ip__icontains=search)
-        )
+        terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+        for term in terms:
+            queryset = queryset.filter(
+                Q(hostname__icontains=term)
+                | Q(ip__icontains=term)
+                | Q(groups__name__icontains=term)
+            )
+        queryset = queryset.distinct()
 
     if group_search:
         tags = [
@@ -144,7 +149,9 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             ]
             for term in terms:
                 queryset = queryset.filter(
-                    Q(hostname__icontains=term) | Q(ip__icontains=term) | Q(groups__name__icontains=term)
+                    Q(hostname__icontains=term)
+                    | Q(ip__icontains=term)
+                    | Q(groups__name__icontains=term)
                 )
 
         if group_search:
@@ -157,7 +164,9 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 queryset = queryset.filter(groups__name__icontains=term)
             queryset = queryset.distinct()
 
-        nodes = queryset.select_related("credential").distinct().order_by("hostname")[:50]
+        nodes = (
+            queryset.select_related("credential").distinct().order_by("hostname")[:50]
+        )
         data = []
         for node in nodes:
             data.append(
@@ -319,7 +328,8 @@ class NodeListView(
     def get_queryset(self):
         """根据搜索、节点组、环境、状态参数筛选节点"""
         queryset = (
-            super().get_queryset()
+            super()
+            .get_queryset()
             .select_related("credential")
             .prefetch_related("groups")
         )
@@ -946,8 +956,11 @@ class NodeListAPIView(LoginRequiredMixin, View):
             if terms:
                 for term in terms:
                     queryset = queryset.filter(
-                        Q(hostname__icontains=term) | Q(ip__icontains=term)
+                        Q(hostname__icontains=term)
+                        | Q(ip__icontains=term)
+                        | Q(groups__name__icontains=term)
                     )
+                queryset = queryset.distinct()
         if group_search:
             tags = [
                 name.strip()
@@ -1066,9 +1079,7 @@ def get_node_detail(request):
                 "credential_auth_type": (
                     credential.get_auth_type_display() if credential else "-"
                 ),
-                "groups": ", ".join(
-                    g.name for g in node.groups.all()
-                ) or "-",
+                "groups": ", ".join(g.name for g in node.groups.all()) or "-",
                 "created_by": node.created_by.username,
                 "created_at": node.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                 "updated_at": node.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
