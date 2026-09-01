@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """发布任务创建 API — 处理 JSON 格式的发布任务创建请求"""
+
     permission_resource = "releases"
     permission_action = "create"
 
@@ -49,15 +50,20 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
-            return JsonResponse({"success": False, "message": "请求数据格式错误"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "请求数据格式错误"}, status=400
+            )
 
         bindings_data = data.get("bindings", [])
         auto_execute = data.get("auto_execute", False)
 
         if not bindings_data:
-            return JsonResponse({"success": False, "message": "请至少选择一个配置绑定"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "请至少选择一个配置绑定"}, status=400
+            )
 
         from utils.setting_service import get_setting
+
         try:
             batch_max = max(1, int(get_setting("node.batch_max_count", "3") or 3))
         except (TypeError, ValueError):
@@ -68,12 +74,15 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         for item in bindings_data:
             binding_id = item.get("binding_id", 0)
             try:
-                binding = ConfigNodeBinding.objects.select_related("node").get(pk=binding_id)
+                binding = ConfigNodeBinding.objects.select_related("node").get(
+                    pk=binding_id
+                )
             except ConfigNodeBinding.DoesNotExist:
                 continue
             if binding.node.is_locked or binding.node.is_deleted:
                 continue
             from apps.nodes.services import nginx_ops_gate_message
+
             if nginx_ops_gate_message(binding.node):
                 continue
             preview_node_ids.add(binding.node_id)
@@ -92,7 +101,9 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             version = item.get("version")
 
             try:
-                binding = ConfigNodeBinding.objects.select_related("node", "config").get(pk=binding_id)
+                binding = ConfigNodeBinding.objects.select_related(
+                    "node", "config"
+                ).get(pk=binding_id)
             except ConfigNodeBinding.DoesNotExist:
                 continue
 
@@ -136,6 +147,7 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         if auto_execute:
             from apps.releases.task_result import targets_from_release_tasks
+
             targets = targets_from_release_tasks(task_ids)
             task_center = TaskCenterTask.objects.create(
                 operation_type="release_publish",
@@ -160,6 +172,7 @@ class ReleaseListView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
     """发布历史 - 按批次内节点分页，批次→节点→配置树形展示"""
+
     model = ReleaseTask
     template_name = "releases/list.html"
     context_object_name = "tasks"
@@ -280,7 +293,10 @@ class ReleaseListView(
         )
         context["expand_all_nodes"] = bool(search or status_filter or batch or node_ip)
         context["has_any_filter"] = bool(
-            search or status_filter or context["batch_filter"] or context["node_ip_filter"]
+            search
+            or status_filter
+            or context["batch_filter"]
+            or context["node_ip_filter"]
         )
         # 本页各任务可回滚目标版本（publish_version 的上一版），供明细弹窗展示
         for task in context["tasks"]:
@@ -302,7 +318,9 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
     ordering = ["-created_at"]
 
     def dispatch(self, request, *args, **kwargs):
-        self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
+        self.can_read_release_tasks = user_has_permission(
+            request.user, "releases", "read"
+        )
         self.can_read_node_tasks = user_can_access_limited_task_center(request.user)
         if not (self.can_read_release_tasks or self.can_read_node_tasks):
             return forbidden_response(request, "当前账号无权限访问该功能")
@@ -321,7 +339,9 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
         status_filter = self.request.GET.get("status", "")
         operation_type = self.request.GET.get("operation_type", "")
         if search:
-            tags = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+            tags = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
             for tag in tags:
                 queryset = queryset.filter(
                     Q(source_batch__icontains=tag)
@@ -350,23 +370,30 @@ class TaskCenterListView(LoginRequiredMixin, PerPagePaginationMixin, ListView):
         context["status_choices"] = TaskCenterTask.STATUS_CHOICES
         # 筛选下拉仅展示实际会创建的任务类型（不含未启用的 discover/drift/glob）
         context["operation_type_choices"] = [
-            c for c in TaskCenterTask.OPERATION_TYPE_CHOICES
-            if c[0] not in ("config_discover", "config_drift_check", "config_glob_preview")
+            c
+            for c in TaskCenterTask.OPERATION_TYPE_CHOICES
+            if c[0]
+            not in ("config_discover", "config_drift_check", "config_glob_preview")
         ]
         context["has_any_filter"] = bool(
-            context["search"] or context["status_filter"] or context["operation_type_filter"]
+            context["search"]
+            or context["status_filter"]
+            or context["operation_type_filter"]
         )
         return context
 
 
 class TaskCenterDetailView(LoginRequiredMixin, DetailView):
     """任务中心详情 - 按节点→配置树形展示执行结果"""
+
     model = TaskCenterTask
     template_name = "releases/task_detail.html"
     context_object_name = "task"
 
     def dispatch(self, request, *args, **kwargs):
-        self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
+        self.can_read_release_tasks = user_has_permission(
+            request.user, "releases", "read"
+        )
         self.can_read_node_tasks = user_can_access_limited_task_center(request.user)
         if not (self.can_read_release_tasks or self.can_read_node_tasks):
             return forbidden_response(request, "当前账号无权限访问该功能")
@@ -407,7 +434,9 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
             configs_raw = task.target_configs.split(",")
             target_configs = [c.strip() for c in configs_raw if c.strip()]
             seen_c = set()
-            target_configs = [c for c in target_configs if not (c in seen_c or seen_c.add(c))]
+            target_configs = [
+                c for c in target_configs if not (c in seen_c or seen_c.add(c))
+            ]
 
         context["target_nodes"] = target_nodes[:50]
         context["target_configs"] = target_configs[:50]
@@ -424,6 +453,7 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
             split_error_reason_lines,
             split_failed_item,
         )
+
         result_tree = []
         success_total = 0
         failed_total = 0
@@ -435,7 +465,7 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                 if not stripped:
                     continue
                 if stripped.startswith("[节点] "):
-                    node_text = stripped[len("[节点] "):]
+                    node_text = stripped[len("[节点] ") :]
                     if current_node:
                         result_tree.append(current_node)
                     current_node = {
@@ -445,25 +475,31 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
                         "failed": 0,
                     }
                 elif raw.startswith("  [成功]") and current_node is not None:
-                    raw_name = raw[len("  [成功] "):].strip()
+                    raw_name = raw[len("  [成功] ") :].strip()
                     name = re.sub(r'\s+v(\d+).*', r' (V\1)', raw_name)
                     search_name = re.sub(r'\s+v\d+.*', '', raw_name).strip()
-                    current_node["configs"].append({
-                        "name": name, "search_name": search_name, "status": "success",
-                    })
+                    current_node["configs"].append(
+                        {
+                            "name": name,
+                            "search_name": search_name,
+                            "status": "success",
+                        }
+                    )
                     current_node["success"] += 1
                     success_total += 1
                 elif raw.startswith("  [失败]") and current_node is not None:
-                    raw_name = raw[len("  [失败] "):].strip()
+                    raw_name = raw[len("  [失败] ") :].strip()
                     label, reason = split_failed_item(raw_name)
                     name = re.sub(r'\s+v(\d+).*', r' (V\1)', label)
                     search_name = re.sub(r'\s+v\d+.*', '', label).strip()
-                    current_node["configs"].append({
-                        "name": name,
-                        "search_name": search_name,
-                        "status": "failed",
-                        "reason_lines": split_error_reason_lines(reason),
-                    })
+                    current_node["configs"].append(
+                        {
+                            "name": name,
+                            "search_name": search_name,
+                            "status": "failed",
+                            "reason_lines": split_error_reason_lines(reason),
+                        }
+                    )
                     current_node["failed"] += 1
                     failed_total += 1
 
@@ -517,6 +553,7 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         if op == "nginx_upgrade":
             try:
                 from apps.upgrade.models import NginxUpgradeTask
+
                 upgrade_task = (
                     NginxUpgradeTask.objects.filter(task_center_id=task.id)
                     .select_related("node")
@@ -527,6 +564,7 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         elif op == "nginx_uninstall":
             try:
                 from apps.nginx_uninstall.models import NginxUninstallTask
+
                 uninstall_task = (
                     NginxUninstallTask.objects.filter(task_center_id=task.id)
                     .select_related("node")
@@ -541,11 +579,10 @@ class TaskCenterDetailView(LoginRequiredMixin, DetailView):
         if op == "node_system_info" and result_text:
             try:
                 import json as _json
+
                 data = _json.loads(result_text)
                 if isinstance(data, dict):
-                    system_info_rows = [
-                        {"key": k, "value": v} for k, v in data.items()
-                    ]
+                    system_info_rows = [{"key": k, "value": v} for k, v in data.items()]
             except (ValueError, TypeError):
                 system_info_rows = None
         elif op == "node_nginx_version" and result_text:
@@ -566,7 +603,9 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
     """协作式取消任务中心任务：标 cancelled、关 SSH、级联发布/升级明细"""
 
     def dispatch(self, request, *args, **kwargs):
-        self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
+        self.can_read_release_tasks = user_has_permission(
+            request.user, "releases", "read"
+        )
         self.can_read_node_tasks = user_can_access_limited_task_center(request.user)
         if not (self.can_read_release_tasks or self.can_read_node_tasks):
             return forbidden_response(request, "当前账号无权限访问该功能")
@@ -587,20 +626,31 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
         """执行取消：写库 → 级联 → 关闭已登记 SSH"""
         task = self._get_task(pk)
         if not task:
-            return JsonResponse({"success": False, "message": "任务不存在或无权操作"}, status=404)
+            return JsonResponse(
+                {"success": False, "message": "任务不存在或无权操作"}, status=404
+            )
         if task.status not in ("pending", "running"):
             return JsonResponse(
-                {"success": False, "message": f"当前状态（{task.get_status_display()}）不可取消"},
+                {
+                    "success": False,
+                    "message": f"当前状态（{task.get_status_display()}）不可取消",
+                },
                 status=400,
             )
 
         detail = "用户手动取消"
         ok = mark_cancelled(task.id, detail=detail, result=detail)
         if not ok:
-            return JsonResponse({"success": False, "message": "取消失败，任务状态可能已变更"}, status=409)
+            return JsonResponse(
+                {"success": False, "message": "取消失败，任务状态可能已变更"},
+                status=409,
+            )
 
         # 级联：同批次发布/回滚明细
-        if task.operation_type in ("release_publish", "release_rollback") and task.source_batch:
+        if (
+            task.operation_type in ("release_publish", "release_rollback")
+            and task.source_batch
+        ):
             ReleaseTask.objects.filter(
                 batch_number=task.source_batch,
                 status__in=("pending", "running"),
@@ -610,6 +660,7 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
         if task.operation_type in ("nginx_upgrade", "nginx_rollback"):
             try:
                 from apps.upgrade.models import NginxUpgradeTask
+
                 terminal = ("success", "failed", "rollback", "cancelled")
                 NginxUpgradeTask.objects.filter(task_center_id=task.id).exclude(
                     status__in=terminal
@@ -625,6 +676,7 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
         if task.operation_type == "nginx_uninstall":
             try:
                 from apps.nginx_uninstall.models import NginxUninstallTask
+
                 terminal = ("success", "failed", "cancelled")
                 NginxUninstallTask.objects.filter(task_center_id=task.id).exclude(
                     status__in=terminal
@@ -639,11 +691,13 @@ class TaskCenterCancelView(LoginRequiredMixin, View):
         closed = close_registered_ssh(task.id)
         _clear_release_progress_state(task.id)
 
-        return JsonResponse({
-            "success": True,
-            "message": "任务已取消",
-            "ssh_closed": closed,
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "message": "任务已取消",
+                "ssh_closed": closed,
+            }
+        )
 
 
 class ReleaseDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
@@ -654,8 +708,16 @@ class ReleaseDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView)
     permission_action = "read"
 
     def get_queryset(self):
-        return super().get_queryset().select_related(
-            "node", "config", "binding", "operator", "version",
+        return (
+            super()
+            .get_queryset()
+            .select_related(
+                "node",
+                "config",
+                "binding",
+                "operator",
+                "version",
+            )
         )
 
     def get_context_data(self, **kwargs):
@@ -667,8 +729,9 @@ class ReleaseDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView)
         version_id_map = {}
         if self.object.binding_id:
             version_id_map = dict(
-                BindingVersion.objects.filter(binding_id=self.object.binding_id)
-                .values_list("version", "id")
+                BindingVersion.objects.filter(
+                    binding_id=self.object.binding_id
+                ).values_list("version", "id")
             )
         for h in histories:
             # 供模板挂 version-preview-link
@@ -685,8 +748,12 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
     def get(self, request, pk):
         from django.core.paginator import Paginator
+
         task = get_object_or_404(
-            ReleaseTask.objects.select_related("node", "config", "binding", "operator", "version"), pk=pk,
+            ReleaseTask.objects.select_related(
+                "node", "config", "binding", "operator", "version"
+            ),
+            pk=pk,
         )
         if task.status not in self.ROLLBACK_ALLOWED_STATUSES:
             messages.error(request, "仅成功或失败的发布可回滚")
@@ -703,19 +770,28 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
         binding = task.binding
         versions = []
         if binding:
-            versions = binding.versions.select_related("created_by").order_by("-version")
+            versions = binding.versions.select_related("created_by").order_by(
+                "-version"
+            )
         paginator = Paginator(versions, 15)
         page_number = request.GET.get("page", 1)
         page_obj = paginator.get_page(page_number)
-        return render(request, "releases/rollback.html", {
-            "task": task, "config": task.config, "page_obj": page_obj,
-        })
+        return render(
+            request,
+            "releases/rollback.html",
+            {
+                "task": task,
+                "config": task.config,
+                "page_obj": page_obj,
+            },
+        )
 
     def post(self, request, pk):
         """创建回滚任务并立即异步执行（与批量回滚一致）"""
         is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
         task = get_object_or_404(
-            ReleaseTask.objects.select_related("node", "config", "binding", "operator"), pk=pk,
+            ReleaseTask.objects.select_related("node", "config", "binding", "operator"),
+            pk=pk,
         )
         if task.status not in self.ROLLBACK_ALLOWED_STATUSES:
             msg = "仅成功或失败的发布可回滚"
@@ -760,13 +836,15 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
             config=task.config,
             version=version,
             publish_version=version.version,
-            remote_path=task.remote_path or (task.binding.remote_path if task.binding else ""),
+            remote_path=task.remote_path
+            or (task.binding.remote_path if task.binding else ""),
             operator=request.user,
             status="pending",
             batch_number=batch_number,
         )
 
         from apps.releases.task_result import targets_from_release_tasks
+
         targets = targets_from_release_tasks([new_task.id])
         task_center = TaskCenterTask.objects.create(
             operation_type="release_rollback",
@@ -781,20 +859,24 @@ class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
         _start_release_executor([new_task.id], task_center.id)
 
         if is_ajax:
-            return JsonResponse({
-                "success": True,
-                "batch_number": batch_number,
-                "task_center_id": task_center.id,
-                "message": f"回滚已开始，批次号: {batch_number}",
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "batch_number": batch_number,
+                    "task_center_id": task_center.id,
+                    "message": f"回滚已开始，批次号: {batch_number}",
+                }
+            )
 
         messages.success(request, f"回滚已开始，批次号: {batch_number}")
         return redirect("releases:task_center_detail", pk=task_center.id)
+
 
 class ReleaseCenterView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
     """发布中心 - 节点为主维度选择 + 配置绑定展开（数据通过 AJAX 加载）"""
+
     model = ReleaseTask
     template_name = "releases/center.html"
     context_object_name = "tasks"
@@ -813,6 +895,7 @@ class ReleaseCenterView(
         context["pre_binding_id"] = self.request.GET.get("binding_id", "")
         context["environment_choices"] = Node.ENV_CHOICES
         from utils.setting_service import get_setting
+
         try:
             context["batch_max_count"] = max(
                 1, int(get_setting("node.batch_max_count", "3") or 3)
@@ -824,7 +907,9 @@ class ReleaseCenterView(
 
 class TaskCenterProgressAPIView(LoginRequiredMixin, View):
     def dispatch(self, request, *args, **kwargs):
-        self.can_read_release_tasks = user_has_permission(request.user, "releases", "read")
+        self.can_read_release_tasks = user_has_permission(
+            request.user, "releases", "read"
+        )
         self.can_read_node_tasks = user_can_access_limited_task_center(request.user)
         self.can_sync_configs = user_has_permission(request.user, "configs", "update")
         self.can_read_upgrade = user_has_permission(request.user, "upgrade", "read")
@@ -856,8 +941,11 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
             )
         data = [
             {
-                "id": t.id, "status": t.status, "progress": t.progress,
-                "detail": t.detail, "result": t.result,
+                "id": t.id,
+                "status": t.status,
+                "progress": t.progress,
+                "detail": t.detail,
+                "result": t.result,
                 "log_output": t.log_output or "",
                 "current_steps": (
                     _format_current_steps(t.id)
@@ -871,9 +959,7 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
         return JsonResponse({"success": True, "tasks": data})
 
 
-class ReleaseCenterExecuteView(
-    LoginRequiredMixin, PermissionRequiredMixin, View
-):
+class ReleaseCenterExecuteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "releases"
     permission_action = "update"
 
@@ -890,7 +976,8 @@ class ReleaseCenterExecuteView(
             pass
 
         tasks_qs = ReleaseTask.objects.filter(
-            batch_number=batch_number, status="pending",
+            batch_number=batch_number,
+            status="pending",
         ).select_related("node", "config", "binding", "operator")
         task_ids = list(tasks_qs.values_list("id", flat=True))
 
@@ -903,6 +990,7 @@ class ReleaseCenterExecuteView(
 
         # 创建 TaskCenterTask
         from apps.releases.task_result import targets_from_release_tasks
+
         targets = targets_from_release_tasks(task_ids)
         task_center = TaskCenterTask.objects.create(
             operation_type="release_publish",
@@ -917,16 +1005,23 @@ class ReleaseCenterExecuteView(
 
         _start_release_executor(task_ids, task_center.id)
 
-        redirect_url = reverse("releases:task_center_detail", kwargs={"pk": task_center.id})
+        redirect_url = reverse(
+            "releases:task_center_detail", kwargs={"pk": task_center.id}
+        )
         if is_ajax:
-            return JsonResponse({
-                "success": True,
-                "async": True,
-                "task_center_id": task_center.id,
-                "task_center_detail_url": redirect_url,
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "async": True,
+                    "task_center_id": task_center.id,
+                    "task_center_detail_url": redirect_url,
+                }
+            )
 
-        messages.success(request, f"发布任务已开始执行，{len(task_ids)} 个任务，批次号: {batch_number}")
+        messages.success(
+            request,
+            f"发布任务已开始执行，{len(task_ids)} 个任务，批次号: {batch_number}",
+        )
         return redirect(redirect_url)
 
 
@@ -936,7 +1031,8 @@ class ReleaseCenterCancelView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
     def post(self, request, batch_number):
         updated = ReleaseTask.objects.filter(
-            batch_number=batch_number, status="pending",
+            batch_number=batch_number,
+            status="pending",
         ).update(status="cancelled", result="用户取消")
         if updated:
             messages.success(request, f"已取消 {updated} 个待执行任务")
@@ -945,9 +1041,7 @@ class ReleaseCenterCancelView(LoginRequiredMixin, PermissionRequiredMixin, View)
         return redirect("releases:center")
 
 
-class ReleaseCenterSingleExecuteView(
-    LoginRequiredMixin, PermissionRequiredMixin, View
-):
+class ReleaseCenterSingleExecuteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "releases"
     permission_action = "update"
 
@@ -961,6 +1055,7 @@ class ReleaseCenterSingleExecuteView(
             return redirect("releases:center")
 
         from apps.releases.task_result import targets_from_release_tasks
+
         targets = targets_from_release_tasks([task.id])
         task_center = TaskCenterTask.objects.create(
             operation_type="release_publish",
@@ -984,12 +1079,15 @@ class ReleaseTaskStatusView(LoginRequiredMixin, View):
 
     def get(self, request, task_id):
         task = get_object_or_404(ReleaseTask, pk=task_id)
-        return JsonResponse({
-            "id": task.id,
-            "status": task.status,
-            "result": task.result,
-            "finished": task.status in ["success", "failed", "rollback", "cancelled"],
-        })
+        return JsonResponse(
+            {
+                "id": task.id,
+                "status": task.status,
+                "result": task.result,
+                "finished": task.status
+                in ["success", "failed", "rollback", "cancelled"],
+            }
+        )
 
 
 class VersionContentAPIView(LoginRequiredMixin, View):
@@ -997,31 +1095,32 @@ class VersionContentAPIView(LoginRequiredMixin, View):
 
     def get(self, request, version_id):
         from apps.configs.models import BindingVersion
-        version = get_object_or_404(BindingVersion, pk=version_id)
-        return JsonResponse({
-            "id": version.id,
-            "version": version.version,
-            "content": version.content,
-            "remark": version.remark,
-            "created_at": version.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            "created_by": version.created_by.username if version.created_by else "",
-        })
 
+        version = get_object_or_404(BindingVersion, pk=version_id)
+        return JsonResponse(
+            {
+                "id": version.id,
+                "version": version.version,
+                "content": version.content,
+                "remark": version.remark,
+                "created_at": version.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "created_by": version.created_by.username if version.created_by else "",
+            }
+        )
 
 
 def _build_release_status_counts():
-    """构建发布中心绑定状态全局统计（排除已删节点与标记删除绑定）"""
+    """构建发布中心绑定状态全局统计（排除已删节点）"""
     from apps.configs.models import ConfigNodeBinding
-    # 可发布集合：不含 marked_deleted；conflict/syncing 未启用故不统计
-    bindings = ConfigNodeBinding.objects.filter(node__is_deleted=False).exclude(
-        sync_status="marked_deleted",
-    )
+
+    bindings = ConfigNodeBinding.objects.filter(node__is_deleted=False)
     return {
         "total": bindings.count(),
         "pending": bindings.filter(sync_status__in=["not_synced", "modified"]).count(),
         "synced": bindings.filter(sync_status="synced").count(),
         "failed": bindings.filter(sync_status="failed").count(),
         "orphaned": bindings.filter(sync_status="orphaned").count(),
+        "marked_deleted": bindings.filter(sync_status="marked_deleted").count(),
     }
 
 
@@ -1034,13 +1133,16 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
         group_id = request.GET.get("group_id", "").strip()
         node_status = request.GET.get("status", "").strip()
         sync_status = request.GET.get("sync_status", "").strip()
+        nginx_available = request.GET.get("nginx_available", "true").strip()
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 20))
 
         queryset = Node.objects.all().prefetch_related("groups")
 
         if search:
-            terms = [t.strip() for t in search.replace("，", ",").split(",") if t.strip()]
+            terms = [
+                t.strip() for t in search.replace("，", ",").split(",") if t.strip()
+            ]
             for term in terms:
                 queryset = queryset.filter(
                     Q(hostname__icontains=term)
@@ -1053,6 +1155,8 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
             queryset = queryset.filter(environment=environment)
         if node_status:
             queryset = queryset.filter(status=node_status)
+        if nginx_available == "true":
+            queryset = queryset.filter(nginx_available=True)
         if group_id and group_id.isdigit():
             queryset = queryset.filter(groups__id=int(group_id)).distinct()
 
@@ -1063,23 +1167,22 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
             else:
                 status_values = [sync_status]
             node_ids_with_status = (
-                ConfigNodeBinding.objects
-                .filter(sync_status__in=status_values)
+                ConfigNodeBinding.objects.filter(sync_status__in=status_values)
                 .values_list("node_id", flat=True)
                 .distinct()
             )
             queryset = queryset.filter(id__in=node_ids_with_status)
 
         total = queryset.count()
-        nodes_page = queryset[(page - 1) * page_size: page * page_size]
+        nodes_page = queryset[(page - 1) * page_size : page * page_size]
 
         node_ids = [n.id for n in nodes_page]
         binding_stats = {}
         if node_ids:
             from django.db.models import Count, Q as DQ
+
             stats_qs = (
-                ConfigNodeBinding.objects
-                .filter(node_id__in=node_ids)
+                ConfigNodeBinding.objects.filter(node_id__in=node_ids)
                 .exclude(sync_status="marked_deleted")
                 .values("node_id")
                 .annotate(
@@ -1095,32 +1198,38 @@ class ReleaseNodeListAPIView(LoginRequiredMixin, View):
 
         node_list = []
         for node in nodes_page:
-            stats = binding_stats.get(node.id, {"total_bindings": 0, "modified_bindings": 0})
-            node_list.append({
-                "id": node.id,
-                "hostname": node.hostname,
-                "ip": f"{node.ip}:{node.port}",
-                "environment": node.environment,
-                "status": node.status,
-                "is_locked": node.is_locked,
-                "has_credential": node.credential_id is not None,
-                "nginx_available": node.nginx_available,
-                "nginx_version": node.nginx_version or "",
-                "nginx_status_label": node.nginx_status_label,
-                "total_bindings": stats["total_bindings"],
-                "modified_bindings": stats["modified_bindings"],
-                "group_names": [g.name for g in node.groups.all()],
-            })
+            stats = binding_stats.get(
+                node.id, {"total_bindings": 0, "modified_bindings": 0}
+            )
+            node_list.append(
+                {
+                    "id": node.id,
+                    "hostname": node.hostname,
+                    "ip": f"{node.ip}:{node.port}",
+                    "environment": node.environment,
+                    "status": node.status,
+                    "is_locked": node.is_locked,
+                    "has_credential": node.credential_id is not None,
+                    "nginx_available": node.nginx_available,
+                    "nginx_version": node.nginx_version or "",
+                    "nginx_status_label": node.nginx_status_label,
+                    "total_bindings": stats["total_bindings"],
+                    "modified_bindings": stats["modified_bindings"],
+                    "group_names": [g.name for g in node.groups.all()],
+                }
+            )
 
-        return JsonResponse({
-            "success": True,
-            "nodes": node_list,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": max(1, (total + page_size - 1) // page_size),
-            "status_counts": _build_release_status_counts(),
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "nodes": node_list,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": max(1, (total + page_size - 1) // page_size),
+                "status_counts": _build_release_status_counts(),
+            }
+        )
 
 
 class ReleaseNodeBindingsAPIView(LoginRequiredMixin, View):
@@ -1129,8 +1238,7 @@ class ReleaseNodeBindingsAPIView(LoginRequiredMixin, View):
     def get(self, request, node_id):
         # 标记删除的绑定不可发布，不返回给发布中心勾选
         bindings = (
-            ConfigNodeBinding.objects
-            .filter(node_id=node_id)
+            ConfigNodeBinding.objects.filter(node_id=node_id)
             .exclude(sync_status="marked_deleted")
             .select_related("config")
             .order_by("config__name")
@@ -1138,34 +1246,39 @@ class ReleaseNodeBindingsAPIView(LoginRequiredMixin, View):
 
         result = []
         for binding in bindings:
-            versions = (
-                binding.versions
-                .order_by("-version")
-                .values("id", "version", "created_at")
+            versions = binding.versions.order_by("-version").values(
+                "id", "version", "created_at"
             )
-            result.append({
-                "id": binding.id,
-                "config_id": binding.config_id,
-                "config_name": binding.config.name,
-                "remote_path": binding.remote_path,
-                "current_version": binding.current_version,
-                "sync_status": binding.sync_status,
-                "synced_version": binding.synced_version,
-                "versions": [
-                    {
-                        "id": v["id"],
-                        "version": v["version"],
-                        "created_at": v["created_at"].strftime("%Y-%m-%d %H:%M:%S") if v["created_at"] else "",
-                    }
-                    for v in versions
-                ],
-            })
+            result.append(
+                {
+                    "id": binding.id,
+                    "config_id": binding.config_id,
+                    "config_name": binding.config.name,
+                    "remote_path": binding.remote_path,
+                    "current_version": binding.current_version,
+                    "sync_status": binding.sync_status,
+                    "synced_version": binding.synced_version,
+                    "versions": [
+                        {
+                            "id": v["id"],
+                            "version": v["version"],
+                            "created_at": (
+                                v["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+                                if v["created_at"]
+                                else ""
+                            ),
+                        }
+                        for v in versions
+                    ],
+                }
+            )
 
         return JsonResponse({"success": True, "bindings": result})
 
 
 class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """重试单条失败的发布任务"""
+
     permission_resource = "releases"
     permission_action = "update"
 
@@ -1175,12 +1288,23 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
             pk=pk,
         )
         if task.status not in ["failed"]:
-            return JsonResponse({"success": False, "message": "只能重试失败的任务"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "只能重试失败的任务"}, status=400
+            )
 
         if task.node.is_locked:
-            return JsonResponse({"success": False, "message": f"节点 {task.node.hostname} 已锁定"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": f"节点 {task.node.hostname} 已锁定"},
+                status=400,
+            )
         if task.node.is_deleted:
-            return JsonResponse({"success": False, "message": f"节点 {task.node.hostname} 已删除，无法重试"}, status=400)
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": f"节点 {task.node.hostname} 已删除，无法重试",
+                },
+                status=400,
+            )
         from apps.nodes.services import nginx_ops_gate_message
 
         gate_msg = nginx_ops_gate_message(task.node)
@@ -1192,6 +1316,7 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
         task.save(update_fields=["status", "result"])
 
         from apps.releases.task_result import targets_from_release_tasks
+
         targets = targets_from_release_tasks([task.id])
         task_center = TaskCenterTask.objects.create(
             operation_type="release_publish",
@@ -1206,15 +1331,18 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         _start_release_executor([task.id], task_center.id)
 
-        return JsonResponse({
-            "success": True,
-            "message": f"重试任务已开始: {task.config.name} → {task.node.hostname}",
-            "task_center_id": task_center.id,
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "message": f"重试任务已开始: {task.config.name} → {task.node.hostname}",
+                "task_center_id": task_center.id,
+            }
+        )
 
 
 class ReleaseBatchRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """按批次号批量回滚（兼容保留）"""
+
     permission_resource = "releases"
     permission_action = "update"
 
@@ -1225,7 +1353,9 @@ class ReleaseBatchRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View
         ).select_related("node", "config", "binding")
 
         if not tasks.exists():
-            return JsonResponse({"success": False, "message": "未找到可回滚的任务"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "未找到可回滚的任务"}, status=400
+            )
 
         ok, result = _start_rollback_for_release_tasks(tasks, request.user)
         if not ok:
@@ -1235,6 +1365,7 @@ class ReleaseBatchRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View
 
 class ReleaseSelectedRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """按勾选的发布任务 ID 批量回滚"""
+
     permission_resource = "releases"
     permission_action = "update"
 
@@ -1242,7 +1373,9 @@ class ReleaseSelectedRollbackView(LoginRequiredMixin, PermissionRequiredMixin, V
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
-            return JsonResponse({"success": False, "message": "请求数据格式错误"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "请求数据格式错误"}, status=400
+            )
 
         raw_ids = data.get("task_ids") or []
         task_ids = []
@@ -1253,7 +1386,9 @@ class ReleaseSelectedRollbackView(LoginRequiredMixin, PermissionRequiredMixin, V
                 continue
 
         if not task_ids:
-            return JsonResponse({"success": False, "message": "请至少勾选一个任务"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "请至少勾选一个任务"}, status=400
+            )
 
         tasks = ReleaseTask.objects.filter(
             id__in=task_ids,
@@ -1261,7 +1396,9 @@ class ReleaseSelectedRollbackView(LoginRequiredMixin, PermissionRequiredMixin, V
         ).select_related("node", "config", "binding")
 
         if not tasks.exists():
-            return JsonResponse({"success": False, "message": "未找到可回滚的任务"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "未找到可回滚的任务"}, status=400
+            )
 
         ok, result = _start_rollback_for_release_tasks(tasks, request.user)
         if not ok:
