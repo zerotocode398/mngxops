@@ -654,7 +654,7 @@ class BindingDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
             )
             return redirect(next_url or default_redirect)
 
-        if binding.sync_status in ("not_synced", "orphaned"):
+        if binding.sync_status in ("not_synced", "orphaned", "marked_deleted"):
             binding.delete()
             messages.success(request, f"绑定 {label} 已删除")
         else:

@@ -284,12 +284,12 @@
 </style>
 <script>
     function openDeleteModal(configName, nodeName, deleteUrl, syncStatus) {
-        var hint = '解除后将标记为"已标记删除"，下次同步时会清理远程文件。';
-        if (syncStatus === 'not_synced') {
-            hint = '该绑定从未同步到远程，删除后不可恢复。';
-        } else if (syncStatus === 'orphaned') {
-            hint = '远程已无此文件，仅删除本地记录。';
-        }
+        var hints = {
+            'not_synced': '该绑定从未同步到远程，删除后不可恢复。',
+            'orphaned': '远程已无此文件，仅删除本地记录。',
+            'marked_deleted': '该绑定已标记删除，确认后将从本地移除关联记录。'
+        };
+        var hint = hints[syncStatus] || '解除后将标记为"已标记删除"，下次同步时会清理远程文件。';
         var msg = '确定要解除 ' + configName + ' 在节点 ' + nodeName + ' 上的绑定吗？' + hint;
         showConfirm('解除绑定', msg, function () {
             var form = document.getElementById('deleteBindingForm');
