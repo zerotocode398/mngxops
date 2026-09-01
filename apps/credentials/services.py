@@ -1,4 +1,5 @@
 """凭证启用测试、xlsx 导出与批量导入。"""
+
 import io
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO
@@ -9,11 +10,11 @@ from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
 from apps.nodes.models import Node
-from apps.nodes.services import mark_node_probe_success
+from apps.nodes.services import apply_nginx_probe_result, mark_node_probe_success
 from apps.releases.models import TaskCenterTask
 from apps.releases.task_cancel import finish_if_active
 from utils.setting_service import get_setting
-from utils.ssh import test_ssh_connection
+from utils.ssh import get_nginx_version, test_ssh_connection
 
 from .models import Credential, CredentialEnableTask
 
@@ -152,9 +153,7 @@ def build_credential_import_template_bytes() -> bytes:
         ]
     )
     tip.append(["2. 名称、SSH用户、认证方式为必填"])
-    tip.append(
-        ["3. 认证方式可填：密码认证/密码/password，或 密钥认证/密钥/key"]
-    )
+    tip.append(["3. 认证方式可填：密码认证/密码/password，或 密钥认证/密钥/key"])
     tip.append(["4. 密码认证须填密码，私钥列可空；密钥认证须填合法私钥，密码列可空"])
     tip.append(["5. 是否启用可填 是/否（或启用/禁用）；空或 - 默认启用"])
     tip.append(
@@ -246,9 +245,7 @@ def parse_credential_import_workbook(
                 "password": password.strip("\n\r") if password else "",
                 "private_key": private_key.strip() if private_key else "",
                 "enabled_raw": enabled_raw,
-                "description": (
-                    "" if _is_empty_optional(description) else description
-                ),
+                "description": ("" if _is_empty_optional(description) else description),
             }
         )
     wb.close()
@@ -337,9 +334,7 @@ def validate_credential_import_rows(
 
         if name:
             if name in name_seen:
-                row_errors.append(
-                    f"文件内名称「{name}」与第 {name_seen[name]} 行重复"
-                )
+                row_errors.append(f"文件内名称「{name}」与第 {name_seen[name]} 行重复")
             else:
                 name_seen[name] = row_no
 
@@ -393,7 +388,9 @@ def apply_credential_import(cleaned: List[Dict[str, Any]], user) -> Dict[str, in
                     name=item["name"],
                     username=item["username"],
                     auth_type=item["auth_type"],
-                    password=item["password"] if item["auth_type"] == "password" else "",
+                    password=(
+                        item["password"] if item["auth_type"] == "password" else ""
+                    ),
                     private_key=(
                         item["private_key"] if item["auth_type"] == "key" else ""
                     ),
@@ -452,7 +449,9 @@ def _run_credential_enable_task(task_id, credential_id):
                 detail="测试开始",
             )
 
-        nodes = list(Node.objects.filter(credential=credential, is_locked=False).order_by("id"))
+        nodes = list(
+            Node.objects.filter(credential=credential, is_locked=False).order_by("id")
+        )
         task.total_count = len(nodes)
         task.skipped_count = Node.objects.filter(
             credential=credential, is_locked=True
@@ -499,7 +498,36 @@ def _run_credential_enable_task(task_id, credential_id):
                     )
                 if success:
                     mark_node_probe_success(node)
-                    node.save(update_fields=["status", "last_probe_at", "updated_at"])
+                    nginx_path = node.nginx_path if node.nginx_path else None
+                    version_success, version_info = get_nginx_version(
+                        node.ip,
+                        node.port,
+                        credential.username,
+                        password=(
+                            credential.get_password()
+                            if credential.auth_type == "password"
+                            else None
+                        ),
+                        private_key=(
+                            credential.get_private_key()
+                            if credential.auth_type == "key"
+                            else None
+                        ),
+                        nginx_path=nginx_path,
+                    )
+                    apply_nginx_probe_result(
+                        node, version_success, version_info if version_success else ""
+                    )
+                    node.save(
+                        update_fields=[
+                            "status",
+                            "last_probe_at",
+                            "nginx_version",
+                            "nginx_available",
+                            "last_nginx_probe_at",
+                            "updated_at",
+                        ]
+                    )
                 else:
                     node.status = "offline"
                     node.save(update_fields=["status", "updated_at"])
@@ -545,12 +573,8 @@ def _run_credential_enable_task(task_id, credential_id):
         task.status = "completed"
         task.finished_at = timezone.now()
         skip_tip = f"，锁定跳过 {task.skipped_count}" if task.skipped_count else ""
-        task.message = (
-            f"凭证 {cred_label}：成功 {task.success_count}，失败 {task.failed_count}{skip_tip}"
-        )
-        task.save(
-            update_fields=["status", "finished_at", "message", "updated_at"]
-        )
+        task.message = f"凭证 {cred_label}：成功 {task.success_count}，失败 {task.failed_count}{skip_tip}"
+        task.save(update_fields=["status", "finished_at", "message", "updated_at"])
 
         # 更新凭证的最后测试结果
         _update_credential_test_result(credential, fail_count)
