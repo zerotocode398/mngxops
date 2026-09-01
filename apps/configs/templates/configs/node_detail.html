@@ -30,8 +30,8 @@
                     <div class="d-flex align-items-center gap-2">
                         {% if user|has_perm_code:"configs.delete" %}
                         <button type="button" class="btn btn-outline-danger btn-sm" id="batchDeleteBtn"
-                                title="批量删除选中配置" onclick="batchDeleteBindings()" disabled>
-                            <i class="bi bi-trash"></i> 批量删除
+                                title="批量解除绑定" onclick="batchDeleteBindings()" disabled>
+                            <i class="bi bi-trash"></i> 批量解除
                         </button>
                         {% endif %}
                         {% if user|has_perm_code:"configs.create" %}
@@ -325,11 +325,13 @@
         if (checked.length === 0) return;
         var ids = [];
         checked.forEach(function(cb) { ids.push(cb.value); });
-        showConfirm('批量删除', '确定要删除选中的 ' + ids.length + ' 个配置绑定吗？', function () {
+        showConfirm('批量解除绑定',
+            '确定要解除选中的 ' + ids.length + ' 个配置绑定吗？<br><small class="text-muted">已同步的将标记删除（下次同步清理远程），未同步/已标记删除的将直接移除。</small>',
+            function () {
             document.getElementById('batchDeleteIds').value = ids.join(',');
             document.getElementById('batchDeleteNextInput').value = window.location.href;
             document.getElementById('batchDeleteForm').submit();
-        }, false, 'md');
+        }, true, 'md');
     }
 
     document.addEventListener('DOMContentLoaded', function () {

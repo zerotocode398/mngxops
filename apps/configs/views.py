@@ -697,7 +697,7 @@ class BindingRestoreView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 
 class BindingBatchDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """批量物理删除绑定"""
+    """批量解除绑定：与单个解除绑定逻辑一致"""
 
     permission_resource = "configs"
     permission_action = "delete"
@@ -715,12 +715,28 @@ class BindingBatchDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
             messages.error(request, "无效的绑定 ID")
             return redirect(fallback)
 
-        bindings = ConfigNodeBinding.objects.filter(pk__in=id_list)
-        count = len(bindings)
-        for b in bindings:
-            b.delete()
+        bindings = list(ConfigNodeBinding.objects.filter(pk__in=id_list))
+        hard_deleted = 0
+        soft_deleted = 0
 
-        messages.success(request, f"已批量删除 {count} 个绑定")
+        for b in bindings:
+            if b.node.nginx_available is not True:
+                b.delete()
+                hard_deleted += 1
+            elif b.sync_status in ("not_synced", "orphaned", "marked_deleted"):
+                b.delete()
+                hard_deleted += 1
+            else:
+                b.sync_status = "marked_deleted"
+                b.save(update_fields=["sync_status", "updated_at"])
+                soft_deleted += 1
+
+        parts = []
+        if soft_deleted:
+            parts.append(f"{soft_deleted} 个已标记删除（下次同步时清理远程文件）")
+        if hard_deleted:
+            parts.append(f"{hard_deleted} 个已直接移除")
+        messages.success(request, "批量解除完成：" + "，".join(parts))
         return redirect(fallback)
 
 
