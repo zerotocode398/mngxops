@@ -12,7 +12,10 @@ SKIP_FILES = {"mime.types"}
 
 def default_nginx_conf_path():
     """读取系统设置中的默认 nginx 主配置路径"""
-    return get_setting("config.default_nginx_path", "/etc/nginx/nginx.conf") or "/etc/nginx/nginx.conf"
+    return (
+        get_setting("config.default_nginx_path", "/etc/nginx/nginx.conf")
+        or "/etc/nginx/nginx.conf"
+    )
 
 
 def discover_max_depth():
@@ -43,7 +46,9 @@ def save_sync_path(node, main_conf_path, user=None):
     return setting
 
 
-def _ensure_binding(config, node, remote_path, content, request_user, source="discovered", task_id=None):
+def _ensure_binding(
+    config, node, remote_path, content, request_user, source="discovered", task_id=None
+):
     """确保绑定存在并更新内容，已标记删除的绑定会被跳过"""
     now = timezone.now()
     # 已标记删除：本轮不重建导入，留给末尾 _cleanup_marked_deleted_bindings 清理
@@ -109,7 +114,15 @@ def _ensure_binding(config, node, remote_path, content, request_user, source="di
         binding.last_sync_time = now
         binding.last_sync_task_id = task_id
         binding.remote_path = remote_path
-        binding.save(update_fields=["sync_status", "last_sync_time", "last_sync_task_id", "remote_path", "updated_at"])
+        binding.save(
+            update_fields=[
+                "sync_status",
+                "last_sync_time",
+                "last_sync_task_id",
+                "remote_path",
+                "updated_at",
+            ]
+        )
         return "skipped", binding
 
 
@@ -254,7 +267,9 @@ def _cleanup_marked_deleted_bindings(node, request_user):
             else:
                 logger.warning(f"删除远程文件失败 {binding.remote_path}: {output}")
         except Exception as e:
-            logger.error(f"清理绑定异常 {binding.config.name} @ {node.hostname}: {str(e)}")
+            logger.error(
+                f"清理绑定异常 {binding.config.name} @ {node.hostname}: {str(e)}"
+            )
 
     ssh.close()
     return deleted
@@ -340,7 +355,14 @@ def mark_discovery_failed_configs(node, errors, request_user=None, task_id=None)
                 binding.sync_status = "failed"
                 binding.last_sync_error = error
                 binding.last_sync_task_id = task_id
-                binding.save(update_fields=["sync_status", "last_sync_error", "last_sync_task_id", "updated_at"])
+                binding.save(
+                    update_fields=[
+                        "sync_status",
+                        "last_sync_error",
+                        "last_sync_task_id",
+                        "updated_at",
+                    ]
+                )
             failed.append(failed_name)
 
     return failed
@@ -357,7 +379,9 @@ def preview_glob_configs(node, credential, nginx_conf_path):
         auth_kwargs["private_key"] = credential.get_private_key()
 
     discovered, errors = discover_nginx_configs(
-        node.ip, node.port, credential.username,
+        node.ip,
+        node.port,
+        credential.username,
         nginx_conf_path=nginx_conf_path,
         max_include_depth=discover_max_depth(),
         **auth_kwargs,
@@ -386,11 +410,21 @@ def _sync_one_node(node, task_center_id, request_user):
 
     close_old_connections()
     result = {
-        "node_id": node.id, "hostname": node.hostname, "ip": node.ip,
-        "success": False, "message": "", "created": 0, "updated": 0,
-        "orphaned": 0, "deleted": 0, "errors": [],
-        "created_names": [], "updated_names": [], "orphaned_names": [],
-        "deleted_names": [], "skipped_names": [],
+        "node_id": node.id,
+        "hostname": node.hostname,
+        "ip": node.ip,
+        "success": False,
+        "message": "",
+        "created": 0,
+        "updated": 0,
+        "orphaned": 0,
+        "deleted": 0,
+        "errors": [],
+        "created_names": [],
+        "updated_names": [],
+        "orphaned_names": [],
+        "deleted_names": [],
+        "skipped_names": [],
     }
     hostname = node.hostname
     try:
@@ -424,23 +458,37 @@ def _sync_one_node(node, task_center_id, request_user):
             result["message"] = "任务已取消"
             return result
         cancel_check = lambda: is_cancelled(task_center_id)
+
+        def discovery_progress(count, current_path):
+            _set_current_step(task_center_id, hostname, f"发现配置 ({count})")
+
         if credential.auth_type == "password":
             discovered, errors = discover_nginx_configs(
-                node.ip, node.port, credential.username,
-                password=credential.get_password(), nginx_conf_path=nginx_conf_path,
+                node.ip,
+                node.port,
+                credential.username,
+                password=credential.get_password(),
+                nginx_conf_path=nginx_conf_path,
                 max_include_depth=depth,
                 cancel_check=cancel_check,
+                progress_callback=discovery_progress,
             )
         else:
             discovered, errors = discover_nginx_configs(
-                node.ip, node.port, credential.username,
-                private_key=credential.get_private_key(), nginx_conf_path=nginx_conf_path,
+                node.ip,
+                node.port,
+                credential.username,
+                private_key=credential.get_private_key(),
+                nginx_conf_path=nginx_conf_path,
                 max_include_depth=depth,
                 cancel_check=cancel_check,
+                progress_callback=discovery_progress,
             )
 
         if errors:
-            mark_discovery_failed_configs(node, errors, request_user, task_id=task_center_id)
+            mark_discovery_failed_configs(
+                node, errors, request_user, task_id=task_center_id
+            )
             result["errors"].extend(errors)
 
         def progress_callback(status, name):
@@ -451,7 +499,10 @@ def _sync_one_node(node, task_center_id, request_user):
 
         if discovered:
             created, updated, skipped, orphaned, deleted = sync_discovered_configs(
-                node, discovered, request_user, remark="批量节点全量同步",
+                node,
+                discovered,
+                request_user,
+                remark="批量节点全量同步",
                 progress_callback=progress_callback,
                 task_id=task_center_id,
             )
@@ -508,7 +559,11 @@ def run_batch_config_sync_task(task_id, sync_nodes, request_user, max_workers):
 
     from django.utils import timezone
     from apps.releases.models import TaskCenterTask
-    from apps.releases.task_cancel import finish_if_active, is_cancelled, update_if_active
+    from apps.releases.task_cancel import (
+        finish_if_active,
+        is_cancelled,
+        update_if_active,
+    )
     from apps.releases.task_progress import _clear_release_progress_state
     from apps.releases.task_result import (
         build_tree_result,
@@ -529,7 +584,9 @@ def run_batch_config_sync_task(task_id, sync_nodes, request_user, max_workers):
 
     try:
         TaskCenterTask.objects.filter(pk=task_id).update(
-            status="running", started_at=timezone.now(), progress=0,
+            status="running",
+            started_at=timezone.now(),
+            progress=0,
             detail=f"执行中：0/{len(sync_nodes)}",
         )
         success_count = 0
@@ -622,7 +679,9 @@ def run_batch_config_sync_task(task_id, sync_nodes, request_user, max_workers):
         status = "success" if fail_count == 0 else "failed"
         finish_if_active(
             task_id,
-            status=status, progress=100, finished_at=timezone.now(),
+            status=status,
+            progress=100,
+            finished_at=timezone.now(),
             result=build_tree_result(success_count, fail_count, total, node_blocks),
             detail=f"执行完成：成功 {success_count}，失败 {fail_count}，共 {total}",
         )
@@ -634,7 +693,9 @@ def run_batch_config_sync_task(task_id, sync_nodes, request_user, max_workers):
             progress=100,
             finished_at=timezone.now(),
             result=build_tree_result(
-                0, 1, 1,
+                0,
+                1,
+                1,
                 [item_failed("同步", f"批量同步异常: {str(exc)[:200]}")],
             ),
             detail=f"同步异常: {str(exc)[:120]}",
@@ -658,7 +719,10 @@ def run_single_config_sync_task(
     from django.utils import timezone
     from apps.releases.models import TaskCenterTask
     from apps.releases.task_cancel import finish_if_active, is_cancelled
-    from apps.releases.task_progress import _set_current_step, _clear_release_progress_state
+    from apps.releases.task_progress import (
+        _set_current_step,
+        _clear_release_progress_state,
+    )
     from apps.releases.task_result import (
         build_tree_result,
         item_failed,
@@ -684,7 +748,9 @@ def run_single_config_sync_task(
         task.started_at = timezone.now()
         task.progress = 5
         task.detail = "正在连接远程节点..."
-        task.save(update_fields=["status", "started_at", "progress", "detail", "updated_at"])
+        task.save(
+            update_fields=["status", "started_at", "progress", "detail", "updated_at"]
+        )
         _set_current_step(task.id, hostname, "连接远程")
         _flush_live()
 
@@ -693,11 +759,21 @@ def run_single_config_sync_task(
         task.progress = 10
         task.save(update_fields=["progress", "detail", "updated_at"])
 
+        def discovery_progress(count, current_path):
+            _set_current_step(task.id, hostname, f"发现配置 ({count})")
+            TaskCenterTask.objects.filter(pk=task.id).update(
+                detail=f"正在发现配置... ({count})",
+                updated_at=timezone.now(),
+            )
+
         discovered, errors = discover_nginx_configs(
-            node.ip, node.port, username,
+            node.ip,
+            node.port,
+            username,
             nginx_conf_path=nginx_conf_path,
             max_include_depth=discover_max_depth(),
             cancel_check=lambda: is_cancelled(task.id),
+            progress_callback=discovery_progress,
             **auth_kwargs,
         )
 
@@ -734,14 +810,11 @@ def run_single_config_sync_task(
                 live_blocks.append(item_failed("同步", reason))
                 item_fail = 1
                 task.status = "failed"
-                task.detail = (
-                    f"同步失败: 0 新增, 0 更新, {len(deleted)} 删除"
-                )
+                task.detail = f"同步失败: 0 新增, 0 更新, {len(deleted)} 删除"
             elif deleted or orphaned_names:
                 task.status = "success"
-                task.detail = (
-                    f"同步完成: 0 新增, 0 更新, {len(deleted)} 删除"
-                    + (f", {len(orphaned_names)} 远程已删除" if orphaned_names else "")
+                task.detail = f"同步完成: 0 新增, 0 更新, {len(deleted)} 删除" + (
+                    f", {len(orphaned_names)} 远程已删除" if orphaned_names else ""
                 )
             else:
                 live_blocks.append(item_failed("同步", "未发现配置文件"))
@@ -751,11 +824,21 @@ def run_single_config_sync_task(
             task.progress = 100
             task.finished_at = timezone.now()
             task.result = build_tree_result(
-                item_ok, item_fail, item_ok + item_fail, live_blocks,
+                item_ok,
+                item_fail,
+                item_ok + item_fail,
+                live_blocks,
             )
-            task.save(update_fields=[
-                "status", "progress", "finished_at", "result", "detail", "updated_at",
-            ])
+            task.save(
+                update_fields=[
+                    "status",
+                    "progress",
+                    "finished_at",
+                    "result",
+                    "detail",
+                    "updated_at",
+                ]
+            )
             return
 
         total = len(discovered)
@@ -783,14 +866,22 @@ def run_single_config_sync_task(
 
         if is_partial:
             created, updated, skipped, orphaned, deleted = sync_selected_configs(
-                node, selected_paths, discovered, request_user,
-                remark="单节点部分同步", progress_callback=progress_callback,
+                node,
+                selected_paths,
+                discovered,
+                request_user,
+                remark="单节点部分同步",
+                progress_callback=progress_callback,
                 task_id=task.id,
             )
         else:
             created, updated, skipped, orphaned, deleted = sync_discovered_configs(
-                node, discovered, request_user, remark="单节点全量同步",
-                progress_callback=progress_callback, task_id=task.id,
+                node,
+                discovered,
+                request_user,
+                remark="单节点全量同步",
+                progress_callback=progress_callback,
+                task_id=task.id,
             )
 
         save_sync_path(node, nginx_conf_path, request_user)
@@ -823,7 +914,9 @@ def run_single_config_sync_task(
             status="success" if success else "failed",
             progress=100,
             finished_at=timezone.now(),
-            result=build_tree_result(item_ok, item_fail, item_ok + item_fail, node_blocks),
+            result=build_tree_result(
+                item_ok, item_fail, item_ok + item_fail, node_blocks
+            ),
             detail=(
                 f"同步{'完成' if success else '失败'}: "
                 f"{len(created)} 新增, {len(updated)} 更新, {len(deleted)} 删除"
@@ -837,7 +930,9 @@ def run_single_config_sync_task(
             progress=100,
             finished_at=timezone.now(),
             result=build_tree_result(
-                0, 1, 1,
+                0,
+                1,
+                1,
                 [
                     node_header(node.ip, node.hostname),
                     item_failed("同步", f"同步异常: {str(exc)[:200]}"),

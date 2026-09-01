@@ -306,10 +306,13 @@ def discover_nginx_configs(
     nginx_conf_path="",
     max_include_depth=3,
     cancel_check=None,
+    progress_callback=None,
 ):
     """递归发现远程节点的Nginx配置文件（包括include引入的配置）
 
     cancel_check: 可选无参回调，返回 True 时中止发现（协作取消）
+    progress_callback: 可选回调，签名 (count, current_path)，
+        每发现一个配置文件后调用，count 为当前已发现数量
     整个发现过程复用同一条 SSH 连接，避免 per-file 重复握手。
     """
     import posixpath
@@ -391,6 +394,8 @@ def discover_nginx_configs(
                         "content": content,
                     }
                 )
+                if progress_callback:
+                    progress_callback(len(results), current_path)
 
             current_dir = posixpath.dirname(current_path) or "/"
             for match in include_pattern.finditer(content):
