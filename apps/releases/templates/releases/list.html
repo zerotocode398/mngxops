@@ -11,12 +11,6 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-clock-history"></i> 发布历史</h5>
                     <div class="d-flex align-items-center gap-2">
-                        {% if user|has_perm_code:"releases.update" %}
-                        <span class="text-muted small">已选 <span id="selectedRollbackNodeCount" class="text-primary">0</span> 个节点，<span id="selectedRollbackCount" class="text-primary">0</span> 个配置</span>
-                        <button type="button" class="btn btn-outline-warning btn-sm" id="btnSelectedRollback" disabled>
-                            <i class="bi bi-arrow-counterclockwise"></i> 批量回滚
-                        </button>
-                        {% endif %}
                         {% if user|has_perm_code:"releases.create" %}
                         <a href="{% url 'releases:center' %}" class="btn btn-primary btn-sm">
                             <i class="bi bi-rocket-takeoff"></i> 发布中心
@@ -57,12 +51,6 @@
                         <table class="table table-sm table-hover mb-0 data-table history-table">
                             <thead class="table-light">
                                 <tr>
-                                    {% if user|has_perm_code:"releases.update" %}
-                                    <th style="width: 4%;" class="text-center">
-                                        <input type="checkbox" id="selectAllRollback" title="全选本页节点（按主机去重）"
-                                            aria-label="全选本页节点">
-                                    </th>
-                                    {% endif %}
                                     <th style="width: 30%;">节点 / 配置</th>
                                     <th style="width: 8%;">版本</th>
                                     <th style="width: 24%;">路径</th>
@@ -73,12 +61,12 @@
                             </thead>
                             <tbody>
                                 {% for batch_key, batch in batch_groups.items %}
-                                <tr class="history-batch-row">
-                                    {% if user|has_perm_code:"releases.update" %}
-                                    <td></td>
-                                    {% endif %}
+                                <tr class="history-batch-row"
+                                    data-batch-key="{{ batch_key }}"
+                                    data-expanded="{% if expand_all_nodes %}1{% else %}0{% endif %}">
                                     <td>
                                         <div class="d-flex align-items-center gap-3 flex-wrap">
+                                            <i class="bi bi-chevron-{% if expand_all_nodes %}down{% else %}right{% endif %} history-batch-toggle-icon"></i>
                                             <i class="bi bi-tag"></i>
                                             <code class="text-primary">{{ batch_key }}</code>
                                             <small class="text-muted"><i class="bi bi-person"></i> {{ batch.operator }}</small>
@@ -102,26 +90,15 @@
                                     <td></td>
                                 </tr>
                                 {% for node_key, node_data in batch.nodes.items %}
-                                <tr class="history-node-row" data-node-uid="{{ batch_key }}-{{ node_key }}"
+                                <tr class="history-node-row{% if not expand_all_nodes %} d-none{% endif %}"
+                                    data-batch-key="{{ batch_key }}"
+                                    data-node-uid="{{ batch_key }}-{{ node_key }}"
                                     data-node-id="{{ node_data.node.id }}"
                                     data-hostname="{{ node_data.node.hostname }}"
-                                    data-expanded="{% if expand_all_nodes or forloop.parentloop.first and forloop.first %}1{% else %}0{% endif %}">
-                                    {% if user|has_perm_code:"releases.update" %}
-                                    <td class="text-center">
-                                        {% if not node_data.node.is_locked and not node_data.node.is_deleted and node_data.node.allows_nginx_ops %}
-                                        <input type="checkbox" class="rollback-node-cb"
-                                            data-node-uid="{{ batch_key }}-{{ node_key }}"
-                                            data-node-id="{{ node_data.node.id }}"
-                                            data-hostname="{{ node_data.node.hostname }}"
-                                            title="全选/取消本节点可回滚配置（跨批次合并）"
-                                            aria-label="勾选节点 {{ node_data.node.hostname }}"
-                                            onclick="event.stopPropagation();">
-                                        {% endif %}
-                                    </td>
-                                    {% endif %}
+                                    data-expanded="0">
                                     <td>
                                         <div class="node-info-cell">
-                                            <i class="bi bi-chevron-{% if expand_all_nodes or forloop.parentloop.first and forloop.first %}down{% else %}right{% endif %} history-toggle-icon"></i>
+                                            <i class="bi bi-chevron-right history-toggle-icon"></i>
                                             <span class="node-identity">
                                                 {% if node_data.node.is_locked %}<i class="bi bi-lock-fill text-warning" title="已锁定"></i>{% endif %}
                                                 {{ node_data.node.hostname }}<small class="text-muted">({{ node_data.node.ip }}:{{ node_data.node.port }})</small>
@@ -142,30 +119,10 @@
                                     <td></td>
                                 </tr>
                                 {% for task in node_data.tasks %}
-                                <tr class="history-config-row{% if not expand_all_nodes %}{% if not forloop.parentloop.parentloop.first or not forloop.parentloop.first %} d-none{% endif %}{% endif %}"
+                                <tr class="history-config-row{% if not expand_all_nodes %} d-none{% endif %}"
                                     data-node-uid="{{ batch_key }}-{{ node_key }}"
                                     data-node-id="{{ node_data.node.id }}"
                                     data-task-status="{{ task.status }}">
-                                    {% if user|has_perm_code:"releases.update" %}
-                                    <td class="text-center">
-                                        {% if task.status == 'success' or task.status == 'failed' %}
-                                        {% if not task.node.is_locked and not task.node.is_deleted and task.node.allows_nginx_ops %}
-                                        <input type="checkbox" class="rollback-task-cb"
-                                            value="{{ task.id }}"
-                                            data-node-uid="{{ batch_key }}-{{ node_key }}"
-                                            data-node-id="{{ node_data.node.id }}"
-                                            data-hostname="{{ node_data.node.hostname }}"
-                                            data-ip="{{ node_data.node.ip }}"
-                                            data-binding-id="{{ task.binding_id|default:'' }}"
-                                            data-config="{{ task.config.name }}"
-                                            data-publish-version="{{ task.publish_version|default:'' }}"
-                                            data-rollback-version="{{ task.rollback_target_version|default:'' }}"
-                                            data-created-at="{{ task.created_at|date:'c' }}"
-                                            aria-label="勾选配置 {{ task.config.name }}">
-                                        {% endif %}
-                                        {% endif %}
-                                    </td>
-                                    {% endif %}
                                     <td class="history-config-name"><code>{{ task.config.name }}</code></td>
                                     <td>
                                         {% if task.version_id %}
@@ -245,47 +202,6 @@
     </div>
 </div>
 
-{% if user|has_perm_code:"releases.update" %}
-<!-- 批量回滚明细确认弹窗（对齐 rollback.html / contentPreviewModal） -->
-<div class="modal fade" id="batchRollbackPreviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-arrow-counterclockwise"></i> 确认批量回滚
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
-            </div>
-            <div class="modal-body">
-                <p class="mb-2" id="batchRollbackSummary"></p>
-                <p class="text-muted small mb-3" id="batchRollbackHint">
-                    将回滚到各任务发布版本的上一版；同一配置跨多批次仅保留最近一次；需指定其他版本请使用单配置回滚。
-                </p>
-                <div class="table-responsive modal-table-scroll border rounded">
-                    <table class="table table-sm table-hover mb-0 data-table" id="batchRollbackPreviewTable">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width: 28%;">节点</th>
-                                <th style="width: 32%;">配置</th>
-                                <th style="width: 20%;">当前版本</th>
-                                <th style="width: 20%;">回滚至</th>
-                            </tr>
-                        </thead>
-                        <tbody id="batchRollbackPreviewBody"></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-warning btn-sm" id="batchRollbackSubmitBtn">
-                    <i class="bi bi-arrow-counterclockwise"></i> 确认并执行
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
 <!-- 配置版本内容预览弹窗（对齐 rollback.html） -->
 <div class="modal fade" id="versionPreviewModal" tabindex="-1" aria-labelledby="versionPreviewModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
@@ -334,6 +250,8 @@
 
 {% block extra_js %}
 <style>
+    .history-table .history-batch-row { cursor: pointer; }
+    .history-table .history-batch-row:hover { background: #e9ecf0; }
     .history-table .history-batch-row td {
         background: #f1f3f5;
         border-bottom: 1px solid #dee2e6;
@@ -344,6 +262,7 @@
     .history-table .history-config-row td { border-top: 1px dashed #e0e0e0; }
     .history-table .history-config-name { padding-left: 2rem; }
     .history-table .history-toggle-icon { color: var(--gray-600); margin-right: 2px; }
+    .history-table .history-batch-toggle-icon { color: var(--gray-600); margin-right: 2px; }
     .history-table .history-status-col {
         white-space: nowrap;
         vertical-align: middle;
@@ -361,55 +280,27 @@
     document.addEventListener('DOMContentLoaded', function() {
         initTagSearch('#releaseHistorySearchTagWrapper', '#releaseHistorySearchHidden', '#searchForm');
 
-        var countEl = document.getElementById('selectedRollbackCount');
-        var nodeCountEl = document.getElementById('selectedRollbackNodeCount');
-        var btnRollback = document.getElementById('btnSelectedRollback');
-        var selectAll = document.getElementById('selectAllRollback');
-        var csrfToken = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
-
-        /** 按真实 node_id 获取本页全部可回滚配置勾选框（跨批次合并） */
-        function getTaskCbsByNodeId(nodeId) {
-            return document.querySelectorAll('.rollback-task-cb[data-node-id="' + nodeId + '"]');
-        }
-
-        /** 按真实 node_id 获取本页全部节点勾选框 */
-        function getNodeCbsByNodeId(nodeId) {
-            return document.querySelectorAll('.rollback-node-cb[data-node-id="' + nodeId + '"]');
-        }
-
-        /** 同步某真实节点在本页所有批次行上的勾选状态（全选/半选/未选） */
-        function syncNodeCheckboxById(nodeId) {
-            if (!nodeId) return;
-            var cbs = getTaskCbsByNodeId(nodeId);
-            var nodeCbs = getNodeCbsByNodeId(nodeId);
-            if (!nodeCbs.length) return;
-            if (!cbs.length) {
-                nodeCbs.forEach(function(nodeCb) {
-                    nodeCb.disabled = true;
-                    nodeCb.checked = false;
-                    nodeCb.indeterminate = false;
-                });
-                return;
+        /** 切换批次下所有节点行的展开/折叠 */
+        function toggleBatchRow(row) {
+            var batchKey = row.dataset.batchKey;
+            var next = row.dataset.expanded !== '1';
+            row.dataset.expanded = next ? '1' : '0';
+            var icon = row.querySelector('.history-batch-toggle-icon');
+            if (icon) {
+                icon.className = 'bi history-batch-toggle-icon ' + (next ? 'bi-chevron-down' : 'bi-chevron-right');
             }
-            var checked = 0;
-            cbs.forEach(function(cb) { if (cb.checked) checked++; });
-            var allChecked = checked === cbs.length;
-            var indeterminate = checked > 0 && checked < cbs.length;
-            nodeCbs.forEach(function(nodeCb) {
-                nodeCb.disabled = false;
-                nodeCb.checked = allChecked;
-                nodeCb.indeterminate = indeterminate;
-            });
-        }
-
-        /** 同步本页所有唯一节点勾选状态 */
-        function syncAllNodeCheckboxes() {
-            var seen = {};
-            document.querySelectorAll('.rollback-node-cb').forEach(function(nodeCb) {
-                var nid = nodeCb.dataset.nodeId;
-                if (!nid || seen[nid]) return;
-                seen[nid] = true;
-                syncNodeCheckboxById(nid);
+            document.querySelectorAll('.history-node-row[data-batch-key="' + batchKey + '"]').forEach(function(r) {
+                r.classList.toggle('d-none', !next);
+                if (!next) {
+                    r.dataset.expanded = '0';
+                    var nodeIcon = r.querySelector('.history-toggle-icon');
+                    if (nodeIcon) {
+                        nodeIcon.className = 'bi history-toggle-icon bi-chevron-right';
+                    }
+                    document.querySelectorAll('.history-config-row[data-node-uid="' + r.dataset.nodeUid + '"]').forEach(function(cr) {
+                        cr.classList.add('d-none');
+                    });
+                }
             });
         }
 
@@ -427,246 +318,19 @@
             });
         }
 
+        document.querySelectorAll('.history-batch-row').forEach(function(row) {
+            row.addEventListener('click', function(e) {
+                if (e.target && (e.target.closest('input[type="checkbox"]'))) return;
+                toggleBatchRow(row);
+            });
+        });
+
         document.querySelectorAll('.history-node-row').forEach(function(row) {
             row.addEventListener('click', function(e) {
                 if (e.target && (e.target.closest('input[type="checkbox"]'))) return;
                 toggleNodeRow(row);
             });
         });
-
-        /** 刷新已选计数（节点按 node_id 去重）、节点半选与表头全选 */
-        function refreshSelectionUI() {
-            var cbs = document.querySelectorAll('.rollback-task-cb');
-            var checkedCbs = document.querySelectorAll('.rollback-task-cb:checked');
-            var m = checkedCbs.length;
-            var nodeSet = {};
-            checkedCbs.forEach(function(cb) {
-                if (cb.dataset.nodeId) nodeSet[cb.dataset.nodeId] = true;
-            });
-            var n = Object.keys(nodeSet).length;
-            if (countEl) countEl.textContent = m;
-            if (nodeCountEl) nodeCountEl.textContent = n;
-            if (btnRollback) btnRollback.disabled = m === 0;
-            if (selectAll) {
-                selectAll.checked = cbs.length > 0 && m === cbs.length;
-                selectAll.indeterminate = m > 0 && m < cbs.length;
-            }
-            syncAllNodeCheckboxes();
-        }
-
-        document.querySelectorAll('.rollback-task-cb').forEach(function(cb) {
-            cb.addEventListener('change', function() {
-                syncNodeCheckboxById(this.dataset.nodeId);
-                refreshSelectionUI();
-            });
-            cb.addEventListener('click', function(e) { e.stopPropagation(); });
-        });
-
-        document.querySelectorAll('.rollback-node-cb').forEach(function(nodeCb) {
-            nodeCb.addEventListener('change', function() {
-                var checked = this.checked;
-                var nodeId = this.dataset.nodeId;
-                // 跨批次合并：勾选/取消该主机在本页所有批次下的可回滚配置
-                getTaskCbsByNodeId(nodeId).forEach(function(cb) {
-                    cb.checked = checked;
-                });
-                getNodeCbsByNodeId(nodeId).forEach(function(peer) {
-                    peer.checked = checked;
-                    peer.indeterminate = false;
-                });
-                refreshSelectionUI();
-            });
-        });
-
-        if (selectAll) {
-            selectAll.addEventListener('change', function() {
-                var checked = this.checked;
-                document.querySelectorAll('.rollback-task-cb').forEach(function(cb) {
-                    cb.checked = checked;
-                });
-                this.indeterminate = false;
-                refreshSelectionUI();
-            });
-        }
-
-        if (btnRollback) {
-            var batchRollbackModalEl = document.getElementById('batchRollbackPreviewModal');
-            var batchRollbackModal = batchRollbackModalEl
-                ? new bootstrap.Modal(batchRollbackModalEl)
-                : null;
-            var pendingRollbackIds = [];
-
-            /** 按 binding_id 去重，保留最新任务（与后端一致） */
-            function dedupeRollbackItems(items) {
-                var byBinding = {};
-                var noBinding = [];
-                var skipped = 0;
-                items.forEach(function(item) {
-                    if (!item.bindingId) {
-                        noBinding.push(item);
-                        return;
-                    }
-                    var prev = byBinding[item.bindingId];
-                    if (!prev) {
-                        byBinding[item.bindingId] = item;
-                        return;
-                    }
-                    var newer = (item.createdAt > prev.createdAt)
-                        || (item.createdAt === prev.createdAt && item.id > prev.id);
-                    if (newer) {
-                        byBinding[item.bindingId] = item;
-                    }
-                    skipped += 1;
-                });
-                return {
-                    items: Object.keys(byBinding).map(function(k) { return byBinding[k]; }).concat(noBinding),
-                    skipped: skipped
-                };
-            }
-
-            /** 从勾选框收集回滚明细项 */
-            function collectRollbackItems(checkedCbs) {
-                return checkedCbs.map(function(cb) {
-                    return {
-                        id: parseInt(cb.value, 10),
-                        nodeId: cb.dataset.nodeId || '',
-                        hostname: cb.dataset.hostname || '-',
-                        ip: cb.dataset.ip || '',
-                        bindingId: cb.dataset.bindingId || '',
-                        config: cb.dataset.config || cb.value,
-                        publishVersion: cb.dataset.publishVersion || '',
-                        rollbackVersion: cb.dataset.rollbackVersion || '',
-                        createdAt: cb.dataset.createdAt || ''
-                    };
-                });
-            }
-
-            /** 转义文本，避免写入表格 HTML 时注入 */
-            function escapeHtml(str) {
-                return String(str == null ? '' : str)
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;');
-            }
-
-            /** 渲染批量回滚明细表（按节点分组） */
-            function renderRollbackPreview(items) {
-                var tbody = document.getElementById('batchRollbackPreviewBody');
-                var summaryEl = document.getElementById('batchRollbackSummary');
-                if (!tbody) return [];
-
-                var groups = {};
-                var order = [];
-                items.forEach(function(item) {
-                    var key = item.nodeId || item.hostname;
-                    if (!groups[key]) {
-                        groups[key] = { hostname: item.hostname, ip: item.ip, items: [] };
-                        order.push(key);
-                    }
-                    groups[key].items.push(item);
-                });
-
-                var html = '';
-                var submitIds = [];
-                order.forEach(function(key) {
-                    var group = groups[key];
-                    group.items.forEach(function(item, idx) {
-                        var canRollback = !!item.rollbackVersion;
-                        if (canRollback) submitIds.push(item.id);
-                        var nodeCell = idx === 0
-                            ? ('<div class="node-info-cell"><span class="node-identity">' +
-                               escapeHtml(group.hostname) +
-                               (group.ip ? '<small class="text-muted">(' + escapeHtml(group.ip) + ')</small>' : '') +
-                               '</span></div>')
-                            : '';
-                        var fromBadge = item.publishVersion
-                            ? '<span class="badge bg-info">V' + escapeHtml(item.publishVersion) + '</span>'
-                            : '<span class="text-muted">-</span>';
-                        var toBadge = canRollback
-                            ? '<span class="badge bg-warning text-dark">V' + escapeHtml(item.rollbackVersion) + '</span>'
-                            : '<span class="badge bg-secondary">不可回滚</span>';
-                        html += '<tr' + (canRollback ? '' : ' class="text-muted"') + '>';
-                        html += '<td>' + nodeCell + '</td>';
-                        html += '<td><code>' + escapeHtml(item.config) + '</code></td>';
-                        html += '<td>' + fromBadge + '</td>';
-                        html += '<td>' + toBadge + '</td>';
-                        html += '</tr>';
-                    });
-                });
-                tbody.innerHTML = html || '<tr><td colspan="4" class="text-center text-muted py-3">无可回滚项</td></tr>';
-
-                var nodeCount = order.length;
-                var okCount = submitIds.length;
-                if (summaryEl) {
-                    summaryEl.textContent = '将回滚 ' + okCount + ' 个配置，涉及 ' + nodeCount + ' 个节点。';
-                }
-                return submitIds;
-            }
-
-            btnRollback.addEventListener('click', function() {
-                var checked = Array.from(document.querySelectorAll('.rollback-task-cb:checked'));
-                if (!checked.length) return;
-                var collected = collectRollbackItems(checked);
-                var deduped = dedupeRollbackItems(collected);
-                var submitIds = renderRollbackPreview(deduped.items);
-                var summaryEl = document.getElementById('batchRollbackSummary');
-                if (summaryEl && deduped.skipped > 0) {
-                    summaryEl.textContent += '（同配置跨批次已去重 ' + deduped.skipped + ' 条）';
-                }
-                if (!submitIds.length) {
-                    showToast('所选任务均无上一版本，无法批量回滚', 'warning');
-                    return;
-                }
-                pendingRollbackIds = submitIds;
-                if (batchRollbackModal) batchRollbackModal.show();
-            });
-
-            var submitBtn = document.getElementById('batchRollbackSubmitBtn');
-            if (submitBtn) {
-                submitBtn.addEventListener('click', function() {
-                    var ids = pendingRollbackIds.slice();
-                    if (!ids.length) return;
-                    if (batchRollbackModal) batchRollbackModal.hide();
-                    btnRollback.disabled = true;
-                    btnRollback.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 回滚中...';
-                    submitBtn.disabled = true;
-                    fetch('{% url "releases:api_selected_rollback" %}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrfToken,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: JSON.stringify({ task_ids: ids })
-                    })
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        submitBtn.disabled = false;
-                        if (data.success) {
-                            showToast(data.message, 'success');
-                            setTimeout(function() {
-                                window.location.href = '/releases/history/?search=' + encodeURIComponent(data.batch_number || '');
-                            }, 800);
-                        } else {
-                            showToast(data.message || '回滚失败', 'danger');
-                            btnRollback.disabled = false;
-                            btnRollback.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 批量回滚';
-                            refreshSelectionUI();
-                        }
-                    })
-                    .catch(function() {
-                        submitBtn.disabled = false;
-                        showToast('网络错误', 'danger');
-                        btnRollback.disabled = false;
-                        btnRollback.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 批量回滚';
-                        refreshSelectionUI();
-                    });
-                });
-            }
-        }
-
-        refreshSelectionUI();
 
         // 版本内容预览（点击 Vx badge）
         var vpModalEl = document.getElementById('versionPreviewModal');

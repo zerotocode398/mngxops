@@ -6,14 +6,30 @@ app_name = "releases"
 urlpatterns = [
     # API
     path("api/nodes/", views.ReleaseNodeListAPIView.as_view(), name="api_nodes"),
-    path("api/node-bindings/<int:node_id>/", views.ReleaseNodeBindingsAPIView.as_view(), name="api_node_bindings"),
+    path(
+        "api/node-bindings/<int:node_id>/",
+        views.ReleaseNodeBindingsAPIView.as_view(),
+        name="api_node_bindings",
+    ),
     # 创建
     path("api/create/", views.ReleaseCreateAPIView.as_view(), name="api_create"),
     # 任务中心
     path("history/", views.TaskCenterListView.as_view(), name="history"),
-    path("tasks/<int:pk>/", views.TaskCenterDetailView.as_view(), name="task_center_detail"),
-    path("tasks/<int:pk>/cancel/", views.TaskCenterCancelView.as_view(), name="task_center_cancel"),
-    path("tasks/progress/", views.TaskCenterProgressAPIView.as_view(), name="task_center_progress"),
+    path(
+        "tasks/<int:pk>/",
+        views.TaskCenterDetailView.as_view(),
+        name="task_center_detail",
+    ),
+    path(
+        "tasks/<int:pk>/cancel/",
+        views.TaskCenterCancelView.as_view(),
+        name="task_center_cancel",
+    ),
+    path(
+        "tasks/progress/",
+        views.TaskCenterProgressAPIView.as_view(),
+        name="task_center_progress",
+    ),
     # 发布历史
     path("list/", views.ReleaseListView.as_view(), name="list"),
     # 发布中心
@@ -42,17 +58,6 @@ urlpatterns = [
     path("<int:pk>/", views.ReleaseDetailView.as_view(), name="detail"),
     path("<int:pk>/rollback/", views.ReleaseRollbackView.as_view(), name="rollback"),
     path("<int:pk>/retry/", views.ReleaseRetryView.as_view(), name="retry"),
-    # 批量回滚
-    path(
-        "batch-rollback/<str:batch_number>/",
-        views.ReleaseBatchRollbackView.as_view(),
-        name="batch_rollback",
-    ),
-    path(
-        "api/selected-rollback/",
-        views.ReleaseSelectedRollbackView.as_view(),
-        name="api_selected_rollback",
-    ),
     # 版本内容
     path(
         "version/<int:version_id>/content/",

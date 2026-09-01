@@ -33,7 +33,6 @@ from .task_progress import (
 )
 from .services import (
     _start_release_executor,
-    _start_rollback_for_release_tasks,
 )
 from utils.pagination import PerPagePaginationMixin
 
@@ -1335,69 +1334,3 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 "task_center_id": task_center.id,
             }
         )
-
-
-class ReleaseBatchRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """按批次号批量回滚（兼容保留）"""
-
-    permission_resource = "releases"
-    permission_action = "update"
-
-    def post(self, request, batch_number):
-        tasks = ReleaseTask.objects.filter(
-            batch_number=batch_number,
-            status__in=["success", "failed"],
-        ).select_related("node", "config", "binding")
-
-        if not tasks.exists():
-            return JsonResponse(
-                {"success": False, "message": "未找到可回滚的任务"}, status=400
-            )
-
-        ok, result = _start_rollback_for_release_tasks(tasks, request.user)
-        if not ok:
-            return JsonResponse({"success": False, "message": result}, status=400)
-        return JsonResponse(result)
-
-
-class ReleaseSelectedRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """按勾选的发布任务 ID 批量回滚"""
-
-    permission_resource = "releases"
-    permission_action = "update"
-
-    def post(self, request):
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse(
-                {"success": False, "message": "请求数据格式错误"}, status=400
-            )
-
-        raw_ids = data.get("task_ids") or []
-        task_ids = []
-        for item in raw_ids:
-            try:
-                task_ids.append(int(item))
-            except (TypeError, ValueError):
-                continue
-
-        if not task_ids:
-            return JsonResponse(
-                {"success": False, "message": "请至少勾选一个任务"}, status=400
-            )
-
-        tasks = ReleaseTask.objects.filter(
-            id__in=task_ids,
-            status__in=["success", "failed"],
-        ).select_related("node", "config", "binding")
-
-        if not tasks.exists():
-            return JsonResponse(
-                {"success": False, "message": "未找到可回滚的任务"}, status=400
-            )
-
-        ok, result = _start_rollback_for_release_tasks(tasks, request.user)
-        if not ok:
-            return JsonResponse({"success": False, "message": result}, status=400)
-        return JsonResponse(result)
