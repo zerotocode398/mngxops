@@ -1,4 +1,5 @@
 """Nginx 启停：页面与异步执行 API"""
+
 import json
 import threading
 
@@ -94,7 +95,9 @@ class NginxServiceIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         """注入批量上限、执行权限与最近启停任务"""
         context = super().get_context_data(**kwargs)
         context["batch_max_count"] = _batch_max_count()
-        context["can_execute"] = user_has_permission(self.request.user, "nginx_service", "create")
+        context["can_execute"] = user_has_permission(
+            self.request.user, "nginx_service", "create"
+        )
         recent = list(
             TaskCenterTask.objects.filter(operation_type="nginx_service_control")
             .select_related("trigger_user")
@@ -108,7 +111,9 @@ class NginxServiceIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         return context
 
 
-class NginxServiceHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView):
+class NginxServiceHistoryView(
+    LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
+):
     """Nginx 启停历史（基于 TaskCenterTask）"""
 
     model = TaskCenterTask
@@ -166,7 +171,9 @@ class NginxServiceExecuteAPIView(LoginRequiredMixin, View):
     def post(self, request):
         """校验节点与动作后创建 TaskCenter 后台任务"""
         if not user_has_permission(request.user, "nginx_service", "create"):
-            return JsonResponse({"success": False, "message": "无权限执行该操作"}, status=403)
+            return JsonResponse(
+                {"success": False, "message": "无权限执行该操作"}, status=403
+            )
 
         try:
             data = json.loads(request.body or "{}")
@@ -176,7 +183,10 @@ class NginxServiceExecuteAPIView(LoginRequiredMixin, View):
         action = (data.get("action") or "").strip().lower()
         if action not in _ACTION_MAP:
             return JsonResponse(
-                {"success": False, "message": "无效操作，仅支持 start/stop/reload/restart"}
+                {
+                    "success": False,
+                    "message": "无效操作，仅支持 start/stop/reload/restart",
+                }
             )
 
         node_ids = data.get("node_ids") or []
@@ -302,6 +312,31 @@ class NginxServiceTaskLogAPIView(LoginRequiredMixin, View):
         payload = _service_progress_dict(task)
         payload["success"] = True
         return JsonResponse(payload)
+
+
+class NginxServiceRecentTasksAPIView(LoginRequiredMixin, View):
+    """返回最近启停任务 HTML 片段，供首页轮询完成后刷新"""
+
+    def get(self, request):
+        if not user_has_permission(request.user, "nginx_service", "read"):
+            return JsonResponse({"success": False, "message": "无权限"}, status=403)
+        from django.template.loader import render_to_string
+
+        recent = list(
+            _service_control_qs()
+            .select_related("trigger_user")
+            .order_by("-created_at")[: get_recent_tasks_limit()]
+        )
+        for task in recent:
+            task.action_label = ACTION_LABELS.get(
+                (task.target_configs or "").strip(), task.target_configs or "-"
+            )
+        html = render_to_string(
+            "nginx_service/_recent_tasks_rows.html",
+            {"recent_tasks": recent},
+            request=request,
+        )
+        return JsonResponse({"success": True, "html": html})
 
 
 class NginxServiceBatchProgressAPIView(LoginRequiredMixin, View):

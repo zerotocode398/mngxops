@@ -275,6 +275,7 @@
     var EXECUTE_URL = '{% url "nginx_service:api_execute" %}';
     var SEARCH_URL = '{% url "nodes:api_search_nodes" %}';
     var PROGRESS_URL = '{% url "nginx_service:api_batch_progress" %}';
+    var RECENT_TASKS_URL = '{% url "nginx_service:api_recent_tasks" %}';
     var POLL_MS = {{ sys_poll_interval_ms|default:2000 }};
 
     var selected = {};
@@ -695,6 +696,7 @@
                     clearInterval(progressTimer);
                     progressTimer = null;
                 }
+                refreshRecentTasks();
             }
         }
 
@@ -711,6 +713,17 @@
         }
         tick();
         progressTimer = setInterval(tick, POLL_MS);
+    }
+
+    function refreshRecentTasks() {
+        fetch(RECENT_TASKS_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.success) return;
+                var container = document.querySelector('.card.mt-3 .card-body');
+                if (container) container.innerHTML = data.html;
+            })
+            .catch(function () { /* 静默忽略 */ });
     }
 
     document.getElementById('selectNodeModal').addEventListener('show.bs.modal', function () {
