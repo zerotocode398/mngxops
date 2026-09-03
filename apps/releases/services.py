@@ -236,7 +236,7 @@ class ReleaseExecutorMixin:
                 ),
             )
             return _fail(f"文件删除后仍存在: {verify_msg}")
-        add_log(f"已确认文件已删除")
+        add_log(f"已确认文件已删除: {verify_msg}")
 
         add_log(
             "删除完成",
