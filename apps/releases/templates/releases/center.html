@@ -700,7 +700,7 @@
             html += '<td><code>' + b.config_name + '</code></td>';
             html += '<td style="width: 110px;"><select class="form-select form-select-sm version-select" data-binding-id="' + b.id + '" data-node-id="' + nodeId + '">' + versionsOpts + '</select></td>';
             html += '<td><small class="path-link" data-binding-id="' + b.id + '" data-config-name="' + b.config_name + '" title="点击预览配置内容">' + (b.remote_path || '-') + '</small></td>';
-            html += '<td style="width: 95px;"><span class="sync-badge ' + syncCls + '">' + syncLabel + '</span></td>';
+            html += '<td style="width: 95px; white-space: nowrap;"><span class="sync-badge ' + syncCls + '">' + syncLabel + '</span></td>';
             html += '</tr>';
         });
         html += '</table></td>';
