@@ -33,6 +33,7 @@ def _build_node_stats(node):
     """构建单个节点的绑定状态统计"""
     stats = {
         "total": 0,
+        "synced": 0,
         "pending": 0,
         "conflict": 0,
         "orphaned": 0,
@@ -43,7 +44,9 @@ def _build_node_stats(node):
     for b in node.config_bindings.all():
         stats["total"] += 1
         s = b.sync_status
-        if s in ("not_synced", "modified"):
+        if s == "synced":
+            stats["synced"] += 1
+        elif s in ("not_synced", "modified"):
             stats["pending"] += 1
         elif s == "conflict":
             stats["conflict"] += 1

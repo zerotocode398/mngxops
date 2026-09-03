@@ -108,11 +108,12 @@
                                     <th style="width: 12%;">节点组</th>
                                     <th style="width: 6%;">状态</th>
                                     <th style="width: 8%;">Nginx</th>
-                                    <th style="width: 6%;">配置数</th>
-                                    <th style="width: 6%;">待推送</th>
-                                    <th style="width: 6%;">失败</th>
-                                    <th style="width: 6%;">远程删除</th>
-                                    <th style="width: 6%;">标记删除</th>
+                                    <th style="width: 5%;">配置数</th>
+                                    <th style="width: 5%;">已同步</th>
+                                    <th style="width: 5%;">待推送</th>
+                                    <th style="width: 5%;">失败</th>
+                                    <th style="width: 5%;">远程删除</th>
+                                    <th style="width: 5%;">标记删除</th>
                                     <th style="width: 16%;">操作</th>
                                 </tr>
                             </thead>
@@ -146,6 +147,13 @@
                                     </td>
                                     <td><span class="badge bg-secondary">{{ stats.total }}</span></td>
                                     <td>
+                                        {% if stats.synced %}
+                                        <span class="badge config-badge-synced"><i class="bi bi-check-circle-fill"></i>{{ stats.synced }}</span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
                                         {% if stats.pending %}
                                         <span class="badge config-badge-pending"><i class="bi bi-pencil"></i>{{ stats.pending }}</span>
                                         {% else %}
@@ -173,7 +181,7 @@
                                         <span class="text-muted">—</span>
                                         {% endif %}
                                     </td>
-                                    <td>
+                                    <td style="white-space: nowrap;">
                                         <a href="{% url 'configs:node_detail' node.id %}{% if list_query_string %}?list_query={{ list_query_string|urlencode }}{% endif %}"
                                            class="btn btn-outline-secondary btn-sm" title="查看配置详情">
                                             <i class="bi bi-box-arrow-in-right"></i> 配置
