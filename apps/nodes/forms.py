@@ -2,6 +2,7 @@ from django import forms
 
 from .models import Node, NodeGroup
 from apps.credentials.models import Credential
+from apps.users.permissions import user_has_permission
 from utils.setting_service import get_setting
 
 
@@ -126,14 +127,14 @@ class NodeForm(forms.ModelForm):
                 get_setting("config.default_nginx_bin", "/usr/sbin/nginx")
                 or "/usr/sbin/nginx"
             )
-        if user and user.is_superuser:
-            self.fields["credential"].queryset = Credential.objects.filter(
-                is_enabled=True
-            )
+        if user:
+            if user.is_superuser or user_has_permission(user, "credentials", "read"):
+                self.fields["credential"].queryset = Credential.objects.filter(
+                    is_enabled=True
+                )
+            else:
+                self.fields["credential"].queryset = Credential.objects.none()
             self.fields["groups"].queryset = NodeGroup.objects.all()
-        else:
-            self.fields["credential"].queryset = Credential.objects.none()
-            self.fields["groups"].queryset = NodeGroup.objects.none()
 
     def clean_groups(self):
         groups = self.cleaned_data.get("groups", [])
