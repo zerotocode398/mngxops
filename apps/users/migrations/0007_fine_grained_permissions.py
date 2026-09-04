@@ -31,7 +31,6 @@ def _ensure_and_migrate(apps, schema_editor):
         "nodes.update": ["nodes.ssh_test", "nodes.lock", "nodes.unlock"],
         "credentials.update": ["credentials.enable"],
         "configs.update": ["configs.sync"],
-        "releases.update": ["releases.publish"],
         "upgrade.create": ["upgrade.execute"],
         "upgrade.update": ["upgrade.execute"],
         "nginx_install.create": ["nginx_install.execute"],

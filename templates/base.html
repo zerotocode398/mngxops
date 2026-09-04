@@ -892,7 +892,7 @@
                     </a>
 
                     <!-- ========== 功能模块 ========== -->
-                    {% if request.user|has_perm_code:"nodes.read" or request.user|has_perm_code:"credentials.read" or request.user|has_perm_code:"configs.read" or request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"releases.create" %}
+                    {% if request.user|has_perm_code:"nodes.read" or request.user|has_perm_code:"credentials.read" or request.user|has_perm_code:"configs.read" or request.user|has_perm_code:"releases.read" %}
                     <div class="nav-section-title">功能模块</div>
                     {% endif %}
 
@@ -929,14 +929,14 @@
                     {% endif %}
 
                     <!-- 发布管理（可展开） -->
-                    {% if request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"releases.create" or request.user|has_perm_code:"nodes.ssh_test" or request.user|has_perm_code:"credentials.enable" or request.user|has_perm_code:"nginx_install.read" or request.user|has_perm_code:"nginx_install.execute" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_service.operate" or request.user|has_perm_code:"nginx_uninstall.read" or request.user|has_perm_code:"nginx_uninstall.execute" %}
+                    {% if request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"releases.publish" or request.user|has_perm_code:"nodes.ssh_test" or request.user|has_perm_code:"credentials.enable" or request.user|has_perm_code:"nginx_install.read" or request.user|has_perm_code:"nginx_install.execute" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_service.operate" or request.user|has_perm_code:"nginx_uninstall.read" or request.user|has_perm_code:"nginx_uninstall.execute" %}
                     <div class="nav-item-wrap">
                     <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-releases" title="发布管理">
                         <i class="bi bi-rocket-takeoff"></i> <span class="sidebar-label">发布管理</span>
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-releases">
-                        {% if request.user|has_perm_code:"releases.create" %}
+                        {% if request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"releases.publish" %}
                         <a class="nav-link" href="{% url 'releases:center' %}" data-nav="releases:center">
                             <span class="sidebar-label">发布中心</span>
                         </a>
@@ -1358,13 +1358,7 @@
                     return;
                 }
                 if (!data || !data.message) return;
-                var body = '<div class="text-center mb-2">' +
-                    '<i class="bi bi-shield-lock text-warning" style="font-size:2rem;"></i></div>' +
-                    '<p class="mb-0 text-start">' + String(data.message)
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;') + '</p>';
-                showAlert(data.title || '无访问权限', body);
+                showToast(data.message, 'danger');
             })();
 
             /**

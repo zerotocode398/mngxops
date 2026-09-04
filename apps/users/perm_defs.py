@@ -55,9 +55,6 @@ PERM_DISPLAY_NAMES = {
     },
     "releases": {
         "read": "任务查看",
-        "create": "新建发布任务",
-        "update": "取消任务",
-        "delete": "删除任务",
         "publish": "执行发布/回滚",
     },
     "upgrade": {

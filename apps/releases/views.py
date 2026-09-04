@@ -43,7 +43,7 @@ class ReleaseCreateAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """发布任务创建 API — 处理 JSON 格式的发布任务创建请求"""
 
     permission_resource = "releases"
-    permission_action = "create"
+    permission_action = "publish"
 
     def post(self, request):
         try:
@@ -1042,7 +1042,7 @@ class ReleaseCenterCancelView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
 class ReleaseCenterSingleExecuteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "releases"
-    permission_action = "update"
+    permission_action = "publish"
 
     def post(self, request, task_id):
         task = get_object_or_404(
