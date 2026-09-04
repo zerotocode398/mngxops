@@ -112,7 +112,7 @@ def task_center_limited_ops_for_user(user):
     """无 releases.read 时，按节点/运维权限汇总可见的本人任务类型。"""
     ops = []
     if user_has_permission(user, "nodes", "ssh_test"):
-        ops.extend(["node_batch_test", "config_batch_sync"])
+        ops.extend(["node_ssh_test", "node_batch_test"])
     if user_has_permission(user, "configs", "sync"):
         ops.append("config_batch_sync")
     if user_has_permission(user, "nginx_service", "operate"):
