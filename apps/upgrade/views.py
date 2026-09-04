@@ -1,4 +1,5 @@
 """Nginx 升级模块 - 视图"""
+
 import json
 from datetime import timedelta
 
@@ -45,8 +46,12 @@ from apps.nodes.services import _get_node_credential
 
 # ==================== 源码包管理 ====================
 
-class PackageListView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView):
+
+class PackageListView(
+    LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
+):
     """源码包列表"""
+
     model = NginxSourcePackage
     template_name = "upgrade/package_list.html"
     context_object_name = "packages"
@@ -77,6 +82,7 @@ class PackageListView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePagina
 
 class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     """上传源码包（支持 AJAX、同版本覆盖、上传进度由前端 XHR 展示）"""
+
     model = NginxSourcePackage
     form_class = NginxSourcePackageForm
     template_name = "upgrade/package_upload.html"
@@ -92,6 +98,7 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
     def get_context_data(self, **kwargs):
         """传入源码包大小限制供前端校验"""
         from utils.setting_service import get_setting
+
         context = super().get_context_data(**kwargs)
         try:
             context["package_max_size_mb"] = max(
@@ -104,9 +111,10 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
 
     def _wants_json(self):
         """是否返回 JSON（XHR 上传）"""
-        return (
-            self.request.headers.get("X-Requested-With") == "XMLHttpRequest"
-            or "application/json" in self.request.headers.get("Accept", "")
+        return self.request.headers.get(
+            "X-Requested-With"
+        ) == "XMLHttpRequest" or "application/json" in self.request.headers.get(
+            "Accept", ""
         )
 
     def _has_version_exists_error(self, form):
@@ -144,11 +152,13 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
             msg = f"源码包 {self.object.name} (nginx-{self.object.version}) 上传成功"
 
         if self._wants_json():
-            return JsonResponse({
-                "success": True,
-                "message": msg,
-                "redirect": self.get_success_url(),
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": msg,
+                    "redirect": self.get_success_url(),
+                }
+            )
         messages.success(self.request, msg)
         return redirect(self.get_success_url())
 
@@ -163,21 +173,27 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
                     if errs:
                         message = errs[0]
                         break
-            return JsonResponse({
-                "success": False,
-                "need_overwrite": need_overwrite,
-                "message": message,
-                "errors": form.errors,
-            }, status=400)
+            return JsonResponse(
+                {
+                    "success": False,
+                    "need_overwrite": need_overwrite,
+                    "message": message,
+                    "errors": form.errors,
+                },
+                status=400,
+            )
         return super().form_invalid(form)
 
     def get_success_url(self):
         """上传成功回列表，保留侧栏 nav 透传"""
-        return append_nav_query(reverse("upgrade:package_list"), get_sidebar_nav(self.request))
+        return append_nav_query(
+            reverse("upgrade:package_list"), get_sidebar_nav(self.request)
+        )
 
 
 class PackageVersionCheckView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """检查当前用户是否已上传同版本源码包（轻量预检，避免大文件重复上传）"""
+
     permission_resource = "upgrade"
     permission_action = "create"
 
@@ -195,6 +211,7 @@ class PackageVersionCheckView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
 class PackageDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """删除源码包"""
+
     permission_resource = "upgrade"
     permission_action = "delete"
 
@@ -208,13 +225,16 @@ class PackageDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
             append_nav_query(reverse("upgrade:package_list"), get_sidebar_nav(request))
         )
 
+
 class PackageDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """下载源码包"""
+
     permission_resource = "upgrade"
     permission_action = "read"
 
     def get(self, request, pk):
         from django.http import FileResponse
+
         package = get_object_or_404(NginxSourcePackage, pk=pk)
         response = FileResponse(
             package.package_file.open("rb"),
@@ -226,8 +246,12 @@ class PackageDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 # ==================== 第三方模块包管理 ====================
 
-class ModulePackageListView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView):
+
+class ModulePackageListView(
+    LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
+):
     """第三方模块离线包列表"""
+
     model = NginxThirdPartyModulePackage
     template_name = "upgrade/module_package_list.html"
     context_object_name = "packages"
@@ -259,6 +283,7 @@ class ModulePackageListView(LoginRequiredMixin, PermissionRequiredMixin, PerPage
 
 class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     """上传第三方模块离线包（支持 AJAX、同名同版本覆盖）"""
+
     model = NginxThirdPartyModulePackage
     form_class = NginxThirdPartyModulePackageForm
     template_name = "upgrade/module_package_upload.html"
@@ -282,11 +307,13 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
             context["package_max_size_mb"] = 20
         context.update(nav_context(self.request))
         return context
+
     def _wants_json(self):
         """是否返回 JSON（XHR 上传）"""
-        return (
-            self.request.headers.get("X-Requested-With") == "XMLHttpRequest"
-            or "application/json" in self.request.headers.get("Accept", "")
+        return self.request.headers.get(
+            "X-Requested-With"
+        ) == "XMLHttpRequest" or "application/json" in self.request.headers.get(
+            "Accept", ""
         )
 
     def _has_version_exists_error(self, form):
@@ -324,11 +351,13 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
             msg = f"模块包 {self.object} 上传成功"
 
         if self._wants_json():
-            return JsonResponse({
-                "success": True,
-                "message": msg,
-                "redirect": self.get_success_url(),
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": msg,
+                    "redirect": self.get_success_url(),
+                }
+            )
         messages.success(self.request, msg)
         return redirect(self.get_success_url())
 
@@ -342,12 +371,15 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
                     if errs:
                         message = errs[0]
                         break
-            return JsonResponse({
-                "success": False,
-                "need_overwrite": need_overwrite,
-                "message": message,
-                "errors": form.errors,
-            }, status=400)
+            return JsonResponse(
+                {
+                    "success": False,
+                    "need_overwrite": need_overwrite,
+                    "message": message,
+                    "errors": form.errors,
+                },
+                status=400,
+            )
         return super().form_invalid(form)
 
     def get_success_url(self):
@@ -359,6 +391,7 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
 
 class ModulePackageCheckView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """检查当前用户是否已上传同名同版本模块包"""
+
     permission_resource = "upgrade"
     permission_action = "create"
 
@@ -378,6 +411,7 @@ class ModulePackageCheckView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 class ModulePackageDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """删除第三方模块离线包"""
+
     permission_resource = "upgrade"
     permission_action = "delete"
 
@@ -394,14 +428,17 @@ class ModulePackageDeleteView(LoginRequiredMixin, PermissionRequiredMixin, View)
             )
         )
 
+
 class ModulePackageDownloadView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """下载第三方模块离线包"""
+
     permission_resource = "upgrade"
     permission_action = "read"
 
     def get(self, request, pk):
         """附件下载"""
         from django.http import FileResponse
+
         package = get_object_or_404(NginxThirdPartyModulePackage, pk=pk)
         response = FileResponse(
             package.package_file.open("rb"),
@@ -413,8 +450,10 @@ class ModulePackageDownloadView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 
 # ==================== 升级中心 ====================
 
+
 class UpgradeCenterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     """升级中心主页面"""
+
     template_name = "upgrade/center.html"
     permission_resource = "upgrade"
     permission_action = "read"
@@ -425,18 +464,23 @@ class UpgradeCenterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateVie
 
         context = super().get_context_data(**kwargs)
         context["nodes"] = Node.objects.filter(is_locked=False).order_by("hostname")
-        context["packages"] = (
-            NginxSourcePackage.objects.select_related("uploaded_by").order_by("-created_at")
-        )
+        context["packages"] = NginxSourcePackage.objects.select_related(
+            "uploaded_by"
+        ).order_by("-created_at")
         context["module_packages"] = (
-            NginxThirdPartyModulePackage.objects.select_related("uploaded_by").order_by("-created_at")
+            NginxThirdPartyModulePackage.objects.select_related("uploaded_by").order_by(
+                "-created_at"
+            )
         )
-        context["latest_tasks"] = (
-            NginxUpgradeTask.objects.select_related("node", "operator")
-            .order_by("-created_at")[: get_recent_tasks_limit()]
+        context["latest_tasks"] = NginxUpgradeTask.objects.select_related(
+            "node", "operator"
+        ).order_by("-created_at")[: get_recent_tasks_limit()]
+        context["default_work_dir"] = get_setting(
+            "upgrade.default_work_dir", "/tmp/nginx-upgrade"
         )
-        context["default_work_dir"] = get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
-        context["default_make_jobs"] = int(get_setting("upgrade.make_jobs_default", "4") or 4)
+        context["default_make_jobs"] = int(
+            get_setting("upgrade.make_jobs_default", "4") or 4
+        )
         try:
             context["batch_max_count"] = max(
                 1, int(get_setting("node.batch_max_count", "3") or 3)
@@ -448,8 +492,10 @@ class UpgradeCenterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateVie
 
 # ==================== API 接口 ====================
 
+
 class NginxVApiView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """获取目标节点 nginx -V 输出 (Ajax)"""
+
     permission_resource = "upgrade"
     permission_action = "create"
 
@@ -467,13 +513,16 @@ class NginxVApiView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 class ParseConfigApiView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """解析 nginx -V 输出为结构化参数 (Ajax)"""
+
     permission_resource = "upgrade"
     permission_action = "create"
 
     def post(self, request):
         raw_output = request.POST.get("raw_output", "")
         if not raw_output:
-            return JsonResponse({"success": False, "message": "缺少原始输出"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "缺少原始输出"}, status=400
+            )
 
         parsed = parse_nginx_v_output(raw_output)
         return JsonResponse({"success": True, "data": parsed})
@@ -481,6 +530,7 @@ class ParseConfigApiView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 class ComputeConfigApiView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """计算调整后的编译参数预览 (Ajax)"""
+
     permission_resource = "upgrade"
     permission_action = "create"
 
@@ -496,17 +546,25 @@ class ComputeConfigApiView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 or "/tmp/nginx-upgrade"
             ).strip()
         except json.JSONDecodeError:
-            return JsonResponse({"success": False, "message": "JSON 解析失败"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "JSON 解析失败"}, status=400
+            )
 
-        added_third_party = enrich_third_party_module_paths(added_third_party, remote_work_dir)
+        added_third_party = enrich_third_party_module_paths(
+            added_third_party, remote_work_dir
+        )
         target_opts = compute_target_configure_opts(
-            current_params, added_modules, removed_modules, added_third_party,
+            current_params,
+            added_modules,
+            removed_modules,
+            added_third_party,
             remote_work_dir=remote_work_dir,
         )
         return JsonResponse({"success": True, "target_opts": target_opts})
 
 
 # ==================== 升级任务 CRUD ====================
+
 
 def _parse_json_body(request):
     """解析 JSON 请求体，失败返回 None"""
@@ -536,13 +594,11 @@ def _task_progress_dict(task):
     }
 
 
-
-
-
 class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """创建升级任务：支持批量 JSON（多节点）与旧版单节点 FormData"""
+
     permission_resource = "upgrade"
-    permission_action = "create"
+    permission_action = "execute"
 
     def post(self, request):
         """按 Content-Type 分发到批量或单节点创建"""
@@ -557,7 +613,10 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         form = NginxUpgradeTaskForm(request.POST)
         if not form.is_valid():
             errors = {k: [str(e) for e in v] for k, v in form.errors.items()}
-            return JsonResponse({"success": False, "message": "表单验证失败", "errors": errors}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "表单验证失败", "errors": errors},
+                status=400,
+            )
 
         batch_number = generate_upgrade_batch_number()
         task = form.save(commit=False)
@@ -575,6 +634,7 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         from apps.releases.models import TaskCenterTask
         from apps.releases.task_result import upgrade_detail_short
+
         task_center = TaskCenterTask.objects.create(
             operation_type="nginx_upgrade",
             status="pending",
@@ -588,32 +648,37 @@ class UpgradeTaskCreateView(LoginRequiredMixin, PermissionRequiredMixin, View):
         task.save(update_fields=["task_center"])
 
         start_upgrade_tasks_parallel([task.id])
-        return JsonResponse({
-            "success": True,
-            "task_id": task.id,
-            "task_ids": [task.id],
-            "batch_number": batch_number,
-            "progress_url": reverse("upgrade:task_progress", kwargs={"pk": task.id}),
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "task_id": task.id,
+                "task_ids": [task.id],
+                "batch_number": batch_number,
+                "progress_url": reverse(
+                    "upgrade:task_progress", kwargs={"pk": task.id}
+                ),
+            }
+        )
 
     def _create_batch(self, request):
         """批量创建：每节点一条任务，同 batch_number，并行执行"""
         data = _parse_json_body(request)
         if data is None:
-            return JsonResponse({"success": False, "message": "JSON 解析失败"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "JSON 解析失败"}, status=400
+            )
         payload, status = create_upgrade_batch_from_data(request.user, data)
         return JsonResponse(payload, status=status)
 
 
 class UpgradeTaskProgressView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """获取升级进度 (Ajax 轮询)"""
+
     permission_resource = "upgrade"
     permission_action = "read"
 
     def get(self, request, pk):
-        task = get_object_or_404(
-            NginxUpgradeTask.objects.select_related("node"), pk=pk
-        )
+        task = get_object_or_404(NginxUpgradeTask.objects.select_related("node"), pk=pk)
         data = _task_progress_dict(task)
         data["success"] = True
         # 任务详情轮询返回完整日志，不做截断
@@ -623,6 +688,7 @@ class UpgradeTaskProgressView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
 class UpgradeBatchProgressView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """批量查询多条升级任务进度"""
+
     permission_resource = "upgrade"
     permission_action = "read"
 
@@ -634,7 +700,9 @@ class UpgradeBatchProgressView(LoginRequiredMixin, PermissionRequiredMixin, View
         try:
             ids = [int(x) for x in raw.split(",") if x.strip()]
         except ValueError:
-            return JsonResponse({"success": False, "message": "ids 格式错误"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "ids 格式错误"}, status=400
+            )
         if not ids:
             return JsonResponse({"success": False, "message": "缺少 ids"}, status=400)
 
@@ -650,19 +718,22 @@ class UpgradeBatchProgressView(LoginRequiredMixin, PermissionRequiredMixin, View
         any_failed = any(t.status == "failed" for t in tasks)
         all_success = bool(tasks) and all(t.status == "success" for t in tasks)
 
-        return JsonResponse({
-            "success": True,
-            "tasks": items,
-            "progress": avg,
-            "all_done": all_done,
-            "any_failed": any_failed,
-            "all_success": all_success,
-            "batch_number": tasks[0].batch_number if tasks else "",
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "tasks": items,
+                "progress": avg,
+                "all_done": all_done,
+                "any_failed": any_failed,
+                "all_success": all_success,
+                "batch_number": tasks[0].batch_number if tasks else "",
+            }
+        )
 
 
 class UpgradeTaskLogView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
     """查看完整升级日志"""
+
     model = NginxUpgradeTask
     template_name = "upgrade/task_log.html"
     context_object_name = "task"
@@ -692,13 +763,16 @@ class UpgradeTaskLogView(LoginRequiredMixin, PermissionRequiredMixin, DetailView
 
 class UpgradeTaskCancelView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """取消升级任务"""
+
     permission_resource = "upgrade"
     permission_action = "update"
 
     def post(self, request, pk):
         task = get_object_or_404(NginxUpgradeTask, pk=pk)
         if task.status not in ("pending", "fetching_config", "uploading_package"):
-            return JsonResponse({"success": False, "message": "当前状态不允许取消"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "当前状态不允许取消"}, status=400
+            )
 
         task.status = "cancelled"
         task.error_message = "用户手动取消"
@@ -712,12 +786,15 @@ class UpgradeTaskCancelView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 node_header,
                 upgrade_detail_short,
             )
+
             ver_label = upgrade_detail_short(task.current_version, task.target_version)
             task.task_center.status = "cancelled"
             task.task_center.progress = 100
             task.task_center.detail = ver_label
             task.task_center.result = build_tree_result(
-                0, 1, 1,
+                0,
+                1,
+                1,
                 [
                     node_header(task.node.ip, task.node.hostname),
                     item_failed(ver_label, "用户手动取消"),
@@ -734,22 +811,29 @@ class UpgradeTaskCancelView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """回滚升级任务"""
+
     permission_resource = "upgrade"
-    permission_action = "update"
+    permission_action = "execute"
 
     def post(self, request, pk):
         task = get_object_or_404(NginxUpgradeTask, pk=pk)
         if task.status not in ("success", "failed"):
-            return JsonResponse({"success": False, "message": "当前状态不允许回滚"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "当前状态不允许回滚"}, status=400
+            )
 
         # 执行回滚操作
         node = task.node
         credential = _get_node_credential(node)
         if not credential:
-            return JsonResponse({"success": False, "message": "节点未配置有效的 SSH 凭证"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "节点未配置有效的 SSH 凭证"}, status=400
+            )
 
         if not task.old_binary_backup:
-            return JsonResponse({"success": False, "message": "没有可用的备份文件"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "没有可用的备份文件"}, status=400
+            )
 
         auth_kwargs = {}
         if credential.auth_type == "password":
@@ -757,7 +841,10 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
         else:
             auth_kwargs["private_key"] = credential.get_private_key()
 
-        binary_path = task.current_binary_path or task.current_configure_path.rstrip("/") + "/sbin/nginx"
+        binary_path = (
+            task.current_binary_path
+            or task.current_configure_path.rstrip("/") + "/sbin/nginx"
+        )
 
         try:
             from utils.nginx_ops import reload_nginx
@@ -785,16 +872,25 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
             # 按启动方式 reload（未运行则 start），使进程回到旧二进制生效路径
             ok, msg = reload_nginx(
-                node.ip, node.port, credential.username,
-                nginx_path=binary_path, start_if_stopped=True, **auth_kwargs,
+                node.ip,
+                node.port,
+                credential.username,
+                nginx_path=binary_path,
+                start_if_stopped=True,
+                **auth_kwargs,
             )
             if not ok:
                 return JsonResponse(
-                    {"success": False, "message": f"二进制已回滚，但 reload/start 失败: {msg}"},
+                    {
+                        "success": False,
+                        "message": f"二进制已回滚，但 reload/start 失败: {msg}",
+                    },
                     status=500,
                 )
         except Exception as e:
-            return JsonResponse({"success": False, "message": f"回滚异常: {str(e)}"}, status=500)
+            return JsonResponse(
+                {"success": False, "message": f"回滚异常: {str(e)}"}, status=500
+            )
 
         task.status = "rollback"
         task.finished_at = timezone.now()
@@ -808,12 +904,15 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
                 node_header,
                 upgrade_detail_short,
             )
+
             ver_label = upgrade_detail_short(task.current_version, task.target_version)
             task.task_center.status = "cancelled"
             task.task_center.progress = 100
             task.task_center.detail = f"已回滚：{ver_label}"
             task.task_center.result = build_tree_result(
-                1, 0, 1,
+                1,
+                0,
+                1,
                 [
                     node_header(task.node.ip, task.node.hostname),
                     item_success(f"已回滚到旧版本 ({ver_label})"),
@@ -827,10 +926,15 @@ class UpgradeTaskRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View)
         messages.success(request, f"Nginx 已回滚到备份版本 ({task.old_binary_backup})")
         return JsonResponse({"success": True})
 
+
 # ==================== 升级历史 ====================
 
-class UpgradeHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView):
+
+class UpgradeHistoryView(
+    LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
+):
     """升级历史列表"""
+
     model = NginxUpgradeTask
     template_name = "upgrade/history.html"
     context_object_name = "tasks"
@@ -840,7 +944,9 @@ class UpgradeHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePag
     permission_action = "read"
 
     def get_queryset(self):
-        queryset = super().get_queryset().select_related("node", "operator", "source_package")
+        queryset = (
+            super().get_queryset().select_related("node", "operator", "source_package")
+        )
         search = self.request.GET.get("search", "")
         if search:
             queryset = queryset.filter(
@@ -884,6 +990,7 @@ class UpgradeHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePag
 
 class UpgradeTaskListView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     """Nginx 升级主页：运维操作台（统计 + 最近任务）"""
+
     template_name = "upgrade/index.html"
     permission_resource = "upgrade"
     permission_action = "read"
@@ -904,9 +1011,7 @@ class UpgradeTaskListView(LoginRequiredMixin, PermissionRequiredMixin, TemplateV
             status="failed",
             created_at__gte=since_7d,
         ).count()
-        context["recent_tasks"] = (
-            NginxUpgradeTask.objects
-            .select_related("node", "operator", "source_package")
-            .order_by("-created_at")[: get_recent_tasks_limit()]
-        )
+        context["recent_tasks"] = NginxUpgradeTask.objects.select_related(
+            "node", "operator", "source_package"
+        ).order_by("-created_at")[: get_recent_tasks_limit()]
         return context

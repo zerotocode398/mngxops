@@ -128,43 +128,7 @@
                         <h5 class="mb-0"><i class="bi bi-shield-lock"></i> {{ form.direct_permissions.label }}</h5>
                     </div>
                     <div class="card-body">
-                        <div class="perm-matrix" id="permMatrix" style="grid-template-columns: 140px repeat(4, 1fr) 72px;">
-                            <div class="perm-matrix-corner">资源</div>
-                            {% for ah in permission_matrix.action_headers %}
-                            <div class="perm-matrix-header" data-action="{{ ah.0 }}">
-                                <span>{{ ah.1 }}</span>
-                                <button type="button" class="btn btn-sm btn-outline-primary perm-btn-col"
-                                    data-action="{{ ah.0 }}">全选</button>
-                            </div>
-                            {% endfor %}
-                            <div class="perm-matrix-header">
-                                <button type="button" class="btn btn-sm btn-outline-secondary perm-btn-global">全选</button>
-                            </div>
-                            {% for resource in permission_matrix.resources %}
-                            <div class="perm-matrix-row-header" data-resource="{{ resource.key }}">
-                                {{ resource.label }}
-                            </div>
-                            {% for action in resource.actions %}
-                            <div class="perm-matrix-cell">
-                                {% if action.applicable %}
-                                <input type="checkbox" class="perm-cb form-check-input"
-                                    name="{{ form.direct_permissions.name }}"
-                                    value="{{ action.perm_id }}"
-                                    data-resource="{{ resource.key }}"
-                                    data-action="{{ action.action }}"
-                                    title="{{ action.display_name }}"
-                                    {% if action.perm_id in permission_matrix.selected_ids %}checked{% endif %}>
-                                {% else %}
-                                <span class="text-muted" title="不可用">-</span>
-                                {% endif %}
-                            </div>
-                            {% endfor %}
-                            <div class="perm-matrix-cell">
-                                <button type="button" class="btn btn-sm btn-outline-primary perm-btn-row"
-                                    data-resource="{{ resource.key }}">全选</button>
-                            </div>
-                            {% endfor %}
-                        </div>
+                        {% include "users/_perm_list.html" with field_name=form.direct_permissions.name %}
                         {% if form.direct_permissions.errors %}
                         <div class="text-danger mt-1 small">{% for error in form.direct_permissions.errors %}{{ error }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
                         {% endif %}

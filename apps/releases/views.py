@@ -741,7 +741,7 @@ class ReleaseDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailView)
 
 class ReleaseRollbackView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "releases"
-    permission_action = "update"
+    permission_action = "publish"
     # 仅成功或失败的发布允许人工回滚
     ROLLBACK_ALLOWED_STATUSES = ("success", "failed")
 
@@ -910,7 +910,7 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
             request.user, "releases", "read"
         )
         self.can_read_node_tasks = user_can_access_limited_task_center(request.user)
-        self.can_sync_configs = user_has_permission(request.user, "configs", "update")
+        self.can_sync_configs = user_has_permission(request.user, "configs", "sync")
         self.can_read_upgrade = user_has_permission(request.user, "upgrade", "read")
         if not (
             self.can_read_release_tasks
@@ -960,7 +960,7 @@ class TaskCenterProgressAPIView(LoginRequiredMixin, View):
 
 class ReleaseCenterExecuteView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "releases"
-    permission_action = "update"
+    permission_action = "publish"
 
     def post(self, request, batch_number):
         is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
@@ -1276,7 +1276,7 @@ class ReleaseRetryView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """重试单条失败的发布任务"""
 
     permission_resource = "releases"
-    permission_action = "update"
+    permission_action = "publish"
 
     def post(self, request, pk):
         task = get_object_or_404(

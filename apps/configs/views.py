@@ -1173,7 +1173,7 @@ class ConfigSyncWizardView(
 
 class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "configs"
-    permission_action = "update"
+    permission_action = "sync"
 
     def post(self, request):
         from apps.nodes.models import Node
@@ -1235,7 +1235,7 @@ class ConfigSyncBatchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 class ConfigSyncSingleAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_resource = "configs"
-    permission_action = "update"
+    permission_action = "sync"
 
     def post(self, request):
         from apps.nodes.models import Node

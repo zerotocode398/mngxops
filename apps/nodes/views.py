@@ -699,14 +699,16 @@ def batch_delete_nodes(request):
 def node_lock(request):
     if not request.user.is_authenticated:
         return JsonResponse({"success": False, "message": "请先登录"})
-    if not user_has_permission(request.user, "nodes", "update"):
-        return JsonResponse({"success": False, "message": "无权限执行该操作"})
 
     if request.method == "POST":
         import json
 
         data = json.loads(request.body)
         action = data.get("action", "lock")
+
+        perm_action = "lock" if action == "lock" else "unlock"
+        if not user_has_permission(request.user, "nodes", perm_action):
+            return JsonResponse({"success": False, "message": "无权限执行该操作"})
         node_ids = data.get("node_ids", [])
         if not node_ids and data.get("node_id"):
             node_ids = [data.get("node_id")]
@@ -773,7 +775,7 @@ def node_lock(request):
 def test_node_connection(request):
     if not request.user.is_authenticated:
         return JsonResponse({"success": False, "message": "请先登录"})
-    if not user_has_permission(request.user, "nodes", "update"):
+    if not user_has_permission(request.user, "nodes", "ssh_test"):
         return JsonResponse({"success": False, "message": "无权限执行该操作"})
 
     if request.method == "POST":
@@ -880,7 +882,7 @@ def test_node_connection(request):
 def batch_test_node_connection(request):
     if not request.user.is_authenticated:
         return JsonResponse({"success": False, "message": "请先登录"})
-    if not user_has_permission(request.user, "nodes", "update"):
+    if not user_has_permission(request.user, "nodes", "ssh_test"):
         return JsonResponse({"success": False, "message": "无权限执行该操作"})
 
     if request.method == "POST":

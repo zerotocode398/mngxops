@@ -9,9 +9,7 @@ from .models import UserProfile, UserGroup
 
 # 无权访问统一文案
 PERM_DENIED_TITLE = "无访问权限"
-PERM_DENIED_MESSAGE = (
-    "当前账号没有使用该功能的权限。请联系管理员分配相应权限后再试。"
-)
+PERM_DENIED_MESSAGE = "当前账号没有使用该功能的权限。请联系管理员分配相应权限后再试。"
 PERM_CONFIG_ERROR_TITLE = "权限配置错误"
 PERM_CONFIG_ERROR_MESSAGE = "系统权限配置异常，请联系管理员检查后再试。"
 SESSION_PERM_DENIED_KEY = "mngxops_perm_denied"
@@ -113,32 +111,29 @@ def user_has_permission(user, resource, action):
 def task_center_limited_ops_for_user(user):
     """无 releases.read 时，按节点/运维权限汇总可见的本人任务类型。"""
     ops = []
-    if user_has_permission(user, "nodes", "update"):
+    if user_has_permission(user, "nodes", "ssh_test"):
         ops.extend(["node_batch_test", "config_batch_sync"])
-    if user_has_permission(user, "nginx_service", "read") or user_has_permission(
-        user, "nginx_service", "create"
-    ):
+    if user_has_permission(user, "configs", "sync"):
+        ops.append("config_batch_sync")
+    if user_has_permission(user, "nginx_service", "operate"):
         ops.append("nginx_service_control")
-    if user_has_permission(user, "nginx_install", "read") or user_has_permission(
-        user, "nginx_install", "create"
-    ):
+    if user_has_permission(user, "nginx_install", "execute"):
         ops.append("nginx_install")
-    if user_has_permission(user, "nginx_uninstall", "read") or user_has_permission(
-        user, "nginx_uninstall", "create"
-    ):
+    if user_has_permission(user, "nginx_uninstall", "execute"):
         ops.append("nginx_uninstall")
     return ops
 
 
 def user_can_access_limited_task_center(user):
     """是否可通过节点/运维权限访问任务中心（非 releases.read 路径）。"""
-    if user_has_permission(user, "nodes", "update"):
+    if user_has_permission(user, "nodes", "ssh_test"):
         return True
     return bool(task_center_limited_ops_for_user(user))
 
 
 class PermissionRequiredMixin:
     """视图级权限校验 Mixin"""
+
     permission_resource = None
     permission_action = None
 

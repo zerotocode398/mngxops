@@ -40,7 +40,8 @@ class UserListView(
                 | queryset.filter(email__icontains=search)
             ).distinct()
         return queryset.select_related("profile").prefetch_related(
-            "profile__groups", "user_teams",
+            "profile__groups",
+            "user_teams",
         )
 
     def get_context_data(self, **kwargs):
@@ -53,7 +54,11 @@ class UserListView(
                 profile = u.profile
             except ObjectDoesNotExist:
                 profile = None
-            if profile and profile.login_locked_until and profile.login_locked_until > now:
+            if (
+                profile
+                and profile.login_locked_until
+                and profile.login_locked_until > now
+            ):
                 temp_locked = True
             u.login_enabled = bool(u.is_active) and not temp_locked
         return context
@@ -72,9 +77,9 @@ class UserCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
         context = super().get_context_data(**kwargs)
         context["all_user_groups"] = UserGroup.objects.all().order_by("name")
         context["all_user_teams"] = UserTeam.objects.all().order_by("name")
-        matrix = _get_permission_matrix()
-        matrix["selected_ids"] = set()
-        context["permission_matrix"] = matrix
+        plist = _get_permission_list()
+        plist["selected_ids"] = set()
+        context["permission_list"] = plist
         return context
 
     def form_valid(self, form):
@@ -100,12 +105,12 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
         context = super().get_context_data(**kwargs)
         context["all_user_groups"] = UserGroup.objects.all().order_by("name")
         context["all_user_teams"] = UserTeam.objects.all().order_by("name")
-        matrix = _get_permission_matrix()
+        plist = _get_permission_list()
         profile, _ = UserProfile.objects.get_or_create(user=self.object)
-        matrix["selected_ids"] = set(
+        plist["selected_ids"] = set(
             profile.direct_permissions.values_list("id", flat=True)
         )
-        context["permission_matrix"] = matrix
+        context["permission_list"] = plist
         # 无角色且无直授时提示侧栏将无功能菜单
         has_roles = profile.groups.exists()
         has_direct = profile.direct_permissions.exists()
@@ -184,43 +189,51 @@ class UserLockToggleView(LoginRequiredMixin, PermissionRequiredMixin, View):
 # ========== 角色视图（仅 Admin）==========
 
 
-from .perm_defs import RESOURCE_CHOICES, ACTION_CHOICES, PERM_DISPLAY_NAMES, all_permission_items
+from .perm_defs import (
+    RESOURCE_CHOICES,
+    ACTION_CHOICES,
+    PERM_DISPLAY_NAMES,
+    all_permission_items,
+)
 
 
-def _build_permission_matrix():
-    """构建资源×动作权限矩阵数据，供模板渲染矩阵网格"""
-    existing_perms = {
-        (p.resource, p.action): p for p in PermissionItem.objects.all()
-    }
+def _build_permission_list():
+    """构建资源×权限列表数据，供模板渲染列表式权限UI"""
+    existing_perms = {(p.resource, p.action): p for p in PermissionItem.objects.all()}
 
     resources = []
     for rk, rl in RESOURCE_CHOICES:
+        resource_actions = PERM_DISPLAY_NAMES.get(rk, {})
+        if not resource_actions:
+            continue
         actions = []
-        for ak, al in ACTION_CHOICES:
+        for ak, display_name in resource_actions.items():
             perm = existing_perms.get((rk, ak))
-            actions.append({
-                "action": ak,
-                "label": al,
-                "perm_id": perm.id if perm else None,
-                "applicable": perm is not None,
-                "display_name": PERM_DISPLAY_NAMES.get(rk, {}).get(ak, f"{rl}{al}"),
-                "code": f"{rk}.{ak}",
-            })
-        resources.append({
-            "key": rk,
-            "label": rl,
-            "actions": actions,
-        })
+            if perm is None:
+                continue
+            actions.append(
+                {
+                    "action": ak,
+                    "label": dict(ACTION_CHOICES).get(ak, ak),
+                    "perm_id": perm.id,
+                    "display_name": display_name,
+                    "code": f"{rk}.{ak}",
+                }
+            )
+        resources.append(
+            {
+                "key": rk,
+                "label": rl,
+                "actions": actions,
+            }
+        )
 
-    return {
-        "resources": resources,
-        "action_headers": ACTION_CHOICES,
-    }
+    return {"resources": resources}
 
 
-def _get_permission_matrix():
-    """构建权限矩阵并返回dict，可在 views 中扩展 selected_ids"""
-    return _build_permission_matrix()
+def _get_permission_list():
+    """构建权限列表并返回dict，可在 views 中扩展 selected_ids"""
+    return _build_permission_list()
 
 
 class UserGroupListView(
@@ -253,8 +266,7 @@ class UserGroupListView(
         context["all_users"] = all_users
         # 每组的权限数量
         context["perm_counts"] = {
-            group.id: group.permissions.count()
-            for group in context["user_groups"]
+            group.id: group.permissions.count() for group in context["user_groups"]
         }
         return context
 
@@ -269,9 +281,9 @@ class UserGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        matrix = _get_permission_matrix()
-        matrix["selected_ids"] = set()
-        context["permission_matrix"] = matrix
+        plist = _get_permission_list()
+        plist["selected_ids"] = set()
+        context["permission_list"] = plist
         return context
 
     def form_valid(self, form):
@@ -294,11 +306,11 @@ class UserGroupUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVie
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        matrix = _get_permission_matrix()
-        matrix["selected_ids"] = set(
+        plist = _get_permission_list()
+        plist["selected_ids"] = set(
             self.object.permissions.values_list("id", flat=True)
         )
-        context["permission_matrix"] = matrix
+        context["permission_list"] = plist
         return context
 
     def form_valid(self, form):
@@ -381,9 +393,7 @@ def _search_users(search_tags):
         return User.objects.all()
     queryset = User.objects.all()
     for tag in search_tags:
-        queryset = queryset.filter(
-            Q(username__icontains=tag) | Q(email__icontains=tag)
-        )
+        queryset = queryset.filter(Q(username__icontains=tag) | Q(email__icontains=tag))
     return queryset
 
 
@@ -482,6 +492,7 @@ class UserTeamDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView
 
 class UserTeamMemberListView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """返回用户组的成员列表（JSON），供弹窗滚动加载。"""
+
     permission_resource = "teams"
     permission_action = "read"
 
@@ -499,29 +510,36 @@ class UserTeamMemberListView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
         users_data = []
         for u in page_obj:
-            users_data.append({
-                "id": u.id,
-                "username": u.username,
-                "first_name": u.first_name or "-",
-                "email": u.email or "-",
-                "is_active": u.is_active,
-                "is_superuser": u.is_superuser,
-                "is_member": u.id in member_ids,
-                "role_count": u.profile.groups.count() if hasattr(u, "profile") else 0,
-            })
+            users_data.append(
+                {
+                    "id": u.id,
+                    "username": u.username,
+                    "first_name": u.first_name or "-",
+                    "email": u.email or "-",
+                    "is_active": u.is_active,
+                    "is_superuser": u.is_superuser,
+                    "is_member": u.id in member_ids,
+                    "role_count": (
+                        u.profile.groups.count() if hasattr(u, "profile") else 0
+                    ),
+                }
+            )
 
-        return JsonResponse({
-            "users": users_data,
-            "page": page_obj.number,
-            "total_pages": paginator.num_pages,
-            "has_next": page_obj.has_next(),
-            "has_previous": page_obj.has_previous(),
-            "total_count": paginator.count,
-        })
+        return JsonResponse(
+            {
+                "users": users_data,
+                "page": page_obj.number,
+                "total_pages": paginator.num_pages,
+                "has_next": page_obj.has_next(),
+                "has_previous": page_obj.has_previous(),
+                "total_count": paginator.count,
+            }
+        )
 
 
 class UserTeamManageMembersView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """管理用户组成员 — 添加/移除成员。"""
+
     permission_resource = "teams"
     permission_action = "update"
 

@@ -96,7 +96,7 @@ class NginxServiceIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         context = super().get_context_data(**kwargs)
         context["batch_max_count"] = _batch_max_count()
         context["can_execute"] = user_has_permission(
-            self.request.user, "nginx_service", "create"
+            self.request.user, "nginx_service", "operate"
         )
         recent = list(
             TaskCenterTask.objects.filter(operation_type="nginx_service_control")
@@ -170,7 +170,7 @@ class NginxServiceExecuteAPIView(LoginRequiredMixin, View):
 
     def post(self, request):
         """校验节点与动作后创建 TaskCenter 后台任务"""
-        if not user_has_permission(request.user, "nginx_service", "create"):
+        if not user_has_permission(request.user, "nginx_service", "operate"):
             return JsonResponse(
                 {"success": False, "message": "无权限执行该操作"}, status=403
             )

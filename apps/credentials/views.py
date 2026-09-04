@@ -80,6 +80,7 @@ class CredentialListView(
     LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
 ):
     """凭证列表页，支持搜索和认证方式/状态筛选"""
+
     model = Credential
     template_name = "credentials/list.html"
     context_object_name = "credentials"
@@ -90,7 +91,9 @@ class CredentialListView(
 
     def get_queryset(self):
         """根据搜索词和筛选条件过滤凭证列表"""
-        queryset = super().get_queryset().annotate(node_count=Count("node", distinct=True))
+        queryset = (
+            super().get_queryset().annotate(node_count=Count("node", distinct=True))
+        )
         return filter_credential_list_queryset(queryset, self.request)
 
     def get_context_data(self, **kwargs):
@@ -254,6 +257,7 @@ class CredentialImportAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
 class CredentialCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
     """创建凭证视图"""
+
     model = Credential
     form_class = CredentialForm
     template_name = "credentials/create.html"
@@ -281,6 +285,7 @@ class CredentialCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVi
 
 class CredentialUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     """编辑凭证视图，编辑时敏感字段留空不回填"""
+
     model = Credential
     form_class = CredentialForm
     template_name = "credentials/edit.html"
@@ -315,6 +320,7 @@ class CredentialUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVi
 
 class CredentialDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
     """删除凭证视图，包含关联节点确认（R5 删除保护）"""
+
     model = Credential
     template_name = "credentials/delete.html"
     success_url = reverse_lazy("credentials:list")
@@ -340,8 +346,9 @@ class CredentialDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteVi
 
 class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """凭证启用/禁用切换视图，禁用到启用时自动触发关联节点批量测试"""
+
     permission_resource = "credentials"
-    permission_action = "update"
+    permission_action = "enable"
 
     def post(self, request, pk):
         """切换凭证启用状态，支持Ajax和普通请求"""
@@ -352,7 +359,9 @@ class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, Vi
             # 禁用凭证：设为禁用，所有关联节点标记为离线
             credential.is_enabled = False
             credential.save(update_fields=["is_enabled", "updated_at"])
-            affected = Node.objects.filter(credential=credential).update(status="offline")
+            affected = Node.objects.filter(credential=credential).update(
+                status="offline"
+            )
             messages.success(
                 request,
                 f"凭证 {credential.name} 已禁用，{affected} 个关联节点状态已更新为离线",
@@ -373,7 +382,9 @@ class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, Vi
                         }
                     )
             else:
-                Node.objects.filter(credential=credential, is_locked=False).update(status="unknown")
+                Node.objects.filter(credential=credential, is_locked=False).update(
+                    status="unknown"
+                )
 
                 # 关联可测节点，供任务中心摘要/详情展示
                 related_nodes = list(
@@ -442,6 +453,7 @@ class CredentialToggleEnableView(LoginRequiredMixin, PermissionRequiredMixin, Vi
 
 class CredentialEnableProgressView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """查询凭证启用测试进度（轮询接口）"""
+
     permission_resource = "credentials"
     permission_action = "read"
 
@@ -470,11 +482,13 @@ class CredentialEnableProgressView(LoginRequiredMixin, PermissionRequiredMixin, 
                     "skipped_count": task.skipped_count,
                     "message": task.message,
                     "percent": percent,
-                    "task_center_detail_url": reverse(
-                        "releases:task_center_detail", args=[task.task_center_id]
-                    )
-                    if task.task_center_id
-                    else "",
+                    "task_center_detail_url": (
+                        reverse(
+                            "releases:task_center_detail", args=[task.task_center_id]
+                        )
+                        if task.task_center_id
+                        else ""
+                    ),
                 },
             }
         )
@@ -482,6 +496,7 @@ class CredentialEnableProgressView(LoginRequiredMixin, PermissionRequiredMixin, 
 
 class CredentialDecryptView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """解密凭证敏感字段（密码/私钥）的Ajax接口"""
+
     permission_resource = "credentials"
     permission_action = "read"
 
@@ -500,6 +515,7 @@ class CredentialDecryptView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
 class CredentialRelatedNodesView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """查询凭证关联的节点列表（支持搜索和分页）"""
+
     permission_resource = "credentials"
     permission_action = "read"
 
@@ -523,7 +539,9 @@ class CredentialRelatedNodesView(LoginRequiredMixin, PermissionRequiredMixin, Vi
         queryset = Node.objects.filter(credential=credential).prefetch_related("groups")
 
         if search:
-            queryset = queryset.filter(Q(hostname__icontains=search) | Q(ip__icontains=search))
+            queryset = queryset.filter(
+                Q(hostname__icontains=search) | Q(ip__icontains=search)
+            )
 
         if group_search:
             tags = [
@@ -569,12 +587,14 @@ class CredentialRelatedNodesView(LoginRequiredMixin, PermissionRequiredMixin, Vi
                     "total_pages": paginator.num_pages,
                     "has_previous": page_obj.has_previous(),
                     "has_next": page_obj.has_next(),
-                    "previous_page": page_obj.previous_page_number()
-                    if page_obj.has_previous()
-                    else None,
-                    "next_page": page_obj.next_page_number()
-                    if page_obj.has_next()
-                    else None,
+                    "previous_page": (
+                        page_obj.previous_page_number()
+                        if page_obj.has_previous()
+                        else None
+                    ),
+                    "next_page": (
+                        page_obj.next_page_number() if page_obj.has_next() else None
+                    ),
                 },
             }
         )
@@ -582,6 +602,7 @@ class CredentialRelatedNodesView(LoginRequiredMixin, PermissionRequiredMixin, Vi
 
 class CredentialApiListView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """凭证列表API接口，返回JSON格式"""
+
     permission_resource = "credentials"
     permission_action = "read"
 

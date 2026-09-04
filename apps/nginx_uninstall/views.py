@@ -1,4 +1,5 @@
 """Nginx 卸载：首页、向导与 API"""
+
 import json
 from datetime import timedelta
 
@@ -47,7 +48,9 @@ def _parse_options_summary(options_json):
     return lines
 
 
-class NginxUninstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+class NginxUninstallIndexView(
+    LoginRequiredMixin, PermissionRequiredMixin, TemplateView
+):
     """Nginx 卸载运维台首页"""
 
     template_name = "nginx_uninstall/index.html"
@@ -59,8 +62,14 @@ class NginxUninstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templ
         context = super().get_context_data(**kwargs)
         since = timezone_now_minus_7d()
         running_statuses = [
-            "pending", "stopping", "removing_package", "removing_prefix",
-            "removing_backup", "removing_extra", "removing_unit", "updating_node",
+            "pending",
+            "stopping",
+            "removing_package",
+            "removing_prefix",
+            "removing_backup",
+            "removing_extra",
+            "removing_unit",
+            "updating_node",
         ]
         context["running_count"] = NginxUninstallTask.objects.filter(
             status__in=running_statuses
@@ -72,11 +81,12 @@ class NginxUninstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templ
             status="failed", created_at__gte=since
         ).count()
         context["total_count"] = NginxUninstallTask.objects.count()
-        context["recent_tasks"] = (
-            NginxUninstallTask.objects.select_related("node", "operator", "task_center")
-            .order_by("-created_at")[: get_recent_tasks_limit()]
+        context["recent_tasks"] = NginxUninstallTask.objects.select_related(
+            "node", "operator", "task_center"
+        ).order_by("-created_at")[: get_recent_tasks_limit()]
+        context["can_execute"] = user_has_permission(
+            self.request.user, "nginx_uninstall", "execute"
         )
-        context["can_execute"] = user_has_permission(self.request.user, "nginx_uninstall", "create")
         return context
 
 
@@ -87,7 +97,9 @@ def timezone_now_minus_7d():
     return timezone.now() - timedelta(days=7)
 
 
-class NginxUninstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+class NginxUninstallCenterView(
+    LoginRequiredMixin, PermissionRequiredMixin, TemplateView
+):
     """Nginx 卸载三步向导"""
 
     template_name = "nginx_uninstall/center.html"
@@ -98,7 +110,9 @@ class NginxUninstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Temp
         """注入批量上限"""
         context = super().get_context_data(**kwargs)
         context["batch_max_count"] = batch_max_count()
-        context["can_execute"] = user_has_permission(self.request.user, "nginx_uninstall", "create")
+        context["can_execute"] = user_has_permission(
+            self.request.user, "nginx_uninstall", "execute"
+        )
         return context
 
 
@@ -156,7 +170,9 @@ class NginxUninstallHistoryView(
         return context
 
 
-class NginxUninstallTaskLogView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+class NginxUninstallTaskLogView(
+    LoginRequiredMixin, PermissionRequiredMixin, DetailView
+):
     """卸载任务详情与完整执行日志页"""
 
     model = NginxUninstallTask
@@ -190,16 +206,18 @@ class NginxUninstallTaskLogAPIView(LoginRequiredMixin, View):
             task = NginxUninstallTask.objects.select_related("node").get(pk=pk)
         except NginxUninstallTask.DoesNotExist:
             return JsonResponse({"success": False, "message": "任务不存在"}, status=404)
-        return JsonResponse({
-            "success": True,
-            "id": task.id,
-            "status": task.status,
-            "status_display": task.get_status_display(),
-            "progress": task.progress,
-            "current_step": task.current_step,
-            "log_output": task.log_output or "",
-            "error_message": task.error_message or "",
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "id": task.id,
+                "status": task.status,
+                "status_display": task.get_status_display(),
+                "progress": task.progress,
+                "current_step": task.current_step,
+                "log_output": task.log_output or "",
+                "error_message": task.error_message or "",
+            }
+        )
 
 
 class NginxUninstallPreviewAPIView(LoginRequiredMixin, View):
@@ -207,7 +225,7 @@ class NginxUninstallPreviewAPIView(LoginRequiredMixin, View):
 
     def post(self, request):
         """返回每节点 prefix / 备份路径 / 是否运行中"""
-        if not user_has_permission(request.user, "nginx_uninstall", "create"):
+        if not user_has_permission(request.user, "nginx_uninstall", "execute"):
             return JsonResponse({"success": False, "message": "无权限"}, status=403)
         try:
             data = json.loads(request.body or "{}")
@@ -221,8 +239,10 @@ class NginxUninstallCreateAPIView(LoginRequiredMixin, View):
 
     def post(self, request):
         """校验后创建任务并启动后台线程"""
-        if not user_has_permission(request.user, "nginx_uninstall", "create"):
-            return JsonResponse({"success": False, "message": "无权限执行卸载"}, status=403)
+        if not user_has_permission(request.user, "nginx_uninstall", "execute"):
+            return JsonResponse(
+                {"success": False, "message": "无权限执行卸载"}, status=403
+            )
         try:
             data = json.loads(request.body or "{}")
         except json.JSONDecodeError:
@@ -268,35 +288,39 @@ class NginxUninstallBatchProgressAPIView(LoginRequiredMixin, View):
                 else:
                     fail_count += 1
             log_url = reverse("nginx_uninstall:task_log", kwargs={"pk": t.id})
-            items.append({
-                "id": t.id,
-                "task_id": t.id,
-                "node_id": t.node_id,
-                "hostname": t.node.hostname,
-                "ip": t.node.ip,
-                "prefix": t.resolved_prefix,
-                "status": t.status,
-                "status_display": t.get_status_display(),
-                "progress": t.progress,
-                "current_step": t.current_step,
-                "error_message": t.error_message or "",
-                "task_center_id": t.task_center_id,
-                "log_url": log_url,
-                "finished": finished,
-            })
+            items.append(
+                {
+                    "id": t.id,
+                    "task_id": t.id,
+                    "node_id": t.node_id,
+                    "hostname": t.node.hostname,
+                    "ip": t.node.ip,
+                    "prefix": t.resolved_prefix,
+                    "status": t.status,
+                    "status_display": t.get_status_display(),
+                    "progress": t.progress,
+                    "current_step": t.current_step,
+                    "error_message": t.error_message or "",
+                    "task_center_id": t.task_center_id,
+                    "log_url": log_url,
+                    "finished": finished,
+                }
+            )
 
         all_finished = finished_count == len(tasks) and len(tasks) > 0
         avg_progress = 0
         if tasks:
             avg_progress = int(sum(t.progress for t in tasks) / len(tasks))
-        return JsonResponse({
-            "success": True,
-            "batch_number": batch,
-            "task_center_id": task_center_id,
-            "tasks": items,
-            "finished": all_finished,
-            "all_done": all_finished,
-            "success_count": success_count,
-            "fail_count": fail_count,
-            "progress": avg_progress,
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "batch_number": batch,
+                "task_center_id": task_center_id,
+                "tasks": items,
+                "finished": all_finished,
+                "all_done": all_finished,
+                "success_count": success_count,
+                "fail_count": fail_count,
+                "progress": avg_progress,
+            }
+        )

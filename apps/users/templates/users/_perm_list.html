@@ -1,0 +1,28 @@
+<div class="perm-list" id="permList">
+    {% for resource in permission_list.resources %}
+    <div class="perm-list-row">
+        <div class="perm-list-resource" data-resource="{{ resource.key }}">
+            <span class="perm-list-resource-label">{{ resource.label }}</span>
+            <span class="perm-list-resource-key">({{ resource.key }})</span>
+        </div>
+        <div class="perm-list-actions">
+            {% for action in resource.actions %}
+            <label class="perm-list-item" title="{{ action.display_name }}">
+                <input type="checkbox" class="perm-cb form-check-input"
+                    name="{{ field_name }}"
+                    value="{{ action.perm_id }}"
+                    data-resource="{{ resource.key }}"
+                    data-action="{{ action.action }}"
+                    {% if action.perm_id in permission_list.selected_ids %}checked{% endif %}>
+                <span class="perm-list-label">{{ action.label }}</span>
+            </label>
+            {% endfor %}
+            <button type="button" class="btn btn-sm btn-outline-secondary perm-btn-row"
+                data-resource="{{ resource.key }}">全选</button>
+        </div>
+    </div>
+    {% endfor %}
+    <div class="perm-list-global">
+        <button type="button" class="btn btn-sm btn-outline-secondary perm-btn-global">全局全选</button>
+    </div>
+</div>

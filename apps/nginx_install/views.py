@@ -1,4 +1,5 @@
 """Nginx 全新安装：首页、向导与创建 API"""
+
 import json
 from datetime import timedelta
 
@@ -23,6 +24,7 @@ from .services import (
     create_install_batch_from_data,
 )
 
+
 class NginxInstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     """Nginx 安装运维台首页"""
 
@@ -35,9 +37,15 @@ class NginxInstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         context = super().get_context_data(**kwargs)
         since = timezone.now() - timedelta(days=7)
         running_statuses = [
-            "pending", "uploading_package", "downloading_modules",
-            "configuring", "compiling", "installing", "starting",
-            "syncing_config", "verifying",
+            "pending",
+            "uploading_package",
+            "downloading_modules",
+            "configuring",
+            "compiling",
+            "installing",
+            "starting",
+            "syncing_config",
+            "verifying",
         ]
         context["package_count"] = NginxSourcePackage.objects.count()
         context["module_package_count"] = NginxThirdPartyModulePackage.objects.count()
@@ -47,11 +55,12 @@ class NginxInstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
         context["failed_7d_count"] = NginxInstallTask.objects.filter(
             status="failed", created_at__gte=since
         ).count()
-        context["recent_tasks"] = (
-            NginxInstallTask.objects.select_related("node", "operator", "source_package")
-            .order_by("-created_at")[: get_recent_tasks_limit()]
+        context["recent_tasks"] = NginxInstallTask.objects.select_related(
+            "node", "operator", "source_package"
+        ).order_by("-created_at")[: get_recent_tasks_limit()]
+        context["can_create"] = user_has_permission(
+            self.request.user, "nginx_install", "create"
         )
-        context["can_create"] = user_has_permission(self.request.user, "nginx_install", "create")
         return context
 
 
@@ -66,31 +75,39 @@ class NginxInstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Templa
         """注入源码包、默认参数与模块列表"""
         context = super().get_context_data(**kwargs)
         context["packages"] = NginxSourcePackage.objects.order_by("-created_at")
-        context["module_packages"] = NginxThirdPartyModulePackage.objects.order_by("-created_at")
-        context["default_work_dir"] = get_setting(
-            "upgrade.default_work_dir", "/tmp/nginx-upgrade"
-        ) or "/tmp/nginx-upgrade"
-        context["default_make_jobs"] = get_setting("upgrade.make_jobs_default", "4") or "4"
+        context["module_packages"] = NginxThirdPartyModulePackage.objects.order_by(
+            "-created_at"
+        )
+        context["default_work_dir"] = (
+            get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
+            or "/tmp/nginx-upgrade"
+        )
+        context["default_make_jobs"] = (
+            get_setting("upgrade.make_jobs_default", "4") or "4"
+        )
         context["default_prefix"] = (
             get_setting("install.default_prefix", "/opt/app") or "/opt/app"
         )
         context["default_user"] = get_setting("install.default_user", "root") or "root"
-        context["default_group"] = get_setting("install.default_group", "root") or "root"
+        context["default_group"] = (
+            get_setting("install.default_group", "root") or "root"
+        )
         try:
             context["default_listen_port"] = int(
                 get_setting("install.default_listen_port", "80") or 80
             )
         except (TypeError, ValueError):
             context["default_listen_port"] = 80
-        if (
-            context["default_listen_port"] < 1
-            or context["default_listen_port"] > 65535
-        ):
+        if context["default_listen_port"] < 1 or context["default_listen_port"] > 65535:
             context["default_listen_port"] = 80
         context["default_modules"] = DEFAULT_INSTALL_MODULES
         context["builtin_modules"] = BUILTIN_ADD_MODULES
-        context["builtin_modules_json"] = json.dumps(BUILTIN_ADD_MODULES, ensure_ascii=False)
-        context["default_modules_json"] = json.dumps(DEFAULT_INSTALL_MODULES, ensure_ascii=False)
+        context["builtin_modules_json"] = json.dumps(
+            BUILTIN_ADD_MODULES, ensure_ascii=False
+        )
+        context["default_modules_json"] = json.dumps(
+            DEFAULT_INSTALL_MODULES, ensure_ascii=False
+        )
         context["default_prefix_json"] = json.dumps(
             context["default_prefix"], ensure_ascii=False
         )
@@ -114,7 +131,9 @@ class NginxInstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Templa
         return context
 
 
-class NginxInstallHistoryView(LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView):
+class NginxInstallHistoryView(
+    LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
+):
     """安装历史列表（对齐升级历史：搜索/状态/每页条数）"""
 
     model = NginxInstallTask
@@ -171,8 +190,10 @@ class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):
 
     def post(self, request):
         """校验后创建 NginxInstallTask + TaskCenter 并启动线程"""
-        if not user_has_permission(request.user, "nginx_install", "create"):
-            return JsonResponse({"success": False, "message": "无权限创建安装任务"}, status=403)
+        if not user_has_permission(request.user, "nginx_install", "execute"):
+            return JsonResponse(
+                {"success": False, "message": "无权限创建安装任务"}, status=403
+            )
 
         try:
             data = json.loads(request.body or "{}")
@@ -217,40 +238,46 @@ class NginxInstallBatchProgressAPIView(LoginRequiredMixin, View):
                     success_count += 1
                 else:
                     fail_count += 1
-            items.append({
-                "id": t.id,
-                "task_id": t.id,
-                "node_id": t.node_id,
-                "hostname": t.node.hostname,
-                "ip": t.node.ip,
-                "status": t.status,
-                "status_display": t.get_status_display(),
-                "progress": t.progress,
-                "current_step": t.current_step,
-                "error_message": t.error_message or "",
-                "sync_ok": t.sync_ok,
-                "sync_detail": t.sync_detail,
-                "task_center_id": t.task_center_id,
-                "log_url": reverse("nginx_install:task_log", kwargs={"pk": t.id}),
-                "finished": finished,
-            })
+            items.append(
+                {
+                    "id": t.id,
+                    "task_id": t.id,
+                    "node_id": t.node_id,
+                    "hostname": t.node.hostname,
+                    "ip": t.node.ip,
+                    "status": t.status,
+                    "status_display": t.get_status_display(),
+                    "progress": t.progress,
+                    "current_step": t.current_step,
+                    "error_message": t.error_message or "",
+                    "sync_ok": t.sync_ok,
+                    "sync_detail": t.sync_detail,
+                    "task_center_id": t.task_center_id,
+                    "log_url": reverse("nginx_install:task_log", kwargs={"pk": t.id}),
+                    "finished": finished,
+                }
+            )
 
         all_finished = finished_count == len(tasks) and len(tasks) > 0
         avg_progress = 0
         if tasks:
             avg_progress = int(sum(t.progress for t in tasks) / len(tasks))
-        return JsonResponse({
-            "success": True,
-            "batch_number": batch,
-            "tasks": items,
-            "finished": all_finished,
-            "all_done": all_finished,
-            "all_success": all_finished and fail_count == 0 and success_count == len(tasks),
-            "success_count": success_count,
-            "fail_count": fail_count,
-            "total": len(tasks),
-            "progress": avg_progress,
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "batch_number": batch,
+                "tasks": items,
+                "finished": all_finished,
+                "all_done": all_finished,
+                "all_success": all_finished
+                and fail_count == 0
+                and success_count == len(tasks),
+                "success_count": success_count,
+                "fail_count": fail_count,
+                "total": len(tasks),
+                "progress": avg_progress,
+            }
+        )
 
 
 class NginxInstallTaskLogView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
@@ -286,15 +313,17 @@ class NginxInstallTaskLogAPIView(LoginRequiredMixin, View):
             task = NginxInstallTask.objects.select_related("node").get(pk=pk)
         except NginxInstallTask.DoesNotExist:
             return JsonResponse({"success": False, "message": "任务不存在"}, status=404)
-        return JsonResponse({
-            "success": True,
-            "id": task.id,
-            "status": task.status,
-            "status_display": task.get_status_display(),
-            "progress": task.progress,
-            "current_step": task.current_step,
-            "log_output": task.log_output or "",
-            "error_message": task.error_message or "",
-            "sync_ok": task.sync_ok,
-            "sync_detail": task.sync_detail,
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "id": task.id,
+                "status": task.status,
+                "status_display": task.get_status_display(),
+                "progress": task.progress,
+                "current_step": task.current_step,
+                "log_output": task.log_output or "",
+                "error_message": task.error_message or "",
+                "sync_ok": task.sync_ok,
+                "sync_detail": task.sync_detail,
+            }
+        )
