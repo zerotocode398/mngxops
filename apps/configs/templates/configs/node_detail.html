@@ -39,7 +39,7 @@
                             <i class="bi bi-plus-circle"></i> 添加绑定
                         </a>
                         {% endif %}
-                        {% if node.nginx_available is True and user|has_perm_code:"configs.update" %}
+                        {% if node.nginx_available is True and user|has_perm_code:"configs.sync" %}
                         <a href="{% url 'configs:sync_wizard' %}?node_id={{ node.id }}" class="btn btn-outline-info btn-sm">
                             <i class="bi bi-cloud-download"></i> 同步配置
                         </a>

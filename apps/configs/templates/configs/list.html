@@ -17,7 +17,7 @@
                             <i class="bi bi-plus-circle"></i> 手动添加
                         </a>
                         {% endif %}
-                        {% if user|has_perm_code:"configs.update" %}
+                        {% if user|has_perm_code:"configs.sync" %}
                         <a href="{% url 'configs:sync_wizard' %}" class="btn btn-outline-info btn-sm">
                             <i class="bi bi-cloud-download"></i> 配置同步
                         </a>
@@ -186,7 +186,7 @@
                                            class="btn btn-outline-secondary btn-sm" title="查看配置详情">
                                             <i class="bi bi-box-arrow-in-right"></i> 配置
                                         </a>
-                                        {% if node.nginx_available is True and user|has_perm_code:"configs.update" %}
+                                        {% if node.nginx_available is True and user|has_perm_code:"configs.sync" %}
                                         <a href="{% url 'configs:sync_wizard' %}?node_id={{ node.id }}" class="btn btn-outline-info btn-sm" title="同步配置">
                                             <i class="bi bi-cloud-download"></i>
                                         </a>
@@ -208,12 +208,12 @@
                         <i class="bi bi-inbox"></i>
                         <p>暂无配置数据</p>
                         <div class="d-flex justify-content-center gap-2">
-                            {% if user|has_perm_code:"configs.update" %}
-                            <a href="{% url 'configs:sync_wizard' %}" class="btn btn-outline-info btn-sm">
-                                <i class="bi bi-cloud-download"></i> 配置同步
-                            </a>
-                            {% endif %}
-                            {% if user|has_perm_code:"configs.create" %}
+                            {% if user|has_perm_code:"configs.sync" %}
+                        <a href="{% url 'configs:sync_wizard' %}" class="btn btn-outline-info btn-sm">
+                            <i class="bi bi-cloud-download"></i> 配置同步
+                        </a>
+                        {% endif %}
+                        {% if user|has_perm_code:"configs.create" %}
                             <a href="{% url 'configs:create' %}" class="btn btn-outline-primary btn-sm">
                                 <i class="bi bi-plus-circle"></i> 手动添加
                             </a>
