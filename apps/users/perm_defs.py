@@ -45,7 +45,6 @@ PERM_DISPLAY_NAMES = {
         "update": "编辑凭证",
         "delete": "删除凭证",
         "enable": "启用凭证",
-        "ssh_test": "凭证连通性测试",
     },
     "configs": {
         "read": "配置查看",

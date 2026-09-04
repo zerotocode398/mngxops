@@ -29,7 +29,7 @@ def _ensure_and_migrate(apps, schema_editor):
     # 拥有旧权限的角色/用户，自动获得对应的新权限
     copy_map = {
         "nodes.update": ["nodes.ssh_test", "nodes.lock", "nodes.unlock"],
-        "credentials.update": ["credentials.enable", "credentials.ssh_test"],
+        "credentials.update": ["credentials.enable"],
         "configs.update": ["configs.sync"],
         "releases.update": ["releases.publish"],
         "upgrade.create": ["upgrade.execute"],

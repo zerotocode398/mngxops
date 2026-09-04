@@ -113,6 +113,8 @@ def task_center_limited_ops_for_user(user):
     ops = []
     if user_has_permission(user, "nodes", "ssh_test"):
         ops.extend(["node_ssh_test", "node_batch_test"])
+    if user_has_permission(user, "credentials", "enable"):
+        ops.append("credential_enable_test")
     if user_has_permission(user, "configs", "sync"):
         ops.append("config_batch_sync")
     if user_has_permission(user, "nginx_service", "operate"):
@@ -127,6 +129,8 @@ def task_center_limited_ops_for_user(user):
 def user_can_access_limited_task_center(user):
     """是否可通过节点/运维权限访问任务中心（非 releases.read 路径）。"""
     if user_has_permission(user, "nodes", "ssh_test"):
+        return True
+    if user_has_permission(user, "credentials", "enable"):
         return True
     return bool(task_center_limited_ops_for_user(user))
 
