@@ -342,6 +342,16 @@
                 form.querySelector('input[name="next"]').value = window.location.href;
             });
         });
+
+        document.querySelectorAll('tbody tr').forEach(function (row) {
+            row.addEventListener('click', function (e) {
+                if (e.target.closest('a,button,input,label,.btn-group,form')) return;
+                var cb = row.querySelector('.binding-checkbox');
+                if (!cb) return;
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change'));
+            });
+        });
     });
 </script>
 {% endblock %}
