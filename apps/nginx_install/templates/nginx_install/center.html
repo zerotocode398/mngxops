@@ -1767,13 +1767,13 @@
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (!result.success) {
-                        showAlert('创建失败', result.message || '操作失败');
+                        if (window.showToast) showToast('创建失败: ' + (result.message || '操作失败'), 'danger');
                         return;
                     }
                     startBatchPoll(result.batch_number);
                 })
                 .catch(function () {
-                    showAlert('创建失败', '网络错误');
+                    if (window.showToast) showToast('创建失败: 网络错误', 'danger');
                 });
         }, true, 'md', '继续');
     });

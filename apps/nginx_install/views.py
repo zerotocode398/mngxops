@@ -13,7 +13,11 @@ from django.views.generic import DetailView, ListView, TemplateView, View
 
 from apps.upgrade.builtin_modules import BUILTIN_ADD_MODULES
 from apps.upgrade.models import NginxSourcePackage, NginxThirdPartyModulePackage
-from apps.users.permissions import PermissionRequiredMixin, user_has_permission
+from apps.users.permissions import (
+    PERM_DENIED_MESSAGE,
+    forbidden_response,
+    user_has_permission,
+)
 from utils.pagination import PerPagePaginationMixin
 from utils.setting_service import get_recent_tasks_limit, get_setting
 
@@ -25,7 +29,24 @@ from .services import (
 )
 
 
-class NginxInstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+class NginxInstallPermissionMixin:
+    """权限校验：使用 upgrade.* 权限（已合并 Nginx 安装/升级）"""
+
+    permission_action = None
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_superuser:
+            return super().dispatch(request, *args, **kwargs)
+        if not self.permission_action:
+            return forbidden_response(request, "权限配置错误")
+        if not user_has_permission(request.user, "upgrade", self.permission_action):
+            return forbidden_response(request, PERM_DENIED_MESSAGE)
+        return super().dispatch(request, *args, **kwargs)
+
+
+class NginxInstallIndexView(
+    LoginRequiredMixin, NginxInstallPermissionMixin, TemplateView
+):
     """Nginx 安装运维台首页"""
 
     template_name = "nginx_install/index.html"
@@ -59,12 +80,14 @@ class NginxInstallIndexView(LoginRequiredMixin, PermissionRequiredMixin, Templat
             "node", "operator", "source_package"
         ).order_by("-created_at")[: get_recent_tasks_limit()]
         context["can_create"] = user_has_permission(
-            self.request.user, "nginx_install", "create"
+            self.request.user, "upgrade", "create"
         )
         return context
 
 
-class NginxInstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
+class NginxInstallCenterView(
+    LoginRequiredMixin, NginxInstallPermissionMixin, TemplateView
+):
     """Nginx 全新安装向导"""
 
     template_name = "nginx_install/center.html"
@@ -132,7 +155,7 @@ class NginxInstallCenterView(LoginRequiredMixin, PermissionRequiredMixin, Templa
 
 
 class NginxInstallHistoryView(
-    LoginRequiredMixin, PermissionRequiredMixin, PerPagePaginationMixin, ListView
+    LoginRequiredMixin, NginxInstallPermissionMixin, PerPagePaginationMixin, ListView
 ):
     """安装历史列表（对齐升级历史：搜索/状态/每页条数）"""
 
@@ -190,9 +213,9 @@ class NginxInstallTaskCreateAPIView(LoginRequiredMixin, View):
 
     def post(self, request):
         """校验后创建 NginxInstallTask + TaskCenter 并启动线程"""
-        if not user_has_permission(request.user, "nginx_install", "execute"):
+        if not user_has_permission(request.user, "upgrade", "execute"):
             return JsonResponse(
-                {"success": False, "message": "无权限创建安装任务"}, status=403
+                {"success": False, "message": PERM_DENIED_MESSAGE}, status=403
             )
 
         try:
@@ -209,7 +232,7 @@ class NginxInstallBatchProgressAPIView(LoginRequiredMixin, View):
     def get(self, request):
         """返回批次内各安装任务状态"""
         if not (
-            user_has_permission(request.user, "nginx_install", "read")
+            user_has_permission(request.user, "upgrade", "read")
             or user_has_permission(request.user, "releases", "read")
         ):
             return JsonResponse({"success": False, "message": "无权限"}, status=403)
@@ -280,7 +303,9 @@ class NginxInstallBatchProgressAPIView(LoginRequiredMixin, View):
         )
 
 
-class NginxInstallTaskLogView(LoginRequiredMixin, PermissionRequiredMixin, DetailView):
+class NginxInstallTaskLogView(
+    LoginRequiredMixin, NginxInstallPermissionMixin, DetailView
+):
     """安装任务详情与完整执行日志页"""
 
     model = NginxInstallTask
@@ -307,7 +332,7 @@ class NginxInstallTaskLogAPIView(LoginRequiredMixin, View):
 
     def get(self, request, pk):
         """读取安装任务日志与状态"""
-        if not user_has_permission(request.user, "nginx_install", "read"):
+        if not user_has_permission(request.user, "upgrade", "read"):
             return JsonResponse({"success": False, "message": "无权限"}, status=403)
         try:
             task = NginxInstallTask.objects.select_related("node").get(pk=pk)

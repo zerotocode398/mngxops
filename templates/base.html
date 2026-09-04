@@ -929,7 +929,7 @@
                     {% endif %}
 
                     <!-- 发布管理（可展开） -->
-                    {% if request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"releases.publish" or request.user|has_perm_code:"nodes.ssh_test" or request.user|has_perm_code:"credentials.enable" or request.user|has_perm_code:"nginx_install.read" or request.user|has_perm_code:"nginx_install.execute" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_service.operate" or request.user|has_perm_code:"nginx_uninstall.read" or request.user|has_perm_code:"nginx_uninstall.execute" %}
+                    {% if request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"releases.publish" or request.user|has_perm_code:"nodes.ssh_test" or request.user|has_perm_code:"credentials.enable" or request.user|has_perm_code:"upgrade.read" or request.user|has_perm_code:"upgrade.execute" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_service.operate" or request.user|has_perm_code:"nginx_uninstall.read" or request.user|has_perm_code:"nginx_uninstall.execute" %}
                     <div class="nav-item-wrap">
                     <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-releases" title="发布管理">
                         <i class="bi bi-rocket-takeoff"></i> <span class="sidebar-label">发布管理</span>
@@ -941,7 +941,7 @@
                             <span class="sidebar-label">发布中心</span>
                         </a>
                         {% endif %}
-                        {% if request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"nodes.ssh_test" or request.user|has_perm_code:"credentials.enable" or request.user|has_perm_code:"nginx_install.read" or request.user|has_perm_code:"nginx_install.execute" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_service.operate" or request.user|has_perm_code:"nginx_uninstall.read" or request.user|has_perm_code:"nginx_uninstall.execute" %}
+                        {% if request.user|has_perm_code:"releases.read" or request.user|has_perm_code:"nodes.ssh_test" or request.user|has_perm_code:"credentials.enable" or request.user|has_perm_code:"upgrade.read" or request.user|has_perm_code:"upgrade.execute" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_service.operate" or request.user|has_perm_code:"nginx_uninstall.read" or request.user|has_perm_code:"nginx_uninstall.execute" %}
                         <a class="nav-link" href="{% url 'releases:history' %}" data-nav="releases:history">
                             <span class="sidebar-label">任务中心</span>
                         </a>
@@ -956,7 +956,7 @@
                     {% endif %}
 
                     <!-- ========== 运维工具 ========== -->
-                    {% if request.user|has_perm_code:"upgrade.read" or request.user|has_perm_code:"nginx_install.read" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_uninstall.read" %}
+                    {% if request.user|has_perm_code:"upgrade.read" or request.user|has_perm_code:"nginx_service.read" or request.user|has_perm_code:"nginx_uninstall.read" %}
                     <div class="nav-section-title">运维工具</div>
                     <!-- 运维工具（可展开分组） -->
                     <div class="nav-item-wrap">
@@ -970,7 +970,7 @@
                             <i class="bi bi-box-seam"></i> <span class="sidebar-label">Nginx 升级</span>
                         </a>
                         {% endif %}
-                        {% if request.user|has_perm_code:"nginx_install.read" %}
+                        {% if request.user|has_perm_code:"upgrade.read" %}
                         <a class="nav-link" href="{% url 'nginx_install:index' %}" data-nav="nginx_install">
                             <i class="bi bi-download"></i> <span class="sidebar-label">Nginx 安装</span>
                         </a>

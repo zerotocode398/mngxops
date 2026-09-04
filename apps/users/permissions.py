@@ -119,7 +119,7 @@ def task_center_limited_ops_for_user(user):
         ops.append("config_batch_sync")
     if user_has_permission(user, "nginx_service", "operate"):
         ops.append("nginx_service_control")
-    if user_has_permission(user, "nginx_install", "execute"):
+    if user_has_permission(user, "upgrade", "execute"):
         ops.append("nginx_install")
     if user_has_permission(user, "nginx_uninstall", "execute"):
         ops.append("nginx_uninstall")
