@@ -24,7 +24,7 @@ from .services import (
 from apps.audit.models import AuditLog
 from apps.audit.utils import _resolve_client_ip
 from apps.releases.models import TaskCenterTask
-from apps.users.permissions import PermissionRequiredMixin
+from apps.users.permissions import PermissionRequiredMixin, forbidden_response
 from apps.nodes.models import Node
 from utils.pagination import PerPagePaginationMixin
 
@@ -109,11 +109,13 @@ class CredentialListView(
         return context
 
 
-class CredentialExportView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """按勾选 ID 或当前筛选导出凭证 xlsx（含明文密码/私钥）"""
+class CredentialExportView(LoginRequiredMixin, View):
+    """按勾选 ID 或当前筛选导出凭证 xlsx（含明文密码/私钥）— 仅管理员"""
 
-    permission_resource = "credentials"
-    permission_action = "read"
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return forbidden_response(request, "仅管理员可导出凭证")
+        return super().dispatch(request, *args, **kwargs)
 
     def get(self, request):
         """生成并下载凭证明文导出；有 ids 仅导勾选，否则按筛选全量"""
