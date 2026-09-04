@@ -52,7 +52,7 @@
                     <span id="taskProgressBadge" class="badge bg-primary {% if task.status == 'success' or task.status == 'failed' or task.status == 'rollback' or task.status == 'cancelled' %}d-none{% endif %}">
                         {{ task.progress }}%
                     </span>
-                    {% if task.status == 'success' and user|has_perm_code:"upgrade.update" %}
+                    {% if task.status == 'success' and user|has_perm_code:"upgrade.execute" %}
                     <button type="button" class="btn btn-sm btn-warning" id="btnRollback"
                         onclick="submitPostConfirm('确认回滚', '确定回滚 Nginx 到旧版本？回滚将恢复备份的二进制文件。', '{% url 'upgrade:task_rollback' task.id %}')">
                         <i class="bi bi-arrow-counterclockwise"></i> 回滚到旧版本
@@ -202,7 +202,7 @@
     if (TERMINAL[initialStatus]) return;
 
     var progressUrl = '{% url "upgrade:task_progress" task.id %}';
-    var canRollback = {{ user|has_perm_code:"upgrade.update"|yesno:"true,false" }};
+    var canRollback = {{ user|has_perm_code:"upgrade.execute"|yesno:"true,false" }};
     var rollbackUrl = '{% url "upgrade:task_rollback" task.id %}';
     var pollTimer = null;
     var lastLogLen = -1;

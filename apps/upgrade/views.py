@@ -765,7 +765,7 @@ class UpgradeTaskCancelView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """取消升级任务"""
 
     permission_resource = "upgrade"
-    permission_action = "update"
+    permission_action = "execute"
 
     def post(self, request, pk):
         task = get_object_or_404(NginxUpgradeTask, pk=pk)

@@ -60,7 +60,6 @@ PERM_DISPLAY_NAMES = {
     "upgrade": {
         "read": "升级历史查看",
         "create": "创建升级任务",
-        "update": "回滚升级",
         "delete": "删除升级记录",
         "execute": "执行升级",
     },

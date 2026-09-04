@@ -32,7 +32,6 @@ def _ensure_and_migrate(apps, schema_editor):
         "credentials.update": ["credentials.enable"],
         "configs.update": ["configs.sync"],
         "upgrade.create": ["upgrade.execute"],
-        "upgrade.update": ["upgrade.execute"],
         "nginx_install.create": ["nginx_install.execute"],
         "nginx_service.create": ["nginx_service.operate"],
         "nginx_uninstall.create": ["nginx_uninstall.execute"],
