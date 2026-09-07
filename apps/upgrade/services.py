@@ -1,4 +1,5 @@
 """Nginx 升级模块 - 服务层"""
+
 import json
 import re
 import os
@@ -65,7 +66,9 @@ def parse_nginx_v_output(raw_output):
 
     # 分离内置模块和第三方模块
     for token in tokens:
-        if token.startswith("--add-module=") or token.startswith("--add-dynamic-module="):
+        if token.startswith("--add-module=") or token.startswith(
+            "--add-dynamic-module="
+        ):
             result["third_party_modules"].append(token)
             continue
         result["builtin_modules"].append(token)
@@ -117,7 +120,7 @@ def _tokenize_configure_args_fallback(opts_str):
             i += 1
         if i >= n:
             break
-        if not (s[i:i + 2] == "--"):
+        if not (s[i : i + 2] == "--"):
             i += 1
             continue
         start = i
@@ -253,7 +256,11 @@ def enrich_third_party_module_paths(added_third_party, remote_work_dir):
 
 
 def compute_target_configure_opts(
-    current_params, added_modules, removed_modules, added_third_party, remote_work_dir=None
+    current_params,
+    added_modules,
+    removed_modules,
+    added_third_party,
+    remote_work_dir=None,
 ):
     """基于当前参数 + 增减生成最终的编译参数
 
@@ -368,7 +375,11 @@ def run_upgrade_task(task_id):
             short_error_tail,
             upgrade_detail_short,
         )
-        from apps.releases.task_cancel import finish_if_active, is_cancelled, update_if_active
+        from apps.releases.task_cancel import (
+            finish_if_active,
+            is_cancelled,
+            update_if_active,
+        )
 
         updates = {"status": status, "progress": progress, "updated_at": timezone.now()}
         updates.update(kwargs)
@@ -438,6 +449,7 @@ def run_upgrade_task(task_id):
 
     try:
         from apps.nodes.services import _get_node_credential
+
         credential = _get_node_credential(node)
         if not credential:
             update_status("failed", 0, error_message="节点未配置有效的 SSH 凭证")
@@ -450,16 +462,29 @@ def run_upgrade_task(task_id):
             auth_kwargs_copy = {"private_key": auth_kwargs["private_key"]}
 
         # ---- Step 1: 获取 nginx -V（优先写入当前版本，便于失败任务列表展示）----
-        from apps.releases.task_cancel import is_cancelled as _is_cancelled, register_ssh, unregister_ssh
+        from apps.releases.task_cancel import (
+            is_cancelled as _is_cancelled,
+            register_ssh,
+            unregister_ssh,
+        )
+
         if task.task_center_id and _is_cancelled(task.task_center_id):
-            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            update_status(
+                "cancelled",
+                100,
+                error_message="用户手动取消",
+                finished_at=timezone.now(),
+            )
             return
 
         update_status("fetching_config", 5)
         log("获取当前 Nginx 编译参数...")
         _ensure_remote_dir(
-            node.ip, node.port, credential.username,
-            work_dir=task.remote_work_dir, **auth_kwargs_copy
+            node.ip,
+            node.port,
+            credential.username,
+            work_dir=task.remote_work_dir,
+            **auth_kwargs_copy,
         )
 
         success, parsed = fetch_nginx_v_from_node(node)
@@ -481,13 +506,18 @@ def run_upgrade_task(task_id):
         # ---- Step 2: 编译工具预检（仅 gcc/make；缺库由 configure/make 回报）----
         update_status("fetching_config", 10)
         log("检查编译工具 gcc / make ...")
-        check_cmd = "command -v gcc >/dev/null && command -v make >/dev/null && echo 'DEPS_OK'"
-        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
+        check_cmd = (
+            "command -v gcc >/dev/null && command -v make >/dev/null && echo 'DEPS_OK'"
+        )
+        with SSHClient(
+            node.ip, node.port, credential.username, **auth_kwargs_copy
+        ) as ssh:
             success, output = ssh.execute_command(check_cmd)
         if not success or "DEPS_OK" not in (output or ""):
             log(f"编译工具检查失败: {output}")
             update_status(
-                "failed", 10,
+                "failed",
+                10,
                 error_message=f"编译工具缺失: {output}\n请安装 gcc 与 make；其余依赖（如 pcre/zlib/openssl/libxslt）由 ./configure 检测",
             )
             return
@@ -507,16 +537,23 @@ def run_upgrade_task(task_id):
         remote_package_path = f"{work_dir}/{package_filename}"
 
         _ensure_remote_dir(
-            node.ip, node.port, credential.username,
-            work_dir=work_dir, **auth_kwargs_copy
+            node.ip,
+            node.port,
+            credential.username,
+            work_dir=work_dir,
+            **auth_kwargs_copy,
         )
 
         # SFTP 上传
         local_path = source_package.package_file.path
         from utils.ssh import upload_file_via_sftp
+
         success, msg = upload_file_via_sftp(
-            node.ip, node.port, credential.username,
-            local_path=local_path, remote_path=remote_package_path,
+            node.ip,
+            node.port,
+            credential.username,
+            local_path=local_path,
+            remote_path=remote_package_path,
             **auth_kwargs_copy,
         )
         if not success:
@@ -527,27 +564,52 @@ def run_upgrade_task(task_id):
 
         # 校验 MD5
         from utils.ssh import check_remote_file_md5
+
         success, remote_md5 = check_remote_file_md5(
-            node.ip, node.port, credential.username,
-            file_path=remote_package_path, **auth_kwargs_copy,
+            node.ip,
+            node.port,
+            credential.username,
+            file_path=remote_package_path,
+            **auth_kwargs_copy,
         )
-        if success and source_package.file_md5 and remote_md5 != source_package.file_md5:
-            log(f"MD5 校验失败: 本地={source_package.file_md5[:8]}... 远程={remote_md5[:8]}...")
-            update_status("failed", 20, error_message="源码包 MD5 校验失败，传输可能损坏")
+        if (
+            success
+            and source_package.file_md5
+            and remote_md5 != source_package.file_md5
+        ):
+            log(
+                f"MD5 校验失败: 本地={source_package.file_md5[:8]}... 远程={remote_md5[:8]}..."
+            )
+            update_status(
+                "failed", 20, error_message="源码包 MD5 校验失败，传输可能损坏"
+            )
             return
         log(f"MD5 校验通过 ({remote_md5[:16]}...)")
 
         # ---- Step 4: 远程解压 ----
         update_status("uploading_package", 30)
         log("解压源码包...")
-        extract_dir = _extract_package_name(package_filename)
-        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
+        with SSHClient(
+            node.ip, node.port, credential.username, **auth_kwargs_copy
+        ) as ssh:
             success, output = ssh.execute_command(
                 f"cd {work_dir} && tar -xzf {remote_package_path} 2>&1"
             )
         if not success:
             log(f"解压失败: {output}")
             update_status("failed", 30, error_message=f"解压失败: {output}")
+            return
+        extract_dir = _get_extract_dir(
+            work_dir,
+            remote_package_path,
+            package_filename,
+            node,
+            credential,
+            auth_kwargs_copy,
+            log,
+        )
+        if not extract_dir:
+            update_status("failed", 30, error_message="无法确定解压目录名")
             return
         log(f"源码包解压完成: {work_dir}/{extract_dir}")
 
@@ -557,7 +619,9 @@ def run_upgrade_task(task_id):
         if third_party:
             log(f"准备 {len(third_party)} 个第三方模块...")
             modules_dir = _third_party_modules_dir(work_dir)
-            with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
+            with SSHClient(
+                node.ip, node.port, credential.username, **auth_kwargs_copy
+            ) as ssh:
                 ssh.execute_command(f"mkdir -p {shlex.quote(modules_dir)}")
                 for idx, tp in enumerate(third_party):
                     if not isinstance(tp, dict):
@@ -595,30 +659,48 @@ def run_upgrade_task(task_id):
                 added_third_party=json.dumps(third_party, ensure_ascii=False),
                 target_configure_opts=_join_configure_opts(opt_tokens, multiline=True),
             )
-            task.target_configure_opts = _join_configure_opts(opt_tokens, multiline=True)
+            task.target_configure_opts = _join_configure_opts(
+                opt_tokens, multiline=True
+            )
         else:
             log("无第三方模块需要准备")
 
         # ---- Step 6: 备份旧二进制 ----
         if task.task_center_id and _is_cancelled(task.task_center_id):
-            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            update_status(
+                "cancelled",
+                100,
+                error_message="用户手动取消",
+                finished_at=timezone.now(),
+            )
             return
         update_status("backing_up", 50)
         binary_path = task.current_binary_path or parsed["binary_path"]
         timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
         backup_path = f"{binary_path}.old.{timestamp}"
-        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
-            success, output = ssh.execute_command(f"cp {binary_path} {backup_path} 2>&1")
+        with SSHClient(
+            node.ip, node.port, credential.username, **auth_kwargs_copy
+        ) as ssh:
+            success, output = ssh.execute_command(
+                f"cp {binary_path} {backup_path} 2>&1"
+            )
         if not success:
             log(f"备份旧二进制失败: {output}")
             update_status("failed", 50, error_message=f"备份旧二进制失败: {output}")
             return
         log(f"旧二进制已备份到: {backup_path}")
-        NginxUpgradeTask.objects.filter(pk=task_id).update(old_binary_backup=backup_path)
+        NginxUpgradeTask.objects.filter(pk=task_id).update(
+            old_binary_backup=backup_path
+        )
 
         # ---- Step 7: 执行 configure ----
         if task.task_center_id and _is_cancelled(task.task_center_id):
-            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            update_status(
+                "cancelled",
+                100,
+                error_message="用户手动取消",
+                finished_at=timezone.now(),
+            )
             return
         update_status("configuring", 55)
         log("执行 ./configure ...")
@@ -632,9 +714,13 @@ def run_upgrade_task(task_id):
                 if line.strip()
             ]
         target_opts_single = _join_configure_opts(opt_tokens, multiline=False)
-        configure_cmd = f"cd {work_dir}/{extract_dir} && ./configure {target_opts_single} 2>&1"
+        configure_cmd = (
+            f"cd {work_dir}/{extract_dir} && ./configure {target_opts_single} 2>&1"
+        )
         log(f"configure 命令: {configure_cmd}")
-        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
+        with SSHClient(
+            node.ip, node.port, credential.username, **auth_kwargs_copy
+        ) as ssh:
             if task.task_center_id:
                 register_ssh(task.task_center_id, ssh)
             try:
@@ -645,19 +731,30 @@ def run_upgrade_task(task_id):
         log_raw(output)
         if not success:
             log("configure 失败")
-            update_status("failed", 55, error_message=f"configure 失败:\n{_tail_output(output)}")
+            update_status(
+                "failed", 55, error_message=f"configure 失败:\n{_tail_output(output)}"
+            )
             return
         log("configure 成功")
 
         # ---- Step 8: 执行 make ----
         if task.task_center_id and _is_cancelled(task.task_center_id):
-            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            update_status(
+                "cancelled",
+                100,
+                error_message="用户手动取消",
+                finished_at=timezone.now(),
+            )
             return
         update_status("compiling", 65)
-        make_jobs = task.make_jobs or int(get_setting("upgrade.make_jobs_default", "4") or 4)
+        make_jobs = task.make_jobs or int(
+            get_setting("upgrade.make_jobs_default", "4") or 4
+        )
         make_cmd = f"cd {work_dir}/{extract_dir} && make -j{make_jobs} 2>&1"
         log(f"执行 make -j{make_jobs} ...")
-        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
+        with SSHClient(
+            node.ip, node.port, credential.username, **auth_kwargs_copy
+        ) as ssh:
             if task.task_center_id:
                 register_ssh(task.task_center_id, ssh)
             try:
@@ -668,23 +765,36 @@ def run_upgrade_task(task_id):
         log_raw(output)
         if not success:
             log("make 失败")
-            update_status("failed", 65, error_message=f"make 失败:\n{_tail_output(output)}")
+            update_status(
+                "failed", 65, error_message=f"make 失败:\n{_tail_output(output)}"
+            )
             return
         log("make 编译成功")
 
         # ---- Step 9: make install 覆盖安装（替代手写 cp objs/nginx）----
         if task.task_center_id and _is_cancelled(task.task_center_id):
-            update_status("cancelled", 100, error_message="用户手动取消", finished_at=timezone.now())
+            update_status(
+                "cancelled",
+                100,
+                error_message="用户手动取消",
+                finished_at=timezone.now(),
+            )
             return
         update_status("replacing_binary", 80)
         install_cmd = f"cd {work_dir}/{extract_dir} && make install 2>&1"
         log("执行 make install 安装新版本...")
-        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
+        with SSHClient(
+            node.ip, node.port, credential.username, **auth_kwargs_copy
+        ) as ssh:
             success, output = ssh.execute_command(install_cmd)
         log_raw(output)
         if not success:
             log("make install 失败")
-            update_status("failed", 80, error_message=f"make install 失败:\n{_tail_output(output)}")
+            update_status(
+                "failed",
+                80,
+                error_message=f"make install 失败:\n{_tail_output(output)}",
+            )
             return
         log("make install 完成，二进制已覆盖安装")
 
@@ -692,31 +802,51 @@ def run_upgrade_task(task_id):
         update_status("verifying", 85)
         log("执行 nginx -t 语法检查...")
         from utils.ssh import execute_nginx_test
+
         nginx_bin = task.current_binary_path or parsed["binary_path"]
         success, output = execute_nginx_test(
-            node.ip, node.port, credential.username,
-            nginx_path=nginx_bin, **auth_kwargs_copy,
+            node.ip,
+            node.port,
+            credential.username,
+            nginx_path=nginx_bin,
+            **auth_kwargs_copy,
         )
         log_raw(output)
         if not success:
             log("语法检查失败，准备回滚旧二进制")
-            _rollback_binary(node, credential, binary_path, backup_path, auth_kwargs_copy, log)
-            update_status("failed", 85, error_message=f"nginx -t 语法检查失败，已自动回滚:\n{output}")
+            _rollback_binary(
+                node, credential, binary_path, backup_path, auth_kwargs_copy, log
+            )
+            update_status(
+                "failed",
+                85,
+                error_message=f"nginx -t 语法检查失败，已自动回滚:\n{output}",
+            )
             return
         log("nginx -t 语法检查通过")
 
         # ---- Step 11: 按启动方式 reload（未运行则 start）----
         update_status("upgrading", 90)
         from utils.nginx_ops import reload_nginx
+
         log("检测 Nginx 启动方式并执行 reload（未运行则 start）...")
         success, result = reload_nginx(
-            node.ip, node.port, credential.username,
-            nginx_path=nginx_bin, log_fn=log, start_if_stopped=True, **auth_kwargs_copy,
+            node.ip,
+            node.port,
+            credential.username,
+            nginx_path=nginx_bin,
+            log_fn=log,
+            start_if_stopped=True,
+            **auth_kwargs_copy,
         )
         if not success:
             log(f"reload/start 失败: {result}")
-            _rollback_binary(node, credential, binary_path, backup_path, auth_kwargs_copy, log)
-            update_status("failed", 90, error_message=f"Nginx reload/start 失败: {result}")
+            _rollback_binary(
+                node, credential, binary_path, backup_path, auth_kwargs_copy, log
+            )
+            update_status(
+                "failed", 90, error_message=f"Nginx reload/start 失败: {result}"
+            )
             return
         log(f"reload/start 完成: {result}")
 
@@ -724,15 +854,21 @@ def run_upgrade_task(task_id):
         update_status("verifying", 95)
         log("最终验证...")
         from utils.ssh import get_nginx_version
+
         ver_ok, ver_info = get_nginx_version(
-            node.ip, node.port, credential.username,
-            nginx_path=nginx_bin, **auth_kwargs_copy,
+            node.ip,
+            node.port,
+            credential.username,
+            nginx_path=nginx_bin,
+            **auth_kwargs_copy,
         )
         if ver_ok:
             log(f"新版本: {ver_info}")
         else:
             verify_cmd = f"{nginx_bin} -v 2>&1"
-            with SSHClient(node.ip, node.port, credential.username, **auth_kwargs_copy) as ssh:
+            with SSHClient(
+                node.ip, node.port, credential.username, **auth_kwargs_copy
+            ) as ssh:
                 _, output = ssh.execute_command(verify_cmd)
             log(f"新版本: {(output or '').strip()}")
 
@@ -743,6 +879,7 @@ def run_upgrade_task(task_id):
         # 更新节点 nginx_version（优先真实 -v，失败则回退目标版本；统一纯数字）
         from apps.nodes.models import Node as NodeModel
         from apps.nodes.services import apply_nginx_probe_result
+
         target_ver = task.target_version or source_package.version
         node_ver = ver_info if (ver_ok and ver_info) else target_ver
         # 升级成功视为 Nginx 可用（即使 -v 解析失败也回退目标版本）
@@ -761,23 +898,34 @@ def run_upgrade_task(task_id):
         log(f"升级过程发生异常: {str(e)}")
         try:
             NginxUpgradeTask.objects.filter(pk=task_id).update(
-                status="failed", error_message=str(e), finished_at=timezone.now(),
+                status="failed",
+                error_message=str(e),
+                finished_at=timezone.now(),
                 log_output="\n".join(log_lines) if log_lines else "",
             )
             # 异常路径同样同步任务中心
-            update_status("failed", 100, error_message=str(e), finished_at=timezone.now())
+            update_status(
+                "failed", 100, error_message=str(e), finished_at=timezone.now()
+            )
         except Exception:
             pass
 
 
-def _ensure_remote_dir(host, port, username, password=None, private_key=None, work_dir=None):
+def _ensure_remote_dir(
+    host, port, username, password=None, private_key=None, work_dir=None
+):
     """确保远程编译工作目录存在（优先使用任务目录）"""
     from utils.ssh import SSHClient
-    target = (work_dir or "").strip() or get_setting(
-        "upgrade.default_work_dir", "/tmp/nginx-upgrade"
-    ) or "/tmp/nginx-upgrade"
+
+    target = (
+        (work_dir or "").strip()
+        or get_setting("upgrade.default_work_dir", "/tmp/nginx-upgrade")
+        or "/tmp/nginx-upgrade"
+    )
     try:
-        with SSHClient(host, port, username, password=password, private_key=private_key) as ssh:
+        with SSHClient(
+            host, port, username, password=password, private_key=private_key
+        ) as ssh:
             ssh.execute_command(f"mkdir -p {target}")
     except Exception:
         pass
@@ -867,7 +1015,11 @@ def _sync_third_party_git(ssh, name, git_url, branch, module_path, modules_dir, 
         if not success:
             hint = ""
             out = (output or "").lower()
-            if "not found" in out or "command not found" in out or "could not resolve" in out:
+            if (
+                "not found" in out
+                or "command not found" in out
+                or "could not resolve" in out
+            ):
                 hint = "；目标机可能未安装 git 或无法访问互联网，请改用离线包"
             return False, f"下载第三方模块 {name} 失败: {output}{hint}"
         log(f"第三方模块 {name} 克隆完成: {module_path}")
@@ -935,8 +1087,11 @@ def _deploy_third_party_package(
     log(f"上传离线模块包 {name} ({filename}) ...")
     ssh.execute_command(f"mkdir -p {q_modules}")
     success, msg = upload_file_via_sftp(
-        node.ip, node.port, credential.username,
-        local_path=local_path, remote_path=remote_archive,
+        node.ip,
+        node.port,
+        credential.username,
+        local_path=local_path,
+        remote_path=remote_archive,
         **auth_kwargs,
     )
     if not success:
@@ -944,8 +1099,11 @@ def _deploy_third_party_package(
 
     if package.file_md5:
         ok_md5, remote_md5 = check_remote_file_md5(
-            node.ip, node.port, credential.username,
-            file_path=remote_archive, **auth_kwargs,
+            node.ip,
+            node.port,
+            credential.username,
+            file_path=remote_archive,
+            **auth_kwargs,
         )
         if ok_md5 and remote_md5 != package.file_md5:
             return False, f"第三方模块包 {name} MD5 校验失败"
@@ -984,7 +1142,11 @@ def _deploy_third_party_package(
 
 
 def _extract_package_name(filename):
-    """从文件名提取解压后的目录名，如 nginx-1.26.1.tar.gz → nginx-1.26.1"""
+    """从文件名提取解压后的目录名，如 nginx-1.26.1.tar.gz → nginx-1.26.1
+
+    注意：此函数依赖文件名，当 Django FileSystemStorage 对同名文件加后缀时可能不准确。
+    优先使用 _get_extract_dir() 从归档内容读取实际目录名。
+    """
     name = filename
     if name.endswith(".tar.gz"):
         name = name[:-7]
@@ -993,11 +1155,42 @@ def _extract_package_name(filename):
     return name
 
 
+def _get_extract_dir(
+    work_dir,
+    remote_package_path,
+    package_filename,
+    node,
+    credential,
+    auth_kwargs,
+    log_fn,
+):
+    """从归档内容读取实际解压目录名，不依赖文件名。
+
+    Django FileSystemStorage 会在同名文件冲突时对文件名追加随机后缀（如 _AbCdEfG），
+    导致从文件名推导的目录名与 tar 实际解压目录不一致。此函数通过 tar -tzf 读取归档
+    内部的第一层目录名，确保后续 cd 等操作使用正确的路径。
+    """
+    try:
+        with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
+            success, output = ssh.execute_command(
+                f"tar -tzf {remote_package_path} 2>/dev/null | head -1 | cut -d/ -f1"
+            )
+            if success and output:
+                extract_dir = output.strip()
+                if extract_dir:
+                    return extract_dir
+    except Exception as e:
+        log_fn(f"从归档读取目录名失败: {e}")
+    return _extract_package_name(package_filename)
+
+
 def _rollback_binary(node, credential, binary_path, backup_path, auth_kwargs, log_fn):
     """回滚二进制到备份版本"""
     try:
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
-            success, output = ssh.execute_command(f"cp {backup_path} {binary_path} 2>&1")
+            success, output = ssh.execute_command(
+                f"cp {backup_path} {binary_path} 2>&1"
+            )
             if success:
                 log_fn(f"已回滚二进制: {backup_path} → {binary_path}")
             else:
@@ -1029,7 +1222,11 @@ def create_upgrade_batch_from_data(user, data):
     from apps.releases.models import TaskCenterTask
     from apps.releases.task_result import upgrade_detail_short
 
-    from .models import NginxSourcePackage, NginxUpgradeTask, generate_upgrade_batch_number
+    from .models import (
+        NginxSourcePackage,
+        NginxUpgradeTask,
+        generate_upgrade_batch_number,
+    )
 
     try:
         node_ids = [int(x) for x in (data.get("node_ids") or [])]
@@ -1041,9 +1238,7 @@ def create_upgrade_batch_from_data(user, data):
             or "/tmp/nginx-upgrade"
         ).strip()
         make_jobs = int(
-            data.get("make_jobs")
-            or get_setting("upgrade.make_jobs_default", "4")
-            or 4
+            data.get("make_jobs") or get_setting("upgrade.make_jobs_default", "4") or 4
         )
         target_version = (data.get("target_version") or "").strip()
         shared_prefix = (data.get("target_prefix") or "").strip()
@@ -1056,7 +1251,9 @@ def create_upgrade_batch_from_data(user, data):
 
     if not isinstance(added_third_party, list):
         added_third_party = []
-    added_third_party = enrich_third_party_module_paths(added_third_party, remote_work_dir)
+    added_third_party = enrich_third_party_module_paths(
+        added_third_party, remote_work_dir
+    )
 
     if not node_ids:
         return {"success": False, "message": "请至少选择一个节点"}, 400
@@ -1143,7 +1340,10 @@ def create_upgrade_batch_from_data(user, data):
             target_prefix = prefix or "/usr/local/nginx"
 
         target_opts = compute_target_configure_opts(
-            params, added_modules, removed_modules, added_third_party,
+            params,
+            added_modules,
+            removed_modules,
+            added_third_party,
             remote_work_dir=remote_work_dir,
         )
         # 仅切换路径模式才重写 configure 中的 --prefix=

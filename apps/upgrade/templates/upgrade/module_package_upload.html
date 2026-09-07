@@ -236,6 +236,17 @@
                 return;
             }
 
+            if (data && data.md5_duplicate) {
+                if (typeof closeAsyncProgressOverlay === 'function') closeAsyncProgressOverlay();
+                resetSubmitBtn();
+                showConfirm(
+                    '文件内容相同',
+                    '文件内容与已有模块包完全相同，是否覆盖？',
+                    function() { doUpload(true); }
+                );
+                return;
+            }
+
             finishUploadProgress(false, (data && data.message) || '上传失败');
             if (window.showToast) showToast((data && data.message) || '上传失败', 'danger');
             resetSubmitBtn();

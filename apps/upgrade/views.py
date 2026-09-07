@@ -1,5 +1,6 @@
 """Nginx 升级模块 - 视图"""
 
+import hashlib
 import json
 from datetime import timedelta
 
@@ -124,15 +125,36 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
                 return True
         return False
 
+    def _has_md5_duplicate_error(self, form):
+        """判断是否为 md5 重复错误"""
+        for err in form.non_field_errors().as_data():
+            if getattr(err, "code", None) == "md5_duplicate":
+                return True
+        return False
+
     def form_valid(self, form):
-        """新建或覆盖已有同版本源码包"""
+        """新建或覆盖已有同版本 / 同 md5 源码包"""
         user = self.request.user
         version = form.cleaned_data["version"]
         overwrite = form.cleaned_data.get("overwrite")
+        package_file = form.cleaned_data.get("package_file")
+
         existing = NginxSourcePackage.objects.filter(
             version=version,
             uploaded_by=user,
         ).first()
+
+        if not existing and overwrite and package_file:
+            # 按 md5 查找已有包（不限用户），用于覆盖
+            try:
+                package_file.seek(0)
+                file_md5 = hashlib.md5(package_file.read()).hexdigest()
+                package_file.seek(0)
+                existing = NginxSourcePackage.objects.filter(
+                    file_md5=file_md5,
+                ).first()
+            except (IOError, OSError):
+                pass
 
         if existing and overwrite:
             if existing.package_file:
@@ -140,6 +162,7 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
             existing.name = form.cleaned_data["name"]
             existing.description = form.cleaned_data.get("description") or ""
             existing.is_official = bool(form.cleaned_data.get("is_official"))
+            existing.uploaded_by = user
             existing.package_file = form.cleaned_data["package_file"]
             existing.file_size = 0
             existing.file_md5 = ""
@@ -163,12 +186,17 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
         return redirect(self.get_success_url())
 
     def form_invalid(self, form):
-        """校验失败：AJAX 返回 JSON，含 need_overwrite 标记"""
+        """校验失败：AJAX 返回 JSON，含 need_overwrite / md5_duplicate 标记"""
         if self._wants_json():
             need_overwrite = self._has_version_exists_error(form)
-            message = "版本已存在，是否覆盖？" if need_overwrite else "上传校验失败"
-            if not need_overwrite and form.errors:
-                # 取首条可读错误
+            md5_duplicate = self._has_md5_duplicate_error(form)
+            if need_overwrite:
+                message = "版本已存在，是否覆盖？"
+            elif md5_duplicate:
+                message = "文件内容与已有包相同，是否覆盖？"
+            else:
+                message = "上传校验失败"
+            if not need_overwrite and not md5_duplicate and form.errors:
                 for field, errs in form.errors.items():
                     if errs:
                         message = errs[0]
@@ -177,6 +205,7 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
                 {
                     "success": False,
                     "need_overwrite": need_overwrite,
+                    "md5_duplicate": md5_duplicate,
                     "message": message,
                     "errors": form.errors,
                 },
@@ -323,22 +352,44 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
                 return True
         return False
 
+    def _has_md5_duplicate_error(self, form):
+        """判断是否为 md5 重复错误"""
+        for err in form.non_field_errors().as_data():
+            if getattr(err, "code", None) == "md5_duplicate":
+                return True
+        return False
+
     def form_valid(self, form):
-        """新建或覆盖已有同名同版本模块包"""
+        """新建或覆盖已有同名同版本 / 同 md5 模块包"""
         user = self.request.user
         name = form.cleaned_data["name"]
         version = form.cleaned_data.get("version") or ""
         overwrite = form.cleaned_data.get("overwrite")
+        package_file = form.cleaned_data.get("package_file")
+
         existing = NginxThirdPartyModulePackage.objects.filter(
             name=name,
             version=version,
             uploaded_by=user,
         ).first()
 
+        if not existing and overwrite and package_file:
+            # 按 md5 查找已有包（不限用户），用于覆盖
+            try:
+                package_file.seek(0)
+                file_md5 = hashlib.md5(package_file.read()).hexdigest()
+                package_file.seek(0)
+                existing = NginxThirdPartyModulePackage.objects.filter(
+                    file_md5=file_md5,
+                ).first()
+            except (IOError, OSError):
+                pass
+
         if existing and overwrite:
             if existing.package_file:
                 existing.package_file.delete(save=False)
             existing.description = form.cleaned_data.get("description") or ""
+            existing.uploaded_by = user
             existing.package_file = form.cleaned_data["package_file"]
             existing.file_size = 0
             existing.file_md5 = ""
@@ -362,11 +413,17 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
         return redirect(self.get_success_url())
 
     def form_invalid(self, form):
-        """校验失败：AJAX 返回 JSON"""
+        """校验失败：AJAX 返回 JSON，含 need_overwrite / md5_duplicate 标记"""
         if self._wants_json():
             need_overwrite = self._has_version_exists_error(form)
-            message = "模块包已存在，是否覆盖？" if need_overwrite else "上传校验失败"
-            if not need_overwrite and form.errors:
+            md5_duplicate = self._has_md5_duplicate_error(form)
+            if need_overwrite:
+                message = "模块包已存在，是否覆盖？"
+            elif md5_duplicate:
+                message = "文件内容与已有模块包相同，是否覆盖？"
+            else:
+                message = "上传校验失败"
+            if not need_overwrite and not md5_duplicate and form.errors:
                 for field, errs in form.errors.items():
                     if errs:
                         message = errs[0]
@@ -375,6 +432,7 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
                 {
                     "success": False,
                     "need_overwrite": need_overwrite,
+                    "md5_duplicate": md5_duplicate,
                     "message": message,
                     "errors": form.errors,
                 },

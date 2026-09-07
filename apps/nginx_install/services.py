@@ -1,4 +1,5 @@
 """Nginx 全新安装独立流水线（不调用 run_upgrade_task）"""
+
 import json
 import logging
 import os
@@ -58,7 +59,9 @@ def _tail_output(text, max_lines=80):
 
 def _default_install_prefix():
     """读取安装缺省 --prefix"""
-    return (get_setting("install.default_prefix", "/opt/app") or "/opt/app").strip() or "/opt/app"
+    return (
+        get_setting("install.default_prefix", "/opt/app") or "/opt/app"
+    ).strip() or "/opt/app"
 
 
 def _default_listen_port():
@@ -85,6 +88,7 @@ def derive_paths_from_prefix(prefix):
 
 def _apply_listen_port_to_conf(ssh, conf_path, listen_port, log_fn=None):
     """将主配置中默认 listen 80 / [::]:80 改写为目标端口"""
+
     def _log(msg):
         if log_fn:
             log_fn(msg)
@@ -182,12 +186,11 @@ def _parse_configure_user_group(configure_opts):
     return user, group
 
 
-
 def run_install_task(task_id):
     """执行单节点全新安装（线程内调用，独立于升级流水线）"""
     from apps.upgrade.services import (
         _ensure_remote_dir,
-        _extract_package_name,
+        _get_extract_dir,
         _join_configure_opts,
         _prepare_one_third_party_module,
         _third_party_modules_dir,
@@ -242,7 +245,9 @@ def run_install_task(task_id):
         log_lines.append(text)
         _persist_log()
 
-    def set_task_status(status, progress, error_message=None, finished_at=None, **extra):
+    def set_task_status(
+        status, progress, error_message=None, finished_at=None, **extra
+    ):
         """更新安装任务状态字段"""
         updates = {
             "status": status,
@@ -259,9 +264,14 @@ def run_install_task(task_id):
     def fail(progress, message):
         """标记安装失败并同步任务中心（含结果树）"""
         log(message)
-        set_task_status("failed", progress, error_message=message, finished_at=timezone.now())
+        set_task_status(
+            "failed", progress, error_message=message, finished_at=timezone.now()
+        )
         if tc_id:
-            from apps.releases.task_progress import _clear_release_progress_state, _set_current_step
+            from apps.releases.task_progress import (
+                _clear_release_progress_state,
+                _set_current_step,
+            )
 
             _set_current_step(tc_id, hostname, None)
             _clear_release_progress_state(tc_id)
@@ -283,7 +293,10 @@ def run_install_task(task_id):
         """协作式取消检查"""
         if tc_id and is_cancelled(tc_id):
             set_task_status(
-                "cancelled", 100, error_message="用户手动取消", finished_at=timezone.now()
+                "cancelled",
+                100,
+                error_message="用户手动取消",
+                finished_at=timezone.now(),
             )
             return True
         return False
@@ -307,12 +320,15 @@ def run_install_task(task_id):
                 started_at=timezone.now(),
             )
             from apps.releases.task_progress import _set_current_step
+
             _set_current_step(tc_id, hostname, "检查编译工具")
 
         # ---- 编译工具预检 ----
         set_task_status("uploading_package", 8)
         log("检查编译工具 gcc / make ...")
-        check_cmd = "command -v gcc >/dev/null && command -v make >/dev/null && echo 'DEPS_OK'"
+        check_cmd = (
+            "command -v gcc >/dev/null && command -v make >/dev/null && echo 'DEPS_OK'"
+        )
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
             success, output = ssh.execute_command(check_cmd)
         if not success or "DEPS_OK" not in (output or ""):
@@ -341,13 +357,19 @@ def run_install_task(task_id):
         remote_package_path = f"{work_dir}/{package_filename}"
 
         _ensure_remote_dir(
-            node.ip, node.port, credential.username,
-            work_dir=work_dir, **auth_kwargs,
+            node.ip,
+            node.port,
+            credential.username,
+            work_dir=work_dir,
+            **auth_kwargs,
         )
         local_path = source_package.package_file.path
         success, msg = upload_file_via_sftp(
-            node.ip, node.port, credential.username,
-            local_path=local_path, remote_path=remote_package_path,
+            node.ip,
+            node.port,
+            credential.username,
+            local_path=local_path,
+            remote_path=remote_package_path,
             **auth_kwargs,
         )
         if not success:
@@ -355,10 +377,17 @@ def run_install_task(task_id):
         log(f"源码包已上传到 {remote_package_path}")
 
         success, remote_md5 = check_remote_file_md5(
-            node.ip, node.port, credential.username,
-            file_path=remote_package_path, **auth_kwargs,
+            node.ip,
+            node.port,
+            credential.username,
+            file_path=remote_package_path,
+            **auth_kwargs,
         )
-        if success and source_package.file_md5 and remote_md5 != source_package.file_md5:
+        if (
+            success
+            and source_package.file_md5
+            and remote_md5 != source_package.file_md5
+        ):
             return fail(20, "源码包 MD5 校验失败，传输可能损坏")
         log(f"MD5 校验通过 ({(remote_md5 or '')[:16]}...)")
         if cancelled():
@@ -367,13 +396,23 @@ def run_install_task(task_id):
         # ---- 解压 ----
         set_task_status("uploading_package", 25)
         log("解压源码包...")
-        extract_dir = _extract_package_name(package_filename)
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
             success, output = ssh.execute_command(
                 f"cd {work_dir} && tar -xzf {remote_package_path} 2>&1"
             )
         if not success:
             return fail(25, f"解压失败: {output}")
+        extract_dir = _get_extract_dir(
+            work_dir,
+            remote_package_path,
+            package_filename,
+            node,
+            credential,
+            auth_kwargs,
+            log,
+        )
+        if not extract_dir:
+            return fail(25, "无法确定解压目录名")
         log(f"源码包解压完成: {work_dir}/{extract_dir}")
         if cancelled():
             return
@@ -383,11 +422,15 @@ def run_install_task(task_id):
         third_party = json.loads(task.added_third_party or "[]")
         if third_party:
             if tc_id:
-                update_if_active(tc_id, progress=35, detail=f"{hostname} · 准备第三方模块")
+                update_if_active(
+                    tc_id, progress=35, detail=f"{hostname} · 准备第三方模块"
+                )
                 _set_current_step(tc_id, hostname, "准备第三方模块")
             log(f"准备 {len(third_party)} 个第三方模块...")
             modules_dir = _third_party_modules_dir(work_dir)
-            with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
+            with SSHClient(
+                node.ip, node.port, credential.username, **auth_kwargs
+            ) as ssh:
                 ssh.execute_command(f"mkdir -p {shlex.quote(modules_dir)}")
                 for idx, tp in enumerate(third_party):
                     if not isinstance(tp, dict):
@@ -447,7 +490,9 @@ def run_install_task(task_id):
         if not any(t.startswith("--prefix=") for t in opt_tokens):
             opt_tokens.insert(0, f"--prefix={paths['prefix']}")
         target_opts_single = _join_configure_opts(opt_tokens, multiline=False)
-        configure_cmd = f"cd {work_dir}/{extract_dir} && ./configure {target_opts_single} 2>&1"
+        configure_cmd = (
+            f"cd {work_dir}/{extract_dir} && ./configure {target_opts_single} 2>&1"
+        )
         log(f"configure 命令: {configure_cmd}")
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
             if tc_id:
@@ -469,7 +514,9 @@ def run_install_task(task_id):
         if tc_id:
             update_if_active(tc_id, progress=65, detail=f"{hostname} · make")
             _set_current_step(tc_id, hostname, "make")
-        make_jobs = task.make_jobs or int(get_setting("upgrade.make_jobs_default", "4") or 4)
+        make_jobs = task.make_jobs or int(
+            get_setting("upgrade.make_jobs_default", "4") or 4
+        )
         make_cmd = f"cd {work_dir}/{extract_dir} && make -j{make_jobs} 2>&1"
         log(f"执行 make -j{make_jobs} ...")
         with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
@@ -513,9 +560,14 @@ def run_install_task(task_id):
                 )
                 _set_current_step(tc_id, hostname, f"写入 listen {listen_port}")
             log(f"将主配置 listen 改为 {listen_port} ...")
-            with SSHClient(node.ip, node.port, credential.username, **auth_kwargs) as ssh:
+            with SSHClient(
+                node.ip, node.port, credential.username, **auth_kwargs
+            ) as ssh:
                 ok, apply_out = _apply_listen_port_to_conf(
-                    ssh, main_conf, listen_port, log_fn=log,
+                    ssh,
+                    main_conf,
+                    listen_port,
+                    log_fn=log,
                 )
             if not ok:
                 return fail(82, f"写入监听端口失败:\n{apply_out}")
@@ -531,8 +583,11 @@ def run_install_task(task_id):
             _set_current_step(tc_id, hostname, "nginx -t")
         log("执行 nginx -t 语法检查...")
         success, output = execute_nginx_test(
-            node.ip, node.port, credential.username,
-            nginx_path=nginx_bin, **auth_kwargs,
+            node.ip,
+            node.port,
+            credential.username,
+            nginx_path=nginx_bin,
+            **auth_kwargs,
         )
         log_raw(output)
         if not success:
@@ -552,9 +607,7 @@ def run_install_task(task_id):
         )
 
         log("探测 systemd 管理能力…")
-        start_ssh = SSHClient(
-            node.ip, node.port, credential.username, **auth_kwargs
-        )
+        start_ssh = SSHClient(node.ip, node.port, credential.username, **auth_kwargs)
         conn_ok, conn_msg = start_ssh.connect()
         if not conn_ok:
             return fail(88, f"启动阶段 SSH 连接失败: {conn_msg}")
@@ -582,18 +635,27 @@ def run_install_task(task_id):
                 if not w_ok:
                     return fail(88, f"注册 systemd unit 失败: {w_msg}")
                 ok, result = start_nginx(
-                    node.ip, node.port, credential.username,
-                    nginx_path=nginx_bin, log_fn=log,
-                    prefer_mode="systemctl", use_sudo=use_sudo,
-                    client=start_ssh.client, **auth_kwargs,
+                    node.ip,
+                    node.port,
+                    credential.username,
+                    nginx_path=nginx_bin,
+                    log_fn=log,
+                    prefer_mode="systemctl",
+                    use_sudo=use_sudo,
+                    client=start_ssh.client,
+                    **auth_kwargs,
                 )
             else:
                 log(f"无 systemd 管理能力（{cap_reason}），使用二进制启动")
                 ok, result = start_nginx(
-                    node.ip, node.port, credential.username,
-                    nginx_path=nginx_bin, log_fn=log,
+                    node.ip,
+                    node.port,
+                    credential.username,
+                    nginx_path=nginx_bin,
+                    log_fn=log,
                     prefer_mode="binary",
-                    client=start_ssh.client, **auth_kwargs,
+                    client=start_ssh.client,
+                    **auth_kwargs,
                 )
             if not ok:
                 return fail(88, f"Nginx 启动失败: {result}")
@@ -607,10 +669,15 @@ def run_install_task(task_id):
         # ---- 回写节点 ----
         set_task_status("verifying", 92)
         ver_ok, ver_info = get_nginx_version(
-            node.ip, node.port, credential.username,
-            nginx_path=nginx_bin, **auth_kwargs,
+            node.ip,
+            node.port,
+            credential.username,
+            nginx_path=nginx_bin,
+            **auth_kwargs,
         )
-        target_ver = task.target_version or (source_package.version if source_package else "")
+        target_ver = task.target_version or (
+            source_package.version if source_package else ""
+        )
         # 统一纯数字版本（如 1.31.2），由 apply_nginx_probe_result 再 strip
         if ver_ok and ver_info:
             node_ver = ver_info
@@ -618,21 +685,28 @@ def run_install_task(task_id):
             node_ver = target_ver or ""
         log(f"回写节点版本={node_ver} 路径={nginx_bin}")
 
-        from apps.nodes.services import mark_node_probe_success, apply_nginx_probe_result
+        from apps.nodes.services import (
+            mark_node_probe_success,
+            apply_nginx_probe_result,
+        )
+
         mark_node_probe_success(node)
         apply_nginx_probe_result(node, True, node_ver)
         node.nginx_path = nginx_bin
-        node.save(update_fields=[
-            "nginx_version",
-            "nginx_available",
-            "last_nginx_probe_at",
-            "nginx_path",
-            "status",
-            "last_probe_at",
-            "updated_at",
-        ])
+        node.save(
+            update_fields=[
+                "nginx_version",
+                "nginx_available",
+                "last_nginx_probe_at",
+                "nginx_path",
+                "status",
+                "last_probe_at",
+                "updated_at",
+            ]
+        )
 
         from apps.configs.services import save_sync_path
+
         save_sync_path(node, main_conf, user=task.operator)
         log(f"主配置路径已写入: {main_conf}")
 
@@ -651,7 +725,8 @@ def run_install_task(task_id):
             log=log,
         )
         set_task_status(
-            "syncing_config", 95,
+            "syncing_config",
+            95,
             sync_ok=sync_ok,
             sync_detail=sync_detail[:255] if sync_detail else "",
         )
@@ -663,7 +738,10 @@ def run_install_task(task_id):
         set_task_status("success", 100, finished_at=timezone.now())
         log(f"✅ {finish_msg}")
         if tc_id:
-            from apps.releases.task_progress import _clear_release_progress_state, _set_current_step
+            from apps.releases.task_progress import (
+                _clear_release_progress_state,
+                _set_current_step,
+            )
 
             _set_current_step(tc_id, hostname, None)
             _clear_release_progress_state(tc_id)
@@ -693,7 +771,9 @@ def run_install_task(task_id):
         return False
 
 
-def _auto_sync_configs(node, credential, auth_kwargs, main_conf, operator, task_center_id, log):
+def _auto_sync_configs(
+    node, credential, auth_kwargs, main_conf, operator, task_center_id, log
+):
     """安装成功后自动发现并同步配置；失败不否定安装"""
     from apps.configs.services import (
         discover_max_depth,
@@ -863,7 +943,9 @@ def create_install_batch_from_data(user, data):
         )
 
     nodes = list(
-        Node.objects.filter(id__in=node_ids, is_deleted=False).select_related("credential")
+        Node.objects.filter(id__in=node_ids, is_deleted=False).select_related(
+            "credential"
+        )
     )
     if len(nodes) != len(set(node_ids)):
         return {"success": False, "message": "部分节点不存在或已删除"}
@@ -872,16 +954,22 @@ def create_install_batch_from_data(user, data):
     eligible = []
     for node in nodes:
         if node.is_locked:
-            rejected.append({"id": node.id, "hostname": node.hostname, "reason": "节点已锁定"})
+            rejected.append(
+                {"id": node.id, "hostname": node.hostname, "reason": "节点已锁定"}
+            )
             continue
         from apps.nodes.services import install_gate_message
 
         gate_msg = install_gate_message(node)
         if gate_msg:
-            rejected.append({"id": node.id, "hostname": node.hostname, "reason": gate_msg})
+            rejected.append(
+                {"id": node.id, "hostname": node.hostname, "reason": gate_msg}
+            )
             continue
         if not _get_node_credential(node):
-            rejected.append({"id": node.id, "hostname": node.hostname, "reason": "无可用凭证"})
+            rejected.append(
+                {"id": node.id, "hostname": node.hostname, "reason": "无可用凭证"}
+            )
             continue
         eligible.append(node)
 
