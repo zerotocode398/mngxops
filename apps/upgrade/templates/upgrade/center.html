@@ -2305,9 +2305,22 @@ function truncateErrorLines(msg, maxLines) {
 
 function renderBatchProgress(tasks) {
     var container = document.getElementById('upgradeSteps');
+
+    var expandedIds = {};
+    var currentBodies = container.querySelectorAll('.node-progress-body');
+    currentBodies.forEach(function (body) {
+        var block = body.closest('.node-progress-block');
+        if (block && !body.classList.contains('d-none')) {
+            var tid = block.getAttribute('data-task-id');
+            if (tid) expandedIds[tid] = true;
+        }
+    });
+
     var html = '';
     tasks.forEach(function (t, idx) {
-        var open = idx === 0 ? '' : ' d-none';
+        var tid = String(t.task_id);
+        var isExpanded = expandedIds.hasOwnProperty(tid) ? expandedIds[tid] : (idx === 0);
+        var open = isExpanded ? '' : ' d-none';
         var badgeCls = 'bg-secondary';
         if (t.status === 'success') badgeCls = 'bg-success';
         else if (t.status === 'failed' || t.status === 'cancelled') badgeCls = 'bg-danger';
