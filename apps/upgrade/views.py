@@ -160,9 +160,11 @@ class PackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, CreateView)
             if existing.package_file:
                 existing.package_file.delete(save=False)
             existing.name = form.cleaned_data["name"]
+            existing.version = form.cleaned_data["version"]
             existing.description = form.cleaned_data.get("description") or ""
             existing.is_official = bool(form.cleaned_data.get("is_official"))
             existing.uploaded_by = user
+            existing.created_at = timezone.now()
             existing.package_file = form.cleaned_data["package_file"]
             existing.file_size = 0
             existing.file_md5 = ""
@@ -388,8 +390,11 @@ class ModulePackageUploadView(LoginRequiredMixin, PermissionRequiredMixin, Creat
         if existing and overwrite:
             if existing.package_file:
                 existing.package_file.delete(save=False)
+            existing.name = form.cleaned_data["name"]
+            existing.version = form.cleaned_data.get("version") or ""
             existing.description = form.cleaned_data.get("description") or ""
             existing.uploaded_by = user
+            existing.created_at = timezone.now()
             existing.package_file = form.cleaned_data["package_file"]
             existing.file_size = 0
             existing.file_md5 = ""
