@@ -11,7 +11,7 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-people-fill"></i> 角色列表</h5>
-                    {% if user|has_perm_code:"roles.create" %}
+                    {% if request.user.is_superuser %}
                     <a href="{% url 'users:role_create' %}" class="btn btn-primary btn-sm">
                         <i class="bi bi-plus-circle"></i> 新增角色
                     </a>
@@ -69,7 +69,7 @@
                                     </td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
-                                            {% if user|has_perm_code:"roles.update" %}
+                                            {% if request.user.is_superuser %}
                                             <button type="button" class="btn btn-outline-success" data-bs-toggle="modal"
                                                 data-bs-target="#manageUsersModal{{ group.id }}" title="管理用户">
                                                 <i class="bi bi-gear"></i>
@@ -79,7 +79,7 @@
                                                 <i class="bi bi-pencil"></i>
                                             </a>
                                             {% endif %}
-                                            {% if user|has_perm_code:"roles.delete" %}
+                                            {% if request.user.is_superuser %}
                                             <button type="button" class="btn btn-outline-danger" title="删除"
                                                 onclick="submitPostConfirm('确认删除', '确定要删除角色 {{ group.name }} 吗？此操作不可恢复！', '{% url 'users:role_delete' group.id %}')">
                                                 <i class="bi bi-trash"></i>
@@ -101,7 +101,7 @@
                     </div>
 
                     {% for group in user_groups %}
-                    {% if user|has_perm_code:"roles.update" %}
+                    {% if request.user.is_superuser %}
                     <div class="modal fade" id="manageUsersModal{{ group.id }}" tabindex="-1">
                         <div class="modal-dialog modal-lg modal-dialog-centered">
                             <div class="modal-content">

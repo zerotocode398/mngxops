@@ -12,13 +12,13 @@ from django.utils import timezone
 from .forms import UserCreateForm, UserUpdateForm, UserGroupForm, UserTeamForm
 from .models import UserProfile, UserGroup, UserTeam, PermissionItem
 from utils.pagination import PerPagePaginationMixin
-from .permissions import PermissionRequiredMixin
+from .permissions import PermissionRequiredMixin, AdminRequiredMixin
 from apps.accounts.login_lock import clear_login_fail_lock, user_login_enabled
 
 
 class UserListView(
     LoginRequiredMixin,
-    PermissionRequiredMixin,
+    AdminRequiredMixin,
     PerPagePaginationMixin,
     ListView,
 ):
@@ -27,8 +27,6 @@ class UserListView(
     context_object_name = "users"
     paginate_by = 10
     ordering = ["-date_joined"]
-    permission_resource = "users"
-    permission_action = "read"
 
     def get_queryset(self):
         """用户列表查询；预取角色与用户组，避免 N+1。"""
@@ -64,13 +62,11 @@ class UserListView(
         return context
 
 
-class UserCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+class UserCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
     model = User
     form_class = UserCreateForm
     template_name = "users/create.html"
     success_url = reverse_lazy("users:list")
-    permission_resource = "users"
-    permission_action = "create"
 
     def get_context_data(self, **kwargs):
         """补充角色/用户组弹窗列表与直授权限矩阵"""
@@ -91,19 +87,16 @@ class UserCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
         return super().form_invalid(form)
 
 
-class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+class UserUpdateView(LoginRequiredMixin, AdminRequiredMixin, UpdateView):
     model = User
     form_class = UserUpdateForm
     template_name = "users/edit.html"
-    context_object_name = "edit_user"
     success_url = reverse_lazy("users:list")
-    permission_resource = "users"
-    permission_action = "update"
 
     def get_context_data(self, **kwargs):
         """补充角色/用户组弹窗列表，并预选用户已有直授权限"""
         context = super().get_context_data(**kwargs)
-        context["all_user_groups"] = UserGroup.objects.all().order_by("name")
+        context["available_groups"] = UserGroup.objects.all().order_by("name")
         context["all_user_teams"] = UserTeam.objects.all().order_by("name")
         plist = _get_permission_list()
         profile, _ = UserProfile.objects.get_or_create(user=self.object)
@@ -128,13 +121,10 @@ class UserUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
         return super().form_invalid(form)
 
 
-class UserDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+class UserDeleteView(LoginRequiredMixin, AdminRequiredMixin, DeleteView):
     model = User
     template_name = "users/delete.html"
-    context_object_name = "edit_user"
     success_url = reverse_lazy("users:list")
-    permission_resource = "users"
-    permission_action = "delete"
 
     def post(self, request, *args, **kwargs):
         user = self.get_object()
@@ -145,9 +135,8 @@ class UserDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
         return super().post(request, *args, **kwargs)
 
 
-class UserLockToggleView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    permission_resource = "users"
-    permission_action = "update"
+class UserLockToggleView(LoginRequiredMixin, AdminRequiredMixin, View):
+    """锁定/解锁用户账号"""
 
     def post(self, request, pk):
         """按主键切换用户启用状态（支持 AJAX）"""
@@ -238,7 +227,7 @@ def _get_permission_list():
 
 class UserGroupListView(
     LoginRequiredMixin,
-    PermissionRequiredMixin,
+    AdminRequiredMixin,
     PerPagePaginationMixin,
     ListView,
 ):
@@ -247,8 +236,6 @@ class UserGroupListView(
     context_object_name = "user_groups"
     paginate_by = 10
     ordering = ["-created_at"]
-    permission_resource = "roles"
-    permission_action = "read"
 
     def get_queryset(self):
         queryset = super().get_queryset().prefetch_related("permissions")
@@ -271,13 +258,11 @@ class UserGroupListView(
         return context
 
 
-class UserGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+class UserGroupCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
     model = UserGroup
     form_class = UserGroupForm
     template_name = "users/group_create.html"
     success_url = reverse_lazy("users:role_list")
-    permission_resource = "roles"
-    permission_action = "create"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -296,13 +281,11 @@ class UserGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
         return super().form_invalid(form)
 
 
-class UserGroupUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+class UserGroupUpdateView(LoginRequiredMixin, AdminRequiredMixin, UpdateView):
     model = UserGroup
     form_class = UserGroupForm
     template_name = "users/group_edit.html"
     success_url = reverse_lazy("users:role_list")
-    permission_resource = "roles"
-    permission_action = "update"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -322,12 +305,10 @@ class UserGroupUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVie
         return super().form_invalid(form)
 
 
-class UserGroupDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+class UserGroupDeleteView(LoginRequiredMixin, AdminRequiredMixin, DeleteView):
     model = UserGroup
     template_name = "users/group_delete.html"
     success_url = reverse_lazy("users:role_list")
-    permission_resource = "roles"
-    permission_action = "delete"
 
     def post(self, request, *args, **kwargs):
         user_group = self.get_object()
@@ -335,9 +316,8 @@ class UserGroupDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteVie
         return super().post(request, *args, **kwargs)
 
 
-class UserGroupManageUsersView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    permission_resource = "roles"
-    permission_action = "update"
+class UserGroupManageUsersView(LoginRequiredMixin, AdminRequiredMixin, View):
+    """管理角色关联用户"""
 
     def post(self, request, pk):
         user_group = get_object_or_404(UserGroup, pk=pk)
@@ -399,7 +379,7 @@ def _search_users(search_tags):
 
 class UserTeamListView(
     LoginRequiredMixin,
-    PermissionRequiredMixin,
+    AdminRequiredMixin,
     PerPagePaginationMixin,
     ListView,
 ):
@@ -408,8 +388,6 @@ class UserTeamListView(
     context_object_name = "teams"
     paginate_by = 10
     ordering = ["-created_at"]
-    permission_resource = "teams"
-    permission_action = "read"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -428,13 +406,11 @@ class UserTeamListView(
         return context
 
 
-class UserTeamCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+class UserTeamCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
     model = UserTeam
     form_class = UserTeamForm
     template_name = "users/team_create.html"
     success_url = reverse_lazy("users:team_list")
-    permission_resource = "teams"
-    permission_action = "create"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -453,13 +429,11 @@ class UserTeamCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView
         return super().form_invalid(form)
 
 
-class UserTeamUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
+class UserTeamUpdateView(LoginRequiredMixin, AdminRequiredMixin, UpdateView):
     model = UserTeam
     form_class = UserTeamForm
     template_name = "users/team_edit.html"
     success_url = reverse_lazy("users:team_list")
-    permission_resource = "teams"
-    permission_action = "update"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -477,12 +451,10 @@ class UserTeamUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView
         return super().form_invalid(form)
 
 
-class UserTeamDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+class UserTeamDeleteView(LoginRequiredMixin, AdminRequiredMixin, DeleteView):
     model = UserTeam
     template_name = "users/team_delete.html"
     success_url = reverse_lazy("users:team_list")
-    permission_resource = "teams"
-    permission_action = "delete"
 
     def post(self, request, *args, **kwargs):
         team = self.get_object()
@@ -490,11 +462,8 @@ class UserTeamDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView
         return super().post(request, *args, **kwargs)
 
 
-class UserTeamMemberListView(LoginRequiredMixin, PermissionRequiredMixin, View):
+class UserTeamMemberListView(LoginRequiredMixin, AdminRequiredMixin, View):
     """返回用户组的成员列表（JSON），供弹窗滚动加载。"""
-
-    permission_resource = "teams"
-    permission_action = "read"
 
     def get(self, request, pk):
         team = get_object_or_404(UserTeam, pk=pk)
@@ -537,11 +506,8 @@ class UserTeamMemberListView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
 
 
-class UserTeamManageMembersView(LoginRequiredMixin, PermissionRequiredMixin, View):
+class UserTeamManageMembersView(LoginRequiredMixin, AdminRequiredMixin, View):
     """管理用户组成员 — 添加/移除成员。"""
-
-    permission_resource = "teams"
-    permission_action = "update"
 
     def post(self, request, pk):
         team = get_object_or_404(UserTeam, pk=pk)

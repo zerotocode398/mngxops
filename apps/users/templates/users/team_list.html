@@ -11,7 +11,7 @@
                 <div class="card-header team-list-header">
                     <h5 class="mb-0"><i class="bi bi-collection"></i> 用户组列表</h5>
                     <div class="team-list-actions">
-                        {% if request.user|has_perm_code:"teams.create" %}
+                        {% if request.user.is_superuser %}
                         <a href="{% url 'users:team_create' %}" class="btn btn-primary btn-sm team-list-create-btn">
                             <i class="bi bi-plus-circle"></i> 新增用户组
                         </a>
@@ -67,7 +67,7 @@
                                     <td>{{ team.created_at|date:"Y-m-d H:i" }}</td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
-                                            {% if request.user|has_perm_code:"teams.update" %}
+                                            {% if request.user.is_superuser %}
                                             <button type="button" class="btn btn-outline-success"
                                                 onclick="openManageMembersModal({{ team.id }}, '{{ team.name|escapejs }}')"
                                                 title="管理成员">
@@ -80,7 +80,7 @@
                                                 <i class="bi bi-pencil"></i>
                                             </a>
                                             {% endif %}
-                                            {% if request.user|has_perm_code:"teams.delete" %}
+                                            {% if request.user.is_superuser %}
                                             <button type="button" class="btn btn-outline-danger" title="删除"
                                                 onclick="submitPostConfirm('确认删除', '确定要删除用户组 {{ team.name }} 吗？组内用户不会被删除，只是移出该组。此操作不可恢复！', '{% url 'users:team_delete' team.id %}')">
                                                 <i class="bi bi-trash"></i>
@@ -94,7 +94,7 @@
                                     <td colspan="6" class="empty-state">
                                         <i class="bi bi-inbox"></i>
                                         <p>暂无用户组数据</p>
-                                        {% if request.user|has_perm_code:"teams.create" %}
+                                        {% if request.user.is_superuser %}
                                         <a href="{% url 'users:team_create' %}" class="btn btn-primary btn-sm">
                                             <i class="bi bi-plus-circle"></i> 新增用户组
                                         </a>

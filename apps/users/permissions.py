@@ -154,3 +154,12 @@ class PermissionRequiredMixin:
             return forbidden_response(request, PERM_DENIED_MESSAGE)
 
         return super().dispatch(request, *args, **kwargs)
+
+
+class AdminRequiredMixin:
+    """仅超级管理员可访问的 Mixin — 用于用户/角色/用户组管理"""
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return forbidden_response(request, PERM_DENIED_MESSAGE)
+        return super().dispatch(request, *args, **kwargs)

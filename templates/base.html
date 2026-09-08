@@ -990,33 +990,27 @@
                     {% endif %}
 
                     <!-- ========== 系统管理 ========== -->
-                    {% if request.user|has_perm_code:"users.read" or request.user|has_perm_code:"roles.read" or request.user|has_perm_code:"teams.read" or request.user|has_perm_code:"audit.read" or request.user|has_perm_code:"settings.read" %}
+                    {% if request.user.is_superuser or request.user|has_perm_code:"audit.read" or request.user|has_perm_code:"settings.read" %}
                     <div class="nav-section-title">系统管理</div>
                     {% endif %}
 
-                    <!-- 用户管理（可展开） -->
-                    {% if request.user|has_perm_code:"users.read" or request.user|has_perm_code:"roles.read" or request.user|has_perm_code:"teams.read" %}
+                    <!-- 用户管理（可展开，仅管理员） -->
+                    {% if request.user.is_superuser %}
                     <div class="nav-item-wrap">
                     <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-users" title="用户管理">
                         <i class="bi bi-people"></i> <span class="sidebar-label">用户管理</span>
                         <i class="bi bi-chevron-right submenu-toggle"></i>
                     </a>
                     <div class="submenu" id="submenu-users">
-                        {% if request.user|has_perm_code:"users.read" %}
                         <a class="nav-link" href="{% url 'users:list' %}" data-nav="users:list">
                             <span class="sidebar-label">用户列表</span>
                         </a>
-                        {% endif %}
-                        {% if request.user|has_perm_code:"roles.read" %}
                         <a class="nav-link" href="{% url 'users:role_list' %}" data-nav="users:role_list">
                             <span class="sidebar-label">角色管理</span>
                         </a>
-                        {% endif %}
-                        {% if request.user|has_perm_code:"teams.read" %}
                         <a class="nav-link" href="{% url 'users:team_list' %}" data-nav="users:team_list">
                             <span class="sidebar-label">用户组管理</span>
                         </a>
-                        {% endif %}
                     </div>
                     </div>
                     {% endif %}

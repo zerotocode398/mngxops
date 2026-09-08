@@ -10,7 +10,7 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="bi bi-people"></i> 用户列表</h5>
-                    {% if user|has_perm_code:"users.create" %}
+                    {% if request.user.is_superuser %}
                     <a href="{% url 'users:create' %}" class="btn btn-primary btn-sm">
                         <i class="bi bi-plus-circle"></i> 新增用户
                     </a>
@@ -82,7 +82,7 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if request.user|has_perm_code:"users.update" %}
+                                        {% if request.user.is_superuser %}
                                         <div class="form-check form-switch">
                                             <input type="checkbox"
                                                 class="form-check-input user-toggle-checkbox"
@@ -103,7 +103,7 @@
                                     </td>
                                     <td class="text-nowrap">
                                         <div class="btn-group btn-group-sm" role="group">
-                                            {% if request.user|has_perm_code:"users.update" %}
+                                            {% if request.user.is_superuser %}
                                             {% if not u.is_superuser or request.user.is_superuser %}
                                             <a href="{% url 'users:edit' u.pk %}" class="btn btn-outline-primary" title="编辑">
                                                 <i class="bi bi-pencil"></i>
@@ -113,7 +113,7 @@
                                             </a>
                                             {% endif %}
                                             {% endif %}
-                                            {% if request.user|has_perm_code:"users.delete" and u.username != request.user.username %}
+                                            {% if request.user.is_superuser and u.username != request.user.username %}
                                             <button type="button" class="btn btn-outline-danger" title="删除"
                                                 onclick="submitPostConfirm('确认删除', '确定要删除用户 {{ u.username }} 吗？此操作不可恢复！', '{% url 'users:delete' u.pk %}')">
                                                 <i class="bi bi-trash"></i>

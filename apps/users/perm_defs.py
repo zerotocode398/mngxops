@@ -6,9 +6,6 @@ RESOURCE_CHOICES = (
     ("upgrade", "Nginx 安装/升级"),
     ("nginx_service", "Nginx 启停"),
     ("nginx_uninstall", "Nginx 卸载"),
-    ("users", "用户管理"),
-    ("roles", "角色管理"),
-    ("teams", "用户组管理"),
     ("audit", "审计日志"),
     ("settings", "系统设置"),
 )
@@ -69,26 +66,6 @@ PERM_DISPLAY_NAMES = {
     "nginx_uninstall": {
         "read": "卸载首页/历史查看",
         "execute": "执行卸载",
-    },
-    "users": {
-        "read": "用户查看",
-        "create": "新建用户",
-        "update": "编辑用户",
-        "delete": "删除用户",
-        "lock": "锁定用户",
-        "unlock": "解锁用户",
-    },
-    "roles": {
-        "read": "角色查看",
-        "create": "新建角色",
-        "update": "编辑角色",
-        "delete": "删除角色",
-    },
-    "teams": {
-        "read": "用户组查看",
-        "create": "新建用户组",
-        "update": "编辑用户组",
-        "delete": "删除用户组",
     },
     "audit": {
         "read": "日志查看",

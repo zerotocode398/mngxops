@@ -8,10 +8,12 @@
 
 ## 2. 角色与权限码
 
-资源：`nodes` / `credentials` / `configs` / `releases` / `upgrade` / `nginx_install` / `nginx_service` / `nginx_uninstall` / `users` / `roles` / `teams` / `audit` / `settings`，动作 read/create/update/delete。  
+资源：`nodes` / `credentials` / `configs` / `releases` / `upgrade` / `nginx_install` / `nginx_service` / `nginx_uninstall` / `audit` / `settings`，动作 read/create/update/delete。  
 定义：[`apps/users/perm_defs.py`](../apps/users/perm_defs.py)。  
 校验：[`apps/users/permissions.py`](../apps/users/permissions.py) `user_has_permission`、`PermissionRequiredMixin`。  
 模板：`has_perm_code`。
+
+**用户管理 / 角色管理 / 用户组管理** 不纳入 RBAC 权限矩阵，仅超级管理员（`is_superuser`）可访问。视图层通过 `AdminRequiredMixin` 检查 `request.user.is_superuser`，侧栏菜单同理。
 
 运维三模块独立码（Q157）：
 
@@ -23,9 +25,9 @@
 
 `update`/`delete` 在矩阵预留展示，当前未接线。迁移 `0003` 从既有 `upgrade.*` / `nodes.*` 授权拷贝到新码。
 
-矩阵资源列文案（`RESOURCE_CHOICES`）与侧栏对齐：节点管理 / 凭证管理 / 配置管理 / 发布管理 / 用户管理 / 角色管理 / 用户组管理 / 审计日志；Nginx 升级/安装/启停/卸载与系统设置保持模块名。
+矩阵资源列文案（`RESOURCE_CHOICES`）与侧栏对齐：节点管理 / 凭证管理 / 配置管理 / 发布管理 / 审计日志；Nginx 升级/安装/启停/卸载与系统设置保持模块名。
 
-侧栏菜单权限一律用 `request.user|has_perm_code`（勿用裸 `user`）：用户编辑/删除页若默认 `context_object_name=user` 会覆盖登录用户导致菜单按被编辑对象权限隐藏（Q157）。
+侧栏「用户管理」仅对 `is_superuser` 可见；其余菜单权限一律用 `request.user|has_perm_code`（勿用裸 `user`）：用户编辑/删除页若默认 `context_object_name=user` 会覆盖登录用户导致菜单按被编辑对象权限隐藏（Q157）。
 
 ### 2.1 生效规则
 
@@ -86,7 +88,7 @@ Django `User`：`username` 限 `[-a-zA-Z0-9_]+`；中文放姓名字段（Q82）
 ## 7. 前后端约定
 
 - 页面无权：全局 `showAlert`（Q116）；同源 Referer 回跳来源页，否则留在当前 URL 渲染 403；AJAX 无权仍返回 JSON 403。
-- 侧栏「用户管理/角色/用户组」分别受权限控制；首页快捷入口/统计卡跳转亦按权限收口。
+- 侧栏「用户管理 / 角色 / 用户组」仅超级管理员可见；首页快捷入口/统计卡跳转亦按权限收口。
 
 ## 8. 异常与边界
 
