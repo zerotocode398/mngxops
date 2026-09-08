@@ -68,9 +68,6 @@ PERM_DISPLAY_NAMES = {
     },
     "nginx_uninstall": {
         "read": "卸载首页/历史查看",
-        "create": "创建卸载任务",
-        "update": "编辑卸载",
-        "delete": "删除卸载记录",
         "execute": "执行卸载",
     },
     "users": {

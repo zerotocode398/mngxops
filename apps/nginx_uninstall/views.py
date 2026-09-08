@@ -104,7 +104,7 @@ class NginxUninstallCenterView(
 
     template_name = "nginx_uninstall/center.html"
     permission_resource = "nginx_uninstall"
-    permission_action = "create"
+    permission_action = "read"
 
     def get_context_data(self, **kwargs):
         """注入批量上限"""
