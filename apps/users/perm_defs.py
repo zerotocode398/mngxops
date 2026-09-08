@@ -72,7 +72,6 @@ PERM_DISPLAY_NAMES = {
     },
     "settings": {
         "read": "系统设置查看",
-        "update": "修改系统设置",
     },
 }
 

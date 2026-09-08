@@ -8,7 +8,7 @@ GitLab 式分组设置页；仅维护**已接线**的 `PRESET_SETTINGS`；保存
 
 ## 2. 角色与权限
 
-`settings.read|update`（及 create/delete 项）。
+`settings.read` 控制页面查看；修改系统设置仅超级管理员（`is_superuser`）可操作，不纳入 RBAC 权限矩阵。
 
 ## 3. 领域模型
 

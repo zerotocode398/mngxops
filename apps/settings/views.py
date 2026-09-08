@@ -1,11 +1,16 @@
 """系统设置模块 - 视图"""
+
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views import View
 
-from apps.users.permissions import PermissionRequiredMixin, user_has_permission
+from apps.users.permissions import (
+    PermissionRequiredMixin,
+    AdminRequiredMixin,
+    user_has_permission,
+)
 from .models import SystemSetting, preset_by_key, preset_key_set
 from utils.setting_service import refresh_setting_cache
 
@@ -104,6 +109,7 @@ def _active_settings_qs(extra_filter=None):
 
 class SettingsIndexView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """系统设置页面（左侧分组导航 + 右侧分区表单）"""
+
     template_name = "settings/index.html"
     permission_resource = "settings"
     permission_action = "read"
@@ -111,7 +117,7 @@ class SettingsIndexView(LoginRequiredMixin, PermissionRequiredMixin, View):
     def get(self, request):
         """渲染分组设置页"""
         settings_qs = _active_settings_qs()
-        can_update = user_has_permission(request.user, "settings", "update")
+        can_update = request.user.is_superuser
 
         # 按分组整理为有序列表（含图标与说明，便于模板渲染）
         grouped = {}
@@ -119,10 +125,13 @@ class SettingsIndexView(LoginRequiredMixin, PermissionRequiredMixin, View):
         total_count = 0
         for s in settings_qs:
             if s.group not in grouped:
-                meta = GROUP_META.get(s.group, {
-                    "icon": "bi-gear",
-                    "description": "调整本模块相关运行参数，保存后立即生效。",
-                })
+                meta = GROUP_META.get(
+                    s.group,
+                    {
+                        "icon": "bi-gear",
+                        "description": "调整本模块相关运行参数，保存后立即生效。",
+                    },
+                )
                 grouped[s.group] = {
                     "name": s.group,
                     "items": [],
@@ -142,18 +151,20 @@ class SettingsIndexView(LoginRequiredMixin, PermissionRequiredMixin, View):
         if active_group not in grouped:
             active_group = default_group
 
-        return render(request, self.template_name, {
-            "group_list": group_list,
-            "active_group": active_group,
-            "can_update": can_update,
-            "total_count": total_count,
-        })
+        return render(
+            request,
+            self.template_name,
+            {
+                "group_list": group_list,
+                "active_group": active_group,
+                "can_update": can_update,
+                "total_count": total_count,
+            },
+        )
 
 
-class SettingsSaveAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
+class SettingsSaveAPIView(LoginRequiredMixin, AdminRequiredMixin, View):
     """保存指定分组的配置 (Ajax)"""
-    permission_resource = "settings"
-    permission_action = "update"
 
     def post(self, request):
         """按分组更新已变更的配置项"""
@@ -174,20 +185,27 @@ class SettingsSaveAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
             if s.type == "integer":
                 text = str(new_value).strip()
                 if text == "":
-                    return JsonResponse({
-                        "success": False,
-                        "message": f"「{s.label}」不能为空",
-                    })
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "message": f"「{s.label}」不能为空",
+                        }
+                    )
                 try:
                     int_val = int(text)
                 except (TypeError, ValueError):
-                    return JsonResponse({
-                        "success": False,
-                        "message": f"「{s.label}」必须是整数",
-                    })
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "message": f"「{s.label}」必须是整数",
+                        }
+                    )
                 _attach_preset_bounds(s)
                 range_err = _validate_integer_range(
-                    s.label, int_val, s.min_value, s.max_value,
+                    s.label,
+                    int_val,
+                    s.min_value,
+                    s.max_value,
                 )
                 if range_err:
                     return JsonResponse({"success": False, "message": range_err})
