@@ -2022,8 +2022,18 @@
                 .then(function(data) {
                     if (!data.valid && !kicked) {
                         kicked = true;
-                        alert('您的账号已在其他设备登录，当前会话已失效，请重新登录。');
-                        window.location.href = '{% url "accounts:login" %}';
+                        document.getElementById('mngxopsAlertTitle').textContent = '会话已失效';
+                        document.getElementById('mngxopsAlertBody').textContent =
+                            '您的账号已在其他设备登录，当前会话已失效，请重新登录。';
+                        var alertModal = new bootstrap.Modal(document.getElementById('mngxopsAlertModal'));
+                        alertModal.show();
+                        document.getElementById('mngxopsAlertModal').addEventListener(
+                            'hidden.bs.modal',
+                            function() {
+                                window.location.href = '{% url "accounts:login" %}';
+                            },
+                            { once: true }
+                        );
                     }
                 })
                 .catch(function() {});
