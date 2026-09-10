@@ -90,7 +90,6 @@ class ConfigListView(
 
     template_name = "configs/list.html"
     context_object_name = "nodes"
-    paginate_by = None
     permission_resource = "configs"
     permission_action = "read"
     default_paginate_by = 10
@@ -141,28 +140,19 @@ class ConfigListView(
         from apps.nodes.models import Node, NodeGroup
 
         context = super().get_context_data(**kwargs)
-        all_nodes = list(self.get_queryset())
+        nodes = context["nodes"]
+
         sync_status = self.request.GET.get("sync_status", "").strip()
         search = self.request.GET.get("search", "").strip()
         group_id = self.request.GET.get("group_id", "").strip()
         nginx_available = self.request.GET.get("nginx_available", "true").strip()
 
-        node_stats_map = {node.id: _build_node_stats(node) for node in all_nodes}
-
-        per_page = self.get_paginate_by(None)
-        paginator = Paginator(all_nodes, per_page)
-        page_num = self.request.GET.get("page", 1)
-        page_obj = paginator.get_page(page_num)
+        node_stats_map = {node.id: _build_node_stats(node) for node in nodes}
 
         list_query_params = self.request.GET.copy()
         list_query_params.pop("page", None)
 
-        context["nodes"] = page_obj.object_list
         context["node_stats_map"] = node_stats_map
-        context["page_obj"] = page_obj
-        context["is_paginated"] = page_obj.has_other_pages()
-        context["per_page"] = per_page
-        context["per_page_options"] = self.per_page_options
         context["search"] = search
         context["group_id"] = group_id
         context["sync_status"] = sync_status

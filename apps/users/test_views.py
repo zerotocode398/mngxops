@@ -134,3 +134,171 @@ class TestUserLockToggleView:
         assert resp.status_code == 302
         normal_user.refresh_from_db()
         assert normal_user.is_active is True
+
+
+@pytest.mark.django_db
+class TestUserGroupListView:
+    """用户组列表"""
+
+    def test_list_accessible(self, admin_client):
+        resp = admin_client.get(reverse("users:group_list"))
+        assert resp.status_code == 200
+
+    def test_list_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("users:group_list"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestUserGroupCreateView:
+    """用户组创建"""
+
+    def test_create_page_accessible(self, admin_client):
+        resp = admin_client.get(reverse("users:group_create"))
+        assert resp.status_code == 200
+
+    def test_create_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("users:group_create"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestUserGroupUpdateView:
+    """用户组编辑"""
+
+    def test_edit_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:group_edit", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestUserGroupDeleteView:
+    """用户组删除"""
+
+    def test_delete_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:group_delete", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestUserGroupManageUsersView:
+    """用户组管理用户"""
+
+    def test_manage_users_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:group_manage_users", args=[99999]))
+        assert resp.status_code in (403, 404, 405)
+
+
+@pytest.mark.django_db
+class TestRoleListView:
+    """角色组列表"""
+
+    def test_list_accessible(self, admin_client):
+        resp = admin_client.get(reverse("users:role_list"))
+        assert resp.status_code == 200
+
+    def test_list_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("users:role_list"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestRoleCreateView:
+    """角色组创建"""
+
+    def test_create_page_accessible(self, admin_client):
+        resp = admin_client.get(reverse("users:role_create"))
+        assert resp.status_code == 200
+
+    def test_create_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("users:role_create"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestRoleUpdateView:
+    """角色组编辑"""
+
+    def test_edit_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:role_edit", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestRoleDeleteView:
+    """角色组删除"""
+
+    def test_delete_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:role_delete", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestRoleManageUsersView:
+    """角色组管理用户"""
+
+    def test_manage_users_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:role_manage_users", args=[99999]))
+        assert resp.status_code in (403, 404, 405)
+
+
+@pytest.mark.django_db
+class TestUserTeamListView:
+    """团队列表"""
+
+    def test_list_accessible(self, admin_client):
+        resp = admin_client.get(reverse("users:team_list"))
+        assert resp.status_code == 200
+
+    def test_list_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("users:team_list"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestUserTeamCreateView:
+    """团队创建"""
+
+    def test_create_page_accessible(self, admin_client):
+        resp = admin_client.get(reverse("users:team_create"))
+        assert resp.status_code == 200
+
+    def test_create_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("users:team_create"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestUserTeamUpdateView:
+    """团队编辑"""
+
+    def test_edit_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:team_edit", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestUserTeamDeleteView:
+    """团队删除"""
+
+    def test_delete_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:team_delete", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestUserTeamMemberListView:
+    """团队成员列表"""
+
+    def test_members_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:team_members", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestUserTeamManageMembersView:
+    """团队管理成员"""
+
+    def test_manage_members_not_found(self, admin_client):
+        resp = admin_client.get(reverse("users:team_manage_members", args=[99999]))
+        assert resp.status_code in (403, 404, 405)

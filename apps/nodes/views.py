@@ -92,7 +92,12 @@ class NodeGroupListView(
     permission_action = "read"
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = (
+            super()
+            .get_queryset()
+            .select_related("created_by")
+            .prefetch_related("nodes")
+        )
         search = self.request.GET.get("search", "")
         if search:
             terms = [
@@ -106,7 +111,6 @@ class NodeGroupListView(
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["search"] = self.request.GET.get("search", "")
-        context["all_nodes"] = Node.objects.all()
         return context
 
 
@@ -169,6 +173,7 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
         data = []
         for node in nodes:
+            node_groups = list(node.groups.all())
             data.append(
                 {
                     "id": node.id,
@@ -185,8 +190,8 @@ class NodeSearchAPIView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "credential_username": (
                         node.credential.username if node.credential_id else ""
                     ),
-                    "groups": [{"id": g.id, "name": g.name} for g in node.groups.all()],
-                    "groups_count": node.groups.count(),
+                    "groups": [{"id": g.id, "name": g.name} for g in node_groups],
+                    "groups_count": len(node_groups),
                 }
             )
 
@@ -646,38 +651,43 @@ class NodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
 def batch_delete_nodes(request):
     """批量逻辑删除节点（从运维清单移除，保留历史）"""
     if not request.user.is_authenticated:
-        return JsonResponse({"success": False, "message": "请先登录"})
+        return JsonResponse({"success": False, "message": "请先登录"}, status=403)
     if not user_has_permission(request.user, "nodes", "delete"):
-        return JsonResponse({"success": False, "message": "无权限执行该操作"})
+        return JsonResponse(
+            {"success": False, "message": "无权限执行该操作"}, status=403
+        )
 
     if request.method != "POST":
-        return JsonResponse({"success": False, "message": "仅支持POST请求"})
+        return JsonResponse({"success": False, "message": "仅支持POST请求"}, status=405)
 
     import json
 
     try:
         data = json.loads(request.body or "{}")
     except json.JSONDecodeError:
-        return JsonResponse({"success": False, "message": "请求数据格式错误"})
+        return JsonResponse(
+            {"success": False, "message": "请求数据格式错误"}, status=400
+        )
 
     node_ids = data.get("node_ids") or []
     if not node_ids:
-        return JsonResponse({"success": False, "message": "未指定节点"})
+        return JsonResponse({"success": False, "message": "未指定节点"}, status=400)
 
     try:
         node_ids = [int(nid) for nid in node_ids]
     except (TypeError, ValueError):
-        return JsonResponse({"success": False, "message": "节点 ID 无效"})
+        return JsonResponse({"success": False, "message": "节点 ID 无效"}, status=400)
 
     max_batch = int(get_setting("node.batch_max_count", "3"))
     if len(node_ids) > max_batch:
         return JsonResponse(
-            {"success": False, "message": f"最多只能操作 {max_batch} 个节点"}
+            {"success": False, "message": f"最多只能操作 {max_batch} 个节点"},
+            status=400,
         )
 
     nodes = list(Node.objects.filter(id__in=node_ids).order_by("id"))
     if not nodes:
-        return JsonResponse({"success": False, "message": "节点不存在"})
+        return JsonResponse({"success": False, "message": "节点不存在"}, status=400)
 
     deleted = []
     for node in nodes:
@@ -698,7 +708,7 @@ def batch_delete_nodes(request):
 
 def node_lock(request):
     if not request.user.is_authenticated:
-        return JsonResponse({"success": False, "message": "请先登录"})
+        return JsonResponse({"success": False, "message": "请先登录"}, status=403)
 
     if request.method == "POST":
         import json
@@ -774,7 +784,7 @@ def node_lock(request):
 
 def test_node_connection(request):
     if not request.user.is_authenticated:
-        return JsonResponse({"success": False, "message": "请先登录"})
+        return JsonResponse({"success": False, "message": "请先登录"}, status=403)
     if not user_has_permission(request.user, "nodes", "ssh_test"):
         return JsonResponse({"success": False, "message": "无权限执行该操作"})
 
@@ -881,7 +891,7 @@ def test_node_connection(request):
 
 def batch_test_node_connection(request):
     if not request.user.is_authenticated:
-        return JsonResponse({"success": False, "message": "请先登录"})
+        return JsonResponse({"success": False, "message": "请先登录"}, status=403)
     if not user_has_permission(request.user, "nodes", "ssh_test"):
         return JsonResponse({"success": False, "message": "无权限执行该操作"})
 
@@ -1049,9 +1059,11 @@ class NodeGroupListAPIView(LoginRequiredMixin, View):
 
 def get_node_detail(request):
     if not request.user.is_authenticated:
-        return JsonResponse({"success": False, "message": "请先登录"})
-    if not user_has_permission(request.user, "nodes", "read"):
-        return JsonResponse({"success": False, "message": "无权限执行该操作"})
+        return JsonResponse({"success": False, "message": "请先登录"}, status=403)
+    if not user_has_permission(request.user, "nodes", "delete"):
+        return JsonResponse(
+            {"success": False, "message": "无权限执行该操作"}, status=403
+        )
 
     if request.method == "POST":
         import json
@@ -1104,7 +1116,7 @@ def get_node_detail(request):
 
 def get_node_system_info(request):
     if not request.user.is_authenticated:
-        return JsonResponse({"success": False, "message": "请先登录"})
+        return JsonResponse({"success": False, "message": "请先登录"}, status=403)
     if not user_has_permission(request.user, "nodes", "read"):
         return JsonResponse({"success": False, "message": "无权限执行该操作"})
 
@@ -1156,9 +1168,11 @@ def get_node_system_info(request):
 
 def get_node_nginx_version(request):
     if not request.user.is_authenticated:
-        return JsonResponse({"success": False, "message": "请先登录"})
+        return JsonResponse({"success": False, "message": "请先登录"}, status=403)
     if not user_has_permission(request.user, "nodes", "read"):
-        return JsonResponse({"success": False, "message": "无权限执行该操作"})
+        return JsonResponse(
+            {"success": False, "message": "无权限执行该操作"}, status=403
+        )
 
     if request.method == "POST":
         import json
@@ -1172,7 +1186,9 @@ def get_node_nginx_version(request):
             if not credential:
                 return JsonResponse({"success": False, "message": "节点未配置SSH凭证"})
             if not credential.is_enabled:
-                return JsonResponse({"success": False, "message": "节点关联凭证已禁用"})
+                return JsonResponse(
+                    {"success": False, "message": "节点关联凭证已禁用"}, status=400
+                )
             nginx_path = node.nginx_path if node.nginx_path else None
 
             task = TaskCenterTask.objects.create(

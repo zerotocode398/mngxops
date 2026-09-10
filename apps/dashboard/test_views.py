@@ -30,3 +30,20 @@ class TestDashboardIndex:
         resp = admin_client.get(reverse("dashboard:index"))
         assert resp.status_code == 200
         assert "recent_tasks" in resp.context
+
+
+@pytest.mark.django_db
+class TestDashboardStatsAPI:
+    """统计卡片轮询 API"""
+
+    def test_stats_api_accessible(self, admin_client):
+        resp = admin_client.get(reverse("dashboard:stats_api"))
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert "node_count" in payload
+        assert "online_count" in payload
+        assert "offline_count" in payload
+
+    def test_stats_api_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("dashboard:stats_api"))
+        assert resp.status_code == 302

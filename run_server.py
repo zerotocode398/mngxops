@@ -19,7 +19,7 @@ ALLOWED_MANAGE_COMMANDS = frozenset(
 
 RUN_ALIASES = frozenset({"run", "runserver"})
 DEFAULT_HOST = "0.0.0.0"
-DEFAULT_PORT = 1988
+DEFAULT_PORT = 11993
 ACCESS_LOGGER = logging.getLogger("mngxops.access")
 
 
@@ -29,19 +29,35 @@ def _setup_django_env():
 
 
 def _print_usage(stream=None):
-    """打印命令行用法。"""
+    """Print command usage."""
     if stream is None:
         stream = sys.stdout
-    print(
-        "用法:\n"
-        "  mngxops                         启动 Web（默认 0.0.0.0:1988）\n"
-        "  mngxops run|runserver [addr]    启动 Web；addr 为端口或 ip:port\n"
-        "  mngxops migrate                 初始化 / 升级数据库\n"
-        "  mngxops createsuperuser         创建管理员\n"
-        "环境变量: MNGXOPS_HOME MNGXOPS_DEBUG MNGXOPS_SECRET_KEY "
-        "MNGXOPS_ALLOWED_HOSTS MNGXOPS_HTTPS MNGXOPS_CSRF_TRUSTED_ORIGINS",
-        file=stream,
-    )
+
+    lines = [
+        "Usage:",
+        "  mngxops                         Start Web server (0.0.0.0:11993).",
+        "  mngxops run|runserver [addr]    Start Web server at specified address.",
+        "                                  addr: port or ip:port.",
+        "  mngxops migrate                 Initialize database.",
+        "  mngxops createsuperuser         Create admin user.",
+        "Environment variables:",
+    ]
+
+    env_vars = [
+        ("MNGXOPS_HOME", "  Data directory, defaults to current directory."),
+        ("MNGXOPS_DEBUG", "  Enable debug mode (1/true/yes/on/0/false/no/off)."),
+        ("MNGXOPS_SECRET_KEY", "  Django secret key, auto-generated if unset."),
+        ("MNGXOPS_ALLOWED_HOSTS", "  Allowed hosts, comma-separated, default *."),
+        (
+            "MNGXOPS_HTTPS",
+            "  Enable HTTPS secure cookies (1/true/yes/on/0/false/no/off).",
+        ),
+        ("MNGXOPS_CSRF_TRUSTED_ORIGINS", "  Trusted CSRF origins, comma-separated."),
+    ]
+    width = max(len(name) for name, _ in env_vars)
+    for name, desc in env_vars:
+        lines.append("  {}{}  {}".format(name, " " * (width - len(name)), desc))
+    print("\n".join(lines), file=stream)
 
 
 def _configure_logging():
@@ -79,11 +95,14 @@ def _run_manage(argv):
 
 
 def _parse_bind_addr(argv):
-    """解析 run/runserver 地址：无参默认 0.0.0.0:1988，或端口 / ip:port。"""
+    """解析 run/runserver 地址：无参默认 0.0.0.0:11993，或端口 / ip:port。"""
     if not argv:
         return DEFAULT_HOST, DEFAULT_PORT
     if len(argv) != 1 or argv[0].startswith("-"):
-        print("不支持的启动参数。请使用: mngxops runserver 或 mngxops runserver ip:port", file=sys.stderr)
+        print(
+            "不支持的启动参数。请使用: mngxops runserver 或 mngxops runserver ip:port",
+            file=sys.stderr,
+        )
         _print_usage(sys.stderr)
         sys.exit(2)
 
@@ -97,7 +116,10 @@ def _parse_bind_addr(argv):
             sys.exit(2)
         return host or DEFAULT_HOST, int(port_text)
 
-    print("地址格式无效，请使用端口或 ip:port，例如 1988 或 127.0.0.1:8000", file=sys.stderr)
+    print(
+        "地址格式无效，请使用端口或 ip:port，例如 :11993 或 127.0.0.1:8000",
+        file=sys.stderr,
+    )
     sys.exit(2)
 
 

@@ -24,16 +24,16 @@ class TaskCenterScopedAccessTests(TestCase):
             password="pass1234",
         )
 
-        nodes_update_perm, _ = PermissionItem.objects.get_or_create(
-            code="nodes.update",
+        nodes_ssh_test_perm, _ = PermissionItem.objects.get_or_create(
+            code="nodes.ssh_test",
             defaults={
-                "name": "节点-编辑",
+                "name": "节点SSH测试",
                 "resource": "nodes",
-                "action": "update",
+                "action": "ssh_test",
             },
         )
         profile, _ = UserProfile.objects.get_or_create(user=self.node_user)
-        profile.direct_permissions.add(nodes_update_perm)
+        profile.direct_permissions.add(nodes_ssh_test_perm)
 
         self.own_node_task = TaskCenterTask.objects.create(
             operation_type="node_batch_test",

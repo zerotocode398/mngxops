@@ -204,3 +204,263 @@ class TestNodeGroupListAPIView:
         payload = resp.json()
         assert payload["success"] is True
         assert len(payload["data"]) >= 2
+
+
+@pytest.mark.django_db
+class TestNodeListAPIView:
+    """节点列表 API"""
+
+    def test_api_accessible(self, admin_client, online_node):
+        resp = admin_client.get(reverse("nodes:api_list"))
+        payload = resp.json()
+        assert "data" in payload
+
+    def test_api_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("nodes:api_list"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestNodeExportView:
+    """节点导出"""
+
+    def test_export_accessible(self, admin_client):
+        resp = admin_client.get(reverse("nodes:export"))
+        assert resp.status_code == 200
+
+    def test_export_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("nodes:export"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestNodeImportTemplateView:
+    """节点导入模板下载"""
+
+    def test_template_accessible(self, admin_client):
+        resp = admin_client.get(reverse("nodes:import_template"))
+        assert resp.status_code == 200
+
+    def test_template_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("nodes:import_template"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestNodeImportAPIView:
+    """节点批量导入 API"""
+
+    def test_import_no_file(self, admin_client):
+        resp = admin_client.post(reverse("nodes:import_api"))
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_import_anonymous(self, anonymous_client):
+        resp = anonymous_client.post(reverse("nodes:import_api"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestNodeBatchDeleteView:
+    """批量删除节点"""
+
+    def test_batch_delete_no_ids(self, admin_client):
+        import json
+
+        resp = admin_client.post(
+            reverse("nodes:batch_delete"),
+            data=json.dumps({"node_ids": []}),
+            content_type="application/json",
+        )
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_batch_delete_anonymous(self, anonymous_client):
+        import json
+
+        resp = anonymous_client.post(
+            reverse("nodes:batch_delete"),
+            data=json.dumps({"node_ids": [1]}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (400, 403, 405)
+
+    def test_batch_delete_no_permission(self, user_client):
+        import json
+
+        resp = user_client.post(
+            reverse("nodes:batch_delete"),
+            data=json.dumps({"node_ids": [1]}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (400, 403, 405)
+        payload = resp.json()
+        assert payload["success"] is False
+        assert "无权限" in payload["message"]
+
+
+@pytest.mark.django_db
+class TestNodeLockView:
+    """节点锁定/解锁"""
+
+    def test_lock_no_ids(self, admin_client):
+        import json
+
+        resp = admin_client.post(
+            reverse("nodes:lock"),
+            data=json.dumps({"action": "lock", "node_ids": []}),
+            content_type="application/json",
+        )
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_lock_anonymous(self, anonymous_client):
+        import json
+
+        resp = anonymous_client.post(
+            reverse("nodes:lock"),
+            data=json.dumps({"action": "lock", "node_ids": [1]}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (302, 403)
+
+
+@pytest.mark.django_db
+class TestNodeConnectionTestView:
+    """SSH 连接测试"""
+
+    def test_test_requires_post(self, admin_client):
+        resp = admin_client.get(reverse("nodes:test"))
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_test_anonymous(self, anonymous_client):
+        import json
+
+        resp = anonymous_client.post(
+            reverse("nodes:test"),
+            data=json.dumps({"node_id": 1}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (403,)
+
+
+@pytest.mark.django_db
+class TestNodeBatchTestView:
+    """批量连接测试"""
+
+    def test_batch_test_no_ids(self, admin_client):
+        import json
+
+        resp = admin_client.post(
+            reverse("nodes:batch_test"),
+            data=json.dumps({"node_ids": []}),
+            content_type="application/json",
+        )
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_batch_test_anonymous(self, anonymous_client):
+        import json
+
+        resp = anonymous_client.post(
+            reverse("nodes:batch_test"),
+            data=json.dumps({"node_ids": [1]}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (403,)
+
+
+@pytest.mark.django_db
+class TestNodeDetailView:
+    """节点详情 API"""
+
+    def test_detail_requires_post(self, admin_client):
+        resp = admin_client.get(reverse("nodes:detail"))
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_detail_anonymous(self, anonymous_client):
+        import json
+
+        resp = anonymous_client.post(
+            reverse("nodes:detail"),
+            data=json.dumps({"node_id": 1}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (403,)
+
+
+@pytest.mark.django_db
+class TestNodeSystemInfoView:
+    """系统信息查询"""
+
+    def test_system_info_requires_post(self, admin_client):
+        resp = admin_client.get(reverse("nodes:system-info"))
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_system_info_anonymous(self, anonymous_client):
+        import json
+
+        resp = anonymous_client.post(
+            reverse("nodes:system-info"),
+            data=json.dumps({"node_id": 1}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (302, 403)
+
+
+@pytest.mark.django_db
+class TestNodeNginxVersionView:
+    """Nginx 版本查询"""
+
+    def test_nginx_version_requires_post(self, admin_client):
+        resp = admin_client.get(reverse("nodes:nginx-version"))
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_nginx_version_anonymous(self, anonymous_client):
+        import json
+
+        resp = anonymous_client.post(
+            reverse("nodes:nginx-version"),
+            data=json.dumps({"node_id": 1}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (403,)
+
+    def test_nginx_version_no_permission(self, user_client):
+        """已登录但无 nodes.read 权限"""
+        import json
+
+        resp = user_client.post(
+            reverse("nodes:nginx-version"),
+            data=json.dumps({"node_id": 1}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 403
+        assert resp.json()["success"] is False
+
+    def test_nginx_version_disabled_credential(
+        self, admin_client, admin_user, credential
+    ):
+        """节点关联的凭证已被禁用"""
+        import json
+
+        credential.is_enabled = False
+        credential.save()
+        node = Node.objects.create(
+            hostname="disabled-cred-node",
+            ip="10.0.0.99",
+            credential=credential,
+            created_by=admin_user,
+        )
+        resp = admin_client.post(
+            reverse("nodes:nginx-version"),
+            data=json.dumps({"node_id": node.id}),
+            content_type="application/json",
+        )
+        payload = resp.json()
+        assert payload["success"] is False
+        assert "禁用" in payload["message"]

@@ -102,7 +102,9 @@
 
                     {% if user|has_perm_code:"nodes.update" %}
                     {% for group in node_groups %}
-                    <div class="modal fade" id="manageNodesModal{{ group.id }}" tabindex="-1">
+                    <div class="modal fade manage-nodes-modal" id="manageNodesModal{{ group.id }}"
+                         tabindex="-1" data-group-id="{{ group.id }}"
+                         data-current-node-ids="{% for n in group.nodes.all %}{{ n.id }}{% if not forloop.last %},{% endif %}{% endfor %}">
                         <div class="modal-dialog modal-lg modal-dialog-centered">
                             <div class="modal-content">
                                 <div class="modal-header">
@@ -135,43 +137,12 @@
                                                 </tr>
                                             </thead>
                                             <tbody id="manageNodeTbody{{ group.id }}">
-                                                {% for node in all_nodes %}
-                                                <tr class="manage-node-row" data-hostname="{{ node.hostname|lower }}" data-ip="{{ node.ip }}">
-                                                    <td>
-                                                        {% if node.groups.count >= 3 and node not in group.nodes.all %}
-                                                        <input type="checkbox" name="node_ids" value="{{ node.id }}"
-                                                            class="form-check-input node-check" disabled>
-                                                        {% elif node in group.nodes.all %}
-                                                        <input type="checkbox" name="node_ids" value="{{ node.id }}"
-                                                            class="form-check-input node-check" checked>
-                                                        {% else %}
-                                                        <input type="checkbox" name="node_ids" value="{{ node.id }}"
-                                                            class="form-check-input node-check">
-                                                        {% endif %}
-                                                    </td>
-                                                    <td>{{ node.hostname }}</td>
-                                                    <td>{{ node.ip }}</td>
-                                                    <td>
-                                                        {% for ng in node.groups.all %}
-                                                        <span class="badge bg-info">{{ ng.name }}</span>
-                                                        {% empty %}
-                                                        <span class="text-muted">无</span>
-                                                        {% endfor %}
-                                                        {% if node.groups.count >= 3 and node not in group.nodes.all %}
-                                                        <span class="badge bg-warning">已满</span>
-                                                        {% endif %}
-                                                    </td>
-                                                    <td>
-                                                        {% if node.status == "online" %}
-                                                        <span class="badge bg-success">在线</span>
-                                                        {% elif node.status == "offline" %}
-                                                        <span class="badge bg-danger">离线</span>
-                                                        {% else %}
-                                                        <span class="badge bg-secondary">未知</span>
-                                                        {% endif %}
+                                                <tr>
+                                                    <td colspan="5" class="text-center py-3">
+                                                        <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                                                        <span class="ms-2 text-muted">加载节点列表...</span>
                                                     </td>
                                                 </tr>
-                                                {% endfor %}
                                             </tbody>
                                         </table>
                                         </div>
@@ -327,54 +298,148 @@
         }
     }
 
-    function initManageNodeModal(groupId) {
-        const modal = document.getElementById('manageNodesModal' + groupId);
-        if (!modal) return;
-
-        const searchInput = modal.querySelector('.manage-node-search');
-        const rows = modal.querySelectorAll('.manage-node-row');
-        const selectAll = modal.querySelector('.manage-select-all');
-        const checks = modal.querySelectorAll('.node-check');
-
-        if (searchInput) {
-            searchInput.addEventListener('input', function () {
-                const q = this.value.trim().toLowerCase();
-                rows.forEach(function (row) {
-                    const h = row.getAttribute('data-hostname') || '';
-                    const ip = row.getAttribute('data-ip') || '';
-                    row.style.display = (!q || h.indexOf(q) >= 0 || ip.indexOf(q) >= 0) ? '' : 'none';
-                });
-            });
+    function renderNodeRow(node, currentGroupId, currentNodeIds) {
+        var isInGroup = currentNodeIds.indexOf(node.id) >= 0;
+        var isFull = node.groups_count >= 3 && !isInGroup;
+        var groupsHtml = '';
+        if (node.groups && node.groups.length > 0) {
+            for (var i = 0; i < node.groups.length; i++) {
+                groupsHtml += '<span class="badge bg-info">' + escapeHtml(node.groups[i].name) + '</span> ';
+            }
+        } else {
+            groupsHtml = '<span class="text-muted">无</span>';
         }
+        if (isFull) {
+            groupsHtml += '<span class="badge bg-warning">已满</span>';
+        }
+        var statusLabel = '';
+        if (node.status === 'online') {
+            statusLabel = '<span class="badge bg-success">在线</span>';
+        } else if (node.status === 'offline') {
+            statusLabel = '<span class="badge bg-danger">离线</span>';
+        } else {
+            statusLabel = '<span class="badge bg-secondary">未知</span>';
+        }
+        var checkboxHtml = '';
+        if (isFull) {
+            checkboxHtml = '<input type="checkbox" name="node_ids" value="' + node.id + '" class="form-check-input node-check" disabled>';
+        } else if (isInGroup) {
+            checkboxHtml = '<input type="checkbox" name="node_ids" value="' + node.id + '" class="form-check-input node-check" checked>';
+        } else {
+            checkboxHtml = '<input type="checkbox" name="node_ids" value="' + node.id + '" class="form-check-input node-check">';
+        }
+        return '<tr class="manage-node-row" data-hostname="' + escapeHtml(node.hostname.toLowerCase()) + '" data-ip="' + escapeHtml(node.ip) + '">' +
+            '<td>' + checkboxHtml + '</td>' +
+            '<td>' + escapeHtml(node.hostname) + '</td>' +
+            '<td>' + escapeHtml(node.ip) + '</td>' +
+            '<td>' + groupsHtml + '</td>' +
+            '<td>' + statusLabel + '</td>' +
+            '</tr>';
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    var loadedNodeCache = {};
+
+    function loadManageNodes(groupId) {
+        var tbody = document.getElementById('manageNodeTbody' + groupId);
+        if (!tbody) return;
+        if (loadedNodeCache[groupId]) {
+            return;
+        }
+        loadedNodeCache[groupId] = true;
+
+        var url = '/nodes/api/search-nodes/';
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                return resp.json();
+            })
+            .then(function (data) {
+                if (!data.success || !data.nodes) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3 text-danger">加载节点失败</td></tr>';
+                    return;
+                }
+                var modal = document.getElementById('manageNodesModal' + groupId);
+                var rawIds = modal ? modal.getAttribute('data-current-node-ids') : '';
+                var currentNodeIds = rawIds ? rawIds.split(',').map(Number) : [];
+                var rowsHtml = '';
+                for (var i = 0; i < data.nodes.length; i++) {
+                    rowsHtml += renderNodeRow(data.nodes[i], groupId, currentNodeIds);
+                }
+                if (!data.nodes.length) {
+                    rowsHtml = '<tr><td colspan="5" class="text-center py-3 text-muted">暂无可用节点</td></tr>';
+                }
+                tbody.innerHTML = rowsHtml;
+                bindModalEvents(groupId);
+                updateSelectedCount(groupId);
+            })
+            .catch(function () {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3 text-danger">加载节点失败，请重试</td></tr>';
+            });
+    }
+
+    function bindModalEvents(groupId) {
+        var modal = document.getElementById('manageNodesModal' + groupId);
+        if (!modal) return;
+        var checks = modal.querySelectorAll('.node-check');
+        var selectAll = modal.querySelector('.manage-select-all');
+        var searchInput = modal.querySelector('.manage-node-search');
+        var rows = modal.querySelectorAll('.manage-node-row');
 
         if (selectAll) {
-            selectAll.addEventListener('change', function () {
-                checks.forEach(function (cb) {
-                    if (!cb.disabled && cb.closest('tr').style.display !== 'none') {
-                        cb.checked = selectAll.checked;
-                    }
-                });
+            var newSelectAll = selectAll.cloneNode(true);
+            selectAll.parentNode.replaceChild(newSelectAll, selectAll);
+            newSelectAll.addEventListener('change', function () {
+                var visibleChecks = modal.querySelectorAll('.manage-node-row:not([style*="display: none"]) .node-check:not([disabled])');
+                visibleChecks.forEach(function (cb) { cb.checked = newSelectAll.checked; });
                 updateSelectedCount(groupId);
             });
         }
 
         checks.forEach(function (cb) {
-            cb.addEventListener('change', function () {
-                updateSelectedCount(groupId);
-            });
+            var newCb = cb.cloneNode(true);
+            cb.parentNode.replaceChild(newCb, cb);
+            newCb.addEventListener('change', function () { updateSelectedCount(groupId); });
         });
 
-        // 弹窗表格：点击行切换勾选
+        if (searchInput) {
+            var newSearch = searchInput.cloneNode(true);
+            searchInput.parentNode.replaceChild(newSearch, searchInput);
+            newSearch.addEventListener('input', function () {
+                var q = this.value.trim().toLowerCase();
+                var allRows = modal.querySelectorAll('.manage-node-row');
+                allRows.forEach(function (row) {
+                    var h = row.getAttribute('data-hostname') || '';
+                    var ip = row.getAttribute('data-ip') || '';
+                    row.style.display = (!q || h.indexOf(q) >= 0 || ip.indexOf(q) >= 0) ? '' : 'none';
+                });
+            });
+        }
+
         var tbody = modal.querySelector('#manageNodeTbody' + groupId);
         if (tbody) {
             bindModalTableRowToggle(tbody, '.node-check');
         }
+    }
 
+    function initManageNodeModal(groupId) {
+        var modal = document.getElementById('manageNodesModal' + groupId);
+        if (!modal) return;
         modal.addEventListener('shown.bs.modal', function () {
+            loadManageNodes(groupId);
             updateSelectedCount(groupId);
+            var searchInput = modal.querySelector('.manage-node-search');
             if (searchInput) searchInput.focus();
         });
-
         updateSelectedCount(groupId);
     }
 

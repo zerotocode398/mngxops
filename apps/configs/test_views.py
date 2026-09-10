@@ -259,3 +259,157 @@ class TestConfigByNodesAPIView:
         )
         payload = resp.json()
         assert "configs" in payload
+
+
+@pytest.mark.django_db
+class TestConfigBatchDeleteView:
+    """批量删除配置标签"""
+
+    def test_batch_delete_no_ids(self, admin_client):
+        resp = admin_client.post(reverse("configs:batch_delete"), {"ids": ""})
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestBindingRestoreView:
+    """恢复已删除绑定"""
+
+    def test_restore_not_found(self, admin_client):
+        resp = admin_client.post(reverse("configs:binding_restore", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestBindingBatchDeleteView:
+    """批量删除绑定"""
+
+    def test_batch_delete_no_ids(self, admin_client):
+        resp = admin_client.post(reverse("configs:binding_batch_delete"), {"ids": ""})
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestBindingVersionDetailView:
+    """版本详情"""
+
+    def test_detail_not_found(self, admin_client):
+        resp = admin_client.get(
+            reverse("configs:binding_version_detail", args=[99999, 99999])
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestBindingVersionRestoreView:
+    """恢复版本"""
+
+    def test_restore_not_found(self, admin_client):
+        resp = admin_client.post(
+            reverse("configs:binding_version_restore", args=[99999, 99999])
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestBindingVersionCompareView:
+    """版本对比"""
+
+    def test_compare_not_found(self, admin_client):
+        resp = admin_client.get(reverse("configs:binding_compare", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestBindingVersionCompareApplyView:
+    """版本对比应用"""
+
+    def test_apply_not_found(self, admin_client):
+        resp = admin_client.post(reverse("configs:binding_compare_apply", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestConfigGlobPreviewView:
+    """Glob 预览 API"""
+
+    def test_preview_no_nodes(self, admin_client):
+        resp = admin_client.post(reverse("configs:api_preview_glob"), {"node_ids": ""})
+        assert resp.status_code in (400, 200)
+
+
+@pytest.mark.django_db
+class TestConfigUpdatePreviewView:
+    """更新预览 API"""
+
+    def test_preview_requires_post(self, admin_client):
+        resp = admin_client.get(reverse("configs:api_update_preview"))
+        assert resp.status_code == 405
+
+
+@pytest.mark.django_db
+class TestConfigSyncWizardView:
+    """同步向导"""
+
+    def test_wizard_accessible(self, admin_client):
+        resp = admin_client.get(reverse("configs:sync_wizard"))
+        assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+class TestConfigSyncBatchAPIView:
+    """批量同步 API"""
+
+    def test_sync_no_nodes(self, admin_client):
+        import json
+
+        resp = admin_client.post(
+            reverse("configs:sync_batch_api"),
+            data=json.dumps({"node_ids": []}),
+            content_type="application/json",
+        )
+        payload = resp.json()
+        assert payload["success"] is False
+
+
+@pytest.mark.django_db
+class TestConfigSyncSingleAPIView:
+    """单节点同步 API"""
+
+    def test_sync_no_node(self, admin_client):
+        import json
+
+        resp = admin_client.post(
+            reverse("configs:sync_single_api"),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        payload = resp.json()
+        assert payload["success"] is False
+
+
+@pytest.mark.django_db
+class TestConfigSyncProgressView:
+    """同步进度 API"""
+
+    def test_progress_missing_task_id(self, admin_client):
+        resp = admin_client.get(reverse("configs:sync_progress"))
+        payload = resp.json()
+        assert payload["success"] is True
+
+
+@pytest.mark.django_db
+class TestConfigUpdateView:
+    """更新配置（兼容旧 URL）"""
+
+    def test_update_not_found(self, admin_client):
+        resp = admin_client.get(reverse("configs:update", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestConfigNodeDeleteView:
+    """删除节点下配置（兼容旧 URL）"""
+
+    def test_delete_not_found(self, admin_client):
+        resp = admin_client.post(reverse("configs:node_delete", args=[99999]))
+        assert resp.status_code == 404

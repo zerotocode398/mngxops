@@ -157,3 +157,130 @@ class TestReleaseNodeListAPIView:
         names = [n["hostname"] for n in payload["nodes"]]
         assert online_node.hostname in names
         assert offline_node.hostname not in names
+
+
+@pytest.mark.django_db
+class TestReleaseNodeBindingsAPIView:
+    """节点绑定列表 API"""
+
+    def test_api_accessible(self, admin_client, online_node):
+        resp = admin_client.get(
+            reverse("releases:api_node_bindings", args=[online_node.id])
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert "bindings" in payload
+
+    def test_api_not_found(self, admin_client):
+        resp = admin_client.get(reverse("releases:api_node_bindings", args=[99999]))
+        assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+class TestReleaseCreateAPIView:
+    """发布创建 API"""
+
+    def test_create_no_bindings(self, admin_client):
+        import json
+
+        resp = admin_client.post(
+            reverse("releases:api_create"),
+            data=json.dumps({"bindings": []}),
+            content_type="application/json",
+        )
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_create_anonymous(self, anonymous_client):
+        import json
+
+        resp = anonymous_client.post(
+            reverse("releases:api_create"),
+            data=json.dumps({"bindings": [{"binding_id": 1}]}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (302, 403)
+
+
+@pytest.mark.django_db
+class TestReleaseDetailView:
+    """发布详情"""
+
+    def test_detail_not_found(self, admin_client):
+        resp = admin_client.get(reverse("releases:detail", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestReleaseRollbackView:
+    """发布回滚"""
+
+    def test_rollback_not_found(self, admin_client):
+        resp = admin_client.get(reverse("releases:rollback", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestReleaseRetryView:
+    """发布重试"""
+
+    def test_retry_not_found(self, admin_client):
+        import json
+
+        resp = admin_client.post(
+            reverse("releases:retry", args=[99999]),
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestReleaseCenterExecuteView:
+    """发布中心执行"""
+
+    def test_execute_not_found(self, admin_client):
+        resp = admin_client.post(
+            reverse("releases:center_execute", args=["INVALID-BATCH"])
+        )
+        assert resp.status_code in (302, 404)
+
+
+@pytest.mark.django_db
+class TestReleaseCenterCancelView:
+    """发布中心取消"""
+
+    def test_cancel_redirects(self, admin_client):
+        resp = admin_client.post(
+            reverse("releases:center_cancel", args=["INVALID-BATCH"])
+        )
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestReleaseCenterSingleExecuteView:
+    """发布中心单任务执行"""
+
+    def test_execute_not_found(self, admin_client):
+        resp = admin_client.post(
+            reverse("releases:center_execute_single", args=[99999])
+        )
+        assert resp.status_code in (302, 404)
+
+
+@pytest.mark.django_db
+class TestReleaseTaskStatusView:
+    """发布任务状态 API"""
+
+    def test_status_not_found(self, admin_client):
+        resp = admin_client.get(reverse("releases:task_status", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestVersionContentAPIView:
+    """版本内容 API"""
+
+    def test_version_not_found(self, admin_client):
+        resp = admin_client.get(reverse("releases:version_content", args=[99999]))
+        assert resp.status_code == 404

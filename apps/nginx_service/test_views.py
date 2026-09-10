@@ -99,3 +99,77 @@ class TestNginxServiceAPI:
         b2 = r2.json()["source_batch"]
         assert b1[:10] == b2[:10]
         assert int(b2[-4:]) == int(b1[-4:]) + 1
+
+
+@pytest.mark.django_db
+class TestNginxServiceTaskLogView:
+    """启停任务日志页"""
+
+    def test_task_log_accessible(self, admin_client, admin_user):
+        task = TaskCenterTask.objects.create(
+            operation_type="nginx_service_control",
+            status="success",
+            target_configs="reload",
+            target_hostnames="ngx-1",
+            target_ips="10.0.0.11",
+            trigger_user=admin_user,
+        )
+        resp = admin_client.get(reverse("nginx_service:task_log", args=[task.id]))
+        assert resp.status_code == 200
+        assert resp.context["task"] == task
+
+    def test_task_log_not_found(self, admin_client):
+        resp = admin_client.get(reverse("nginx_service:task_log", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestNginxServiceTaskLogAPIView:
+    """启停任务日志 API"""
+
+    def test_api_returns_log(self, admin_client, admin_user):
+        task = TaskCenterTask.objects.create(
+            operation_type="nginx_service_control",
+            status="success",
+            target_configs="reload",
+            target_hostnames="ngx-1",
+            target_ips="10.0.0.11",
+            trigger_user=admin_user,
+            log_output="reloading nginx...\nok",
+        )
+        resp = admin_client.get(reverse("nginx_service:api_task_log", args=[task.id]))
+        payload = resp.json()
+        assert payload["success"] is True
+
+    def test_api_task_not_found(self, admin_client):
+        resp = admin_client.get(reverse("nginx_service:api_task_log", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestNginxServiceRecentTasksAPIView:
+    """最近启停任务 API"""
+
+    def test_api_returns_html(self, admin_client):
+        resp = admin_client.get(reverse("nginx_service:api_recent_tasks"))
+        payload = resp.json()
+        assert payload["success"] is True
+        assert "html" in payload
+
+
+@pytest.mark.django_db
+class TestNginxServiceBatchProgressAPIView:
+    """启停批次进度 API"""
+
+    def test_api_missing_batch(self, admin_client):
+        resp = admin_client.get(reverse("nginx_service:api_batch_progress"))
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_api_nonexistent_batch(self, admin_client):
+        resp = admin_client.get(
+            reverse("nginx_service:api_batch_progress"),
+            {"source_batch": "INVALID-0000"},
+        )
+        payload = resp.json()
+        assert payload["success"] is False

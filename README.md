@@ -136,6 +136,80 @@ python manage.py runserver 0.0.0.0:1988
 
 ---
 
+## 测试
+
+项目使用 **pytest + pytest-django** 框架，配置在 [`pytest.ini`](pytest.ini)。
+
+### 测试数据从哪来？
+
+测试**不需要**你准备任何数据。项目采用 **pytest fixture 机制**，数据在测试运行时即时创建、用完即弃：
+
+- 启动时自动将 `MNGXOPS_HOME` 指向临时目录，SQLite 数据库也在临时目录创建，**完全隔离，不会污染你的真实数据**。
+- 公共 fixture 定义在 [`apps/conftest.py`](apps/conftest.py)，提供了 `admin_user`、`normal_user`、`admin_client`、`anonymous_client`、`credential`、`online_node`、`offline_node` 等可复用的测试数据。
+- 每个测试函数通过参数声明需要的 fixture，pytest 会自动注入。例如：
+
+```python
+def test_list_shows_nodes(self, admin_client, online_node, offline_node):
+    resp = admin_client.get(reverse("nodes:list"))
+    assert resp.status_code == 200
+```
+
+### 测试类型
+
+测试文件按命名约定自动收集（`python_files = tests.py test_*.py`）：
+
+| 文件 | 内容 |
+|------|------|
+| `test_views.py` | 视图层测试：页面可访问性（200）、权限校验（302）、上下文数据正确性 |
+| `tests.py` / `test_services.py` | 业务逻辑测试：SSH 配置发现、登录锁、批次号生成等 |
+
+### 测试覆盖范围
+
+以下是整个项目的全功能测试覆盖情况总览：
+
+| 模块 | 功能 | 测试文件 | 状态 |
+|------|------|----------|:--:|
+| accounts | 登录锁定 / 表单 / 视图 | `test_login_lock.py` / `test_forms.py` / `test_services.py` / `test_views.py` | ✅ |
+| audit | 审计中间件 / 信号 / 工具 / 视图 | `test_middleware.py` / `test_signals.py` / `test_utils.py` / `test_views.py` | ✅ |
+| configs | 配置表单 / 服务层 / 视图 / 过滤器 | `test_forms.py` / `test_services.py` / `test_views.py` / `templatetags/test_config_filters.py` | ✅ |
+| credentials | 凭证表单 / 服务层 / 视图 | `test_forms.py` / `test_services.py` / `test_views.py` | ✅ |
+| dashboard | 仪表盘视图 | `test_views.py` | ✅ |
+| nginx_install | 安装服务层 / 视图 | `test_services.py` / `test_views.py` | ✅ |
+| nginx_service | 启停服务层 / 视图 | `test_services.py` / `test_views.py` | ✅ |
+| nginx_uninstall | 卸载服务层 / 视图 | `test_services.py` / `test_views.py` | ✅ |
+| nodes | 节点表单 / 服务层 / 视图 | `test_forms.py` / `test_services.py` / `test_views.py` | ✅ |
+| releases | 服务层 / 启动清理 / 任务取消 / 任务进度 / 任务结果 / 视图 | `test_services.py` / `test_startup_cleanup.py` / `test_task_cancel.py` / `test_task_progress.py` / `test_task_result.py` / `test_views.py` | ✅ |
+| settings | 上下文处理器 / 中间件 / 视图 / 数据清理命令 | `test_context_processors.py` / `test_middleware.py` / `test_views.py` / `management/test_purge_expired_data.py` | ✅ |
+| upgrade | 升级表单 / 服务层 / 视图 / 过滤器 | `test_forms.py` / `test_services.py` / `test_views.py` / `templatetags/test_upgrade_filters.py` | ✅ |
+| users | 用户表单 / 密码校验 / 上下文处理器 / 视图 / 权限定义 / 权限标签 | `test_forms.py` / `test_password_validation.py` / `test_context_processors.py` / `test_views.py` / `test_perm_defs.py` / `templatetags/test_permission_tags.py` | ✅ |
+| utils | 加密 / 数据保留 / 导航上下文 / Nginx 启停 / 分页 / 设置服务 / SSH | `test_crypto.py` / `test_data_retention.py` / `test_nav_context.py` / `test_nginx_ops.py` / `test_pagination.py` / `test_setting_service.py` / `test_ssh.py` | ✅ |
+
+### 运行命令
+
+```powershell
+# 运行全部测试
+python -m pytest apps/ -v
+
+# 运行单个模块
+python -m pytest apps/configs/test_views.py -v
+python -m pytest apps/nodes/test_views.py -v
+
+# 运行单个类
+python -m pytest apps/configs/test_views.py::TestConfigListView -v
+
+# 运行单个测试
+python -m pytest apps/configs/test_views.py::TestConfigListView::test_list_accessible -v
+
+# 跳过慢测试
+python -m pytest apps/ -v -m "not slow"
+
+# 生成覆盖率报告
+python -m pytest apps/ --cov=apps --cov-report=html
+# 报告在 htmlcov/index.html
+```
+
+---
+
 ## 功能模块与 URL 速查
 
 | 模块 | 路径 | 说明 |

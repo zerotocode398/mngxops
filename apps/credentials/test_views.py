@@ -151,3 +151,110 @@ class TestCredentialToggleEnableView:
         assert resp.status_code == 302
         credential.refresh_from_db()
         assert credential.is_enabled is True
+
+
+@pytest.mark.django_db
+class TestCredentialExportView:
+    """凭证导出（仅管理员）"""
+
+    def test_export_accessible(self, admin_client):
+        resp = admin_client.get(reverse("credentials:export"))
+        assert resp.status_code == 200
+        assert resp["Content-Type"] in (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+        )
+
+    def test_export_redirects_non_admin(self, client, normal_user):
+        client.force_login(normal_user)
+        resp = client.get(reverse("credentials:export"))
+        assert resp.status_code in (302, 403)
+
+    def test_export_with_ids(self, admin_client, credential):
+        resp = admin_client.get(
+            reverse("credentials:export"), {"ids": str(credential.id)}
+        )
+        assert resp.status_code == 200
+
+    def test_export_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("credentials:export"))
+        assert resp.status_code in (302, 403)
+
+
+@pytest.mark.django_db
+class TestCredentialImportTemplateView:
+    """凭证导入模板下载"""
+
+    def test_template_accessible(self, admin_client):
+        resp = admin_client.get(reverse("credentials:import_template"))
+        assert resp.status_code == 200
+
+    def test_template_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("credentials:import_template"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestCredentialImportAPIView:
+    """凭证批量导入 API"""
+
+    def test_import_no_file(self, admin_client):
+        resp = admin_client.post(reverse("credentials:import_api"))
+        payload = resp.json()
+        assert payload["success"] is False
+
+    def test_import_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.post(reverse("credentials:import_api"))
+        assert resp.status_code == 302
+
+
+@pytest.mark.django_db
+class TestCredentialRelatedNodesView:
+    """凭证关联节点查询"""
+
+    def test_related_nodes_accessible(self, admin_client, credential):
+        resp = admin_client.get(
+            reverse("credentials:related_nodes", args=[credential.id])
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert "data" in payload
+        assert "total" in payload["pagination"]
+
+    def test_related_nodes_not_found(self, admin_client):
+        resp = admin_client.get(reverse("credentials:related_nodes", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestCredentialEnableProgressView:
+    """凭证启用测试进度"""
+
+    def test_enable_progress_accessible(self, admin_client, credential):
+        resp = admin_client.get(
+            reverse("credentials:enable_progress", args=[credential.id])
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["success"] is True
+        assert "has_task" in payload
+
+    def test_enable_progress_not_found(self, admin_client):
+        resp = admin_client.get(reverse("credentials:enable_progress", args=[99999]))
+        assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+class TestCredentialApiListView:
+    """凭证列表 API"""
+
+    def test_api_list_accessible(self, admin_client, credential):
+        resp = admin_client.get(reverse("credentials:api_list"))
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["success"] is True
+        assert len(payload["data"]) >= 1
+
+    def test_api_list_redirects_anonymous(self, anonymous_client):
+        resp = anonymous_client.get(reverse("credentials:api_list"))
+        assert resp.status_code == 302
