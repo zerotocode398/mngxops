@@ -7,8 +7,12 @@ class PermissionItem(models.Model):
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
     code = models.CharField(max_length=100, unique=True, verbose_name="权限编码")
     name = models.CharField(max_length=100, verbose_name="权限名称")
-    resource = models.CharField(max_length=50, choices=RESOURCE_CHOICES, verbose_name="资源")
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES, verbose_name="动作")
+    resource = models.CharField(
+        max_length=50, choices=RESOURCE_CHOICES, verbose_name="资源"
+    )
+    action = models.CharField(
+        max_length=20, choices=ACTION_CHOICES, verbose_name="动作"
+    )
 
     class Meta:
         verbose_name = "权限项"
@@ -45,6 +49,7 @@ class UserGroup(models.Model):
 
 class UserTeam(models.Model):
     """用户组 — 独立于角色的分组方式，可绑定一个或多个用户，也可关联角色"""
+
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
     name = models.CharField(max_length=100, unique=True, verbose_name="组名")
     description = models.TextField(blank=True, verbose_name="描述")
@@ -61,7 +66,10 @@ class UserTeam(models.Model):
         related_name="teams",
     )
     created_by = models.ForeignKey(
-        User, on_delete=models.CASCADE, verbose_name="创建人", related_name="created_teams"
+        User,
+        on_delete=models.CASCADE,
+        verbose_name="创建人",
+        related_name="created_teams",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
@@ -97,10 +105,31 @@ class UserProfile(models.Model):
     )
     remark = models.TextField(blank=True, verbose_name="备注")
     failed_login_count = models.PositiveIntegerField(
-        default=0, verbose_name="连续登录失败次数",
+        default=0,
+        verbose_name="连续登录失败次数",
     )
     login_locked_until = models.DateTimeField(
-        null=True, blank=True, verbose_name="登录临时锁定截止时间",
+        null=True,
+        blank=True,
+        verbose_name="登录临时锁定截止时间",
+    )
+    current_session_key = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+        verbose_name="当前会话密钥",
+        help_text="用于检测多点登录冲突",
+    )
+    last_login_ip = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        verbose_name="最近登录IP",
+    )
+    last_login_agent = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="最近登录浏览器",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")

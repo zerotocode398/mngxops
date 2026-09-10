@@ -80,6 +80,50 @@
             border-radius: var(--br-md);
             margin-bottom: 20px;
         }
+    .conflict-warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: var(--br-md);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .conflict-warning .icon {
+            font-size: 2.5rem;
+            color: #e6a800;
+            margin-bottom: 12px;
+        }
+        .conflict-warning h5 {
+            font-weight: 600;
+            margin-bottom: 12px;
+            white-space: nowrap;
+        }
+        .conflict-warning .info-list {
+            display: inline-block;
+            text-align: left;
+            margin: 8px 0;
+        }
+        .conflict-warning .info-row {
+            font-size: 0.9rem;
+            color: #664d03;
+            margin-bottom: 6px;
+        }
+        .conflict-warning .info-row strong {
+            display: inline-block;
+            min-width: 56px;
+        }
+        .btn-cancel {
+            background: #6c757d;
+            border: none;
+            color: #fff;
+            padding: 12px;
+            font-weight: 500;
+            border-radius: var(--br-md);
+            width: 100%;
+            transition: all var(--transition-normal);
+        }
+        .btn-cancel:hover {
+            background: #5c636a;
+        }
     </style>
 </head>
 <body>
@@ -98,6 +142,32 @@
                     </div>
                 {% endfor %}
             {% endif %}
+
+            {% if show_conflict %}
+            <div class="conflict-warning text-center">
+                <div class="icon">⚠️</div>
+                <h5>检测到该账号已在其他地方登录</h5>
+                <div class="info-list">
+                    <div class="info-row"><strong>IP：</strong>{{ conflict_ip }}</div>
+                    <div class="info-row"><strong>浏览器：</strong>{{ conflict_agent }}</div>
+                </div>
+                <p class="mt-2 mb-0 text-muted" style="font-size:0.85rem;">
+                    如果继续登录，之前的会话将被强制下线
+                </p>
+            </div>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="confirm_kick" value="1">
+                <button type="submit" class="btn btn-login mb-2">
+                    <i class="bi bi-box-arrow-in-right"></i> 强制登录
+                </button>
+            </form>
+            <form method="get">
+                <button type="submit" class="btn btn-cancel">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+            </form>
+            {% else %}
             
             <form method="post">
                 {% csrf_token %}
@@ -116,6 +186,7 @@
                     <i class="bi bi-box-arrow-in-right"></i> 登录
                 </button>
             </form>
+            {% endif %}
         </div>
     </div>
 

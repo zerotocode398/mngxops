@@ -2009,6 +2009,30 @@
         });
     </script>
     {% block extra_js %}{% endblock %}
+    {% if user.is_authenticated %}
+    <script>
+    (function() {
+        var CHECK_INTERVAL = 8000;
+        var kicked = false;
+        var checkUrl = '{% url "accounts:check_session" %}';
+
+        function checkSession() {
+            fetch(checkUrl, { credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.valid && !kicked) {
+                        kicked = true;
+                        alert('您的账号已在其他设备登录，当前会话已失效，请重新登录。');
+                        window.location.href = '{% url "accounts:login" %}';
+                    }
+                })
+                .catch(function() {});
+        }
+
+        setInterval(checkSession, CHECK_INTERVAL);
+    })();
+    </script>
+    {% endif %}
 </body>
 
 </html>
