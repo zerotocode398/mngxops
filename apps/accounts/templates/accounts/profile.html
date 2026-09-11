@@ -47,10 +47,6 @@
                                                 <td>{{ user.email|default:"未设置" }}</td>
                                             </tr>
                                             <tr>
-                                                <th>姓名</th>
-                                                <td>{{ user.get_full_name|default:"未设置" }}</td>
-                                            </tr>
-                                            <tr>
                                                 <th>是否超级管理员</th>
                                                 <td>
                                                     {% if user.is_superuser %}

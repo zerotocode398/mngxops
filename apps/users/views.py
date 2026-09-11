@@ -483,7 +483,6 @@ class UserTeamMemberListView(LoginRequiredMixin, AdminRequiredMixin, View):
                 {
                     "id": u.id,
                     "username": u.username,
-                    "first_name": u.first_name or "-",
                     "email": u.email or "-",
                     "is_active": u.is_active,
                     "is_superuser": u.is_superuser,

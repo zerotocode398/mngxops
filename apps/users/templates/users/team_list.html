@@ -91,7 +91,7 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="6" class="empty-state">
+                                    <td colspan="5" class="empty-state">
                                         <i class="bi bi-inbox"></i>
                                         <p>暂无用户组数据</p>
                                         {% if request.user.is_superuser %}
@@ -157,7 +157,6 @@
                                     <input type="checkbox" id="selectAllMembers" title="全选/取消">
                                 </th>
                                 <th>用户名</th>
-                                <th>姓名</th>
                                 <th>邮箱</th>
                                 <th>状态</th>
                                 <th>归属</th>
@@ -165,7 +164,7 @@
                         </thead>
                         <tbody id="memberListBody">
                             <tr>
-                                <td colspan="6" class="empty-state">
+                                <td colspan="5" class="empty-state">
                                     <div class="spinner-border spinner-border-sm" role="status"></div>
                                     加载中...
                                 </td>
@@ -313,7 +312,7 @@
 
     function loadMemberList(page) {
         var body = document.getElementById('memberListBody');
-        body.innerHTML = '<tr><td colspan="6" class="empty-state">' +
+        body.innerHTML = '<tr><td colspan="5" class="empty-state">' +
             '<div class="spinner-border spinner-border-sm" role="status"></div> 加载中...</td></tr>';
 
         var searchParam = memberSearchTags.join(',');
@@ -326,7 +325,7 @@
                 renderMemberList(data);
             })
             .catch(function () {
-                body.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">加载失败</td></tr>';
+                body.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">加载失败</td></tr>';
             });
     }
 
@@ -335,7 +334,7 @@
         document.getElementById('totalCount').textContent = data.total_count;
 
         if (data.users.length === 0) {
-            body.innerHTML = '<tr><td colspan="6" class="empty-state">暂无匹配用户</td></tr>';
+            body.innerHTML = '<tr><td colspan="5" class="empty-state">暂无匹配用户</td></tr>';
         } else {
             var html = '';
             data.users.forEach(function (u) {
@@ -348,7 +347,6 @@
                 html += '<tr class="member-row' + (u.is_member ? ' table-info' : '') + '" data-user-id="' + u.id + '" data-is-member="' + (u.is_member ? '1' : '0') + '">' +
                     '<td><input type="checkbox" class="member-checkbox form-check-input" data-user-id="' + u.id + '" data-is-member="' + (u.is_member ? '1' : '0') + '"></td>' +
                     '<td>' + escapeHtml(u.username) + (u.is_superuser ? ' <span class="badge bg-warning">超管</span>' : '') + '</td>' +
-                    '<td>' + escapeHtml(u.first_name) + '</td>' +
                     '<td>' + escapeHtml(u.email) + '</td>' +
                     '<td>' + statusBadge + '</td>' +
                     '<td>' + memberBadge + '</td>' +

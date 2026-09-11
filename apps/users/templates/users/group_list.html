@@ -126,9 +126,8 @@
                                                         ">
                                                     </th>
                                                     <th style="width: 25%;">用户名</th>
-                                                    <th style="width: 15%;">姓名</th>
                                                     <th style="width: 25%;">邮箱</th>
-                                                    <th style="width: 20%;">已关联角色</th>
+                                                    <th style="width: 25%;">已关联角色</th>
                                                     <th style="width: 10%;">状态</th>
                                                 </tr>
                                             </thead>
@@ -148,7 +147,6 @@
                                                         {% endif %}
                                                     </td>
                                                     <td>{{ u.username }}</td>
-                                                    <td>{{ u.first_name|default:"-" }}</td>
                                                     <td>{{ u.email|default:"-" }}</td>
                                                     <td>
                                                         {% for ug in u.profile.groups.all %}
