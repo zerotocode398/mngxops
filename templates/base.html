@@ -612,6 +612,51 @@
             to { width: 0%; }
         }
 
+        /* 页面内 alert 自动消失（success 消息，3s） */
+        .alert-auto-dismiss {
+            position: relative;
+            overflow: hidden;
+        }
+        .alert-auto-dismiss .alert-auto-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: rgba(0, 0, 0, 0.15);
+            animation: alertAutoProgress 3s linear forwards;
+        }
+        @keyframes alertAutoProgress {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
+
+        /* 会话失效倒计时进度条 */
+        .session-expired-countdown {
+            margin-top: 12px;
+        }
+        .session-expired-countdown .countdown-bar-wrap {
+            background: #e9ecef;
+            border-radius: 4px;
+            height: 6px;
+            overflow: hidden;
+        }
+        .session-expired-countdown .countdown-bar {
+            height: 100%;
+            border-radius: 4px;
+            background: #dc3545;
+            animation: countdownBar 3s linear forwards;
+        }
+        @keyframes countdownBar {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
+        .session-expired-countdown .countdown-text {
+            font-size: 0.82rem;
+            color: #6c757d;
+            margin-top: 6px;
+            text-align: right;
+        }
+
         /* 异步进度遮罩 */
         .async-progress-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -1077,9 +1122,13 @@
                 <div class="p-4">
                     {% if messages %}
                     {% for message in messages %}
-                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    <div class="alert alert-{{ message.tags }}{% if message.tags == 'success' %} alert-auto-dismiss{% else %} alert-dismissible fade show{% endif %}" role="alert"{% if message.tags == 'success' %} id="autoDismissAlert"{% endif %}>
                         {{ message }}
+                        {% if message.tags == 'success' %}
+                        <div class="alert-auto-progress"></div>
+                        {% else %}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        {% endif %}
                     </div>
                     {% endfor %}
                     {% endif %}
@@ -1185,6 +1234,25 @@
                     }
                 }, 3000);
             };
+        })();
+
+        /* ========== 页面内 success alert 3s 自动消失 ========== */
+        (function() {
+            var el = document.getElementById('autoDismissAlert');
+            if (!el) return;
+            setTimeout(function() {
+                if (el.parentElement) {
+                    el.classList.add('alert-auto-removing');
+                    el.addEventListener('transitionend', function() {
+                        if (el.parentElement) el.remove();
+                    });
+                    el.style.opacity = '0';
+                    el.style.transition = 'opacity 0.3s ease';
+                    setTimeout(function() {
+                        if (el.parentElement) el.remove();
+                    }, 350);
+                }
+            }, 3000);
         })();
 
         /* ========== 全局确认弹窗（替代浏览器 confirm） ========== */
@@ -2023,14 +2091,40 @@
                     if (!data.valid && !kicked) {
                         kicked = true;
                         document.getElementById('mngxopsAlertTitle').textContent = '会话已失效';
-                        document.getElementById('mngxopsAlertBody').textContent =
-                            '您的账号已在其他设备登录，当前会话已失效，请重新登录。';
+                        var bodyEl = document.getElementById('mngxopsAlertBody');
+                        bodyEl.innerHTML = '<p class="mb-0">您的账号已在其他设备登录，当前会话已失效。</p>'
+                            + '<div class="session-expired-countdown">'
+                            + '<div class="countdown-bar-wrap"><div class="countdown-bar" id="countdownBar"></div></div>'
+                            + '<div class="countdown-text" id="countdownText">3 秒后自动跳转到登录页</div>'
+                            + '</div>';
                         var alertModal = new bootstrap.Modal(document.getElementById('mngxopsAlertModal'));
                         alertModal.show();
+                        // 隐藏关闭按钮，不可手动关闭
+                        var closeBtn = document.querySelector('#mngxopsAlertModal .btn-close');
+                        if (closeBtn) closeBtn.style.display = 'none';
+                        var footerBtn = document.querySelector('#mngxopsAlertModal .modal-footer .btn');
+                        if (footerBtn) footerBtn.style.display = 'none';
+                        // 倒计时
+                        var seconds = 3;
+                        var countdownTextEl = document.getElementById('countdownText');
+                        var doRedirect = function() {
+                            window.location.href = '{% url "accounts:login" %}';
+                        };
+                        var timer = setInterval(function() {
+                            seconds--;
+                            if (seconds <= 0) {
+                                clearInterval(timer);
+                                doRedirect();
+                            } else {
+                                countdownTextEl.textContent = seconds + ' 秒后自动跳转到登录页';
+                            }
+                        }, 1000);
+                        // 用户手动关闭弹窗也触发跳转
                         document.getElementById('mngxopsAlertModal').addEventListener(
                             'hidden.bs.modal',
                             function() {
-                                window.location.href = '{% url "accounts:login" %}';
+                                clearInterval(timer);
+                                doRedirect();
                             },
                             { once: true }
                         );
