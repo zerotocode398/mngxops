@@ -25,7 +25,12 @@ class PermissionItem(models.Model):
 
 class UserGroup(models.Model):
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
-    name = models.CharField(max_length=100, unique=True, verbose_name="名称")
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="角色名称",
+        error_messages={"unique": "角色名称已存在"},
+    )
     description = models.TextField(blank=True, verbose_name="描述")
     permissions = models.ManyToManyField(
         PermissionItem,

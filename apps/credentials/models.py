@@ -13,7 +13,7 @@ class Credential(models.Model):
     )
 
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
-    name = models.CharField(max_length=100, verbose_name="名称")
+    name = models.CharField(max_length=100, verbose_name="凭证名称")
     username = models.CharField(max_length=100, verbose_name="SSH用户")
     auth_type = models.CharField(
         max_length=20,
@@ -25,7 +25,9 @@ class Credential(models.Model):
     private_key = models.TextField(blank=True, verbose_name="私钥")
     is_enabled = models.BooleanField(default=True, verbose_name="启用")
     description = models.TextField(blank=True, verbose_name="描述")
-    last_test_time = models.DateTimeField(null=True, blank=True, verbose_name="最后测试时间")
+    last_test_time = models.DateTimeField(
+        null=True, blank=True, verbose_name="最后测试时间"
+    )
     last_test_result = models.CharField(
         max_length=20,
         choices=(
@@ -86,7 +88,10 @@ class CredentialEnableTask(models.Model):
     )
 
     credential = models.ForeignKey(
-        Credential, on_delete=models.CASCADE, related_name="enable_tasks", verbose_name="凭证"
+        Credential,
+        on_delete=models.CASCADE,
+        related_name="enable_tasks",
+        verbose_name="凭证",
     )
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="pending", verbose_name="状态"
@@ -96,7 +101,9 @@ class CredentialEnableTask(models.Model):
     success_count = models.IntegerField(default=0, verbose_name="成功数")
     failed_count = models.IntegerField(default=0, verbose_name="失败数")
     skipped_count = models.IntegerField(default=0, verbose_name="跳过数")
-    task_center_id = models.BigIntegerField(null=True, blank=True, verbose_name="任务中心ID")
+    task_center_id = models.BigIntegerField(
+        null=True, blank=True, verbose_name="任务中心ID"
+    )
     message = models.TextField(blank=True, verbose_name="结果说明")
     started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
@@ -107,4 +114,3 @@ class CredentialEnableTask(models.Model):
         verbose_name = "凭证启用测试任务"
         verbose_name_plural = verbose_name
         ordering = ["-created_at"]
-

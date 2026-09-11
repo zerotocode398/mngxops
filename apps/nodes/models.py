@@ -8,7 +8,12 @@ User = get_user_model()
 
 class NodeGroup(models.Model):
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
-    name = models.CharField(max_length=100, unique=True, verbose_name="名称")
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="节点组名称",
+        error_messages={"unique": "节点组名称已存在"},
+    )
     description = models.TextField(blank=True, verbose_name="描述")
     created_by = models.ForeignKey(
         User, on_delete=models.CASCADE, verbose_name="创建人"
@@ -81,17 +86,23 @@ class Node(models.Model):
         help_text="null=未探测，True=已检测到，False=确认不可用；与 SSH status 独立",
     )
     last_nginx_probe_at = models.DateTimeField(
-        null=True, blank=True, verbose_name="上次Nginx探测时间",
+        null=True,
+        blank=True,
+        verbose_name="上次Nginx探测时间",
     )
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="unknown", verbose_name="状态"
     )
     last_probe_at = models.DateTimeField(
-        null=True, blank=True, verbose_name="上次探测成功时间",
+        null=True,
+        blank=True,
+        verbose_name="上次探测成功时间",
     )
     is_locked = models.BooleanField(default=False, verbose_name="已锁定")
     description = models.TextField(blank=True, verbose_name="描述")
-    is_deleted = models.BooleanField(default=False, db_index=True, verbose_name="已删除")
+    is_deleted = models.BooleanField(
+        default=False, db_index=True, verbose_name="已删除"
+    )
     deleted_at = models.DateTimeField(null=True, blank=True, verbose_name="删除时间")
     deleted_by = models.ForeignKey(
         User,

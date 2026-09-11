@@ -225,7 +225,6 @@ class NodeGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
         return response
 
     def form_invalid(self, form):
-        messages.error(self.request, "节点组创建失败，请检查输入")
         return super().form_invalid(form)
 
 
