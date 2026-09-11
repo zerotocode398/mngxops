@@ -519,6 +519,8 @@ class UserTeamManageMembersView(LoginRequiredMixin, AdminRequiredMixin, View):
                 if team.members.filter(pk=uid).exists():
                     continue
                 team.members.add(user)
+                profile, _ = UserProfile.objects.get_or_create(user=user)
+                profile.groups.add(*team.roles.all())
                 added += 1
             if added:
                 messages.success(request, f"已向 {team.name} 添加 {added} 个成员")
@@ -532,7 +534,17 @@ class UserTeamManageMembersView(LoginRequiredMixin, AdminRequiredMixin, View):
                 user = get_object_or_404(User, pk=uid)
                 if not team.members.filter(pk=uid).exists():
                     continue
+                team_role_ids = set(team.roles.values_list("id", flat=True))
                 team.members.remove(user)
+                remaining_team_role_ids = set(
+                    UserGroup.objects.filter(
+                        teams__in=user.user_teams.all()
+                    ).values_list("id", flat=True)
+                )
+                role_ids_to_remove = team_role_ids - remaining_team_role_ids
+                if role_ids_to_remove:
+                    profile, _ = UserProfile.objects.get_or_create(user=user)
+                    profile.groups.remove(*role_ids_to_remove)
                 removed += 1
             if removed:
                 messages.success(request, f"已从 {team.name} 移除 {removed} 个成员")
