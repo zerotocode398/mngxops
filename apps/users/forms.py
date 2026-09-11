@@ -15,9 +15,7 @@ USERNAME_HELP = "仅支持字母、数字、下划线与连字符"
 def validate_ascii_username(username):
     """校验用户名是否为 ASCII 合法登录标识"""
     if not username or not USERNAME_PATTERN.fullmatch(username):
-        raise forms.ValidationError(
-            "用户名仅支持字母、数字、下划线与连字符"
-        )
+        raise forms.ValidationError("用户名仅支持字母、数字、下划线与连字符")
     return username
 
 
@@ -51,7 +49,9 @@ class UserCreateForm(UserCreationForm):
     )
     remark = forms.CharField(
         required=False,
-        widget=forms.Textarea(attrs={"class": "form-control", "rows": 2, "placeholder": "可选"}),
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 2, "placeholder": "可选"}
+        ),
         label="备注",
     )
     groups = forms.ModelMultipleChoiceField(
@@ -101,6 +101,7 @@ class UserCreateForm(UserCreationForm):
         self.fields["password1"].widget.attrs.update({"class": "form-control"})
         self.fields["password2"].widget.attrs.update({"class": "form-control"})
         self.fields["username"].help_text = USERNAME_HELP
+        self.fields["username"].error_messages["unique"] = "用户名已存在"
 
     def clean_username(self):
         """限制用户名为 ASCII 登录标识，并保留唯一性校验"""
