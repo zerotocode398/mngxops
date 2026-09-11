@@ -66,8 +66,15 @@ class LoginView(View):
                 user_agent=user_agent,
                 status="failed",
             )
-            messages.error(request, "用户已锁定，请联系管理员")
-            return render(request, self.template_name, {"form": form})
+            return render(
+                request,
+                self.template_name,
+                {
+                    "form": form,
+                    "error_type": "user_disabled",
+                    "error_message": "用户已锁定，请联系管理员",
+                },
+            )
 
         if target_user is not None and is_temp_login_locked(target_user):
             LoginLog.objects.create(
@@ -77,11 +84,15 @@ class LoginView(View):
                 status="failed",
             )
             minutes = get_fail_lock_minutes()
-            messages.error(
+            return render(
                 request,
-                f"登录失败次数过多，请 {minutes} 分钟后再试或联系管理员解锁",
+                self.template_name,
+                {
+                    "form": form,
+                    "error_type": "account_locked",
+                    "error_message": f"登录失败次数过多，请 {minutes} 分钟后再试或联系管理员解锁。",
+                },
             )
-            return render(request, self.template_name, {"form": form})
 
         if form.is_valid():
             username = form.cleaned_data.get("username")
@@ -101,19 +112,30 @@ class LoginView(View):
                     status="failed",
                 )
                 minutes = get_fail_lock_minutes()
-                messages.error(
+                return render(
                     request,
-                    f"登录失败次数过多，请 {minutes} 分钟后再试或联系管理员解锁",
+                    self.template_name,
+                    {
+                        "form": form,
+                        "error_type": "account_locked",
+                        "error_message": f"登录失败次数过多，请 {minutes} 分钟后再试或联系管理员解锁。",
+                    },
                 )
-                return render(request, self.template_name, {"form": form})
         LoginLog.objects.create(
             username=username,
             ip=ip,
             user_agent=user_agent,
             status="failed",
         )
-        messages.error(request, "用户名或密码错误")
-        return render(request, self.template_name, {"form": form})
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "error_type": "auth_failed",
+                "error_message": "用户名或密码错误",
+            },
+        )
 
     def _after_auth_success(self, request, user, ip, user_agent):
         """认证成功后的处理：检查多点登录冲突，无冲突则直接登录。"""
