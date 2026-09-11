@@ -1811,9 +1811,9 @@
                         const trigger = document.querySelector('[data-target="' + parentSubmenu.id + '"]');
                         if (trigger) { trigger.classList.add('active'); }
                     }
-                    // 长页面下保证活动项落在侧栏可视区（如用户管理在系统管理底部）
+                    // 长页面下保证活动项落在侧栏可视区（居中显示，上下均有上下文）
                     try {
-                        matchedLink.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                        matchedLink.scrollIntoView({ block: 'center', inline: 'nearest' });
                     } catch (e) { /* ignore */ }
                 }
             }
