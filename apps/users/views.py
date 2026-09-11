@@ -425,7 +425,6 @@ class UserTeamCreateView(LoginRequiredMixin, AdminRequiredMixin, CreateView):
         return response
 
     def form_invalid(self, form):
-        messages.error(self.request, "用户组创建失败，请检查输入")
         return super().form_invalid(form)
 
 

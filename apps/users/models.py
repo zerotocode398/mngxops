@@ -56,7 +56,12 @@ class UserTeam(models.Model):
     """用户组 — 独立于角色的分组方式，可绑定一个或多个用户，也可关联角色"""
 
     id = models.BigAutoField(primary_key=True, verbose_name="ID")
-    name = models.CharField(max_length=100, unique=True, verbose_name="组名")
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="组名",
+        error_messages={"unique": "用户组已存在"},
+    )
     description = models.TextField(blank=True, verbose_name="描述")
     members = models.ManyToManyField(
         User,
