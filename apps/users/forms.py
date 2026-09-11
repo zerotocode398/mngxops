@@ -126,11 +126,14 @@ class UserCreateForm(UserCreationForm):
                 user=user,
                 remark=self.cleaned_data.get("remark", ""),
             )
-            profile.groups.set(self.cleaned_data.get("groups", []))
             profile.direct_permissions.set(
                 self.cleaned_data.get("direct_permissions", [])
             )
             user.user_teams.set(self.cleaned_data.get("teams") or [])
+            teams = self.cleaned_data.get("teams") or []
+            explicit_groups = set(self.cleaned_data.get("groups", []))
+            team_roles = set(UserGroup.objects.filter(teams__in=teams))
+            profile.groups.set(explicit_groups | team_roles)
         return user
 
 
@@ -294,9 +297,12 @@ class UserUpdateForm(forms.ModelForm):
             profile, created = UserProfile.objects.get_or_create(user=user)
             profile.remark = self.cleaned_data.get("remark", "")
             profile.save()
-            profile.groups.set(self.cleaned_data.get("groups", []))
             profile.direct_permissions.set(
                 self.cleaned_data.get("direct_permissions", [])
             )
             user.user_teams.set(self.cleaned_data.get("teams") or [])
+            teams = self.cleaned_data.get("teams") or []
+            explicit_groups = set(self.cleaned_data.get("groups", []))
+            team_roles = set(UserGroup.objects.filter(teams__in=teams))
+            profile.groups.set(explicit_groups | team_roles)
         return user
