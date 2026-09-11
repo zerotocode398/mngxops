@@ -96,7 +96,7 @@ class UserUpdateView(LoginRequiredMixin, AdminRequiredMixin, UpdateView):
     def get_context_data(self, **kwargs):
         """补充角色/用户组弹窗列表，并预选用户已有直授权限"""
         context = super().get_context_data(**kwargs)
-        context["available_groups"] = UserGroup.objects.all().order_by("name")
+        context["all_user_groups"] = UserGroup.objects.all().order_by("name")
         context["all_user_teams"] = UserTeam.objects.all().order_by("name")
         plist = _get_permission_list()
         profile, _ = UserProfile.objects.get_or_create(user=self.object)

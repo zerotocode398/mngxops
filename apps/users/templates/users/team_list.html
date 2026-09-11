@@ -91,14 +91,9 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="5" class="empty-state">
+                                    <td colspan="6" class="empty-state">
                                         <i class="bi bi-inbox"></i>
                                         <p>暂无用户组数据</p>
-                                        {% if request.user.is_superuser %}
-                                        <a href="{% url 'users:team_create' %}" class="btn btn-primary btn-sm">
-                                            <i class="bi bi-plus-circle"></i> 新增用户组
-                                        </a>
-                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
