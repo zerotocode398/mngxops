@@ -1,0 +1,9 @@
+.node-count-btn {
+    min-width: 42px;
+}
+.group-node-count-link {
+    text-decoration: none;
+}
+.node-group-table td .btn {
+    font-size: 0.82rem;
+}
