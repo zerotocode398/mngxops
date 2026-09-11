@@ -57,7 +57,7 @@ class CredentialForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise forms.ValidationError("该凭证名称已存在，请更换名称")
+            raise forms.ValidationError("凭证名称已存在")
         return name
 
     def clean(self):
@@ -80,7 +80,9 @@ class CredentialForm(forms.ModelForm):
             if not key_value:
                 raise forms.ValidationError("密钥认证方式必须填写私钥")
             if not self._is_valid_private_key(key_value):
-                raise forms.ValidationError("私钥格式无效，请提供合法的 RSA/DSA/ECDSA/Ed25519 格式私钥")
+                raise forms.ValidationError(
+                    "私钥格式无效，请提供合法的 RSA/DSA/ECDSA/Ed25519 格式私钥"
+                )
 
         return cleaned_data
 

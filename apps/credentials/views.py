@@ -280,8 +280,6 @@ class CredentialCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVi
         return super().form_valid(form)
 
     def form_invalid(self, form):
-        """表单验证失败时显示错误消息"""
-        messages.error(self.request, "凭证创建失败，请检查输入")
         return super().form_invalid(form)
 
 
