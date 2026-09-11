@@ -256,7 +256,6 @@ class NodeGroupUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVie
         return response
 
     def form_invalid(self, form):
-        messages.error(self.request, "节点组更新失败，请检查输入")
         return super().form_invalid(form)
 
 
@@ -485,7 +484,6 @@ class NodeCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
         return redirect(self.get_success_url())
 
     def form_invalid(self, form):
-        messages.error(self.request, "节点创建失败，请检查输入")
         return super().form_invalid(form)
 
 
