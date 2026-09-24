@@ -460,7 +460,9 @@ function batchDeleteNodes() {
 }
 
 function showNoPermissionAlert() {
-    showConfirm('无操作权限', '<p class="text-danger">无权限执行该操作</p>', function () {}, true);
+    console.log('[nodes] showNoPermissionAlert 被调用');
+    showCustomModal('编辑失败', '<p class="text-danger">无权限执行该操作</p>',
+        true, function () {}, 'bi-exclamation-triangle', 'btn-danger');
 }
 
 function editFromDetail() {
@@ -527,6 +529,9 @@ function openNodeDetail(nodeId) {
 
         if (info.has_credential) {
             refreshSystemInfo();
+            if (!info.nginx_version) {
+                detectNginxVersion();
+            }
         } else {
             document.getElementById('detailSystemInfo').innerHTML = '<p class="text-muted small">未配置SSH凭证或凭证已禁用</p>';
         }

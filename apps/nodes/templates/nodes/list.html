@@ -392,5 +392,11 @@ var NODE_LIST_CONFIG = {
 {% endblock %}
 
 {% block extra_js %}
+<script>
+function showNoPermissionAlert() {
+    showCustomModal('编辑失败', '<p class="text-danger">无权限执行该操作</p>',
+        true, function () {}, 'bi-exclamation-triangle', 'btn-danger');
+}
+</script>
 <script src="{% static 'js/nodes/list.js' %}"></script>
 {% endblock %}
