@@ -1057,7 +1057,7 @@ class NodeGroupListAPIView(LoginRequiredMixin, View):
 def get_node_detail(request):
     if not request.user.is_authenticated:
         return JsonResponse({"success": False, "message": "请先登录"}, status=403)
-    if not user_has_permission(request.user, "nodes", "delete"):
+    if not user_has_permission(request.user, "nodes", "read"):
         return JsonResponse(
             {"success": False, "message": "无权限执行该操作"}, status=403
         )
@@ -1114,7 +1114,7 @@ def get_node_detail(request):
 def get_node_system_info(request):
     if not request.user.is_authenticated:
         return JsonResponse({"success": False, "message": "请先登录"}, status=403)
-    if not user_has_permission(request.user, "nodes", "read"):
+    if not user_has_permission(request.user, "nodes", "ssh_test"):
         return JsonResponse({"success": False, "message": "无权限执行该操作"})
 
     if request.method == "POST":
@@ -1166,7 +1166,7 @@ def get_node_system_info(request):
 def get_node_nginx_version(request):
     if not request.user.is_authenticated:
         return JsonResponse({"success": False, "message": "请先登录"}, status=403)
-    if not user_has_permission(request.user, "nodes", "read"):
+    if not user_has_permission(request.user, "nodes", "ssh_test"):
         return JsonResponse(
             {"success": False, "message": "无权限执行该操作"}, status=403
         )

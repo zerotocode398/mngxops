@@ -226,11 +226,12 @@ function testConnection(el) {
 
 function testConnectionFromDetail() {
     if (!currentDetailNodeId) return;
-    doSingleTest({ node_id: parseInt(currentDetailNodeId) });
+    doSingleTest({ node_id: parseInt(currentDetailNodeId) }, { noReload: true });
 }
 
-function doSingleTest(data) {
-    showAsyncProgressOverlay('SSH连接测试');
+function doSingleTest(data, options) {
+    options = options || {};
+    showAsyncProgressOverlay('SSH连接测试', { noReload: options.noReload || false });
     fetch(NODE_LIST_CONFIG.urls.test, {
         method: 'POST',
         headers: {
@@ -458,6 +459,20 @@ function batchDeleteNodes() {
     }, true, 'lg');
 }
 
+function showNoPermissionAlert() {
+    showConfirm('无操作权限', '<p class="text-danger">无权限执行该操作</p>', function () {}, true);
+}
+
+function editFromDetail() {
+    if (!currentDetailNodeId) return;
+    if (typeof NODE_LIST_CONFIG !== 'undefined' && NODE_LIST_CONFIG.hasUpdatePerm) {
+        var editUrl = NODE_LIST_CONFIG.urls.editBase.replace('0', currentDetailNodeId);
+        window.location.href = editUrl;
+    } else {
+        showConfirm('无操作权限', '<p class="text-danger">无权限执行该操作</p>', function () {}, true);
+    }
+}
+
 /* ========== 节点详情弹窗 ========== */
 function openNodeDetail(nodeId) {
     currentDetailNodeId = nodeId;
@@ -500,9 +515,6 @@ function openNodeDetail(nodeId) {
         document.getElementById('detailLastProbeAt').textContent = info.last_probe_at || '-';
         document.getElementById('detailNginxVersion').textContent = formatNginxVersion(info.nginx_version);
         document.getElementById('detailNginxPath').textContent = info.nginx_path;
-
-        var editUrl = NODE_LIST_CONFIG.urls.editBase.replace('0', info.id);
-        document.getElementById('detailEditBtn').setAttribute('href', editUrl);
 
         var lockBtn = document.getElementById('detailLockBtn');
         if (info.is_locked) {
