@@ -8,6 +8,7 @@ from django.shortcuts import render, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import View
+import uuid
 
 from apps.audit.models import LoginLog, AuditLog
 from .forms import LoginForm, CustomPasswordChangeForm
@@ -30,6 +31,17 @@ def _get_client_ip(request):
 
 def _get_user_agent(request):
     return request.META.get("HTTP_USER_AGENT", "")
+
+
+def _get_device_id(request):
+    """从 Cookie 获取或新建设备唯一标识。持久化 Cookie，不同浏览器互不影响。"""
+    device_id = request.COOKIES.get("device_id", "")
+    if not device_id:
+        device_id = uuid.uuid4().hex
+    return device_id
+
+
+DEVICE_ID_COOKIE_AGE = 365 * 24 * 3600  # 1 年
 
 
 class LoginView(View):
@@ -139,15 +151,16 @@ class LoginView(View):
 
     def _after_auth_success(self, request, user, ip, user_agent):
         """认证成功后的处理：检查多点登录冲突，无冲突则直接登录。"""
-        conflict = self._detect_session_conflict(user)
+        device_id = _get_device_id(request)
+        conflict = self._detect_session_conflict(user, current_device_id=device_id)
 
         if conflict:
-            # 暂存待登录用户 ID 到匿名 session，等待用户确认
             request.session["pending_login_user_id"] = user.id
             request.session["pending_login_ip"] = ip
             request.session["pending_login_agent"] = user_agent
+            request.session["pending_device_id"] = device_id
 
-            return render(
+            response = render(
                 request,
                 self.template_name,
                 {
@@ -157,15 +170,17 @@ class LoginView(View):
                     "conflict_agent": conflict["agent"],
                 },
             )
+            response.set_cookie("device_id", device_id, max_age=DEVICE_ID_COOKIE_AGE)
+            return response
 
-        # 无冲突，直接登录
-        return self._complete_login(request, user, ip, user_agent)
+        return self._complete_login(request, user, ip, user_agent, device_id)
 
-    def _detect_session_conflict(self, user):
-        """检测用户是否已在其他浏览器登录。
+    def _detect_session_conflict(self, user, current_device_id=""):
+        """检测用户是否已有活跃的旧会话。
 
-        Returns:
-            None 表示无冲突；dict 包含旧会话的 IP 和 UA 信息。
+        - 旧 session 不存在、已过期或已退出 → 无冲突
+        - 旧 session 存在，同设备 → 静默踢下线，直接登录
+        - 旧 session 存在，不同设备 → 弹窗告警
         """
         try:
             profile = user.profile
@@ -176,7 +191,6 @@ class LoginView(View):
         if not old_key:
             return None
 
-        # 检查旧 session 是否仍然有效（未过期）
         session_exists = Session.objects.filter(
             session_key=old_key,
             expire_date__gt=timezone.now(),
@@ -185,6 +199,14 @@ class LoginView(View):
         if not session_exists:
             return None
 
+        # 同一设备（同一浏览器）：静默踢旧，不弹窗
+        if profile.device_id and profile.device_id == current_device_id:
+            Session.objects.filter(session_key=old_key).delete()
+            profile.current_session_key = ""
+            profile.save(update_fields=["current_session_key", "updated_at"])
+            return None
+
+        # 不同设备 → 弹窗
         return {
             "ip": profile.last_login_ip or "未知",
             "agent": self._format_agent(profile.last_login_agent),
@@ -195,6 +217,7 @@ class LoginView(View):
         user_id = request.session.get("pending_login_user_id")
         ip = request.session.get("pending_login_ip", "")
         user_agent = request.session.get("pending_login_agent", "")
+        device_id = request.session.get("pending_device_id", "")
 
         if not user_id:
             messages.error(request, "确认已过期，请重新登录")
@@ -206,15 +229,14 @@ class LoginView(View):
             messages.error(request, "用户不存在")
             return redirect("accounts:login")
 
-        # 删除旧 session
         self._kick_old_session(user)
 
-        # 清理 pending 标记
         request.session.pop("pending_login_user_id", None)
         request.session.pop("pending_login_ip", None)
         request.session.pop("pending_login_agent", None)
+        request.session.pop("pending_device_id", None)
 
-        return self._complete_login(request, user, ip, user_agent)
+        return self._complete_login(request, user, ip, user_agent, device_id)
 
     def _kick_old_session(self, user):
         """删除用户之前的活跃 session。"""
@@ -226,21 +248,22 @@ class LoginView(View):
         if old_key:
             Session.objects.filter(session_key=old_key).delete()
 
-    def _complete_login(self, request, user, ip, user_agent):
+    def _complete_login(self, request, user, ip, user_agent, device_id=""):
         """完成登录：创建 session、记录日志、更新 profile。"""
         login(request, user)
 
-        # 更新 profile 中的会话追踪字段
         try:
             profile = user.profile
             profile.current_session_key = request.session.session_key
             profile.last_login_ip = ip
             profile.last_login_agent = user_agent
+            profile.device_id = device_id
             profile.save(
                 update_fields=[
                     "current_session_key",
                     "last_login_ip",
                     "last_login_agent",
+                    "device_id",
                     "updated_at",
                 ]
             )
@@ -265,7 +288,9 @@ class LoginView(View):
 
         messages.success(request, "登录成功")
         next_url = request.GET.get("next", "dashboard:index")
-        return redirect(next_url)
+        response = redirect(next_url)
+        response.set_cookie("device_id", device_id, max_age=DEVICE_ID_COOKIE_AGE)
+        return response
 
     @staticmethod
     def _format_agent(agent):

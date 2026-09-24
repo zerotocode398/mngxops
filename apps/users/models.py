@@ -141,6 +141,13 @@ class UserProfile(models.Model):
         default="",
         verbose_name="最近登录浏览器",
     )
+    device_id = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="设备标识",
+        help_text="浏览器 Cookie 生成的唯一设备 ID，用于精确检测多点登录",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
