@@ -4,7 +4,7 @@
 
 var nodeDetailModal;
 var currentDetailNodeId = null;
-var testTimer = null;
+http://127.0.0.1:8000/nodes/groups/var testTimer = null;
 var testSeconds = 0;
 var MAX_SELECT;
 
@@ -481,10 +481,6 @@ function openNodeDetail(nodeId) {
     if (!nodeDetailModal) nodeDetailModal = new bootstrap.Modal(document.getElementById('nodeDetailModal'));
     nodeDetailModal.show();
 
-    document.getElementById('detailSystemInfo').innerHTML =
-        '<div class="text-center text-muted py-2 skeleton-placeholder"><div class="spinner-border spinner-border-sm" role="status"></div><p class="mt-1 small">加载中...</p></div>';
-    document.getElementById('detailNginxVersion').textContent = '-';
-
     var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     fetch(NODE_LIST_CONFIG.urls.detail, {
         method: 'POST',
@@ -515,8 +511,8 @@ function openNodeDetail(nodeId) {
         document.getElementById('detailCreatedAt').textContent = info.created_at;
         document.getElementById('detailUpdatedAt').textContent = info.updated_at;
         document.getElementById('detailLastProbeAt').textContent = info.last_probe_at || '-';
-        document.getElementById('detailNginxVersion').textContent = formatNginxVersion(info.nginx_version);
-        document.getElementById('detailNginxPath').textContent = info.nginx_path;
+        document.getElementById('detailNginxVersion').textContent = '-';
+        document.getElementById('detailNginxPath').textContent = '-';
 
         var lockBtn = document.getElementById('detailLockBtn');
         if (info.is_locked) {
@@ -529,9 +525,7 @@ function openNodeDetail(nodeId) {
 
         if (info.has_credential) {
             refreshSystemInfo();
-            if (!info.nginx_version) {
-                detectNginxVersion();
-            }
+            detectNginxVersion();
         } else {
             document.getElementById('detailSystemInfo').innerHTML = '<p class="text-muted small">未配置SSH凭证或凭证已禁用</p>';
         }
@@ -611,7 +605,9 @@ function updateListNginxVersionCell(nodeId, versionText) {
 
 function detectNginxVersion() {
     if (!currentDetailNodeId) return;
-    document.getElementById('detailNginxVersion').textContent = '检测中...';
+    document.getElementById('detailNginxInfo').innerHTML =
+        '<p>版本: <code id="detailNginxVersion">检测中...</code></p>' +
+        '<p>路径: <code id="detailNginxPath">检测中...</code></p>';
     var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     fetch(NODE_LIST_CONFIG.urls.nginxVersion, {
         method: 'POST',
@@ -621,7 +617,7 @@ function detectNginxVersion() {
     .then(function (resp) { return resp.json(); })
     .then(function (result) {
         if (!result.success) {
-            document.getElementById('detailNginxVersion').textContent = result.message || '获取失败';
+            document.getElementById('detailNginxInfo').innerHTML = '<div class="text-danger mt-1 small">' + (result.message || '获取失败') + '</div>';
             return;
         }
         if (result.async && result.task_center_id) {
@@ -645,7 +641,7 @@ function detectNginxVersion() {
         }
     })
     .catch(function () {
-        document.getElementById('detailNginxVersion').textContent = '网络错误';
+        document.getElementById('detailNginxInfo').innerHTML = '<div class="text-danger mt-1 small">网络错误</div>';
     });
 }
 

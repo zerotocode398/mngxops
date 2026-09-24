@@ -308,8 +308,10 @@
                     <div class="col-md-6 node-detail-right border-start">
                         <div class="mb-3">
                             <h6 class="text-muted"><i class="bi bi-gear"></i> Nginx 信息</h6>
+                        <div id="detailNginxInfo">
                             <p>版本: <code id="detailNginxVersion">-</code></p>
                             <p>路径: <code id="detailNginxPath">-</code></p>
+                        </div>
                             {% if user|has_perm_code:"nodes.ssh_test" %}
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="detectVersionBtn" onclick="detectNginxVersion()">
                                 <i class="bi bi-arrow-repeat"></i> 重新检测版本
