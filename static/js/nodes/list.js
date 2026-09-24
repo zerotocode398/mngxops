@@ -4,6 +4,7 @@
 
 var nodeDetailModal;
 var currentDetailNodeId = null;
+var currentDetailNginxPath = null;
 var testTimer = null;
 var testSeconds = 0;
 var MAX_SELECT;
@@ -513,6 +514,7 @@ function openNodeDetail(nodeId) {
         document.getElementById('detailLastProbeAt').textContent = info.last_probe_at || '-';
         document.getElementById('detailNginxVersion').textContent = '-';
         document.getElementById('detailNginxPath').textContent = '-';
+        currentDetailNginxPath = info.nginx_path || null;
 
         var lockBtn = document.getElementById('detailLockBtn');
         if (info.is_locked) {
@@ -630,9 +632,11 @@ function detectNginxVersion() {
                         if (d.tasks[0].status === 'success') {
                             var ver = d.tasks[0].result || '';
                             document.getElementById('detailNginxVersion').textContent = formatNginxVersion(ver);
+                            document.getElementById('detailNginxPath').textContent = currentDetailNginxPath || '-';
                             updateListNginxVersionCell(currentDetailNodeId, ver);
                         } else {
                             document.getElementById('detailNginxVersion').textContent = d.tasks[0].detail || '获取失败';
+                            document.getElementById('detailNginxPath').textContent = '-';
                             updateListNginxVersionCell(currentDetailNodeId, '');
                         }
                     }
