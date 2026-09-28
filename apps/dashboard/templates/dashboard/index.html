@@ -24,6 +24,7 @@
             document.getElementById("stat-node-count").textContent = data.node_count;
             document.getElementById("stat-online-count").textContent = data.online_count;
             document.getElementById("stat-offline-count").textContent = data.offline_count;
+            document.getElementById("stat-unknown-count").textContent = data.unknown_count;
             document.getElementById("stat-pending-push").textContent = data.pending_push_count;
             document.getElementById("stat-running-count").textContent = data.running_count;
             document.getElementById("stat-failed-7d").textContent = data.failed_7d_count;
@@ -36,6 +37,16 @@
             } else {
                 offlineCard.classList.remove("stat-card-offline");
                 offlineCard.classList.add("stat-card-default");
+            }
+
+            // 未知节点左边框样式
+            var unknownCard = document.getElementById("stat-unknown-card");
+            if (data.unknown_count > 0) {
+                unknownCard.classList.add("stat-card-warning");
+                unknownCard.classList.remove("stat-card-default");
+            } else {
+                unknownCard.classList.remove("stat-card-warning");
+                unknownCard.classList.add("stat-card-default");
             }
 
             // 执行中 / 近 7 天失败：有值时高亮
@@ -157,6 +168,18 @@
                             <div>
                                 <div class="stat-number text-danger" id="stat-offline-count">{{ offline_count }}</div>
                                 <div class="stat-label">离线节点</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xxl-2 col-lg-4 col-md-6">
+                    <div id="stat-unknown-card" class="dashboard-stat-card {% if unknown_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
+                         {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=unknown'"{% endif %}>
+                        <div class="d-flex align-items-center">
+                            <div class="stat-icon me-3"><i class="bi bi-question-circle"></i></div>
+                            <div>
+                                <div class="stat-number text-warning" id="stat-unknown-count">{{ unknown_count }}</div>
+                                <div class="stat-label">未知节点</div>
                             </div>
                         </div>
                     </div>

@@ -43,7 +43,8 @@ def _dashboard_stats(user):
     """汇总首页统计卡数字"""
     node_count = Node.objects.count()
     online_count = Node.objects.filter(status="online").count()
-    offline_count = node_count - online_count
+    offline_count = Node.objects.filter(status="offline").count()
+    unknown_count = Node.objects.filter(status="unknown").count()
     pending_push_count = ConfigNodeBinding.objects.filter(
         sync_status="modified", node__is_deleted=False
     ).count()
@@ -57,6 +58,7 @@ def _dashboard_stats(user):
         "node_count": node_count,
         "online_count": online_count,
         "offline_count": offline_count,
+        "unknown_count": unknown_count,
         "pending_push_count": pending_push_count,
         "running_count": running_count,
         "failed_7d_count": failed_7d_count,
@@ -70,7 +72,9 @@ def index(request):
     recent_limit = _dashboard_limit("dashboard.recent_tasks_count", 20)
 
     recent_tasks = list(
-        _task_center_queryset_for_user(request.user).order_by("-created_at")[:recent_limit]
+        _task_center_queryset_for_user(request.user).order_by("-created_at")[
+            :recent_limit
+        ]
     )
     # 注入列表摘要（目标 + 结果），对齐任务中心
     for task in recent_tasks:
