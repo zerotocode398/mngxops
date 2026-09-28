@@ -35,10 +35,8 @@ def _build_node_stats(node):
         "total": 0,
         "synced": 0,
         "pending": 0,
-        "conflict": 0,
         "orphaned": 0,
         "failed": 0,
-        "syncing": 0,
         "marked_deleted": 0,
     }
     for b in node.config_bindings.all():
@@ -48,14 +46,10 @@ def _build_node_stats(node):
             stats["synced"] += 1
         elif s in ("not_synced", "modified"):
             stats["pending"] += 1
-        elif s == "conflict":
-            stats["conflict"] += 1
         elif s == "orphaned":
             stats["orphaned"] += 1
         elif s == "failed":
             stats["failed"] += 1
-        elif s == "syncing":
-            stats["syncing"] += 1
         elif s == "marked_deleted":
             stats["marked_deleted"] += 1
     return stats
@@ -1126,7 +1120,6 @@ class ConfigSyncWizardView(
             node_stats[node.id] = {
                 "synced": bindings.filter(sync_status="synced").count(),
                 "failed": bindings.filter(sync_status="failed").count(),
-                "syncing": bindings.filter(sync_status="syncing").count(),
                 "not_synced": bindings.filter(sync_status="not_synced").count(),
                 "orphaned": bindings.filter(sync_status="orphaned").count(),
                 "modified": bindings.filter(sync_status="modified").count(),

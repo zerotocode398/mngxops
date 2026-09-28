@@ -37,20 +37,10 @@ class TestBindingSyncStatusBadge(TestCase):
         self.assertIn("待推送", html)
         self.assertIn("bg-primary", html)
 
-    def test_conflict_badge(self):
-        html = binding_sync_status_badge("conflict")
-        self.assertIn("冲突", html)
-        self.assertIn("bg-warning", html)
-
     def test_orphaned_badge(self):
         html = binding_sync_status_badge("orphaned")
         self.assertIn("远程已删除", html)
         self.assertIn("bg-danger", html)
-
-    def test_syncing_badge(self):
-        html = binding_sync_status_badge("syncing")
-        self.assertIn("同步中", html)
-        self.assertIn("bg-info", html)
 
     def test_failed_badge(self):
         html = binding_sync_status_badge("failed")

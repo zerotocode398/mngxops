@@ -11,6 +11,7 @@ class Config(models.Model):
     """配置标签 - 定义"这是什么类型的配置"，不保存实际内容
     实际内容和版本历史存放在 ConfigNodeBinding 中
     """
+
     SOURCE_CHOICES = (
         ("manual", "手动创建"),
         ("discovered", "远程发现导入"),
@@ -29,11 +30,16 @@ class Config(models.Model):
         verbose_name="内容模板",
     )
     source = models.CharField(
-        max_length=20, choices=SOURCE_CHOICES, default="manual", verbose_name="来源",
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default="manual",
+        verbose_name="来源",
     )
     description = models.TextField(blank=True, verbose_name="描述")
     created_by = models.ForeignKey(
-        User, on_delete=models.CASCADE, verbose_name="创建人",
+        User,
+        on_delete=models.CASCADE,
+        verbose_name="创建人",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
@@ -52,13 +58,16 @@ class Config(models.Model):
 
     @property
     def node_names(self):
-        return ", ".join(b.node.hostname for b in self.bindings.select_related("node").all())
+        return ", ".join(
+            b.node.hostname for b in self.bindings.select_related("node").all()
+        )
 
 
 class ConfigNodeBinding(models.Model):
     """配置与节点的绑定关系
     每条绑定独立存储内容、版本、路径、同步状态
     """
+
     BINDING_SOURCE_CHOICES = (
         ("manual", "手动绑定"),
         ("discovered", "远程发现"),
@@ -68,19 +77,23 @@ class ConfigNodeBinding(models.Model):
         ("not_synced", "未同步"),
         ("synced", "已同步"),
         ("modified", "本地已修改"),
-        ("conflict", "冲突"),
         ("orphaned", "远程已删除"),
-        ("syncing", "同步中"),
         ("failed", "同步失败"),
         ("marked_deleted", "已标记删除"),
     )
 
     id = models.BigAutoField(primary_key=True)
     config = models.ForeignKey(
-        Config, on_delete=models.CASCADE, related_name="bindings", verbose_name="配置标签",
+        Config,
+        on_delete=models.CASCADE,
+        related_name="bindings",
+        verbose_name="配置标签",
     )
     node = models.ForeignKey(
-        Node, on_delete=models.CASCADE, related_name="config_bindings", verbose_name="节点",
+        Node,
+        on_delete=models.CASCADE,
+        related_name="config_bindings",
+        verbose_name="节点",
     )
     remote_path = models.CharField(
         max_length=500,
@@ -90,29 +103,42 @@ class ConfigNodeBinding(models.Model):
     content = models.TextField(verbose_name="当前内容")
     current_version = models.IntegerField(default=1, verbose_name="当前版本号")
     sync_status = models.CharField(
-        max_length=20, choices=SYNC_STATUS_CHOICES, default="not_synced",
+        max_length=20,
+        choices=SYNC_STATUS_CHOICES,
+        default="not_synced",
         verbose_name="同步状态",
     )
     synced_version = models.IntegerField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         verbose_name="已同步版本",
         help_text="最后成功推送的版本号",
     )
-    last_sync_time = models.DateTimeField(null=True, blank=True, verbose_name="最后同步时间")
+    last_sync_time = models.DateTimeField(
+        null=True, blank=True, verbose_name="最后同步时间"
+    )
     last_sync_error = models.TextField(blank=True, verbose_name="最后同步错误")
     last_sync_task_id = models.BigIntegerField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         verbose_name="最后同步任务ID",
         help_text="关联 TaskCenterTask.id，用于跳转任务详情",
     )
     remote_content_hash = models.CharField(
-        max_length=64, blank=True,
+        max_length=64,
+        blank=True,
         verbose_name="远程内容 Hash(MD5)",
         help_text="最后同步时记录的远程文件 MD5，用于检测漂移",
     )
-    drift_detected_at = models.DateTimeField(null=True, blank=True, verbose_name="漂移检测时间")
-    source = models.CharField(max_length=20, choices=BINDING_SOURCE_CHOICES, default="manual")
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="创建人")
+    drift_detected_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="漂移检测时间"
+    )
+    source = models.CharField(
+        max_length=20, choices=BINDING_SOURCE_CHOICES, default="manual"
+    )
+    created_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, verbose_name="创建人"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -127,7 +153,9 @@ class ConfigNodeBinding(models.Model):
 
     @property
     def is_synced(self):
-        return self.sync_status == "synced" and self.synced_version == self.current_version
+        return (
+            self.sync_status == "synced" and self.synced_version == self.current_version
+        )
 
     @property
     def is_modified(self):
@@ -136,15 +164,20 @@ class ConfigNodeBinding(models.Model):
 
 class BindingVersion(models.Model):
     """每条绑定的独立版本历史"""
+
     id = models.BigAutoField(primary_key=True)
     binding = models.ForeignKey(
-        ConfigNodeBinding, on_delete=models.CASCADE, related_name="versions",
+        ConfigNodeBinding,
+        on_delete=models.CASCADE,
+        related_name="versions",
         verbose_name="绑定",
     )
     version = models.IntegerField(verbose_name="版本号")
     content = models.TextField(verbose_name="版本内容")
     remark = models.TextField(blank=True, verbose_name="备注")
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="修改人")
+    created_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, verbose_name="修改人"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

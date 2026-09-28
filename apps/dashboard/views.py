@@ -48,10 +48,18 @@ def _dashboard_stats(user):
     pending_push_count = ConfigNodeBinding.objects.filter(
         sync_status="modified", node__is_deleted=False
     ).count()
+    config_base = ConfigNodeBinding.objects.filter(node__is_deleted=False)
+    config_total = config_base.count()
+    config_synced = config_base.filter(sync_status="synced").count()
+    config_orphaned = config_base.filter(sync_status="orphaned").count()
+    config_failed = config_base.filter(sync_status="failed").count()
+    config_marked_deleted = config_base.filter(sync_status="marked_deleted").count()
 
     task_qs = _task_center_queryset_for_user(user)
     running_count = task_qs.filter(status="running").count()
     since = timezone.now() - timedelta(days=7)
+    task_7d_total = task_qs.filter(created_at__gte=since).count()
+    task_7d_success = task_qs.filter(status="success", created_at__gte=since).count()
     failed_7d_count = task_qs.filter(status="failed", created_at__gte=since).count()
 
     return {
@@ -60,7 +68,14 @@ def _dashboard_stats(user):
         "offline_count": offline_count,
         "unknown_count": unknown_count,
         "pending_push_count": pending_push_count,
+        "config_total": config_total,
+        "config_synced": config_synced,
+        "config_orphaned": config_orphaned,
+        "config_failed": config_failed,
+        "config_marked_deleted": config_marked_deleted,
         "running_count": running_count,
+        "task_7d_total": task_7d_total,
+        "task_7d_success": task_7d_success,
         "failed_7d_count": failed_7d_count,
     }
 

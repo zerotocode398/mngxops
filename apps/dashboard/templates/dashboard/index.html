@@ -25,7 +25,14 @@
             document.getElementById("stat-online-count").textContent = data.online_count;
             document.getElementById("stat-offline-count").textContent = data.offline_count;
             document.getElementById("stat-unknown-count").textContent = data.unknown_count;
+            document.getElementById("stat-config-total").textContent = data.config_total;
             document.getElementById("stat-pending-push").textContent = data.pending_push_count;
+            document.getElementById("stat-config-synced").textContent = data.config_synced;
+            document.getElementById("stat-config-orphaned").textContent = data.config_orphaned;
+            document.getElementById("stat-config-failed").textContent = data.config_failed;
+            document.getElementById("stat-config-marked-deleted").textContent = data.config_marked_deleted;
+            document.getElementById("stat-task-7d-total").textContent = data.task_7d_total;
+            document.getElementById("stat-task-7d-success").textContent = data.task_7d_success;
             document.getElementById("stat-running-count").textContent = data.running_count;
             document.getElementById("stat-failed-7d").textContent = data.failed_7d_count;
 
@@ -66,6 +73,32 @@
                 failedCard.classList.remove("stat-card-offline");
                 failedCard.classList.add("stat-card-default");
             }
+
+            // 配置异常卡片高亮
+            var orphanedCard = document.getElementById("stat-orphaned-card");
+            if (data.config_orphaned > 0) {
+                orphanedCard.classList.add("stat-card-offline");
+                orphanedCard.classList.remove("stat-card-default");
+            } else {
+                orphanedCard.classList.remove("stat-card-offline");
+                orphanedCard.classList.add("stat-card-default");
+            }
+            var configFailedCard = document.getElementById("stat-config-failed-card");
+            if (data.config_failed > 0) {
+                configFailedCard.classList.add("stat-card-offline");
+                configFailedCard.classList.remove("stat-card-default");
+            } else {
+                configFailedCard.classList.remove("stat-card-offline");
+                configFailedCard.classList.add("stat-card-default");
+            }
+            var markedDeletedCard = document.getElementById("stat-marked-deleted-card");
+            if (data.config_marked_deleted > 0) {
+                markedDeletedCard.classList.add("stat-card-warning");
+                markedDeletedCard.classList.remove("stat-card-default");
+            } else {
+                markedDeletedCard.classList.remove("stat-card-warning");
+                markedDeletedCard.classList.add("stat-card-default");
+            }
         })
         .catch(function (err) {
             console.warn("统计轮询失败:", err);
@@ -76,6 +109,10 @@
      * 页面加载完成后启动轮询
      */
     document.addEventListener("DOMContentLoaded", function () {
+        // 初始化 tooltip
+        var tooltipEls = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        tooltipEls.forEach(function (el) { new bootstrap.Tooltip(el); });
+
         setTimeout(function () {
             fetchStatsAndUpdate();
             setInterval(fetchStatsAndUpdate, POLL_INTERVAL_MS);
@@ -86,6 +123,34 @@
 
 {% block extra_head %}
 <style>
+    .stat-module {
+        background: #fff;
+        border-radius: var(--br-md, 6px);
+        padding: 12px 16px 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .stat-module-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+        gap: 8px;
+    }
+    .stat-module-bar {
+        display: inline-block;
+        width: 3px;
+        height: 18px;
+        border-radius: 2px;
+    }
+    .stat-module-bar--node   { background: linear-gradient(135deg, #667eea, #764ba2); }
+    .stat-module-bar--config { background: linear-gradient(135deg, #0dcaf0, #0d6efd); }
+    .stat-module-bar--task   { background: linear-gradient(135deg, #fd7e14, #ffc107); }
+    .stat-module-title {
+        font-size: .8rem;
+        font-weight: 600;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
     .dashboard-table td.task-summary-cell {
         vertical-align: middle;
         max-width: 0;
@@ -134,88 +199,201 @@
                 </div>
             </div>
 
-            <!-- 统计卡片：保留数字；无权限时不可跳转 -->
-            <div class="row g-2 mb-4">
-                <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div class="dashboard-stat-card stat-card-primary{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
-                         {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}'"{% endif %}>
-                        <div class="d-flex align-items-center">
-                            <div class="stat-icon me-3"><i class="bi bi-server"></i></div>
-                            <div>
-                                <div class="stat-number" id="stat-node-count">{{ node_count }}</div>
-                                <div class="stat-label">节点总数</div>
+            <!-- 统计卡片：按模块分组 -->
+            <!-- 节点模块 -->
+            <div class="stat-module mb-3">
+                <div class="stat-module-header">
+                    <span class="stat-module-bar stat-module-bar--node"></span>
+                    <span class="stat-module-title">节点</span>
+                </div>
+                <div class="row g-2">
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div class="dashboard-stat-card stat-card-primary{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-server"></i></div>
+                                <div>
+                                    <div class="stat-number" id="stat-node-count">{{ node_count }}</div>
+                                    <div class="stat-label">节点总数</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div class="dashboard-stat-card stat-card-online{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=online'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-wifi"></i></div>
+                                <div>
+                                    <div class="stat-number text-success" id="stat-online-count">{{ online_count }}</div>
+                                    <div class="stat-label">在线节点</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div id="stat-offline-card" class="dashboard-stat-card {% if offline_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=offline'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-exclamation-triangle"></i></div>
+                                <div>
+                                    <div class="stat-number text-danger" id="stat-offline-count">{{ offline_count }}</div>
+                                    <div class="stat-label">离线节点</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div id="stat-unknown-card" class="dashboard-stat-card {% if unknown_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=unknown'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-question-circle"></i></div>
+                                <div>
+                                    <div class="stat-number text-warning" id="stat-unknown-count">{{ unknown_count }}</div>
+                                    <div class="stat-label">未知节点</div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div class="dashboard-stat-card stat-card-online{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
-                         {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=online'"{% endif %}>
-                        <div class="d-flex align-items-center">
-                            <div class="stat-icon me-3"><i class="bi bi-wifi"></i></div>
-                            <div>
-                                <div class="stat-number text-success" id="stat-online-count">{{ online_count }}</div>
-                                <div class="stat-label">在线节点</div>
+            </div>
+            <!-- 配置模块 -->
+            <div class="stat-module mb-3">
+                <div class="stat-module-header">
+                    <span class="stat-module-bar stat-module-bar--config"></span>
+                    <span class="stat-module-title">配置</span>
+                </div>
+                <div class="row g-2">
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div class="dashboard-stat-card stat-card-primary{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-files"></i></div>
+                                <div>
+                                    <div class="stat-number" id="stat-config-total">{{ config_total }}</div>
+                                    <div class="stat-label">配置总数</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div class="dashboard-stat-card stat-card-online{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=synced'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-check-circle"></i></div>
+                                <div>
+                                    <div class="stat-number text-success" id="stat-config-synced">{{ config_synced }}</div>
+                                    <div class="stat-label">已同步</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div class="dashboard-stat-card stat-card-info{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=modified'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-send"></i></div>
+                                <div>
+                                    <div class="stat-number text-info" id="stat-pending-push">{{ pending_push_count }}</div>
+                                    <div class="stat-label">待推送</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div id="stat-config-failed-card" class="dashboard-stat-card {% if config_failed > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=failed'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-x-circle"></i></div>
+                                <div>
+                                    <div class="stat-number text-danger" id="stat-config-failed">{{ config_failed }}</div>
+                                    <div class="stat-label">失败</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div id="stat-orphaned-card" class="dashboard-stat-card {% if config_orphaned > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=orphaned'"{% endif %}
+                             data-bs-toggle="tooltip" data-bs-placement="top"
+                             title="节点上对应远程文件已被删除，点击查看详情">
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-trash"></i></div>
+                                <div>
+                                    <div class="stat-number text-danger" id="stat-config-orphaned">{{ config_orphaned }}</div>
+                                    <div class="stat-label">远程已删除 <i class="bi bi-info-circle small text-muted"></i></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div id="stat-marked-deleted-card" class="dashboard-stat-card {% if config_marked_deleted > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                             {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=marked_deleted'"{% endif %}
+                             data-bs-toggle="tooltip" data-bs-placement="top"
+                             title="已标记此节点删除该配置，同步后远程文件将被移除">
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-trash"></i></div>
+                                <div>
+                                    <div class="stat-number text-warning" id="stat-config-marked-deleted">{{ config_marked_deleted }}</div>
+                                    <div class="stat-label">标记删除 <i class="bi bi-info-circle small text-muted"></i></div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div id="stat-offline-card" class="dashboard-stat-card {% if offline_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
-                         {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=offline'"{% endif %}>
-                        <div class="d-flex align-items-center">
-                            <div class="stat-icon me-3"><i class="bi bi-exclamation-triangle"></i></div>
-                            <div>
-                                <div class="stat-number text-danger" id="stat-offline-count">{{ offline_count }}</div>
-                                <div class="stat-label">离线节点</div>
+            </div>
+            <!-- 任务模块 -->
+            <div class="stat-module mb-4">
+                <div class="stat-module-header">
+                    <span class="stat-module-bar stat-module-bar--task"></span>
+                    <span class="stat-module-title">任务</span>
+                </div>
+                <div class="row g-2">
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div class="dashboard-stat-card stat-card-primary{% if not can_access_task_center %} stat-card-static{% endif %}"
+                             {% if can_access_task_center %}onclick="window.location.href='{% url 'releases:history' %}'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-list-check"></i></div>
+                                <div>
+                                    <div class="stat-number" id="stat-task-7d-total">{{ task_7d_total }}</div>
+                                    <div class="stat-label">近 7 天任务</div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div id="stat-unknown-card" class="dashboard-stat-card {% if unknown_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
-                         {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=unknown'"{% endif %}>
-                        <div class="d-flex align-items-center">
-                            <div class="stat-icon me-3"><i class="bi bi-question-circle"></i></div>
-                            <div>
-                                <div class="stat-number text-warning" id="stat-unknown-count">{{ unknown_count }}</div>
-                                <div class="stat-label">未知节点</div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div class="dashboard-stat-card stat-card-online{% if not can_access_task_center %} stat-card-static{% endif %}"
+                             {% if can_access_task_center %}onclick="window.location.href='{% url 'releases:history' %}?status=success'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-check-circle"></i></div>
+                                <div>
+                                    <div class="stat-number text-success" id="stat-task-7d-success">{{ task_7d_success }}</div>
+                                    <div class="stat-label">近 7 天成功</div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div class="dashboard-stat-card stat-card-info{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
-                         {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=modified'"{% endif %}>
-                        <div class="d-flex align-items-center">
-                            <div class="stat-icon me-3"><i class="bi bi-send"></i></div>
-                            <div>
-                                <div class="stat-number text-info" id="stat-pending-push">{{ pending_push_count }}</div>
-                                <div class="stat-label">待推送</div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div id="stat-failed-card" class="dashboard-stat-card {% if failed_7d_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not can_access_task_center %} stat-card-static{% endif %}"
+                             {% if can_access_task_center %}onclick="window.location.href='{% url 'releases:history' %}?status=failed'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-x-circle"></i></div>
+                                <div>
+                                    <div class="stat-number text-danger" id="stat-failed-7d">{{ failed_7d_count }}</div>
+                                    <div class="stat-label">近 7 天失败</div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div id="stat-running-card" class="dashboard-stat-card {% if running_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not can_access_task_center %} stat-card-static{% endif %}"
-                         {% if can_access_task_center %}onclick="window.location.href='{% url 'releases:history' %}?status=running'"{% endif %}>
-                        <div class="d-flex align-items-center">
-                            <div class="stat-icon me-3"><i class="bi bi-hourglass-split"></i></div>
-                            <div>
-                                <div class="stat-number" id="stat-running-count">{{ running_count }}</div>
-                                <div class="stat-label">执行中任务</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-xxl-2 col-lg-4 col-md-6">
-                    <div id="stat-failed-card" class="dashboard-stat-card {% if failed_7d_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not can_access_task_center %} stat-card-static{% endif %}"
-                         {% if can_access_task_center %}onclick="window.location.href='{% url 'releases:history' %}?status=failed'"{% endif %}>
-                        <div class="d-flex align-items-center">
-                            <div class="stat-icon me-3"><i class="bi bi-x-circle"></i></div>
-                            <div>
-                                <div class="stat-number text-danger" id="stat-failed-7d">{{ failed_7d_count }}</div>
-                                <div class="stat-label">近 7 天失败</div>
+                    <div class="col-xxl-2 col-lg-4 col-md-6">
+                        <div id="stat-running-card" class="dashboard-stat-card {% if running_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not can_access_task_center %} stat-card-static{% endif %}"
+                             {% if can_access_task_center %}onclick="window.location.href='{% url 'releases:history' %}?status=running'"{% endif %}>
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon me-3"><i class="bi bi-hourglass-split"></i></div>
+                                <div>
+                                    <div class="stat-number" id="stat-running-count">{{ running_count }}</div>
+                                    <div class="stat-label">执行中</div>
+                                </div>
                             </div>
                         </div>
                     </div>
