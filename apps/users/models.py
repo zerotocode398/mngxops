@@ -148,6 +148,12 @@ class UserProfile(models.Model):
         verbose_name="设备标识",
         help_text="浏览器 Cookie 生成的唯一设备 ID，用于精确检测多点登录",
     )
+    last_activity = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="最近活跃时间",
+        help_text="前端心跳轮询自动更新，超过 30 秒视为离线",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 

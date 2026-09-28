@@ -7,6 +7,7 @@ from django.contrib.sessions.models import Session
 from django.shortcuts import render, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
+from datetime import timedelta
 from django.views import View
 import uuid
 
@@ -206,7 +207,18 @@ class LoginView(View):
             profile.save(update_fields=["current_session_key", "updated_at"])
             return None
 
-        # 不同设备 → 弹窗
+        # 不同设备，但旧会话心跳超时 → 视为离线，自动接管
+        INACTIVE_THRESHOLD = timedelta(seconds=30)
+        if (
+            profile.last_activity
+            and (timezone.now() - profile.last_activity) > INACTIVE_THRESHOLD
+        ):
+            Session.objects.filter(session_key=old_key).delete()
+            profile.current_session_key = ""
+            profile.save(update_fields=["current_session_key", "updated_at"])
+            return None
+
+        # 不同设备，且旧会话仍活跃 → 弹窗
         return {
             "ip": profile.last_login_ip or "未知",
             "agent": self._format_agent(profile.last_login_agent),
@@ -349,6 +361,8 @@ class CheckSessionView(View):
 
         try:
             profile = request.user.profile
+            profile.last_activity = timezone.now()
+            profile.save(update_fields=["last_activity", "updated_at"])
             if profile.current_session_key != request.session.session_key:
                 return JsonResponse({"valid": False})
         except Exception:
