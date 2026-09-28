@@ -36,16 +36,6 @@
             document.getElementById("stat-running-count").textContent = data.running_count;
             document.getElementById("stat-failed-7d").textContent = data.failed_7d_count;
 
-            // 离线节点左边框样式
-            var offlineCard = document.getElementById("stat-offline-card");
-            if (data.offline_count > 0) {
-                offlineCard.classList.add("stat-card-offline");
-                offlineCard.classList.remove("stat-card-default");
-            } else {
-                offlineCard.classList.remove("stat-card-offline");
-                offlineCard.classList.add("stat-card-default");
-            }
-
             // 未知节点左边框样式
             var unknownCard = document.getElementById("stat-unknown-card");
             if (data.unknown_count > 0) {
@@ -56,15 +46,7 @@
                 unknownCard.classList.add("stat-card-default");
             }
 
-            // 执行中 / 近 7 天失败：有值时高亮
-            var runningCard = document.getElementById("stat-running-card");
-            if (data.running_count > 0) {
-                runningCard.classList.add("stat-card-warning");
-                runningCard.classList.remove("stat-card-default");
-            } else {
-                runningCard.classList.remove("stat-card-warning");
-                runningCard.classList.add("stat-card-default");
-            }
+            // 近 7 天失败：有值时高亮
             var failedCard = document.getElementById("stat-failed-card");
             if (data.failed_7d_count > 0) {
                 failedCard.classList.add("stat-card-offline");
@@ -72,32 +54,6 @@
             } else {
                 failedCard.classList.remove("stat-card-offline");
                 failedCard.classList.add("stat-card-default");
-            }
-
-            // 配置异常卡片高亮
-            var orphanedCard = document.getElementById("stat-orphaned-card");
-            if (data.config_orphaned > 0) {
-                orphanedCard.classList.add("stat-card-offline");
-                orphanedCard.classList.remove("stat-card-default");
-            } else {
-                orphanedCard.classList.remove("stat-card-offline");
-                orphanedCard.classList.add("stat-card-default");
-            }
-            var configFailedCard = document.getElementById("stat-config-failed-card");
-            if (data.config_failed > 0) {
-                configFailedCard.classList.add("stat-card-offline");
-                configFailedCard.classList.remove("stat-card-default");
-            } else {
-                configFailedCard.classList.remove("stat-card-offline");
-                configFailedCard.classList.add("stat-card-default");
-            }
-            var markedDeletedCard = document.getElementById("stat-marked-deleted-card");
-            if (data.config_marked_deleted > 0) {
-                markedDeletedCard.classList.add("stat-card-warning");
-                markedDeletedCard.classList.remove("stat-card-default");
-            } else {
-                markedDeletedCard.classList.remove("stat-card-warning");
-                markedDeletedCard.classList.add("stat-card-default");
             }
         })
         .catch(function (err) {
@@ -232,7 +188,7 @@
                         </div>
                     </div>
                     <div class="col-xxl-2 col-lg-4 col-md-6">
-                        <div id="stat-offline-card" class="dashboard-stat-card {% if offline_count > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
+                        <div id="stat-offline-card" class="dashboard-stat-card stat-card-offline{% if not user|has_perm_code:'nodes.read' %} stat-card-static{% endif %}"
                              {% if user|has_perm_code:"nodes.read" %}onclick="window.location.href='{% url 'nodes:list' %}?status=offline'"{% endif %}>
                             <div class="d-flex align-items-center">
                                 <div class="stat-icon me-3"><i class="bi bi-exclamation-triangle"></i></div>
@@ -301,33 +257,33 @@
                         </div>
                     </div>
                     <div class="col-xxl-2 col-lg-4 col-md-6">
-                        <div id="stat-config-failed-card" class="dashboard-stat-card {% if config_failed > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                        <div id="stat-config-failed-card" class="dashboard-stat-card stat-card-offline{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
                              {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=failed'"{% endif %}>
                             <div class="d-flex align-items-center">
                                 <div class="stat-icon me-3"><i class="bi bi-x-circle"></i></div>
                                 <div>
                                     <div class="stat-number text-danger" id="stat-config-failed">{{ config_failed }}</div>
-                                    <div class="stat-label">失败</div>
+                                    <div class="stat-label">同步失败</div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="col-xxl-2 col-lg-4 col-md-6">
-                        <div id="stat-orphaned-card" class="dashboard-stat-card {% if config_orphaned > 0 %}stat-card-offline{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                        <div id="stat-orphaned-card" class="dashboard-stat-card stat-card-warning{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
                              {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=orphaned'"{% endif %}
                              data-bs-toggle="tooltip" data-bs-placement="top"
                              title="节点上对应远程文件已被删除，点击查看详情">
                             <div class="d-flex align-items-center">
                                 <div class="stat-icon me-3"><i class="bi bi-trash"></i></div>
                                 <div>
-                                    <div class="stat-number text-danger" id="stat-config-orphaned">{{ config_orphaned }}</div>
+                                    <div class="stat-number text-warning" id="stat-config-orphaned">{{ config_orphaned }}</div>
                                     <div class="stat-label">远程已删除 <i class="bi bi-info-circle small text-muted"></i></div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="col-xxl-2 col-lg-4 col-md-6">
-                        <div id="stat-marked-deleted-card" class="dashboard-stat-card {% if config_marked_deleted > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
+                        <div id="stat-marked-deleted-card" class="dashboard-stat-card stat-card-warning{% if not user|has_perm_code:'configs.read' %} stat-card-static{% endif %}"
                              {% if user|has_perm_code:"configs.read" %}onclick="window.location.href='{% url 'configs:list' %}?sync_status=marked_deleted'"{% endif %}
                              data-bs-toggle="tooltip" data-bs-placement="top"
                              title="已标记此节点删除该配置，同步后远程文件将被移除">
@@ -386,7 +342,7 @@
                         </div>
                     </div>
                     <div class="col-xxl-2 col-lg-4 col-md-6">
-                        <div id="stat-running-card" class="dashboard-stat-card {% if running_count > 0 %}stat-card-warning{% else %}stat-card-default{% endif %}{% if not can_access_task_center %} stat-card-static{% endif %}"
+                        <div id="stat-running-card" class="dashboard-stat-card stat-card-primary{% if not can_access_task_center %} stat-card-static{% endif %}"
                              {% if can_access_task_center %}onclick="window.location.href='{% url 'releases:history' %}?status=running'"{% endif %}>
                             <div class="d-flex align-items-center">
                                 <div class="stat-icon me-3"><i class="bi bi-hourglass-split"></i></div>
