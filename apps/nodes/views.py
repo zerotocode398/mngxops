@@ -218,11 +218,21 @@ class NodeGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
 
     def form_valid(self, form):
         form.instance.created_by = self.request.user
-        response = super().form_valid(form)
+        with audit_suppress_scope():
+            response = super().form_valid(form)
         node_ids = self.request.POST.getlist("node_ids", [])
         if node_ids:
             _assign_nodes_to_group(self.object, node_ids)
         import urllib.parse
+
+        AuditLog.objects.create(
+            user=self.request.user,
+            module="节点分组",
+            action="创建节点分组",
+            ip=_resolve_client_ip(),
+            result="success",
+            detail=f"新建节点分组「{form.instance.name}」",
+        )
 
         response["Location"] = (
             f"{self.success_url}?created_group={urllib.parse.quote(form.instance.name)}"
@@ -254,10 +264,20 @@ class NodeGroupUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVie
         return context
 
     def form_valid(self, form):
-        response = super().form_valid(form)
+        with audit_suppress_scope():
+            response = super().form_valid(form)
         node_ids = self.request.POST.getlist("node_ids", [])
         _assign_nodes_to_group(self.object, node_ids)
         import urllib.parse
+
+        AuditLog.objects.create(
+            user=self.request.user,
+            module="节点分组",
+            action="更新节点分组",
+            ip=_resolve_client_ip(),
+            result="success",
+            detail=f"修改节点分组「{form.instance.name}」",
+        )
 
         response["Location"] = (
             f"{self.success_url}?updated_group={urllib.parse.quote(form.instance.name)}"
@@ -277,11 +297,22 @@ class NodeGroupDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteVie
 
     def post(self, request, *args, **kwargs):
         node_group = self.get_object()
-        response = super().post(request, *args, **kwargs)
+        name = node_group.name
+        with audit_suppress_scope():
+            response = super().post(request, *args, **kwargs)
         import urllib.parse
 
+        AuditLog.objects.create(
+            user=self.request.user,
+            module="节点分组",
+            action="删除节点分组",
+            ip=_resolve_client_ip(),
+            result="success",
+            detail=f"删除节点分组「{name}」",
+        )
+
         response["Location"] = (
-            f"{reverse('nodes:group_list')}?deleted_group={urllib.parse.quote(node_group.name)}"
+            f"{reverse('nodes:group_list')}?deleted_group={urllib.parse.quote(name)}"
         )
         return response
 
