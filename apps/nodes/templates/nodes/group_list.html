@@ -24,19 +24,12 @@
                 <div class="card-body">
                     <form method="get" class="mb-3" id="groupSearchForm">
                         <div class="row g-2">
-                            <div class="col-md-8">
+                            <div class="col-md-10">
                                 <div class="tag-input-wrapper form-control form-control-sm" id="groupCombinedTagWrapper">
                                     <input type="text" class="tag-input-field" id="groupCombinedSearchField"
                                         placeholder="搜索节点组名称">
                                 </div>
                                 <input type="hidden" name="search" id="groupSearchHidden" value="{{ search }}">
-                            </div>
-                            <div class="col-md-2">
-                                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('groupSearchForm').submit()">
-                                    {% for size in per_page_options %}
-                                    <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
-                                    {% endfor %}
-                                </select>
                             </div>
                             <div class="col-md-2 d-grid">
                                 {% if search %}
@@ -168,7 +161,7 @@
                     {% endfor %}
                     {% endif %}
 
-                    {% include "includes/pagination.html" %}
+                    {% include "includes/pagination_footer.html" %}
                 </div>
             </div>
         </div>

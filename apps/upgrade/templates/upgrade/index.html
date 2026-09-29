@@ -142,11 +142,6 @@
             <div class="empty-state">
                 <i class="bi bi-inbox"></i>
                 <p>暂无升级记录</p>
-                {% if user|has_perm_code:"upgrade.create" %}
-                <a href="{% url 'upgrade:center' %}" class="btn btn-primary btn-sm mt-2">
-                    <i class="bi bi-rocket-takeoff"></i> 开始升级
-                </a>
-                {% endif %}
             </div>
             {% endif %}
         </div>

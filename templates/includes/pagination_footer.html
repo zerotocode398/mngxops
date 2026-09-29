@@ -1,0 +1,23 @@
+{% comment %}
+统一分页底栏：左侧总数，中间页码，右侧每页条数选择器。
+参数: page_obj, per_page, per_page_options, per_page_unit(可选，默认“条/页”)
+{% endcomment %}
+{% if page_obj %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+    <div class="small text-muted">
+        共 {{ page_obj.paginator.count }} 条，第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页
+    </div>
+    <div class="flex-grow-1 d-flex justify-content-center">
+        {% include "includes/pagination.html" %}
+    </div>
+    <form method="get" class="d-flex align-items-center gap-1 ms-auto">
+        <label class="form-label mb-0 small text-muted">每页</label>
+        <select name="per_page" class="form-select form-select-sm" style="width:auto;">
+            {% for size in per_page_options %}
+            <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} {% if per_page_unit %}{{ per_page_unit }}{% else %}条/页{% endif %}</option>
+            {% endfor %}
+        </select>
+        {% for key, val in request.GET.items %}{% if key != 'per_page' and key != 'page' %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endif %}{% endfor %}
+    </form>
+</div>
+{% endif %}

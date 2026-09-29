@@ -77,7 +77,7 @@
                         <input type="hidden" name="list_query" value="{{ list_query_string }}">
                         {% endif %}
                         <div class="row g-2">
-                            <div class="col-md-4">
+                            <div class="col-md-8">
                                 <div class="tag-input-wrapper form-control form-control-sm" id="detailSearchTagWrapper">
                                     <input type="text" class="tag-input-field" id="detailSearchField"
                                         placeholder="搜索配置名或远程路径" autocomplete="off">
@@ -92,13 +92,6 @@
                                     <option value="failed" {% if sync_status == 'failed' %}selected{% endif %}>失败</option>
                                     <option value="orphaned" {% if sync_status == 'orphaned' %}selected{% endif %}>远程删除</option>
                                     <option value="marked_deleted" {% if sync_status == 'marked_deleted' %}selected{% endif %}>标记删除</option>
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <select name="per_page" class="form-select form-select-sm" onchange="this.form.submit()">
-                                    {% for size in per_page_options %}
-                                    <option value="{{ size }}" {% if per_page == size|stringformat:"s" %}selected{% endif %}>{{ size }} 条/页</option>
-                                    {% endfor %}
                                 </select>
                             </div>
                             <div class="col-md-2 d-grid">
@@ -241,7 +234,7 @@
                     </div>
 
                     <!-- 分页 -->
-                    {% include "includes/pagination.html" with nav_class="mt-3" %}
+                    {% include "includes/pagination_footer.html" %}
 
                     {% else %}
                     <div class="empty-state">

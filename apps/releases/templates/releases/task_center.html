@@ -18,7 +18,7 @@
                 </div>
                 <div class="card-body">
                     <form method="get" class="row g-2 mb-3" id="taskCenterSearchForm">
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <div class="tag-input-wrapper form-control form-control-sm" id="taskCenterSearchTagWrapper">
                                 <input type="text" class="tag-input-field" id="taskCenterSearchField" placeholder="搜索主机名或 IP 或批次号">
                             </div>
@@ -37,13 +37,6 @@
                                 <option value="">全部状态</option>
                                 {% for value, label in status_choices %}
                                 <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <select name="per_page" class="form-select form-select-sm" onchange="this.form.submit()">
-                                {% for size in per_page_options %}
-                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -133,7 +126,7 @@
                     </div>
                     {% endif %}
 
-                    {% include "includes/pagination.html" %}
+                    {% include "includes/pagination_footer.html" %}
                 </div>
             </div>
         </div>

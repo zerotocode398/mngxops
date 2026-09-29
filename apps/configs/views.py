@@ -234,7 +234,7 @@ class ConfigNodeDetailView(LoginRequiredMixin, PermissionRequiredMixin, DetailVi
 
         context["bindings"] = page_obj.object_list
         context["page_obj"] = page_obj
-        context["per_page"] = str(per_page)
+        context["per_page"] = per_page
         context["per_page_options"] = [10, 20, 50]
         context["stats"] = _build_node_stats(node)
         context["search"] = search

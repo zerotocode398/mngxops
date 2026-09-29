@@ -111,20 +111,7 @@
                         </table>
                     </div>
 
-                    {% include "includes/pagination.html" %}
-
-                    <div class="d-flex justify-content-end mt-2">
-                        <form method="get" class="d-flex align-items-center gap-1" id="perPageForm">
-                            <label class="form-label mb-0 small text-muted">每页</label>
-                            <select name="per_page" class="form-select form-select-sm" style="width:auto;"
-                                onchange="document.getElementById('perPageForm').submit()">
-                                {% for size in per_page_options %}
-                                <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
-                                {% endfor %}
-                            </select>
-                            {% for key, val in request.GET.items %}{% if key != 'per_page' and key != 'page' %}<input type="hidden" name="{{ key }}" value="{{ val }}">{% endif %}{% endfor %}
-                        </form>
-                    </div>
+                    {% include "includes/pagination_footer.html" %}
                 </div>
             </div>
         </div>

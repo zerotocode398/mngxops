@@ -14,7 +14,7 @@
 <div class="card mb-3">
     <div class="card-body py-2">
         <form method="get" class="row g-2 align-items-end" id="uninstallHistoryForm">
-            <div class="col-md-4">
+            <div class="col-md-7">
                 <div class="tag-input-wrapper form-control form-control-sm" id="uninstallHistoryTagWrapper">
                     <input type="text" class="tag-input-field"
                         placeholder="搜索节点名、IP、路径或批次">
@@ -26,13 +26,6 @@
                     <option value="">全部状态</option>
                     {% for value, label in status_choices %}
                     <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <select name="per_page" class="form-select form-select-sm" onchange="document.getElementById('uninstallHistoryForm').submit()">
-                    {% for opt in per_page_options %}
-                    <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }} 条/页</option>
                     {% endfor %}
                 </select>
             </div>
@@ -111,22 +104,7 @@
     </div>
 </div>
 
-{% if is_paginated %}
-<div class="d-flex justify-content-between align-items-center mt-3">
-    <form method="get" class="d-flex align-items-center gap-2">
-        <input type="hidden" name="search" value="{{ search }}">
-        <input type="hidden" name="status" value="{{ status_filter }}">
-        <label class="form-label mb-0 small">每页</label>
-        <select name="per_page" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
-            {% for opt in per_page_options %}
-            <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ opt }} 条/页</option>
-            {% endfor %}
-        </select>
-        <span class="small text-muted">条</span>
-    </form>
-    {% include "includes/pagination.html" with page_obj=page_obj %}
-</div>
-{% endif %}
+{% include "includes/pagination_footer.html" %}
 {% endblock %}
 
 {% block extra_js %}
