@@ -183,7 +183,7 @@ def audit_post_delete(sender, instance, **kwargs):
         action=f"删除{module_name}",
         ip=ip,
         result="success",
-        detail=f"删除 {module_name}「{label}」",
+        detail=f"删除{module_name}「{label}」",
     )
 
 

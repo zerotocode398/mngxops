@@ -177,5 +177,30 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    /* 检测 URL 参数 → 右上角 Toast（新增/编辑/删除节点组成功重定向） */
+    (function () {
+        var params = new URLSearchParams(window.location.search);
+        var createdGroup = params.get('created_group');
+        var updatedGroup = params.get('updated_group');
+        var deletedGroup = params.get('deleted_group');
+        if (createdGroup && window.showToast) {
+            window.showToast('节点组 ' + decodeURIComponent(createdGroup) + ' 创建成功', 'success');
+        }
+        if (updatedGroup && window.showToast) {
+            window.showToast('节点组 ' + decodeURIComponent(updatedGroup) + ' 更新成功', 'success');
+        }
+        if (deletedGroup && window.showToast) {
+            window.showToast('节点组 ' + decodeURIComponent(deletedGroup) + ' 删除成功', 'success');
+        }
+        if (createdGroup || updatedGroup || deletedGroup) {
+            var url = new URL(window.location.href);
+            ['created_group', 'updated_group', 'deleted_group'].forEach(function (k) { url.searchParams.delete(k); });
+            window.history.replaceState({}, '', url);
+        }
+    })();
+});
+</script>
 <script src="{% static 'js/nodes/group_list.js' %}"></script>
 {% endblock %}

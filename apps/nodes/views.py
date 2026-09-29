@@ -6,7 +6,7 @@ from django.db.models import Q
 from django.http import JsonResponse, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, get_object_or_404
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, View
-from django.urls import reverse_lazy
+from django.urls import reverse_lazy, reverse
 import threading
 
 from .forms import NodeForm, NodeGroupForm
@@ -222,7 +222,11 @@ class NodeGroupCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateVie
         node_ids = self.request.POST.getlist("node_ids", [])
         if node_ids:
             _assign_nodes_to_group(self.object, node_ids)
-        messages.success(self.request, f"节点组 {form.instance.name} 创建成功")
+        import urllib.parse
+
+        response["Location"] = (
+            f"{self.success_url}?created_group={urllib.parse.quote(form.instance.name)}"
+        )
         return response
 
     def form_invalid(self, form):
@@ -253,7 +257,11 @@ class NodeGroupUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateVie
         response = super().form_valid(form)
         node_ids = self.request.POST.getlist("node_ids", [])
         _assign_nodes_to_group(self.object, node_ids)
-        messages.success(self.request, f"节点组 {form.instance.name} 更新成功")
+        import urllib.parse
+
+        response["Location"] = (
+            f"{self.success_url}?updated_group={urllib.parse.quote(form.instance.name)}"
+        )
         return response
 
     def form_invalid(self, form):
@@ -269,8 +277,13 @@ class NodeGroupDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteVie
 
     def post(self, request, *args, **kwargs):
         node_group = self.get_object()
-        messages.success(request, f"节点组 {node_group.name} 删除成功")
-        return super().post(request, *args, **kwargs)
+        response = super().post(request, *args, **kwargs)
+        import urllib.parse
+
+        response["Location"] = (
+            f"{reverse('nodes:group_list')}?deleted_group={urllib.parse.quote(node_group.name)}"
+        )
+        return response
 
 
 class NodeGroupManageNodesView(LoginRequiredMixin, PermissionRequiredMixin, View):
