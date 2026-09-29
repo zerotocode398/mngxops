@@ -1,4 +1,5 @@
 """节点创建/恢复与批量 Excel 导入相关业务逻辑。"""
+
 import io
 import ipaddress
 import re
@@ -360,7 +361,9 @@ def build_import_template_bytes() -> bytes:
     tip.append(["2. 主机名、IP、SSH端口为必填"])
     tip.append(["3. 所属环境可填开发/测试/生产或 dev/test/prod；空或 - 默认为测试环境"])
     tip.append(
-        [f"4. Nginx路径为空或 - 时使用系统设置「默认 Nginx 可执行文件路径」（当前：{default_bin}）"]
+        [
+            f"4. Nginx路径为空或 - 时使用系统设置「默认 Nginx 可执行文件路径」（当前：{default_bin}）"
+        ]
     )
     tip.append(
         [
@@ -447,6 +450,50 @@ def parse_node_import_workbook(
     return rows, errors
 
 
+def _deduplicate_import_errors(errors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """合并相同消息的多行错误为一条，避免冗余（如凭证不存在 18 行重复）。"""
+    if not errors:
+        return []
+
+    grouped: Dict[str, List[int]] = {}
+    order: List[str] = []
+    for err in errors:
+        msg = err["message"]
+        row = err.get("row", 0)
+        if msg not in grouped:
+            grouped[msg] = []
+            order.append(msg)
+        grouped[msg].append(row)
+
+    result: List[Dict[str, Any]] = []
+    for msg in order:
+        rows = grouped[msg]
+        if len(rows) == 1:
+            result.append({"row": rows[0], "message": msg})
+            continue
+
+        rows_sorted = sorted(rows)
+        # 把连续行号合并为范围，如 2,3,4,5 → "第 2-5 行"
+        parts: List[str] = []
+        start = rows_sorted[0]
+        end = rows_sorted[0]
+        for r in rows_sorted[1:]:
+            if r == end + 1:
+                end = r
+            else:
+                parts.append(
+                    f"第 {start}-{end} 行" if end > start else f"第 {start} 行"
+                )
+                start = r
+                end = r
+        parts.append(f"第 {start}-{end} 行" if end > start else f"第 {start} 行")
+
+        row_label = "、".join(parts)
+        result.append({"row": 0, "merged": True, "message": f"{msg}（{row_label}）"})
+
+    return result
+
+
 def validate_node_import_rows(
     rows: List[Dict[str, Any]], user
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -487,9 +534,7 @@ def validate_node_import_rows(
         if port_err:
             row_errors.append(port_err)
 
-        environment, env_err = _normalize_environment(
-            item.get("environment_raw") or ""
-        )
+        environment, env_err = _normalize_environment(item.get("environment_raw") or "")
         if env_err:
             row_errors.append(env_err)
 
@@ -600,7 +645,7 @@ def validate_node_import_rows(
                 )
 
     if errors:
-        return [], errors
+        return [], _deduplicate_import_errors(errors)
     return pending, []
 
 
@@ -699,12 +744,16 @@ def run_unlock_ssh_test(task_id, node_ids):
                         node.ip,
                         node.port,
                         credential.username,
-                        password=credential.get_password()
-                        if credential.auth_type == "password"
-                        else None,
-                        private_key=credential.get_private_key()
-                        if credential.auth_type == "key"
-                        else None,
+                        password=(
+                            credential.get_password()
+                            if credential.auth_type == "password"
+                            else None
+                        ),
+                        private_key=(
+                            credential.get_private_key()
+                            if credential.auth_type == "key"
+                            else None
+                        ),
                         nginx_path=nginx_path,
                     )
                     apply_nginx_probe_result(
@@ -796,12 +845,16 @@ def run_single_node_ssh_test(
                 host,
                 ssh_port,
                 credential.username,
-                password=credential.get_password()
-                if credential.auth_type == "password"
-                else None,
-                private_key=credential.get_private_key()
-                if credential.auth_type == "key"
-                else None,
+                password=(
+                    credential.get_password()
+                    if credential.auth_type == "password"
+                    else None
+                ),
+                private_key=(
+                    credential.get_private_key()
+                    if credential.auth_type == "key"
+                    else None
+                ),
                 nginx_path=nginx_path,
             )
             apply_nginx_probe_result(
@@ -942,7 +995,11 @@ def run_batch_node_ssh_test(task_id, node_ids, max_workers):
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     from apps.releases.models import TaskCenterTask
-    from apps.releases.task_cancel import finish_if_active, is_cancelled, update_if_active
+    from apps.releases.task_cancel import (
+        finish_if_active,
+        is_cancelled,
+        update_if_active,
+    )
     from apps.releases.task_result import (
         build_tree_result,
         item_failed,
@@ -982,9 +1039,7 @@ def run_batch_node_ssh_test(task_id, node_ids, max_workers):
 
             update_if_active(
                 task_id,
-                progress=(
-                    int(done * 100 / len(test_nodes)) if test_nodes else 100
-                ),
+                progress=(int(done * 100 / len(test_nodes)) if test_nodes else 100),
                 detail=f"执行中：成功 {success_count}，失败 {fail_count}，已完成 {done}/{len(test_nodes)}",
             )
 
@@ -1049,9 +1104,11 @@ def run_node_system_info_task(task_id, node_id, credential_id):
             progress=100,
             finished_at=timezone.now(),
             detail=f"系统信息采集{'成功' if success else '失败'}",
-            result=json.dumps(system_info, ensure_ascii=False)
-            if success
-            else str(result_data),
+            result=(
+                json.dumps(system_info, ensure_ascii=False)
+                if success
+                else str(result_data)
+            ),
         )
     except Exception as e:
         TaskCenterTask.objects.filter(pk=task_id).update(

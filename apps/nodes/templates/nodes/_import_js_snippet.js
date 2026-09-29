@@ -58,10 +58,13 @@
             var html = '<p class="small text-muted mb-2">共 ' + list.length + ' 条，整批未导入</p>';
             html += '<div class="table-responsive modal-table-scroll" style="max-height:40vh">';
             html += '<table class="table table-sm data-table modal-picker-table mb-0">';
-            html += '<thead><tr><th style="width:22%">行号</th><th>错误信息</th></tr></thead><tbody>';
+            html += '<thead><tr><th>错误信息</th></tr></thead><tbody>';
             list.forEach(function(err) {
-                var rowLabel = err.row ? ('第 ' + err.row + ' 行') : '文件';
-                html += '<tr><td>' + escapeHtml(rowLabel) + '</td><td>' + escapeHtml(err.message || '') + '</td></tr>';
+                var msg = err.message || '';
+                if (!err.merged && err.row) {
+                    msg = '第 ' + err.row + ' 行：' + msg;
+                }
+                html += '<tr><td>' + escapeHtml(msg) + '</td></tr>';
             });
             html += '</tbody></table></div>';
             return html;
