@@ -31,5 +31,6 @@ urlpatterns = [
         views.CredentialEnableProgressView.as_view(),
         name="enable_progress",
     ),
+    path("batch-delete/", views.batch_delete_credentials, name="batch_delete"),
     path("api/list/", views.CredentialApiListView.as_view(), name="api_list"),
 ]

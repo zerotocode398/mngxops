@@ -24,9 +24,14 @@ from .services import (
 from apps.audit.models import AuditLog
 from apps.audit.utils import _resolve_client_ip
 from apps.releases.models import TaskCenterTask
-from apps.users.permissions import PermissionRequiredMixin, forbidden_response
+from apps.users.permissions import (
+    PermissionRequiredMixin,
+    forbidden_response,
+    user_has_permission,
+)
 from apps.nodes.models import Node
 from utils.pagination import PerPagePaginationMixin
+from utils.setting_service import get_setting
 
 
 def filter_credential_list_queryset(queryset, request):
@@ -190,6 +195,11 @@ class CredentialImportAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
 
     permission_resource = "credentials"
     permission_action = "create"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return forbidden_response(request, "仅管理员可批量导入凭证")
+        return super().dispatch(request, *args, **kwargs)
 
     def post(self, request):
         """解析并导入凭证 Excel"""
@@ -598,6 +608,78 @@ class CredentialRelatedNodesView(LoginRequiredMixin, PermissionRequiredMixin, Vi
                 },
             }
         )
+
+
+def batch_delete_credentials(request):
+    """批量删除凭证"""
+    if not request.user.is_authenticated:
+        return JsonResponse({"success": False, "message": "请先登录"}, status=403)
+    if not user_has_permission(request.user, "credentials", "delete"):
+        return JsonResponse(
+            {"success": False, "message": "无权限执行该操作"}, status=403
+        )
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "仅支持POST请求"}, status=405)
+
+    import json
+
+    try:
+        data = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"success": False, "message": "请求数据格式错误"}, status=400
+        )
+
+    credential_ids = data.get("credential_ids") or []
+    if not credential_ids:
+        return JsonResponse({"success": False, "message": "未指定凭证"}, status=400)
+
+    try:
+        credential_ids = [int(cid) for cid in credential_ids]
+    except (TypeError, ValueError):
+        return JsonResponse({"success": False, "message": "凭证 ID 无效"}, status=400)
+
+    max_batch = int(get_setting("credential.batch_max_count", "10") or "10")
+    if len(credential_ids) > max_batch:
+        return JsonResponse(
+            {"success": False, "message": f"最多只能操作 {max_batch} 个凭证"},
+            status=400,
+        )
+
+    credentials = list(Credential.objects.filter(id__in=credential_ids).order_by("id"))
+    if not credentials:
+        return JsonResponse({"success": False, "message": "凭证不存在"}, status=400)
+
+    deleted = []
+    for cred in credentials:
+        name = cred.name
+        cred.delete()
+        deleted.append({"id": cred.id, "name": name})
+
+    names = [d["name"] for d in deleted if d["name"]]
+    detail = f"批量删除 {len(deleted)} 个凭证"
+    if names:
+        name_preview = "、".join(names[:20])
+        if len(names) > 20:
+            name_preview = f"{name_preview} 等{len(names)}个"
+        detail = f"{detail}：{name_preview}"
+
+    AuditLog.objects.create(
+        user=request.user,
+        module="凭证管理",
+        action="批量删除凭证",
+        ip=_resolve_client_ip(),
+        result="success",
+        detail=detail,
+    )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": f"成功删除 {len(deleted)} 个凭证",
+            "deleted": deleted,
+        }
+    )
 
 
 class CredentialApiListView(LoginRequiredMixin, PermissionRequiredMixin, View):

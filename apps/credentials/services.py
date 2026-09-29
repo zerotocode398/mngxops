@@ -156,12 +156,7 @@ def build_credential_import_template_bytes() -> bytes:
     tip.append(["3. 认证方式可填：密码认证/密码/password，或 密钥认证/密钥/key"])
     tip.append(["4. 密码认证须填密码，私钥列可空；密钥认证须填合法私钥，密码列可空"])
     tip.append(["5. 是否启用可填 是/否（或启用/禁用）；空或 - 默认启用"])
-    tip.append(
-        [
-            "6. 同名凭证（当前登录用户下）将更新；新名称则新建；"
-            "任一行校验失败则整批不导入"
-        ]
-    )
+    tip.append(["6. 凭证名称不可与已有凭证重复；任一行校验失败则整批不导入"])
     tip.append(["7. 私钥单元格可含换行；勿使用带口令的加密私钥"])
 
     buf = io.BytesIO()
@@ -337,6 +332,8 @@ def validate_credential_import_rows(
                 row_errors.append(f"文件内名称「{name}」与第 {name_seen[name]} 行重复")
             else:
                 name_seen[name] = row_no
+                if Credential.objects.filter(name=name, created_by=user).exists():
+                    row_errors.append(f"凭证名称「{name}」已存在，不允许重复导入")
 
         if row_errors:
             for msg in row_errors:
