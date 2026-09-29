@@ -26,6 +26,7 @@ from .services import (
     validate_node_import_rows,
 )
 from apps.audit.models import AuditLog
+from apps.audit.signals import audit_suppress_scope
 from apps.audit.utils import _resolve_client_ip
 from apps.credentials.models import Credential
 from apps.releases.models import TaskCenterTask
@@ -687,11 +688,29 @@ def batch_delete_nodes(request):
         return JsonResponse({"success": False, "message": "节点不存在"}, status=400)
 
     deleted = []
-    for node in nodes:
-        hostname = node.hostname
-        ip = node.ip
-        node.soft_delete(user=request.user)
-        deleted.append({"id": node.id, "hostname": hostname, "ip": str(ip)})
+    with audit_suppress_scope():
+        for node in nodes:
+            hostname = node.hostname
+            ip = node.ip
+            node.soft_delete(user=request.user)
+            deleted.append({"id": node.id, "hostname": hostname, "ip": str(ip)})
+
+    hostnames = [d["hostname"] for d in deleted if d["hostname"]]
+    detail = f"批量删除 {len(deleted)} 个节点"
+    if hostnames:
+        hostname_preview = "、".join(hostnames[:20])
+        if len(hostnames) > 20:
+            hostname_preview = f"{hostname_preview} 等{len(hostnames)}个"
+        detail = f"{detail}：{hostname_preview}"
+
+    AuditLog.objects.create(
+        user=request.user,
+        module="节点管理",
+        action="批量删除节点",
+        ip=_resolve_client_ip(),
+        result="success",
+        detail=detail,
+    )
 
     return JsonResponse(
         {

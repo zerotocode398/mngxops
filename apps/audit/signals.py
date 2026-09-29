@@ -1,8 +1,34 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
+import threading
 
 from .middleware import get_current_request, get_current_user
 from .models import AuditLog
+
+# Thread-local flag: when True, post_save/post_delete signals skip audit logging.
+# Used by batch operations that create their own summary audit entry.
+_audit_local = threading.local()
+
+
+def is_audit_suppressed():
+    return getattr(_audit_local, "suppress", False)
+
+
+def set_audit_suppressed(value):
+    _audit_local.suppress = value
+
+
+class audit_suppress_scope:
+    """Context manager to suppress audit signal logging within a block."""
+
+    def __enter__(self):
+        self._prev = is_audit_suppressed()
+        set_audit_suppressed(True)
+        return self
+
+    def __exit__(self, *args):
+        set_audit_suppressed(self._prev)
+
 
 TRACKED_MODELS = {
     "apps.configs.models.Config": "配置管理",
@@ -71,7 +97,9 @@ def _get_instance_label(instance):
             binding = getattr(instance, "binding", None)
             identity = _binding_identity(binding) if binding is not None else "?"
             version_no = getattr(instance, "version", None)
-            label = f"{identity} · V{version_no}" if version_no is not None else identity
+            label = (
+                f"{identity} · V{version_no}" if version_no is not None else identity
+            )
             remark = _truncate_remark(getattr(instance, "remark", ""))
             if remark:
                 label = f"{label}（{remark}）"
@@ -82,6 +110,9 @@ def _get_instance_label(instance):
     name = getattr(instance, "name", None)
     if name:
         return name
+    hostname = getattr(instance, "hostname", None)
+    if hostname:
+        return hostname
     username = getattr(instance, "username", None)
     if username:
         return username
@@ -90,6 +121,8 @@ def _get_instance_label(instance):
 
 @receiver(post_save)
 def audit_post_save(sender, instance, created, **kwargs):
+    if is_audit_suppressed():
+        return
     sender_path = f"{sender.__module__}.{sender.__name__}"
     if sender_path not in TRACKED_MODELS:
         return
@@ -101,22 +134,37 @@ def audit_post_save(sender, instance, created, **kwargs):
 
     ip = _get_client_ip()
     label = _get_instance_label(instance)
+    class_name = instance.__class__.__name__
 
     if created:
         action = f"创建{module_name}"
         detail = f"新建 {module_name}「{label}」"
+    elif class_name == "Node" and getattr(instance, "is_deleted", False):
+        update_fields = kwargs.get("update_fields") or ()
+        if "is_deleted" in update_fields:
+            action = f"删除{module_name}"
+            detail = f"删除 {module_name}「{label}」"
+        else:
+            action = f"更新{module_name}"
+            detail = f"修改{module_name}「{label}」"
     else:
         action = f"更新{module_name}"
-        detail = f"修改 {module_name}「{label}」"
+        detail = f"修改{module_name}「{label}」"
 
     AuditLog.objects.create(
-        user=user, module=module_name, action=action, ip=ip,
-        result="success", detail=detail,
+        user=user,
+        module=module_name,
+        action=action,
+        ip=ip,
+        result="success",
+        detail=detail,
     )
 
 
 @receiver(post_delete)
 def audit_post_delete(sender, instance, **kwargs):
+    if is_audit_suppressed():
+        return
     sender_path = f"{sender.__module__}.{sender.__name__}"
     if sender_path not in TRACKED_MODELS:
         return
@@ -130,8 +178,12 @@ def audit_post_delete(sender, instance, **kwargs):
     label = _get_instance_label(instance)
 
     AuditLog.objects.create(
-        user=user, module=module_name, action=f"删除{module_name}",
-        ip=ip, result="success", detail=f"删除 {module_name}「{label}」",
+        user=user,
+        module=module_name,
+        action=f"删除{module_name}",
+        ip=ip,
+        result="success",
+        detail=f"删除 {module_name}「{label}」",
     )
 
 

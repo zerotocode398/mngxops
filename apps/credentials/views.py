@@ -22,6 +22,7 @@ from .services import (
     validate_credential_import_rows,
 )
 from apps.audit.models import AuditLog
+from apps.audit.signals import audit_suppress_scope
 from apps.audit.utils import _resolve_client_ip
 from apps.releases.models import TaskCenterTask
 from apps.users.permissions import (
@@ -651,10 +652,11 @@ def batch_delete_credentials(request):
         return JsonResponse({"success": False, "message": "凭证不存在"}, status=400)
 
     deleted = []
-    for cred in credentials:
-        name = cred.name
-        cred.delete()
-        deleted.append({"id": cred.id, "name": name})
+    with audit_suppress_scope():
+        for cred in credentials:
+            name = cred.name
+            cred.delete()
+            deleted.append({"id": cred.id, "name": name})
 
     names = [d["name"] for d in deleted if d["name"]]
     detail = f"批量删除 {len(deleted)} 个凭证"
