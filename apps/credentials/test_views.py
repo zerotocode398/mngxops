@@ -1,9 +1,31 @@
 """credentials 视图层测试（凭证 CRUD）"""
 
-import pytest
-from django.urls import reverse
+from io import BytesIO
 
+import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
+from openpyxl import Workbook
+
+from apps.audit.models import AuditLog
 from apps.credentials.models import Credential
+
+
+def _build_credential_import_file(rows):
+    """构造凭证导入测试用 xlsx 上传文件。"""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["名称", "SSH用户", "认证方式", "密码", "私钥", "是否启用", "描述"])
+    for row in rows:
+        sheet.append(row)
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return SimpleUploadedFile(
+        "credentials.xlsx",
+        buffer.read(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @pytest.mark.django_db
@@ -206,6 +228,42 @@ class TestCredentialImportAPIView:
     def test_import_redirects_anonymous(self, anonymous_client):
         resp = anonymous_client.post(reverse("credentials:import_api"))
         assert resp.status_code == 302
+
+    def test_import_audit_detail_includes_credential_names(self, admin_client):
+        upload = _build_credential_import_file(
+            [
+                [
+                    "new-import-credential-a",
+                    "deploy",
+                    "密码认证",
+                    "changed-secret",
+                    "",
+                    "是",
+                    "新建凭证 A",
+                ],
+                [
+                    "new-import-credential-b",
+                    "root",
+                    "密码认证",
+                    "new-secret",
+                    "",
+                    "是",
+                    "新建凭证 B",
+                ],
+            ]
+        )
+
+        resp = admin_client.post(reverse("credentials:import_api"), {"file": upload})
+
+        payload = resp.json()
+        assert payload["success"] is True
+        log = AuditLog.objects.filter(action="导入凭证").latest("id")
+        assert (
+            "新建 2 条：new-import-credential-a、new-import-credential-b"
+            in log.detail
+        )
+        assert "changed-secret" not in log.detail
+        assert "new-secret" not in log.detail
 
 
 @pytest.mark.django_db

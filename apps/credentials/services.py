@@ -358,10 +358,12 @@ def validate_credential_import_rows(
     return pending, []
 
 
-def apply_credential_import(cleaned: List[Dict[str, Any]], user) -> Dict[str, int]:
+def apply_credential_import(cleaned: List[Dict[str, Any]], user) -> Dict[str, Any]:
     """按校验结果写入凭证：同名（当前用户）更新，否则新建。"""
     created = 0
     updated = 0
+    created_names = []
+    updated_names = []
     with transaction.atomic():
         for item in cleaned:
             existing = Credential.objects.filter(
@@ -380,6 +382,7 @@ def apply_credential_import(cleaned: List[Dict[str, Any]], user) -> Dict[str, in
                     existing.password = ""
                 existing.save()
                 updated += 1
+                updated_names.append(existing.name)
             else:
                 cred = Credential(
                     name=item["name"],
@@ -397,10 +400,13 @@ def apply_credential_import(cleaned: List[Dict[str, Any]], user) -> Dict[str, in
                 )
                 cred.save()
                 created += 1
+                created_names.append(cred.name)
     return {
         "created": created,
         "updated": updated,
         "total": created + updated,
+        "created_names": created_names,
+        "updated_names": updated_names,
     }
 
 

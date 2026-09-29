@@ -60,6 +60,37 @@ def filter_credential_list_queryset(queryset, request):
     return queryset
 
 
+def _format_credential_names_preview(names, limit=20):
+    """生成凭证名称审计预览文本。"""
+    valid_names = [name for name in names if name]
+    if not valid_names:
+        return ""
+    preview = "、".join(valid_names[:limit])
+    if len(valid_names) > limit:
+        preview = f"{preview} 等{len(valid_names)}个"
+    return preview
+
+
+def _build_credential_import_audit_detail(result):
+    """根据凭证导入结果生成含名称明细的审计详情。"""
+    parts = []
+    created_names = result.get("created_names") or []
+    updated_names = result.get("updated_names") or []
+    if result["created"]:
+        created_part = f"新建 {result['created']} 条"
+        created_preview = _format_credential_names_preview(created_names)
+        if created_preview:
+            created_part = f"{created_part}：{created_preview}"
+        parts.append(created_part)
+    if result["updated"]:
+        updated_part = f"更新 {result['updated']} 条"
+        updated_preview = _format_credential_names_preview(updated_names)
+        if updated_preview:
+            updated_part = f"{updated_part}：{updated_preview}"
+        parts.append(updated_part)
+    return "批量导入成功：" + "；".join(parts) if parts else "批量导入完成"
+
+
 def _parse_export_ids(request):
     """解析导出勾选 ID（ids=1,2,3 或重复 id=）；无效项忽略。"""
     raw = (request.GET.get("ids") or "").strip()
@@ -204,6 +235,9 @@ class CredentialImportAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
     permission_action = "create"
 
     def dispatch(self, request, *args, **kwargs):
+        """匿名用户交给登录拦截，已登录用户再校验管理员身份。"""
+        if not request.user.is_authenticated:
+            return super().dispatch(request, *args, **kwargs)
         if not request.user.is_superuser:
             return forbidden_response(request, "仅管理员可批量导入凭证")
         return super().dispatch(request, *args, **kwargs)
@@ -253,6 +287,7 @@ class CredentialImportAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
         if result["updated"]:
             parts.append(f"更新 {result['updated']} 条")
         message = "批量导入成功：" + "，".join(parts) if parts else "批量导入完成"
+        audit_detail = _build_credential_import_audit_detail(result)
 
         AuditLog.objects.create(
             user=request.user,
@@ -260,7 +295,7 @@ class CredentialImportAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
             action="导入凭证",
             ip=_resolve_client_ip(),
             result="success",
-            detail=message,
+            detail=audit_detail,
         )
 
         return JsonResponse(
@@ -678,9 +713,7 @@ def batch_delete_credentials(request):
     names = [d["name"] for d in deleted if d["name"]]
     detail = f"批量删除 {len(deleted)} 个凭证"
     if names:
-        name_preview = "、".join(names[:20])
-        if len(names) > 20:
-            name_preview = f"{name_preview} 等{len(names)}个"
+        name_preview = _format_credential_names_preview(names)
         detail = f"{detail}：{name_preview}"
 
     AuditLog.objects.create(
