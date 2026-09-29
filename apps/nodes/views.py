@@ -3,7 +3,7 @@ from datetime import datetime
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.db.models import Q
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, get_object_or_404
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, View
 from django.urls import reverse_lazy
@@ -594,13 +594,23 @@ class NodeUpdateView(LoginRequiredMixin, PermissionRequiredMixin, UpdateView):
     def get_success_url(self):
         url = reverse_lazy("nodes:list")
         qs = self.request.GET.urlencode()
+        hostname = getattr(self.object, "hostname", "")
+        params = {}
+        if hostname:
+            params["updated"] = hostname
         if qs:
-            url = f"{url}?{qs}"
+            for pair in qs.split("&"):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    params[k] = v
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        if query:
+            url = f"{url}?{query}"
         return url
 
     def form_valid(self, form):
-        messages.success(self.request, f"节点 {form.instance.hostname} 更新成功")
-        return super().form_valid(form)
+        self.object = form.save()
+        return HttpResponseRedirect(self.get_success_url())
 
     def form_invalid(self, form):
         messages.error(self.request, "节点更新失败，请检查输入")

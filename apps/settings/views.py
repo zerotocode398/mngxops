@@ -1,7 +1,6 @@
 """系统设置模块 - 视图"""
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views import View
@@ -216,11 +215,6 @@ class SettingsSaveAPIView(LoginRequiredMixin, AdminRequiredMixin, View):
                 s.save(update_fields=["value", "updated_by", "updated_at"])
                 refresh_setting_cache(s.key)
                 saved.append(s.key)
-
-        if saved:
-            messages.success(request, f"已保存 {len(saved)} 项配置")
-        else:
-            messages.info(request, "配置未发生变化")
 
         return JsonResponse({"success": True, "saved": saved})
 

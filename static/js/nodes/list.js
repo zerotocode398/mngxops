@@ -42,6 +42,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
     initCheckboxLogic();
 
+    /* 检测 URL updated 参数 → 右上角 Toast（来自编辑成功重定向） */
+    (function () {
+        var params = new URLSearchParams(window.location.search);
+        var updated = params.get('updated');
+        if (updated && window.showToast) {
+            window.showToast('节点 ' + decodeURIComponent(updated) + ' 更新成功', 'success');
+            /* 消费后清除参数，避免刷新后重复弹出 */
+            var url = new URL(window.location.href);
+            url.searchParams.delete('updated');
+            window.history.replaceState({}, '', url);
+        }
+    })();
+
     var nodeExportBtn = document.getElementById('nodeExportBtn');
     if (nodeExportBtn) {
         nodeExportBtn.addEventListener('click', function () {
@@ -449,7 +462,7 @@ function batchDeleteNodes() {
         .then(function (result) {
             if (result && result.success) {
                 if (window.showToast) showToast(result.message || '删除成功', 'success');
-                setTimeout(function () { location.reload(); }, 400);
+                setTimeout(function () { location.reload(); }, 2500);
                 return;
             }
             showAlert('批量删除失败', (result && result.message) || '操作失败');

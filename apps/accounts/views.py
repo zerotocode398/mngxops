@@ -298,7 +298,6 @@ class LoginView(View):
             detail=f"用户 {user.username} 登录成功",
         )
 
-        messages.success(request, "登录成功")
         next_url = request.GET.get("next", "dashboard:index")
         response = redirect(next_url)
         response.set_cookie("device_id", device_id, max_age=DEVICE_ID_COOKIE_AGE)

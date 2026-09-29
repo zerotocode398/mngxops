@@ -98,7 +98,13 @@ class CredentialListView(
     def get_queryset(self):
         """根据搜索词和筛选条件过滤凭证列表"""
         queryset = (
-            super().get_queryset().annotate(node_count=Count("node", distinct=True))
+            super()
+            .get_queryset()
+            .annotate(
+                node_count=Count(
+                    "node", filter=Q(node__is_deleted=False), distinct=True
+                )
+            )
         )
         return filter_credential_list_queryset(queryset, self.request)
 
