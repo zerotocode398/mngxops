@@ -245,7 +245,8 @@ class CredentialImportAPIView(LoginRequiredMixin, PermissionRequiredMixin, View)
                 }
             )
 
-        result = apply_credential_import(cleaned, request.user)
+        with audit_suppress_scope():
+            result = apply_credential_import(cleaned, request.user)
         parts = []
         if result["created"]:
             parts.append(f"新建 {result['created']} 条")
@@ -357,7 +358,17 @@ class CredentialDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteVi
         credential = self.get_object()
         name = credential.name
         response = super().post(request, *args, **kwargs)
-        messages.success(request, f"凭证 {name} 删除成功")
+        qs = request.GET.urlencode()
+        url = reverse("credentials:list")
+        params = {"deleted": name}
+        if qs:
+            for pair in qs.split("&"):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    if k != "deleted":
+                        params[k] = v
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        response["Location"] = f"{url}?{query}"
         return response
 
 

@@ -55,6 +55,18 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     })();
 
+    /* 检测 sessionStorage 中的 flash 消息 → 右上角 Toast（批量删除跨刷新） */
+    (function () {
+        try {
+            var raw = sessionStorage.getItem('nodeFlash');
+            if (raw && window.showToast) {
+                var flash = JSON.parse(raw);
+                window.showToast(flash.msg, flash.type || 'success');
+                sessionStorage.removeItem('nodeFlash');
+            }
+        } catch (_) {}
+    })();
+
     var nodeExportBtn = document.getElementById('nodeExportBtn');
     if (nodeExportBtn) {
         nodeExportBtn.addEventListener('click', function () {
@@ -461,8 +473,10 @@ function batchDeleteNodes() {
         .then(function (resp) { return resp.json(); })
         .then(function (result) {
             if (result && result.success) {
-                if (window.showToast) showToast(result.message || '删除成功', 'success');
-                setTimeout(function () { location.reload(); }, 2500);
+                try {
+                    sessionStorage.setItem('nodeFlash', JSON.stringify({ msg: result.message || '删除成功', type: 'success' }));
+                } catch (_) {}
+                location.reload();
                 return;
             }
             showAlert('批量删除失败', (result && result.message) || '操作失败');

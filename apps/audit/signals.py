@@ -138,12 +138,12 @@ def audit_post_save(sender, instance, created, **kwargs):
 
     if created:
         action = f"创建{module_name}"
-        detail = f"新建 {module_name}「{label}」"
+        detail = f"新建{module_name}「{label}」"
     elif class_name == "Node" and getattr(instance, "is_deleted", False):
         update_fields = kwargs.get("update_fields") or ()
         if "is_deleted" in update_fields:
             action = f"删除{module_name}"
-            detail = f"删除 {module_name}「{label}」"
+            detail = f"删除{module_name}「{label}」"
         else:
             action = f"更新{module_name}"
             detail = f"修改{module_name}「{label}」"
