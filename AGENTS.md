@@ -5,7 +5,22 @@
 - **环境**：本机默认 venv 为 `D:\PyCharm\联动优势\works\django-labs\venv3\Scripts\activate`（CI / 其他机器不受此路径约束）。
 - **变更原则**：在既有功能上扩展时，未经确认不改动业务逻辑；修改公共方法须同步全部调用方，保证全局一致。
 
-## mngxops 优化点台账（Q1–Q164）
+# 重构要求
+我想重构此项目，现有 Web 框架是 Django，我想更新为 FastAPI + Jinja 的形式，数据库存储还是优先考虑 sqlite。
+<!-- 调整时尽量遵循以下原则
+1. 请继续重构
+2. 代码存在可优化的空间尽量优化。
+3. 性能存在可提升的空间尽量提升。
+4. 之前使用了多个大模型开发，可能存在冗余、无用、垃圾代码，这部分需要剔除。
+5. 若代码可以抽出为公共方法，尽量抽取，避免重复造轮子。
+6. 页面的排版、设计、交互、文案、美化等尽量满足源方式的规范，但我无产品经验，页面排版、设计、交互、文案、美化等不合理可进行优化调整，避免如A功能弹窗与B功能弹窗实现方式不一致等 或 A表格字体为12px、B表格字体为14px等。
+7. 注意 fastapi 项目结构的规范性
+8. 注意 fastapi 接口文档的规范有效、可测试性
+PS1. 后续需要基于重构的代码实现功能测试，即测试重构后的代码是否符合需求。也就是模拟业务生产数据，测试接口、页面功能是否正常。
+PS2：若全部测试通过过可删除 Django 历史/垃圾/冗余/无效/无用代码，只保存重构后可用代码
+每次重构完成后，尽量输出相比于整体项目重构完成进度有多少，我需要了解进度以及如何可以全量重构完成。 -->
+
+## mngxops 优化点台账（Q1–Q167）
 
 本文档记录历史优化点结论，供 Agent / 开发快速检索。**不修改业务逻辑时请以本文件结论为准。**
 
@@ -185,7 +200,7 @@
 | Q158 | 节点/凭证列表 xlsx 导出（凭证明文） | 已完成 |
 | Q159 | 导出勾选/全量确认；凭证批量导入 | 已完成 |
 
-### 缺口与结论项（Q84–Q164）
+### 缺口与结论项（Q84–Q167）
 
 | 编号 | 摘要 | 状态 |
 |------|------|------|
@@ -271,6 +286,9 @@
 | Q162 | 配置列表/配置同步默认展示 Nginx 已识别节点 | 已完成 |
 | Q163 | 凭证导入审计详情展示导入明细 | 已完成 |
 | Q164 | 多页面分页总数与每页选择器统一；升级最近任务去冗余入口 | 已完成 |
+| Q165 | FastAPI + Jinja 迁移一期 | 已完成 |
+| Q166 | FastAPI 发布历史只读页与 API | 已完成 |
+| Q167 | FastAPI 页面基底对齐原 Django 左侧菜单布局 | 已完成 |
 
 ---
 
@@ -1436,4 +1454,36 @@
 
 - **问题**：节点列表、节点组、凭证管理、配置节点详情、任务中心、发布历史、操作日志、登录日志等分页区域缺少总数；多个页面每页条数选择器位置不统一；发布历史显示「10 个批次/页」；Nginx 升级首页最近升级任务空态里有冗余「开始升级」入口；运维工具历史页分页也需对齐。
 - **处理**：新增统一分页底栏组件，展示「共 N 条，第 X / Y 页」，页码居中，每页选择器固定右下角并统一为「N 条/页」；上述页面及 Nginx 升级/安装/启停/卸载历史页接入该组件；删除升级首页最近升级任务空态里的「开始升级」按钮（页面顶部主入口保留）。最近任务区按系统设置展示固定条数，不做分页。
+- **状态**：已完成
+
+
+### Q165 · 架构 · FastAPI + Jinja 迁移一期
+
+- **问题**：项目希望从 Django 迁移到 FastAPI + Jinja，数据库优先保留 SQLite；迁移过程中业务模块边界不变、功能需保持可用，并逐步清理冗余/无用代码与重复实现。现有测试可在重构完成确认后再重写。
+- **处理**：
+  1. 新增规范化 `fastops` 目录：`api/routes`、`core`、`db`、`schemas`、`services`、`templates` 分层承载路由、配置、SQLite 访问、Pydantic 模型、业务查询与 Jinja 页面。
+  2. FastAPI 入口改为纯 ASGI 应用，不再挂载 Django 应用；`run_server.py` 仅启动 Uvicorn，`requirements.txt` 删除 Django、asgiref、sqlparse、waitress 等运行依赖。
+  3. 新增 FastAPI 原生登录/退出：直接校验既有 `auth_user` 的 `pbkdf2_sha256` 密码哈希，使用签名 Cookie 保存登录态；权限校验按既有直授权限、个人角色、用户组角色规则查询 SQLite。
+  4. 迁移节点/凭证只读列表到 `/fastapi/nodes`、`/fastapi/credentials`，对应 JSON API 为 `/api/v1/nodes`、`/api/v1/credentials`；敏感字段不展示。
+  5. 迁移配置列表只读节点视图到 `/fastapi/configs`，对应 JSON API 为 `/api/v1/configs/nodes`；状态计数、节点组、Nginx 已识别过滤与未绑定配置标签走 SQLite 预聚合查询。
+  6. 迁移审计只读列表到 `/fastapi/audit`、`/fastapi/audit/login`，对应 JSON API 为 `/api/v1/audit/operation-logs`、`/api/v1/audit/login-logs`、`/api/v1/audit/modules`；保留逗号分词 AND 搜索、结果/模块/日期筛选和统一分页。
+  7. 迁移任务中心只读列表与详情到 `/fastapi/tasks`、`/fastapi/tasks/{id}`，对应 JSON API 为 `/api/v1/tasks`、`/api/v1/tasks/{id}`、`/api/v1/tasks/options/*`；权限口径延续 releases.read 看全部、节点/运维权限仅看本人相关任务。
+  8. 迁移系统设置只读页到 `/fastapi/settings`，对应 JSON API 为 `/api/v1/settings`、`/api/v1/settings/groups`、`/api/v1/settings/values`；仅展示已接线配置项，不提供写操作。
+  9. `/docs`、`/redoc`、`/openapi.json` 保持可用，资产、配置、审计、任务中心与系统设置 API 补齐 `response_model`、参数说明、Cookie 安全方案与健康检查 `/api/v1/healthz`，便于直接测试。
+  10. 抽取 `fastops.services.query` 公共查询工具，按领域拆分 `fastops.schemas`，删除无引用的 schema 聚合兼容层，减少重复私有方法与大文件堆叠。
+  11. 新增 [`docs/17-fastapi-migration.md`](docs/17-fastapi-migration.md)，明确剩余模块按只读列表、CRUD、异步任务、权限/审计收口顺序继续迁移；旧 Django 代码仅作为未迁移模块的历史实现暂存，后续模块完成后删除。
+- **状态**：已完成
+
+
+### Q166 · 发布历史 · FastAPI 只读页与 API
+
+- **问题**：Q165 一期迁移后，发布历史仍仅存在 Django 历史实现中；FastAPI 迁移计划要求继续迁移剩余只读页，并保证接口文档可测试。
+- **处理**：新增 `fastops.services.releases`、`fastops.schemas.releases` 与 `/api/v1/releases/history`、`/api/v1/releases/options/status`；按原发布历史口径实现批次分页、逗号分词 AND 搜索、状态/批次/节点 IP 筛选和批次→节点→配置任务树形数据。新增 `/fastapi/releases` Jinja 页面与导航入口，仅提供只读查看，不迁移发布/回滚执行逻辑。
+- **状态**：已完成
+
+
+### Q167 · UI · FastAPI 页面基底对齐原 Django 布局
+
+- **问题**：Q165/Q166 迁移后的 FastAPI 页面使用顶部横向导航和简化样式，和原 Django 左侧功能模块菜单、顶部导航、卡片/表格排版不一致；页面内存在迁移期 `JSON` 调试入口，不符合业务页面交互口径。
+- **处理**：重写 `fastops/templates/base.html`，对齐原 Django 的左侧渐变模块菜单、可折叠菜单、顶部白色导航栏、内容区卡片、表格、按钮、分页、badge 与空态基调；保留已迁移页面现有类名兼容。移除业务页面头部 `JSON` 调试链接，接口测试入口统一保留在侧栏「接口文档」。
 - **状态**：已完成

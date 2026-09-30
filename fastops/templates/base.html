@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}MngxOps - Nginx 集中式管理平台{% endblock %}</title>
+    <link rel="icon" href="/favicon.ico">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --primary: #667eea;
+            --primary-rgb: 102, 126, 234;
+            --primary-soft: rgba(102, 126, 234, 0.08);
+            --primary-gradient: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            --bs-primary: #667eea;
+            --bs-primary-rgb: 102, 126, 234;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --info: #0dcaf0;
+            --dark: #212529;
+            --gray-100: #f8f9fa;
+            --gray-200: #e9ecef;
+            --gray-300: #dee2e6;
+            --gray-500: #adb5bd;
+            --gray-600: #6c757d;
+            --font-mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+            --br-sm: 4px;
+            --br-md: 6px;
+            --br-lg: 12px;
+            --fs-xs: 0.72rem;
+            --fs-sm: 0.78rem;
+            --fs-base: 0.82rem;
+            --fs-md: 0.88rem;
+            --fs-lg: 1rem;
+            --sidebar-width: 220px;
+            --sidebar-width-collapsed: 64px;
+            --transition-normal: 0.3s ease;
+        }
+
+        body { background: var(--gray-100); font-size: var(--fs-base); color: var(--dark); }
+        a { color: var(--primary); text-decoration: none; }
+        body.sidebar-collapsed { --sidebar-width: var(--sidebar-width-collapsed); }
+        .app-shell { display: flex; align-items: stretch; min-height: 100vh; }
+        .sidebar { position: sticky; top: 0; flex: 0 0 var(--sidebar-width); width: var(--sidebar-width); height: 100vh; min-height: 100vh; overflow-y: auto; overflow-x: visible; background: var(--primary-gradient); color: #fff; z-index: 1030; transition: width var(--transition-normal), flex-basis var(--transition-normal); }
+        .main-area { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+        .content-area { padding: 1rem; }
+
+        .sidebar-brand { padding: 1.1rem 0.9rem 1rem; display: flex; align-items: flex-start; gap: 0.6rem; }
+        .sidebar-brand-icon { width: 28px; height: 28px; border-radius: var(--br-md); flex-shrink: 0; margin-top: 1px; }
+        .sidebar-brand h4 { font-size: 1.02rem; font-weight: 600; letter-spacing: 0.02em; margin: 0; line-height: 1.2; white-space: nowrap; }
+        .sidebar-brand small { display: block; margin-top: 4px; font-size: 0.72rem; letter-spacing: 0.04em; line-height: 1.25; opacity: 0.7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nav-section-title { color: rgba(255, 255, 255, 0.45); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; padding: 16px 20px 6px; margin: 0; font-weight: 600; white-space: nowrap; overflow: hidden; }
+        .sidebar .nav-link { color: rgba(255, 255, 255, 0.8); padding: 10px 16px; margin: 2px 8px; border-radius: var(--br-md); transition: background-color var(--transition-normal), color var(--transition-normal), padding var(--transition-normal); display: flex; align-items: center; white-space: nowrap; position: relative; }
+        .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255, 255, 255, 0.2); }
+        .sidebar .nav-link > .bi:first-child { margin-right: 8px; font-size: 1.05rem; flex-shrink: 0; width: 1.15rem; text-align: center; }
+        .submenu-toggle { margin-left: auto; font-size: 0.7rem; transition: transform var(--transition-normal); opacity: 0.65; }
+        .nav-link.expanded .submenu-toggle { transform: rotate(90deg); }
+        .submenu { overflow: hidden; max-height: 0; transition: max-height var(--transition-normal); }
+        .submenu.show { max-height: 320px; }
+        .submenu .nav-link { padding-left: 2.75rem; font-size: 0.9rem; margin: 1px 8px; }
+        .submenu .nav-link > .bi:first-child { display: none; }
+
+        body.sidebar-collapsed .sidebar { overflow: visible; }
+        body.sidebar-collapsed .sidebar-brand { justify-content: center; padding: 1rem 0.5rem; }
+        body.sidebar-collapsed .sidebar-brand-text, body.sidebar-collapsed .nav-section-title, body.sidebar-collapsed .sidebar-label, body.sidebar-collapsed .submenu-toggle { display: none !important; }
+        body.sidebar-collapsed .sidebar .nav-link { justify-content: center; padding: 10px 0; margin: 2px 6px; font-size: 0; }
+        body.sidebar-collapsed .sidebar .nav-link > .bi:first-child { margin-right: 0; font-size: 1.15rem; }
+        body.sidebar-collapsed .submenu { position: absolute; left: 100%; top: 0; min-width: 10.5rem; max-height: none !important; overflow: visible; background: #5a67d8; border-radius: var(--br-md); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2); z-index: 1050; display: none; padding: 0.35rem 0; }
+        body.sidebar-collapsed .nav-item-wrap { position: relative; }
+        body.sidebar-collapsed .submenu.show { display: block; }
+        body.sidebar-collapsed .submenu .nav-link { font-size: var(--fs-base); justify-content: flex-start; padding: 8px 14px; margin: 1px 6px; }
+        body.sidebar-collapsed .submenu .sidebar-label { display: inline !important; }
+
+        .navbar { background: #fff; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); min-height: 56px; }
+        .navbar-brand { font-size: 1rem; font-weight: 600; }
+        .sidebar-toggle-btn { border: 0; background: transparent; color: var(--dark); padding: 0.15rem 0.35rem; border-radius: var(--br-md); line-height: 1; cursor: pointer; margin-right: 0.35rem; }
+        .sidebar-toggle-btn:hover { background: rgba(0, 0, 0, 0.06); }
+
+        .card { border: none; border-radius: var(--br-md); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05); margin-bottom: 20px; }
+        .card-header, .card-head { background: #fff; border-bottom: 2px solid var(--gray-200); padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+        .card-title { margin: 0; font-size: var(--fs-lg); font-weight: 600; }
+        .card-body { padding: 1rem; }
+        .btn { border-radius: var(--br-md); padding: 0.4rem 0.75rem; font-size: var(--fs-base); }
+        .btn.primary, .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; align-items: center; }
+        input, select, .form-control, .form-select { font-size: var(--fs-base); border-radius: var(--br-md); }
+        table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
+        th, td { border-top: 1px solid var(--gray-200); padding: 0.45rem 0.55rem; text-align: left; vertical-align: middle; }
+        th { background: var(--gray-100); font-weight: 600; white-space: nowrap; }
+        .table { margin-bottom: 0; }
+        .data-table { table-layout: fixed; width: 100%; }
+        .detail-cell { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        code { font-family: var(--font-mono); background: var(--gray-100); border-radius: var(--br-sm); padding: 2px 5px; color: var(--dark); }
+        pre { margin: 0; white-space: pre-wrap; word-break: break-word; background: #1a1a2e; color: #00ff88; border-radius: var(--br-md); padding: 0.875rem 1.125rem; max-height: 420px; overflow: auto; font-family: var(--font-mono); }
+        .muted { color: var(--gray-600); }
+        .badge { border-radius: 999px; font-size: var(--fs-xs); font-weight: 600; }
+        .badge.ok { background: #d1e7dd; color: #0f5132; }
+        .badge.bad { background: #f8d7da; color: #842029; }
+        .badge.warn { background: #fff3cd; color: #664d03; }
+        .pagination-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+        .pages { display: flex; gap: 5px; align-items: center; justify-content: center; flex: 1; }
+        .page { border: 1px solid var(--gray-300); background: #fff; border-radius: var(--br-md); padding: 6px 9px; color: var(--dark); font-size: var(--fs-sm); }
+        .page.disabled { color: var(--gray-500); pointer-events: none; background: var(--gray-100); }
+        .page.current { background: var(--primary-soft); color: var(--primary); }
+        .per-page { display: flex; align-items: center; gap: 6px; }
+        .per-page select { width: auto; }
+        .empty { text-align: center; color: var(--gray-600); padding: 2rem; }
+        .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+        .metric-card { background: #fff; border: 1px solid var(--gray-200); border-left: 4px solid var(--primary); border-radius: var(--br-md); padding: 16px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05); }
+        .metric { font-size: 2rem; font-weight: 700; line-height: 1.2; }
+        .metric-label { color: var(--gray-600); margin-top: 4px; font-size: var(--fs-sm); }
+
+        @media (max-width: 760px) {
+            .app-shell { display: block; }
+            .sidebar { position: relative; width: 100%; height: auto; min-height: 0; }
+            .content-area { padding: 0.75rem; }
+            .filters { grid-template-columns: 1fr; }
+            body.sidebar-collapsed { --sidebar-width: 220px; }
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="app-shell">
+    <aside class="sidebar p-0">
+        <div class="sidebar-brand">
+            <img class="sidebar-brand-icon" src="/favicon.ico" alt="" title="MngxOps">
+            <div class="sidebar-brand-text">
+                <h4><span class="sidebar-label">MngxOps</span></h4>
+                <small class="sidebar-label">Nginx 集中式管理平台</small>
+            </div>
+        </div>
+        <nav class="nav flex-column pb-3">
+            <a class="nav-link top-level {% if active == 'home' %}active{% endif %}" href="/fastapi" title="首页">
+                <i class="bi bi-house-door"></i><span class="sidebar-label">首页</span>
+            </a>
+
+            <div class="nav-section-title">资产配置</div>
+            <div class="nav-item-wrap">
+                <a class="nav-link {% if active == 'nodes' %}active expanded{% else %}collapsed{% endif %}" href="#" data-submenu-toggle data-target="submenu-nodes" title="节点管理">
+                    <i class="bi bi-server"></i><span class="sidebar-label">节点管理</span><i class="bi bi-chevron-right submenu-toggle"></i>
+                </a>
+                <div class="submenu {% if active == 'nodes' %}show{% endif %}" id="submenu-nodes">
+                    <a class="nav-link {% if active == 'nodes' %}active{% endif %}" href="/fastapi/nodes"><span class="sidebar-label">节点列表</span></a>
+                    <a class="nav-link disabled" href="#"><span class="sidebar-label">节点组管理</span></a>
+                </div>
+            </div>
+            <a class="nav-link top-level {% if active == 'credentials' %}active{% endif %}" href="/fastapi/credentials" title="凭证管理">
+                <i class="bi bi-key"></i><span class="sidebar-label">凭证管理</span>
+            </a>
+            <a class="nav-link top-level {% if active == 'configs' %}active{% endif %}" href="/fastapi/configs" title="配置管理">
+                <i class="bi bi-file-earmark-code"></i><span class="sidebar-label">配置管理</span>
+            </a>
+
+            <div class="nav-section-title">发布运维</div>
+            <div class="nav-item-wrap">
+                <a class="nav-link {% if active in ['releases', 'tasks'] %}active expanded{% else %}collapsed{% endif %}" href="#" data-submenu-toggle data-target="submenu-releases" title="发布管理">
+                    <i class="bi bi-rocket-takeoff"></i><span class="sidebar-label">发布管理</span><i class="bi bi-chevron-right submenu-toggle"></i>
+                </a>
+                <div class="submenu {% if active in ['releases', 'tasks'] %}show{% endif %}" id="submenu-releases">
+                    <a class="nav-link disabled" href="#"><span class="sidebar-label">发布中心</span></a>
+                    <a class="nav-link {% if active == 'tasks' %}active{% endif %}" href="/fastapi/tasks"><span class="sidebar-label">任务中心</span></a>
+                    <a class="nav-link {% if active == 'releases' %}active{% endif %}" href="/fastapi/releases"><span class="sidebar-label">发布历史</span></a>
+                </div>
+            </div>
+            <div class="nav-item-wrap">
+                <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-ops" title="运维工具">
+                    <i class="bi bi-tools"></i><span class="sidebar-label">运维工具</span><i class="bi bi-chevron-right submenu-toggle"></i>
+                </a>
+                <div class="submenu" id="submenu-ops">
+                    <a class="nav-link disabled" href="#"><span class="sidebar-label">Nginx 升级</span></a>
+                    <a class="nav-link disabled" href="#"><span class="sidebar-label">Nginx 安装</span></a>
+                    <a class="nav-link disabled" href="#"><span class="sidebar-label">Nginx 启停</span></a>
+                    <a class="nav-link disabled" href="#"><span class="sidebar-label">Nginx 卸载</span></a>
+                </div>
+            </div>
+
+            <div class="nav-section-title">系统管理</div>
+            <div class="nav-item-wrap">
+                <a class="nav-link collapsed" href="#" data-submenu-toggle data-target="submenu-users" title="用户管理">
+                    <i class="bi bi-people"></i><span class="sidebar-label">用户管理</span><i class="bi bi-chevron-right submenu-toggle"></i>
+                </a>
+                <div class="submenu" id="submenu-users">
+                    <a class="nav-link disabled" href="#"><span class="sidebar-label">用户列表</span></a>
+                    <a class="nav-link disabled" href="#"><span class="sidebar-label">角色管理</span></a>
+                    <a class="nav-link disabled" href="#"><span class="sidebar-label">用户组管理</span></a>
+                </div>
+            </div>
+            <div class="nav-item-wrap">
+                <a class="nav-link {% if active == 'audit' %}active expanded{% else %}collapsed{% endif %}" href="#" data-submenu-toggle data-target="submenu-audit" title="审计日志">
+                    <i class="bi bi-journal-text"></i><span class="sidebar-label">审计日志</span><i class="bi bi-chevron-right submenu-toggle"></i>
+                </a>
+                <div class="submenu {% if active == 'audit' %}show{% endif %}" id="submenu-audit">
+                    <a class="nav-link {% if request.url.path == '/fastapi/audit' %}active{% endif %}" href="/fastapi/audit"><span class="sidebar-label">操作日志</span></a>
+                    <a class="nav-link {% if request.url.path == '/fastapi/audit/login' %}active{% endif %}" href="/fastapi/audit/login"><span class="sidebar-label">登录日志</span></a>
+                </div>
+            </div>
+            <a class="nav-link top-level {% if active == 'settings' %}active{% endif %}" href="/fastapi/settings" title="系统设置">
+                <i class="bi bi-gear"></i><span class="sidebar-label">系统设置</span>
+            </a>
+            <a class="nav-link top-level" href="/docs" title="接口文档">
+                <i class="bi bi-braces"></i><span class="sidebar-label">接口文档</span>
+            </a>
+        </nav>
+    </aside>
+
+    <div class="main-area">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button type="button" class="sidebar-toggle-btn" id="sidebarToggleBtn" title="收起/展开菜单" aria-label="收起或展开左侧菜单">
+                    <i class="bi bi-list fs-4"></i>
+                </button>
+                <span class="navbar-brand mb-0 h1">{% block page_title %}MngxOps{% endblock %}</span>
+                <div class="ms-auto d-flex align-items-center gap-2">
+                    {% if user %}<span class="text-muted small"><i class="bi bi-person-circle"></i> {{ user.username }}</span>{% endif %}
+                    {% if user %}
+                    <form method="post" action="/logout" class="m-0">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm"><i class="bi bi-box-arrow-right"></i> 退出</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </nav>
+        <main class="content-area">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    (function() {
+        if (localStorage.getItem('mngxops_sidebar_collapsed') === '1') {
+            document.body.classList.add('sidebar-collapsed');
+        }
+
+        function setSidebarCollapsed(collapsed) {
+            document.body.classList.toggle('sidebar-collapsed', collapsed);
+            localStorage.setItem('mngxops_sidebar_collapsed', collapsed ? '1' : '0');
+            if (collapsed) {
+                document.querySelectorAll('.sidebar .submenu.show').forEach(function(submenu) {
+                    submenu.classList.remove('show');
+                });
+                document.querySelectorAll('.sidebar [data-submenu-toggle]').forEach(function(trigger) {
+                    trigger.classList.remove('expanded');
+                    trigger.classList.add('collapsed');
+                });
+            }
+        }
+
+        var toggle = document.getElementById('sidebarToggleBtn');
+        if (toggle) {
+            toggle.addEventListener('click', function() {
+                setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+            });
+        }
+
+        document.querySelectorAll('[data-submenu-toggle]').forEach(function(trigger) {
+            trigger.addEventListener('click', function(event) {
+                event.preventDefault();
+                var submenu = document.getElementById(trigger.getAttribute('data-target'));
+                if (!submenu) return;
+                var collapsed = document.body.classList.contains('sidebar-collapsed');
+                if (collapsed) {
+                    document.querySelectorAll('.sidebar .submenu.show').forEach(function(other) {
+                        if (other !== submenu) other.classList.remove('show');
+                    });
+                    document.querySelectorAll('.sidebar [data-submenu-toggle]').forEach(function(otherTrigger) {
+                        if (otherTrigger !== trigger) {
+                            otherTrigger.classList.remove('expanded');
+                            otherTrigger.classList.add('collapsed');
+                        }
+                    });
+                }
+                var expanded = !submenu.classList.contains('show');
+                submenu.classList.toggle('show', expanded);
+                trigger.classList.toggle('expanded', expanded);
+                trigger.classList.toggle('collapsed', !expanded);
+            });
+        });
+    })();
+</script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

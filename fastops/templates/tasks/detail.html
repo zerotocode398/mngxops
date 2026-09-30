@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}任务 #{{ task.id }} - MngxOps{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-head">
+        <h1 class="card-title">任务 #{{ task.id }}</h1>
+        <div class="nav">
+            <a href="/fastapi/tasks">返回任务中心</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <table>
+            <tbody>
+            <tr><th>任务类型</th><td>{{ task.operation_label }}</td><th>状态</th><td>{{ task.status_label }}（{{ task.progress }}%）</td></tr>
+            <tr><th>来源批次</th><td>{{ task.source_batch or '-' }}</td><th>触发人</th><td>{{ task.trigger_username }}</td></tr>
+            <tr><th>目标主机</th><td>{{ task.target_hostnames or '-' }}</td><th>目标 IP</th><td>{{ task.target_ips or '-' }}</td></tr>
+            <tr><th>目标配置</th><td colspan="3">{{ task.target_configs or '-' }}</td></tr>
+            <tr><th>创建时间</th><td>{{ task.created_at or '-' }}</td><th>更新时间</th><td>{{ task.updated_at or '-' }}</td></tr>
+            <tr><th>开始时间</th><td>{{ task.started_at or '-' }}</td><th>完成时间</th><td>{{ task.finished_at or '-' }}</td></tr>
+            <tr><th>说明</th><td colspan="3">{{ task.detail or '-' }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="card" style="margin-top:18px;">
+    <div class="card-head"><h2 class="card-title">执行结果</h2></div>
+    <div class="card-body">
+        {% if task.result %}<pre>{{ task.result }}</pre>{% else %}<div class="empty">暂无执行结果</div>{% endif %}
+    </div>
+</section>
+
+<section class="card" style="margin-top:18px;">
+    <div class="card-head"><h2 class="card-title">执行日志</h2></div>
+    <div class="card-body">
+        {% if task.log_output %}<pre>{{ task.log_output }}</pre>{% else %}<div class="empty">暂无执行日志</div>{% endif %}
+    </div>
+</section>
+{% endblock %}

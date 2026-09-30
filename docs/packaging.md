@@ -122,7 +122,7 @@ libpython3.6m.so.1.0
 
 - 入口脚本：[`run_server.py`](../run_server.py)
 - 打包规格：[`mngxops.spec`](../mngxops.spec)
-- 依赖：[`requirements.txt`](../requirements.txt)（含业务包、`waitress`、`pyinstaller`；按 Python 版本用 PEP 508 选择钉死项）
+- 依赖：[`requirements.txt`](../requirements.txt)（含 FastAPI/Uvicorn、业务包与 `pyinstaller`）
 
 Python 版本：**3.9.6**（与项目约定一致）。
 
@@ -334,7 +334,7 @@ python -m pip install --proxy="" -r requirements.txt
 ```
 
 **Q：要不要先准备 db 或密钥文件？**  
-A：常规新环境不需要。放二进制 → `migrate` → `createsuperuser` → `runserver` 即可。
+A：迁移期需要携带或预置既有 `db.sqlite3`，FastAPI 登录复用库内 `auth_user` 数据；全新初始化脚本待后续迁移任务补齐。
 
 **Q：交付物里还有 `.py` 吗？**  
 A：客户机上看不到源码树；包内主要是字节码/依赖。这不等于军事级防逆向（`.pyc` 仍可能被还原）。
@@ -343,7 +343,7 @@ A：客户机上看不到源码树；包内主要是字节码/依赖。这不等
 A：不要。开发继续：
 
 ```bash
-python manage.py runserver
+python run_server.py fastapi 127.0.0.1:11993
 ```
 
 ---
@@ -352,11 +352,11 @@ python manage.py runserver
 
 | 文件 | 作用 |
 |------|------|
-| [`run_server.py`](../run_server.py) | 二进制入口（Waitress + 白名单 manage） |
+| [`run_server.py`](../run_server.py) | FastAPI/Uvicorn 启动入口 |
 | [`mngxops.spec`](../mngxops.spec) | PyInstaller 规格 |
 | [`ngxops/runtime_paths.py`](../ngxops/runtime_paths.py) | 冻结/源码下资源与数据目录 |
 | [`utils/crypto.py`](../utils/crypto.py) | 凭证加密与 `.fernet_key` 路径 |
-| [`requirements.txt`](../requirements.txt) | 业务 + Waitress + PyInstaller（按 Python 版本选择） |
+| [`requirements.txt`](../requirements.txt) | FastAPI/Uvicorn + 业务依赖 + PyInstaller |
 
 ---
 

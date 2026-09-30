@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}系统设置 - MngxOps{% endblock %}
+
+{% block content %}
+<section class="card" style="margin-bottom:18px;">
+    <div class="card-head">
+        <h1 class="card-title">系统设置</h1>
+    </div>
+    <div class="card-body">
+        <div class="nav">
+            <a href="/fastapi/settings" class="{% if not active_group %}active{% endif %}">全部</a>
+            {% for group in groups %}
+            <a href="/fastapi/settings?group={{ group.name|urlencode }}" class="{% if active_group == group.name %}active{% endif %}">
+                {{ group.name }}（{{ group.count }}）
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-head"><h2 class="card-title">配置项</h2></div>
+    <div class="card-body">
+        {% if items %}
+        <table>
+            <thead>
+            <tr>
+                <th>分组</th>
+                <th>名称</th>
+                <th>键</th>
+                <th>值</th>
+                <th>类型</th>
+                <th>说明</th>
+                <th>更新时间</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for item in items %}
+            <tr>
+                <td><span class="badge">{{ item.group }}</span></td>
+                <td>{{ item.label }}</td>
+                <td><code>{{ item.key }}</code></td>
+                <td><strong>{{ item.value }}</strong>{% if item.unit %}<span class="muted"> {{ item.unit }}</span>{% endif %}</td>
+                <td>{{ item.value_type }}</td>
+                <td class="detail-cell" title="{{ item.description }}">{{ item.description or '-' }}</td>
+                <td class="muted">{{ item.updated_at or '-' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无系统设置记录</div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

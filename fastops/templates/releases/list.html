@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}发布历史 - MngxOps{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-head">
+        <h1 class="card-title">发布历史</h1>
+    </div>
+    <div class="card-body">
+        <form method="get" action="/fastapi/releases" class="filters">
+            <input type="text" name="search" value="{{ filters.search }}" placeholder="搜索批次、节点、配置或操作人">
+            <select name="status">
+                <option value="" {% if not filters.status %}selected{% endif %}>全部状态</option>
+                {% for option in status_options %}
+                <option value="{{ option.value }}" {% if filters.status == option.value %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+            </select>
+            <input type="text" name="batch" value="{{ filters.batch }}" placeholder="批次号">
+            <input type="text" name="node_ip" value="{{ filters.node_ip }}" placeholder="节点 IP">
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <button class="btn primary" type="submit">查询</button>
+            {% if filters.search or filters.status or filters.batch or filters.node_ip %}
+            <a class="btn" href="/fastapi/releases?per_page={{ pagination.per_page }}">清空</a>
+            {% endif %}
+        </form>
+
+        {% if items %}
+        <table class="release-history-table">
+            <thead>
+            <tr>
+                <th>批次 / 节点 / 配置</th>
+                <th>版本</th>
+                <th>路径</th>
+                <th>状态</th>
+                <th>时间</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for batch in items %}
+            <tr class="batch-row" data-batch="{{ batch.batch_number }}" data-expanded="{% if expand_all %}1{% else %}0{% endif %}">
+                <td>
+                    <button class="icon-toggle" type="button" aria-label="切换批次展开">{% if expand_all %}▾{% else %}▸{% endif %}</button>
+                    <code>{{ batch.batch_number }}</code>
+                    <span class="muted">{{ batch.operator }}</span>
+                </td>
+                <td></td>
+                <td></td>
+                <td>
+                    {% if batch.failed == 0 and batch.success > 0 %}
+                    <span class="badge ok">全部成功 {{ batch.success }}</span>
+                    {% elif batch.success > 0 and batch.failed > 0 %}
+                    <span class="badge warn">部分失败 {{ batch.success }}/{{ batch.failed }}</span>
+                    {% elif batch.failed > 0 %}
+                    <span class="badge bad">全部失败 {{ batch.failed }}</span>
+                    {% else %}
+                    <span class="badge">其他 {{ batch.other }}</span>
+                    {% endif %}
+                </td>
+                <td class="muted">{{ batch.created_at or '-' }}</td>
+            </tr>
+            {% for node_group in batch.nodes %}
+            {% set node_uid = batch.batch_number ~ '-' ~ node_group.node.id %}
+            <tr class="node-row {% if not expand_all %}hidden{% endif %}" data-batch="{{ batch.batch_number }}" data-node="{{ node_uid }}" data-expanded="{% if expand_all %}1{% else %}0{% endif %}">
+                <td>
+                    <button class="icon-toggle" type="button" aria-label="切换节点展开">{% if expand_all %}▾{% else %}▸{% endif %}</button>
+                    <strong>{{ node_group.node.hostname }}</strong>
+                    <span class="muted">({{ node_group.node.ip }}:{{ node_group.node.port }})</span>
+                    {% if node_group.node.is_locked %}<span class="badge warn">锁定</span>{% endif %}
+                    {% if node_group.node.is_deleted %}<span class="badge">已删除</span>{% endif %}
+                    {% for group in node_group.node.groups %}<span class="badge">{{ group }}</span>{% endfor %}
+                    <span class="badge">{{ node_group.tasks|length }} 配置</span>
+                </td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            {% for task in node_group.tasks %}
+            <tr class="task-row {% if not expand_all %}hidden{% endif %}" data-node="{{ node_uid }}">
+                <td class="task-name"><code>{{ task.config_name }}</code></td>
+                <td>{% if task.publish_version %}<span class="badge">V{{ task.publish_version }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+                <td class="detail-cell"><span class="muted">{{ task.remote_path or '-' }}</span></td>
+                <td>
+                    {% if task.status == 'success' %}<span class="badge ok">{{ task.status_label }}</span>
+                    {% elif task.status == 'failed' %}<span class="badge bad">{{ task.status_label }}</span>
+                    {% elif task.status in ['pending', 'running'] %}<span class="badge warn">{{ task.status_label }}</span>
+                    {% else %}<span class="badge">{{ task.status_label }}</span>{% endif %}
+                </td>
+                <td class="muted">{{ task.created_at or '-' }}</td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无发布记录</div>
+        {% endif %}
+
+        {% include "partials/pagination.html" %}
+    </div>
+</section>
+
+<style>
+    .release-history-table .batch-row { background:#f3f4f6; cursor:pointer; }
+    .release-history-table .node-row { background:#f9fafb; cursor:pointer; }
+    .release-history-table .task-row { background:#fff; }
+    .release-history-table .hidden { display:none; }
+    .release-history-table .task-name { padding-left:34px; }
+    .icon-toggle { border:0; background:transparent; color:#6b7280; width:22px; padding:0; cursor:pointer; font:inherit; }
+</style>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        function setExpanded(row, expanded) {
+            row.dataset.expanded = expanded ? '1' : '0';
+            var button = row.querySelector('.icon-toggle');
+            if (button) button.textContent = expanded ? '▾' : '▸';
+        }
+
+        document.querySelectorAll('.batch-row').forEach(function(row) {
+            row.addEventListener('click', function() {
+                var expanded = row.dataset.expanded !== '1';
+                setExpanded(row, expanded);
+                document.querySelectorAll('.node-row[data-batch="' + row.dataset.batch + '"]').forEach(function(nodeRow) {
+                    nodeRow.classList.toggle('hidden', !expanded);
+                    if (!expanded) {
+                        setExpanded(nodeRow, false);
+                        document.querySelectorAll('.task-row[data-node="' + nodeRow.dataset.node + '"]').forEach(function(taskRow) {
+                            taskRow.classList.add('hidden');
+                        });
+                    }
+                });
+            });
+        });
+
+        document.querySelectorAll('.node-row').forEach(function(row) {
+            row.addEventListener('click', function(event) {
+                event.stopPropagation();
+                var expanded = row.dataset.expanded !== '1';
+                setExpanded(row, expanded);
+                document.querySelectorAll('.task-row[data-node="' + row.dataset.node + '"]').forEach(function(taskRow) {
+                    taskRow.classList.toggle('hidden', !expanded);
+                });
+            });
+        });
+    });
+</script>
+{% endblock %}

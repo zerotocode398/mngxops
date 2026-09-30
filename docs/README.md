@@ -1,6 +1,6 @@
 # mngxops 软件需求设计文档
 
-本文档集基于**当前代码实现**倒推整理（实现即基线需求），按功能模块拆分。历史交互优化结论见仓库根目录 [`AGENTS.md`](../AGENTS.md)（Q1–Q161 结论台账）。
+本文档集基于**当前代码实现**倒推整理（实现即基线需求），按功能模块拆分。历史交互优化结论见仓库根目录 [`AGENTS.md`](../AGENTS.md)（Q1–Q167 结论台账）。
 
 ## 阅读顺序
 
@@ -13,6 +13,7 @@
 | 5 | 业务模块 02–12 | 按需查阅各功能需求 |
 | 6 | [13-ui-conventions.md](13-ui-conventions.md) | 已落地 UI/交互约束 |
 | 7 | [16-nfr.md](16-nfr.md) | 非功能需求（基于现状） |
+| 8 | [17-fastapi-migration.md](17-fastapi-migration.md) | FastAPI + Jinja 迁移 |
 | — | [packaging.md](packaging.md) | PyInstaller 单二进制：三平台打包步骤、数据目录与 `.fernet_key` |
 | — | [`AGENTS.md`](../AGENTS.md) | 优化点结论台账（仓库根目录，非 docs 编号） |
 
@@ -38,7 +39,7 @@
 ## 文档与 AGENTS 的关系
 
 - **docs/**：完整软件需求设计（功能、流程、模型、接口、实现锚点）。
-- **AGENTS.md**：优化点结论台账（Q1–Q122）的**唯一**来源；已完成项沉淀为 docs 中的「已确认行为」。
+- **AGENTS.md**：优化点结论台账（Q1–Q167）的**唯一**来源；已完成项沉淀为 docs 中的「已确认行为」。
 - 未实现或已关闭能力：记入 `AGENTS.md`（续编 Q122+），不在模块正文写成已交付。
 
 ## 写作约定

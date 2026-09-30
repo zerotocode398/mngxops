@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}配置列表 - MngxOps{% endblock %}
+
+{% block content %}
+<section class="card" style="margin-bottom:18px;">
+    <div class="card-head">
+        <h1 class="card-title">配置列表</h1>
+    </div>
+    <div class="card-body">
+        <div class="nav" style="margin-bottom:14px;">
+            <a href="/fastapi/configs?per_page={{ pagination.per_page }}{% if filters.nginx_available == 'all' %}&nginx_available=all{% endif %}" class="{% if not filters.sync_status %}active{% endif %}">全部 {{ status_counts.total }}</a>
+            <a href="/fastapi/configs?sync_status=pending&per_page={{ pagination.per_page }}{% if filters.nginx_available == 'all' %}&nginx_available=all{% endif %}" class="{% if filters.sync_status == 'pending' %}active{% endif %}">待同步 {{ status_counts.pending }}</a>
+            <a href="/fastapi/configs?sync_status=synced&per_page={{ pagination.per_page }}{% if filters.nginx_available == 'all' %}&nginx_available=all{% endif %}" class="{% if filters.sync_status == 'synced' %}active{% endif %}">已同步 {{ status_counts.synced }}</a>
+            <a href="/fastapi/configs?sync_status=orphaned&per_page={{ pagination.per_page }}{% if filters.nginx_available == 'all' %}&nginx_available=all{% endif %}" class="{% if filters.sync_status == 'orphaned' %}active{% endif %}">远程删除 {{ status_counts.orphaned }}</a>
+            <a href="/fastapi/configs?sync_status=failed&per_page={{ pagination.per_page }}{% if filters.nginx_available == 'all' %}&nginx_available=all{% endif %}" class="{% if filters.sync_status == 'failed' %}active{% endif %}">失败 {{ status_counts.failed }}</a>
+            <a href="/fastapi/configs?sync_status=marked_deleted&per_page={{ pagination.per_page }}{% if filters.nginx_available == 'all' %}&nginx_available=all{% endif %}" class="{% if filters.sync_status == 'marked_deleted' %}active{% endif %}">标记删除 {{ status_counts.marked_deleted }}</a>
+        </div>
+        <form method="get" action="/fastapi/configs" class="filters">
+            <input type="text" name="search" value="{{ filters.search }}" placeholder="搜索节点、IP、配置名称或路径">
+            <select name="group_id">
+                <option value="" {% if not filters.group_id %}selected{% endif %}>全部节点组</option>
+                {% for group in groups %}
+                <option value="{{ group.id }}" {% if filters.group_id|string == group.id|string %}selected{% endif %}>{{ group.name }}</option>
+                {% endfor %}
+            </select>
+            <select name="nginx_available">
+                <option value="true" {% if filters.nginx_available != 'all' %}selected{% endif %}>Nginx 已识别（{{ nginx_available_count }}）</option>
+                <option value="all" {% if filters.nginx_available == 'all' %}selected{% endif %}>全部节点（{{ total_nodes_count }}）</option>
+            </select>
+            <input type="hidden" name="sync_status" value="{{ filters.sync_status }}">
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <button class="btn primary" type="submit">查询</button>
+            {% if filters.search or filters.group_id or filters.sync_status or filters.nginx_available == 'all' %}
+            <a class="btn" href="/fastapi/configs?per_page={{ pagination.per_page }}">清空</a>
+            {% endif %}
+        </form>
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-head"><h2 class="card-title">节点配置绑定</h2></div>
+    <div class="card-body">
+        {% if items %}
+        <table>
+            <thead>
+            <tr>
+                <th>节点</th>
+                <th>环境</th>
+                <th>SSH</th>
+                <th>Nginx</th>
+                <th>节点组</th>
+                <th>绑定统计</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for node in items %}
+            <tr>
+                <td><strong>{{ node.hostname }}</strong><br><span class="muted">{{ node.ip }}:{{ node.port }}</span></td>
+                <td>{{ node.environment }}</td>
+                <td>
+                    {% if node.status == 'online' %}<span class="badge ok">在线</span>
+                    {% elif node.status == 'offline' %}<span class="badge bad">离线</span>
+                    {% else %}<span class="badge warn">未知</span>{% endif %}
+                </td>
+                <td>
+                    {% if node.nginx_available == 1 %}<span class="badge ok">{{ node.nginx_version or '已识别' }}</span>
+                    {% elif node.nginx_available == 0 %}<span class="badge bad">未检测到</span>
+                    {% else %}<span class="badge">未探测</span>{% endif %}
+                </td>
+                <td>{{ node.group_names or '-' }}</td>
+                <td>
+                    <span class="badge">总 {{ node.total }}</span>
+                    <span class="badge ok">已同步 {{ node.synced }}</span>
+                    <span class="badge warn">待同步 {{ node.pending }}</span>
+                    {% if node.failed %}<span class="badge bad">失败 {{ node.failed }}</span>{% endif %}
+                    {% if node.orphaned %}<span class="badge">远程删除 {{ node.orphaned }}</span>{% endif %}
+                    {% if node.marked_deleted %}<span class="badge bad">标记删除 {{ node.marked_deleted }}</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无配置节点数据</div>
+        {% endif %}
+
+        {% include "partials/pagination.html" %}
+    </div>
+</section>
+
+{% if unbound_configs %}
+<section class="card" style="margin-top:18px;">
+    <div class="card-head"><h2 class="card-title">未绑定配置标签</h2></div>
+    <div class="card-body">
+        <table>
+            <thead><tr><th>名称</th><th>默认路径</th><th>来源</th><th>创建人</th><th>创建时间</th></tr></thead>
+            <tbody>
+            {% for config in unbound_configs %}
+            <tr>
+                <td><strong>{{ config.name }}</strong></td>
+                <td><code>{{ config.default_remote_path or '-' }}</code></td>
+                <td>{{ config.source }}</td>
+                <td>{{ config.created_by }}</td>
+                <td class="muted">{{ config.created_at or '-' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

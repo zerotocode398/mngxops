@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}迁移控制台 - FastAPI{% endblock %}
+
+{% block content %}
+<section class="card" style="margin-bottom:18px;">
+    <div class="card-head">
+        <div>
+            <h1 class="card-title">MngxOps FastAPI 迁移控制台</h1>
+            <div class="muted">当前已提供原生登录、节点、凭证、配置、审计日志、任务中心、系统设置与资产 API。</div>
+        </div>
+        <div class="nav">
+            <a href="/fastapi/nodes">节点</a>
+            <a href="/fastapi/credentials">凭证</a>
+            <a href="/fastapi/configs">配置</a>
+            <a href="/fastapi/audit">审计</a>
+            <a href="/fastapi/tasks">任务</a>
+            <a href="/fastapi/settings">设置</a>
+            <a href="/docs">接口文档</a>
+            <a href="/api/v1/healthz">Healthz</a>
+        </div>
+    </div>
+</section>
+
+<div class="metric-grid">
+    <div class="metric-card"><div class="metric">{{ snapshot.counts.nodes }}</div><div class="metric-label">节点</div></div>
+    <div class="metric-card"><div class="metric">{{ snapshot.counts.credentials }}</div><div class="metric-label">凭证</div></div>
+    <div class="metric-card"><div class="metric">{{ snapshot.counts.configs }}</div><div class="metric-label">配置标签</div></div>
+    <div class="metric-card"><div class="metric">{{ snapshot.counts.bindings }}</div><div class="metric-label">配置绑定</div></div>
+    <div class="metric-card"><div class="metric">{{ snapshot.counts.tasks }}</div><div class="metric-label">任务中心记录</div></div>
+    <div class="metric-card"><div class="metric">{{ snapshot.counts.audit_logs }}</div><div class="metric-label">操作日志</div></div>
+    <div class="metric-card"><div class="metric">{{ snapshot.counts.login_logs }}</div><div class="metric-label">登录日志</div></div>
+</div>
+
+<section class="card">
+    <div class="card-head"><h2 class="card-title">迁移约束</h2></div>
+    <div class="card-body">
+        <table>
+            <tbody>
+            <tr><th>数据库</th><td><code>{{ snapshot.db_path }}</code></td></tr>
+            <tr><th>业务连续性</th><td>FastAPI 入口已脱离 Django 运行依赖，后续按模块继续迁移写操作与异步任务。</td></tr>
+            <tr><th>清理策略</th><td>迁移模块时删除对应 Django 视图/模板中的冗余代码，公共逻辑沉淀到 service/helper 层。</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="card" style="margin-top:18px;">
+    <div class="card-head"><h2 class="card-title">最近任务</h2></div>
+    <div class="card-body">
+        {% if snapshot.recent_tasks %}
+        <table>
+            <thead><tr><th>ID</th><th>类型</th><th>状态</th><th>进度</th><th>批次</th><th>时间</th></tr></thead>
+            <tbody>
+            {% for task in snapshot.recent_tasks %}
+            <tr>
+                <td><code>#{{ task.id }}</code></td>
+                <td>{{ task.operation_type }}</td>
+                <td>{{ task.status }}</td>
+                <td>{{ task.progress }}%</td>
+                <td>{{ task.source_batch or '-' }}</td>
+                <td class="muted">{{ task.created_at }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无任务记录，或数据库尚未初始化。</div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}节点列表 - MngxOps{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-head">
+        <h1 class="card-title">节点列表</h1>
+    </div>
+    <div class="card-body">
+        <form method="get" action="/fastapi/nodes" class="filters">
+            <input type="text" name="search" value="{{ filters.search }}" placeholder="搜索主机名或 IP">
+            <select name="status">
+                <option value="" {% if not filters.status %}selected{% endif %}>全部 SSH 状态</option>
+                <option value="online" {% if filters.status == 'online' %}selected{% endif %}>在线</option>
+                <option value="offline" {% if filters.status == 'offline' %}selected{% endif %}>离线</option>
+                <option value="unknown" {% if filters.status == 'unknown' %}selected{% endif %}>未知</option>
+            </select>
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <button class="btn primary" type="submit">查询</button>
+            {% if filters.search or filters.status %}<a class="btn" href="/fastapi/nodes?per_page={{ pagination.per_page }}">清空</a>{% endif %}
+        </form>
+
+        {% if items %}
+        <table>
+            <thead>
+            <tr>
+                <th>主机</th>
+                <th>环境</th>
+                <th>SSH</th>
+                <th>Nginx</th>
+                <th>凭证</th>
+                <th>节点组</th>
+                <th>探测时间</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for node in items %}
+            <tr>
+                <td><strong>{{ node.hostname }}</strong><br><span class="muted">{{ node.ip }}:{{ node.port }}</span></td>
+                <td>{{ node.environment }}</td>
+                <td>
+                    {% if node.status == 'online' %}<span class="badge ok">在线</span>
+                    {% elif node.status == 'offline' %}<span class="badge bad">离线</span>
+                    {% else %}<span class="badge warn">未知</span>{% endif %}
+                    {% if node.is_locked %}<span class="badge warn">锁定</span>{% endif %}
+                </td>
+                <td>
+                    {% if node.nginx_available == 1 %}<span class="badge ok">{{ node.nginx_version or '已安装' }}</span>
+                    {% elif node.nginx_available == 0 %}<span class="badge bad">未检测到</span>
+                    {% else %}<span class="badge">未探测</span>{% endif %}
+                </td>
+                <td>{{ node.credential_name or '-' }}</td>
+                <td>{{ node.group_names or '-' }}</td>
+                <td class="muted">{{ node.last_probe_at or '-' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无节点数据</div>
+        {% endif %}
+
+        {% include "partials/pagination.html" %}
+    </div>
+</section>
+{% endblock %}

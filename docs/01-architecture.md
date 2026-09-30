@@ -42,7 +42,7 @@ sequenceDiagram
 
 - **无 Celery/RQ**：长任务用 `threading.Thread(daemon=True)` 或 `ThreadPoolExecutor`。
 - **多 Worker 部署注意**：内存中的发布实时步骤缓存（如 `_RELEASE_CURRENT_STEPS`）仅本进程有效；进度以 DB 中 `TaskCenterTask` 为准。
-- **Web 启动清理**：加载 WSGI 时将遗留 `pending`/`running` 标失败（Q161），`migrate` 不执行。
+- **Web 启动清理**：历史 Django WSGI 入口曾在加载时将遗留 `pending`/`running` 标失败（Q161）；FastAPI 迁移期不再通过 WSGI 启动应用。
 
 ## 3. URL 挂载
 
@@ -131,8 +131,8 @@ sequenceDiagram
 ## 10. 静态与上传
 
 - `MEDIA`：源码包 `nginx_packages/`、用户头像 `avatar/` 等。
-- 源码 `DEBUG=True`：`manage.py runserver` 托管 `/static/` 与 `/media/`。
-- 二进制默认 `DEBUG=False`：Waitress 无 StaticFilesHandler；由 `urls.py` 用 staticfiles finder（`insecure=True`）托管 `/static/`，并用 `django.views.static.serve` 托管 `/media/`。首次启动不必 `collectstatic` 即可访问站点图标等打包资源。
+- 源码开发：`python run_server.py fastapi 127.0.0.1:11993` 启动 Uvicorn，FastAPI 挂载 `/static/`。
+- 二进制运行：由 FastAPI/Uvicorn 提供入口，静态资源随 `fastops.core.config.resource_dir()` 解析到打包资源目录。
 
 ## 11. 架构约束（实现即需求）
 

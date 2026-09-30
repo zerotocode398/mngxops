@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}操作日志 - MngxOps{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-head">
+        <h1 class="card-title">操作日志</h1>
+        <div class="nav">
+            <a href="/fastapi/audit/login">登录日志</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="get" action="/fastapi/audit" class="filters">
+            <input type="text" name="search" value="{{ filters.search }}" placeholder="搜索用户、动作或详情">
+            <select name="module">
+                <option value="" {% if not filters.module %}selected{% endif %}>全部模块</option>
+                {% for module in modules %}
+                <option value="{{ module }}" {% if filters.module == module %}selected{% endif %}>{{ module }}</option>
+                {% endfor %}
+            </select>
+            <select name="result">
+                <option value="" {% if not filters.result %}selected{% endif %}>全部结果</option>
+                <option value="success" {% if filters.result == 'success' %}selected{% endif %}>成功</option>
+                <option value="failed" {% if filters.result == 'failed' %}selected{% endif %}>失败</option>
+            </select>
+            <input type="date" name="date_from" value="{{ filters.date_from }}">
+            <input type="date" name="date_to" value="{{ filters.date_to }}">
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <button class="btn primary" type="submit">查询</button>
+            {% if filters.search or filters.module or filters.result or filters.date_from or filters.date_to %}
+            <a class="btn" href="/fastapi/audit?per_page={{ pagination.per_page }}">清空</a>
+            {% endif %}
+        </form>
+
+        {% if items %}
+        <table>
+            <thead>
+            <tr>
+                <th>用户</th>
+                <th>模块</th>
+                <th>动作</th>
+                <th>IP</th>
+                <th>结果</th>
+                <th>时间</th>
+                <th>详情</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for log in items %}
+            <tr>
+                <td>{{ log.username }}</td>
+                <td><span class="badge">{{ log.module }}</span></td>
+                <td>{{ log.action }}</td>
+                <td><code>{{ log.ip }}</code></td>
+                <td>
+                    {% if log.result == 'success' %}<span class="badge ok">成功</span>
+                    {% else %}<span class="badge bad">失败</span>{% endif %}
+                </td>
+                <td class="muted">{{ log.created_at or '-' }}</td>
+                <td class="detail-cell" title="{{ log.detail or '' }}">
+                    {{ log.detail or '-' }}
+                    {% if log.task_center_id %}<span class="badge warn">任务 #{{ log.task_center_id }}</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无操作日志记录</div>
+        {% endif %}
+
+        {% include "partials/pagination.html" %}
+    </div>
+</section>
+{% endblock %}

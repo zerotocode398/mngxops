@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}任务中心 - MngxOps{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-head">
+        <h1 class="card-title">任务中心</h1>
+    </div>
+    <div class="card-body">
+        <form method="get" action="/fastapi/tasks" class="filters">
+            <input type="text" name="search" value="{{ filters.search }}" placeholder="搜索批次、主机名或 IP">
+            <select name="status">
+                <option value="" {% if not filters.status %}selected{% endif %}>全部状态</option>
+                {% for option in status_options %}
+                <option value="{{ option.value }}" {% if filters.status == option.value %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+            </select>
+            <select name="operation_type">
+                <option value="" {% if not filters.operation_type %}selected{% endif %}>全部类型</option>
+                {% for option in operation_options %}
+                <option value="{{ option.value }}" {% if filters.operation_type == option.value %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <button class="btn primary" type="submit">查询</button>
+            {% if filters.search or filters.status or filters.operation_type %}
+            <a class="btn" href="/fastapi/tasks?per_page={{ pagination.per_page }}">清空</a>
+            {% endif %}
+        </form>
+
+        {% if items %}
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>类型</th>
+                <th>摘要</th>
+                <th>状态</th>
+                <th>进度</th>
+                <th>触发人</th>
+                <th>时间</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for task in items %}
+            <tr>
+                <td><code>#{{ task.id }}</code></td>
+                <td>{{ task.operation_label }}</td>
+                <td>
+                    <strong>{{ task.summary_primary }}</strong>
+                    {% if task.summary_secondary %}<br><span class="muted">{{ task.summary_secondary }}</span>{% endif %}
+                </td>
+                <td>
+                    {% if task.status == 'success' %}<span class="badge ok">{{ task.status_label }}</span>
+                    {% elif task.status == 'failed' %}<span class="badge bad">{{ task.status_label }}</span>
+                    {% elif task.status == 'running' %}<span class="badge warn">{{ task.status_label }}</span>
+                    {% else %}<span class="badge">{{ task.status_label }}</span>{% endif %}
+                </td>
+                <td>{{ task.progress }}%</td>
+                <td>{{ task.trigger_username }}</td>
+                <td class="muted">{{ task.created_at or '-' }}</td>
+                <td><a class="btn" href="/fastapi/tasks/{{ task.id }}">详情</a></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无任务记录</div>
+        {% endif %}
+
+        {% include "partials/pagination.html" %}
+    </div>
+</section>
+{% endblock %}

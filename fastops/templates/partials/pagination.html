@@ -1,0 +1,25 @@
+<div class="pagination-footer">
+    <div class="muted">共 {{ pagination.total }} 条，第 {{ pagination.page }} / {{ pagination.total_pages }} 页</div>
+    <div class="pages">
+        <a class="page {% if not pagination.has_previous %}disabled{% endif %}"
+           href="{{ route_path }}?{{ page_query }}&page=1">首页</a>
+        <a class="page {% if not pagination.has_previous %}disabled{% endif %}"
+           href="{{ route_path }}?{{ page_query }}&page={{ pagination.previous_page }}">上一页</a>
+        <span class="page current">{{ pagination.page }}</span>
+        <a class="page {% if not pagination.has_next %}disabled{% endif %}"
+           href="{{ route_path }}?{{ page_query }}&page={{ pagination.next_page }}">下一页</a>
+        <a class="page {% if not pagination.has_next %}disabled{% endif %}"
+           href="{{ route_path }}?{{ page_query }}&page={{ pagination.total_pages }}">末页</a>
+    </div>
+    <form method="get" action="{{ route_path }}" class="per-page">
+        {% for key, value in filters.items() %}
+        {% if value %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}
+        {% endfor %}
+        <label class="muted">每页</label>
+        <select name="per_page" onchange="this.form.submit()">
+            {% for size in per_page_options %}
+            <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
