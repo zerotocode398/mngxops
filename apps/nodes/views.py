@@ -519,14 +519,13 @@ class NodeCreateView(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
             description=form.cleaned_data.get("description") or "",
         )
         self.object = node
+        import urllib.parse
+
+        url = self.get_success_url()
+        sep = "&" if "?" in url else "?"
         if restored:
-            messages.success(
-                self.request,
-                f"已恢复同 IP 历史节点 {node.hostname}，发布历史已关联",
-            )
-        else:
-            messages.success(self.request, f"节点 {node.hostname} 创建成功")
-        return redirect(self.get_success_url())
+            return redirect(f"{url}{sep}restored={urllib.parse.quote(node.hostname)}")
+        return redirect(f"{url}{sep}created={urllib.parse.quote(node.hostname)}")
 
     def form_invalid(self, form):
         return super().form_invalid(form)
@@ -688,11 +687,11 @@ class NodeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
         node = self.object
         hostname = node.hostname
         node.soft_delete(user=self.request.user)
-        messages.success(
-            self.request,
-            f"节点 {hostname} 已从运维清单移除（发布/升级历史已保留，同 IP 再次添加可恢复）",
-        )
-        return redirect(self.get_success_url())
+        import urllib.parse
+
+        url = self.get_success_url()
+        sep = "&" if "?" in url else "?"
+        return redirect(f"{url}{sep}deleted={urllib.parse.quote(hostname)}")
 
     def delete(self, request, *args, **kwargs):
         """兼容旧版 DeleteView 调用路径，统一走逻辑删除"""

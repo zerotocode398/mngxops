@@ -48,9 +48,44 @@ document.addEventListener('DOMContentLoaded', function () {
         var updated = params.get('updated');
         if (updated && window.showToast) {
             window.showToast('节点 ' + decodeURIComponent(updated) + ' 更新成功', 'success');
-            /* 消费后清除参数，避免刷新后重复弹出 */
             var url = new URL(window.location.href);
             url.searchParams.delete('updated');
+            window.history.replaceState({}, '', url);
+        }
+    })();
+
+    /* 检测 URL deleted 参数 → 右上角 Toast（来自删除成功重定向） */
+    (function () {
+        var params = new URLSearchParams(window.location.search);
+        var deleted = params.get('deleted');
+        if (deleted && window.showToast) {
+            window.showToast('节点 ' + decodeURIComponent(deleted) + ' 删除成功', 'success');
+            var url = new URL(window.location.href);
+            url.searchParams.delete('deleted');
+            window.history.replaceState({}, '', url);
+        }
+    })();
+
+    /* 检测 URL created 参数 → 右上角 Toast（来自新建成功重定向） */
+    (function () {
+        var params = new URLSearchParams(window.location.search);
+        var created = params.get('created');
+        if (created && window.showToast) {
+            window.showToast('节点 ' + decodeURIComponent(created) + ' 创建成功', 'success');
+            var url = new URL(window.location.href);
+            url.searchParams.delete('created');
+            window.history.replaceState({}, '', url);
+        }
+    })();
+
+    /* 检测 URL restored 参数 → 右上角 Toast（来自恢复节点重定向） */
+    (function () {
+        var params = new URLSearchParams(window.location.search);
+        var restored = params.get('restored');
+        if (restored && window.showToast) {
+            window.showToast('已恢复同 IP 历史节点 ' + decodeURIComponent(restored) + '，发布历史已关联', 'success');
+            var url = new URL(window.location.href);
+            url.searchParams.delete('restored');
             window.history.replaceState({}, '', url);
         }
     })();
