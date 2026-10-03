@@ -46,7 +46,7 @@
             </a>
             {% endif %}
             {% if can_create_nodes %}
-            <a class="btn btn-outline-secondary btn-sm" href="/nodes/create/">
+            <a class="btn btn-outline-secondary btn-sm" href="{{ request.url_for('list_nodes') }}">
                 <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>新建节点
             </a>
             {% endif %}
