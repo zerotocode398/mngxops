@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}版本差异对比 - {{ binding.config.name }}{% endblock %}
+{% block page_title %}版本差异对比{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2"><div><h2 class="h6 mb-1">{{ binding.config.name }} @ {{ binding.node.hostname }}</h2><span class="small text-muted font-monospace">{{ binding.remote_path }}</span></div><a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/versions/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>版本历史</a></div>
+    <div class="card-body">
+        <form method="get" action="/configs/bindings/{{ binding.id }}/compare/" id="compareVersionsForm" class="row g-3 mb-4">
+            <div class="col-md-5"><label class="form-label" for="baseVersion">基准版本</label><select class="form-select" id="baseVersion" name="base_version"><option value="">选择版本</option>{% for version in versions %}<option value="{{ version.id }}"{% if selected_base == version.id %} selected{% endif %}>{{ version.version_label }} · {{ version.creator.username }}{% if version.remark %} · {{ version.remark }}{% endif %}</option>{% endfor %}</select></div>
+            <div class="col-md-5"><label class="form-label" for="targetVersion">目标版本</label><select class="form-select" id="targetVersion" name="target_version"><option value="">选择版本</option>{% for version in versions %}<option value="{{ version.id }}"{% if selected_target == version.id %} selected{% endif %}>{{ version.version_label }} · {{ version.creator.username }}{% if version.remark %} · {{ version.remark }}{% endif %}</option>{% endfor %}</select></div>
+            <div class="col-md-2 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit"><i class="bi bi-intersect me-1" aria-hidden="true"></i>对比</button></div>
+        </form>
+        {% if selected_base and selected_target and selected_base == selected_target %}<div class="alert alert-warning">请选择两个不同版本进行对比。</div>{% elif (selected_base and not selected_target) or (selected_target and not selected_base) %}<div class="alert alert-info">请选择另一版本以查看差异。</div>{% endif %}
+        {% if base_obj and target_obj and base_obj.id != target_obj.id %}
+        <div class="d-flex flex-wrap justify-content-between gap-2 mb-3 small"><span><strong>基准：</strong>{{ base_obj.version_label }}{% if base_obj.remark %} · {{ base_obj.remark }}{% endif %}</span><span><strong>目标：</strong>{{ target_obj.version_label }}{% if target_obj.remark %} · {{ target_obj.remark }}{% endif %}</span></div>
+        {% if has_diff %}<div class="table-responsive border rounded" style="max-height: 65vh; overflow: auto"><table class="table table-sm table-bordered table-hover mb-0"><thead class="table-light sticky-top"><tr><th style="width:60px">左行</th><th>基准内容</th><th style="width:60px">右行</th><th>目标内容</th></tr></thead><tbody>{% for row in diff_rows %}<tr><td class="text-muted small">{{ row.left_no }}</td><td class="font-monospace small text-break {% if row.type in ['delete', 'replace'] %}table-danger{% endif %}" style="white-space: pre-wrap">{{ row.left }}</td><td class="text-muted small">{{ row.right_no }}</td><td class="font-monospace small text-break {% if row.type in ['insert', 'replace'] %}table-success{% endif %}" style="white-space: pre-wrap">{{ row.right }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="alert alert-success mb-0">两个版本内容一致。</div>{% endif %}
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function ($) {
+        $('#baseVersion, #targetVersion').on('change', function () {
+            if ($('#baseVersion').val() && $('#targetVersion').val()) {
+                $('#compareVersionsForm').trigger('submit');
+            }
+        });
+    })(window.jQuery);
+</script>
+{% endblock %}

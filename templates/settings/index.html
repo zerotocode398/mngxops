@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}系统设置 - ngxops{% endblock %}
+{% block page_title %}系统设置{% endblock %}
+
+{% block content %}
+<div class="settings-layout">
+    <nav class="settings-nav" aria-label="设置分组">
+        <div class="settings-nav-title">设置分组</div>
+        {% for name in group_names %}
+        <a class="settings-nav-item{% if name == active_group %} active{% endif %}"
+           href="/settings/?group={{ name|urlencode }}" data-settings-group="{{ name }}">
+            <span>{{ name }}</span><span class="text-muted small">{{ groups[name]|length }}</span>
+        </a>
+        {% endfor %}
+    </nav>
+    <section class="settings-main">
+        {% for name in group_names %}
+        {% set selected = name == active_group %}
+        <div class="settings-panel{% if not selected %} d-none{% endif %}" data-settings-panel="{{ name }}">
+            <header class="settings-panel-header">
+                <div><h2>{{ name }}</h2><p class="text-muted mb-0">{{ groups[name][0].description if groups[name] else '' }}</p></div>
+                {% if can_update %}<button class="btn btn-primary btn-sm" type="button" data-save-settings="{{ name }}"><i class="bi bi-check-lg" aria-hidden="true"></i> 保存更改</button>{% endif %}
+            </header>
+            <div class="settings-fields">
+                {% for setting in groups[name] %}
+                {% set preset = presets[setting.key] %}
+                <label class="settings-field" for="setting-{{ setting.key }}">
+                    <span class="settings-field-copy"><strong>{{ setting.label }}</strong><small>{{ setting.description }}</small></span>
+                    <span class="settings-control">
+                        {% if setting.value_type == 'integer' %}
+                        <input class="form-control form-control-sm" id="setting-{{ setting.key }}" type="number" name="{{ setting.key }}" value="{{ setting.value }}" min="{{ preset.min_value }}" max="{{ preset.max_value }}" step="1" data-setting-key="{{ setting.key }}" data-initial="{{ setting.value }}" {% if not can_update %}readonly{% endif %}>
+                        {% else %}
+                        <input class="form-control form-control-sm" id="setting-{{ setting.key }}" type="text" name="{{ setting.key }}" value="{{ setting.value }}" maxlength="500" data-setting-key="{{ setting.key }}" data-initial="{{ setting.value }}" {% if not can_update %}readonly{% endif %}>
+                        {% endif %}
+                        {% if preset.unit %}<span class="settings-unit">{{ preset.unit }}</span>{% endif %}
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+            {% if not can_update %}<div class="settings-readonly"><i class="bi bi-lock" aria-hidden="true"></i> 仅超级管理员可修改系统设置</div>{% endif %}
+        </div>
+        {% endfor %}
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/settings.css') }}">{% endblock %}
+{% block scripts %}
+<script>
+(function ($) {
+    "use strict";
+    var endpoint = "/api/settings/group";
+    var activeGroup = {{ active_group|tojson }};
+    var initialValues = {};
+    $("[data-setting-key]").each(function () { initialValues[this.name] = this.value; });
+    function isDirty() {
+        return $("[data-settings-panel='" + activeGroup + "'] [data-setting-key]").toArray().some(function (input) {
+            return input.value !== initialValues[input.name];
+        });
+    }
+    $(document).on("click", "[data-settings-group]", function (event) {
+        if (isDirty() && !window.confirm("当前分组有未保存的修改，确定离开吗？")) event.preventDefault();
+    });
+    $(document).on("click", "[data-save-settings]", function () {
+        var group = this.getAttribute("data-save-settings");
+        var values = {};
+        $("[data-settings-panel='" + group + "'] [data-setting-key]").each(function () {
+            values[this.name] = this.value;
+        });
+        $.ajax({ url: endpoint, method: "POST", contentType: "application/json", data: JSON.stringify({ group: group, values: values }) })
+            .done(function (response) {
+                $("[data-settings-panel='" + group + "'] [data-setting-key]").each(function () {
+                    this.setAttribute("data-initial", this.value);
+                    initialValues[this.name] = this.value;
+                });
+                if (window.showToast) window.showToast(response.message, "success");
+            })
+            .fail(function (xhr) {
+                var body = xhr.responseJSON || {};
+                if (window.showToast) window.showToast(body.message || "系统设置保存失败", "danger");
+            });
+    });
+})(window.jQuery);
+</script>
+{% endblock %}

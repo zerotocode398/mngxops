@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Nginx 安装历史 - ngxops{% endblock %}
+{% block page_title %}<i class="bi bi-clock-history" aria-hidden="true"></i> Nginx 安装历史{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h2 class="h6 mb-0">安装任务</h2>
+        <a class="btn btn-primary btn-sm" href="/nginx-install/center/"><i class="bi bi-play-fill me-1" aria-hidden="true"></i>安装中心</a>
+    </div>
+    <div class="card-body border-bottom">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-12 col-md-6"><label class="form-label small" for="installSearch">节点、IP、版本、路径或批次</label><input class="form-control form-control-sm" id="installSearch" name="search" value="{{ search }}" placeholder="可用逗号添加多个关键词"></div>
+            <div class="col-8 col-md-3"><label class="form-label small" for="installStatus">状态</label><select class="form-select form-select-sm" id="installStatus" name="status">{% for value, label in status_choices %}<option value="{{ value }}"{% if status_filter == value %} selected{% endif %}>{{ label if value else "全部状态" }}</option>{% endfor %}</select></div>
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <div class="col-auto"><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button></div>
+            {% if search or status_filter %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/nginx-install/history/">清空</a></div>{% endif %}
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle data-table mb-0">
+            <thead class="table-light"><tr><th>批次</th><th>目标节点</th><th>版本</th><th>安装路径</th><th>状态</th><th>配置同步</th><th>操作人</th><th>创建时间</th><th class="text-end">详情</th></tr></thead>
+            <tbody>
+            {% for run in runs %}
+                {% set task = run.task %}
+                <tr>
+                    <td><a href="/nginx-install/history/?search={{ run.batch_number|urlencode }}"><code>{{ run.batch_number }}</code></a></td>
+                    <td><strong>{{ run.node_hostname }}</strong><small class="text-muted d-block">{{ run.node_ip }}</small></td>
+                    <td><code>{{ run.target_version }}</code></td>
+                    <td><code>{{ run.target_prefix }}</code></td>
+                    <td><span class="badge text-bg-{{ 'success' if task.status == 'success' else ('danger' if task.status == 'failed' else ('info' if task.status == 'running' else 'secondary')) }}">{{ {"pending":"等待执行","running":"执行中","success":"安装成功","failed":"安装失败","cancelled":"已取消"}.get(task.status, task.status) }}</span></td>
+                    <td>{% if run.sync_ok is sameas true %}<span class="badge text-bg-success">成功</span>{% elif run.sync_ok is sameas false %}<span class="badge text-bg-warning" title="{{ run.sync_detail }}">失败</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
+                    <td>{{ operator_names.get(task.trigger_user_id, "-") }}</td>
+                    <td><small>{{ run.created_at.strftime("%Y-%m-%d %H:%M") if run.created_at else "-" }}</small></td>
+                    <td class="text-end"><a class="btn btn-outline-primary btn-sm" href="/nginx-install/task/{{ task.id }}/log/" title="查看安装详情" aria-label="查看安装详情"><i class="bi bi-file-text" aria-hidden="true"></i></a></td>
+                </tr>
+            {% else %}<tr><td colspan="9">{% set message = "暂无安装记录" %}{% include "includes/empty_state.html" %}</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% include "includes/pagination_footer.html" %}
+</section>
+{% endblock %}

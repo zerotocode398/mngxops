@@ -1,0 +1,392 @@
+(function () {
+    "use strict";
+
+    var statusLabels = {
+        pending: "等待中",
+        running: "执行中",
+        success: "成功",
+        failed: "失败",
+        cancelled: "已取消"
+    };
+    var fieldLabels = {};
+    var terminalStatuses = ["success", "failed", "cancelled"];
+
+    function statusBadge(status) {
+        var badge = document.createElement("span");
+        badge.className = "badge task-status-badge status-" + status;
+        badge.setAttribute("data-task-status", "");
+        badge.textContent = statusLabels[status] || status;
+        return badge;
+    }
+
+    function updateProgress(root, progress) {
+        var value = Math.max(0, Math.min(100, Number(progress) || 0));
+        root.querySelectorAll("[data-task-progress-bar]").forEach(function (bar) {
+            bar.style.width = value + "%";
+        });
+        root.querySelectorAll("[data-task-progress-text]").forEach(function (label) {
+            label.textContent = value + "%";
+        });
+        root.querySelectorAll(".task-progress[role='progressbar'], .task-progress-track[role='progressbar']")
+            .forEach(function (bar) { bar.setAttribute("aria-valuenow", String(value)); });
+    }
+
+    function updateStatus(root, status) {
+        root.querySelectorAll("[data-task-status]").forEach(function (current) {
+            current.replaceWith(statusBadge(status));
+        });
+    }
+
+    function summaryLabel(value) {
+        if (value && typeof value === "object") {
+            return value.hostname || value.ip || value.name || value.path ||
+                value.config_name || value.action || value.message || "结果项";
+        }
+        return String(value);
+    }
+
+    function containsFailure(value) {
+        if (!value || typeof value !== "object") return false;
+        if (value.status === "failed" || Number(value.failed) > 0) return true;
+        return Object.keys(value).some(function (key) { return containsFailure(value[key]); });
+    }
+
+    function resultValue(value, key, expandAll) {
+        if (Array.isArray(value)) {
+            var details = document.createElement("details");
+            details.open = expandAll || value.some(containsFailure);
+            var summary = document.createElement("summary");
+            summary.className = "task-tree-summary";
+            summary.textContent = (fieldLabels[key] || key || "项目") + "（" + value.length + "）";
+            details.appendChild(summary);
+            var list = document.createElement("ul");
+            list.className = "task-tree-list";
+            value.forEach(function (item, index) {
+                list.appendChild(resultItem(item, String(index + 1), expandAll));
+            });
+            details.appendChild(list);
+            return details;
+        }
+        if (value && typeof value === "object") {
+            var fields = document.createElement("dl");
+            fields.className = "task-tree-fields";
+            Object.keys(value).forEach(function (childKey) {
+                var term = document.createElement("dt");
+                term.textContent = fieldLabels[childKey] || childKey;
+                var description = document.createElement("dd");
+                description.appendChild(resultValue(value[childKey], childKey, expandAll));
+                fields.appendChild(term);
+                fields.appendChild(description);
+            });
+            return fields;
+        }
+        var text = document.createElement("span");
+        text.textContent = value === null || value === undefined ? "-" : String(value);
+        return text;
+    }
+
+    function resultItem(value, fallback, expandAll) {
+        var item = document.createElement("li");
+        item.className = "task-tree-item";
+        if (value && typeof value === "object") {
+            var details = document.createElement("details");
+            details.open = expandAll || containsFailure(value);
+            var summary = document.createElement("summary");
+            summary.className = "task-tree-summary";
+            summary.textContent = summaryLabel(value) || fallback;
+            details.appendChild(summary);
+            details.appendChild(resultValue(value, "", expandAll));
+            item.appendChild(details);
+        } else {
+            item.textContent = String(value);
+        }
+        return item;
+    }
+
+    function renderResult(root, value, expandAll) {
+        root.replaceChildren();
+        if (value === null || value === undefined) {
+            var empty = document.createElement("p");
+            empty.className = "small text-muted mb-0";
+            empty.textContent = "暂无结果数据";
+            root.appendChild(empty);
+            return;
+        }
+        root.appendChild(resultValue(value, "", expandAll));
+    }
+
+    function renderSummary(summary, value) {
+        summary.replaceChildren();
+        if (!value || typeof value !== "object") return;
+        [["success", "bg-success", "成功"], ["failed", "bg-danger", "失败"], ["total", "bg-secondary", "共"]]
+            .forEach(function (item) {
+                if (value[item[0]] === undefined) return;
+                var badge = document.createElement("span");
+                badge.className = "badge " + item[1];
+                badge.textContent = item[2] + " " + value[item[0]];
+                summary.appendChild(badge);
+            });
+    }
+
+    function renderLog(log) {
+        var row = document.createElement("div");
+        row.className = "task-log-row";
+        var time = document.createElement("time");
+        time.textContent = log.created_at ? new Date(log.created_at).toLocaleString() : "";
+        var level = document.createElement("span");
+        level.className = "task-log-level level-" + (log.level || "info");
+        level.textContent = log.level || "info";
+        var message = document.createElement("span");
+        message.className = "task-log-message";
+        message.textContent = log.message || "";
+        row.append(time, level, message);
+        return row;
+    }
+
+    function formatTaskTime(value) {
+        return value ? new Date(value).toLocaleString() : "-";
+    }
+
+    function formatDuration(startedAt, finishedAt) {
+        if (!startedAt || !finishedAt) return "";
+        var seconds = Math.max(0, (new Date(finishedAt) - new Date(startedAt)) / 1000);
+        return seconds >= 60 ? (seconds / 60).toFixed(1) + " 分钟" : seconds.toFixed(1) + " 秒";
+    }
+
+    async function cancelTask(button) {
+        var taskId = button.getAttribute("data-task-id");
+        var taskType = button.getAttribute("data-task-type") || "";
+        window.showConfirm(
+            "确认取消任务",
+            "确定取消任务 #" + taskId + "（" + taskType + "）吗？任务会停止后续步骤；将尝试关闭当前 SSH 连接，已经在节点执行的远程命令可能继续运行，且不会自动回滚已变更文件。",
+            async function () {
+                button.disabled = true;
+                try {
+                    var response = await fetch(button.getAttribute("data-cancel-url"), {
+                        method: "POST",
+                        credentials: "same-origin",
+                        headers: {
+                            "X-CSRFToken": document.querySelector("meta[name='csrf-token']").content,
+                            "X-Requested-With": "XMLHttpRequest"
+                        }
+                    });
+                    var payload = await response.json();
+                    if (!response.ok || !payload.success) {
+                        throw new Error(payload.message || "取消失败");
+                    }
+                    window.location.reload();
+                } catch (error) {
+                    button.disabled = false;
+                    window.showAlert("取消失败", error.message || "取消请求失败");
+                }
+            }
+        );
+    }
+
+    function initializeSearchTags() {
+        var wrapper = document.getElementById("taskSearchTagWrapper");
+        var field = document.getElementById("taskSearchField");
+        var hidden = document.getElementById("taskSearchHidden");
+        var form = document.getElementById("taskCenterFilterForm");
+        if (!wrapper || !field || !hidden || !form) return;
+
+        function updateHidden() {
+            hidden.value = Array.from(wrapper.querySelectorAll(".task-tag-badge"))
+                .map(function (badge) { return badge.getAttribute("data-value"); })
+                .join(",");
+        }
+
+        function addTag(text) {
+            var value = text.trim();
+            if (!value) return;
+            var badge = document.createElement("span");
+            badge.className = "task-tag-badge";
+            badge.setAttribute("data-value", value);
+            var label = document.createElement("span");
+            label.textContent = value;
+            var remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "task-tag-remove";
+            remove.setAttribute("aria-label", "移除关键词 " + value);
+            remove.textContent = "×";
+            remove.addEventListener("click", function () {
+                badge.remove();
+                updateHidden();
+                field.focus();
+            });
+            badge.append(label, remove);
+            wrapper.insertBefore(badge, field);
+            updateHidden();
+        }
+
+        hidden.value.split(/[，,]/).map(function (value) { return value.trim(); })
+            .filter(Boolean).forEach(function (value) { addTag(value); });
+        field.value = "";
+        field.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" || event.key === ",") {
+                event.preventDefault();
+                addTag(field.value);
+                field.value = "";
+                form.submit();
+            } else if (event.key === "Backspace" && !field.value) {
+                var badges = wrapper.querySelectorAll(".task-tag-badge");
+                if (badges.length) {
+                    badges[badges.length - 1].remove();
+                    updateHidden();
+                }
+            }
+        });
+        wrapper.addEventListener("click", function (event) {
+            if (event.target === wrapper) field.focus();
+        });
+    }
+
+    function initializeRowNavigation() {
+        document.querySelectorAll(".task-center-row").forEach(function (row) {
+            row.addEventListener("click", function (event) {
+                if (event.target.closest("a, button, select, input")) return;
+                window.location.href = row.getAttribute("data-detail-url");
+            });
+        });
+    }
+
+    function initializeListPolling() {
+        var center = document.getElementById("taskCenter");
+        if (!center || !document.querySelector(".task-center-row[data-task-active='true']")) return;
+        var busy = false;
+
+        async function poll() {
+            if (busy) return;
+            busy = true;
+            try {
+                var params = new URLSearchParams();
+                params.set("page", center.getAttribute("data-page"));
+                params.set("page_size", center.getAttribute("data-page-size"));
+                var form = document.getElementById("taskCenterFilterForm");
+                var search = form.querySelector("input[name='search']").value.trim();
+                var operation = form.querySelector("select[name='operation_type']").value;
+                var status = form.querySelector("select[name='status']").value;
+                var filteredOut = false;
+                if (search) params.set("search", search);
+                if (operation) params.set("operation_type", operation);
+                var response = await fetch("/api/tasks?" + params.toString(), { credentials: "same-origin" });
+                if (!response.ok) return;
+                var payload = await response.json();
+                (payload.items || []).forEach(function (task) {
+                    var row = document.querySelector(".task-center-row[data-task-id='" + task.id + "']");
+                    if (!row) return;
+                    updateProgress(row, task.progress);
+                    updateStatus(row, task.status);
+                    var summary = row.querySelector("[data-task-summary-secondary]");
+                    if (summary && task.detail) summary.textContent = task.detail;
+                    var upgradeCancel = row.querySelector(".task-cancel-button");
+                    var cancellableUpgrade = task.status === "pending" || (task.status === "running" && /获取|检查 gcc|创建远程工作目录|上传 Nginx 源码包|解压 Nginx 源码包/.test(task.detail));
+                    if (upgradeCancel && task.operation_type === "nginx_upgrade" && !cancellableUpgrade) upgradeCancel.remove();
+                    if (upgradeCancel && task.operation_type === "nginx_rollback") upgradeCancel.remove();
+                    if (status && task.status !== status) filteredOut = true;
+                    if (terminalStatuses.indexOf(task.status) >= 0) {
+                        row.setAttribute("data-task-active", "false");
+                        var cancel = row.querySelector(".task-cancel-button");
+                        if (cancel) cancel.remove();
+                    }
+                });
+                if (filteredOut) window.location.reload();
+            } catch (error) {
+                // 轮询失败时保留页面当前数据，下一轮继续尝试。
+            } finally {
+                busy = false;
+            }
+        }
+        window.setInterval(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
+    }
+
+    function initializeDetailPolling() {
+        var detail = document.getElementById("taskDetail");
+        if (!detail) return;
+        var resultRoot = document.getElementById("taskResultTree");
+        var summaryRoot = document.getElementById("taskResultSummary");
+        var logList = document.getElementById("taskLogList");
+        var logCount = document.querySelector("[data-log-count]");
+        var loadMoreLogs = document.getElementById("taskLoadMoreLogs");
+        var cursor = Number(detail.getAttribute("data-log-cursor")) || 0;
+        var active = detail.getAttribute("data-task-active") === "true";
+        var resultElement = document.getElementById("taskResultData");
+        var labelsElement = document.getElementById("taskResultLabels");
+        var initialResult = null;
+        try { initialResult = JSON.parse(resultElement.textContent); } catch (error) {}
+        try { fieldLabels = JSON.parse(labelsElement.textContent); } catch (error) {}
+        renderResult(resultRoot, initialResult, detail.getAttribute("data-is-config-sync") === "true");
+        renderSummary(summaryRoot, initialResult && initialResult.summary);
+        var busy = false;
+        if (loadMoreLogs) {
+            loadMoreLogs.addEventListener("click", function () { poll(true); });
+        }
+        async function poll(loadHistory) {
+            if (busy || (!active && !loadHistory)) return;
+            busy = true;
+            try {
+                var url = detail.getAttribute("data-api-url") + "?after_log_id=" + cursor + "&log_limit=200";
+                var response = await fetch(url, { credentials: "same-origin" });
+                var payload = await response.json();
+                if (!response.ok || payload.success === false) return;
+                updateProgress(detail, payload.progress);
+                updateStatus(detail, payload.status);
+                var started = detail.querySelector("[data-task-started]");
+                var finished = detail.querySelector("[data-task-finished]");
+                var duration = detail.querySelector("[data-task-duration]");
+                if (started && payload.started_at) started.textContent = formatTaskTime(payload.started_at);
+                if (finished && payload.finished_at) finished.textContent = formatTaskTime(payload.finished_at);
+                if (duration) {
+                    var elapsed = formatDuration(payload.started_at, payload.finished_at);
+                    duration.textContent = elapsed ? "耗时 " + elapsed : "";
+                }
+                var description = detail.querySelector("[data-task-detail]");
+                if (description) description.textContent = payload.detail || "";
+                var upgradeCancel = detail.querySelector(".task-cancel-button");
+                var cancellableUpgrade = payload.status === "pending" || (payload.status === "running" && /获取|检查 gcc|创建远程工作目录|上传 Nginx 源码包|解压 Nginx 源码包/.test(payload.detail));
+                if (upgradeCancel && payload.operation_type === "nginx_upgrade" && !cancellableUpgrade) upgradeCancel.remove();
+                if (upgradeCancel && payload.operation_type === "nginx_rollback") upgradeCancel.remove();
+                (payload.logs || []).forEach(function (log) {
+                    var empty = logList.querySelector("[data-empty-logs]");
+                    if (empty) empty.remove();
+                    logList.appendChild(renderLog(log));
+                    cursor = Math.max(cursor, Number(log.id) || 0);
+                });
+                cursor = Math.max(cursor, Number(payload.next_log_id) || 0);
+                detail.setAttribute("data-log-cursor", String(cursor));
+                if (logCount) logCount.textContent = logList.querySelectorAll(".task-log-row").length + " 条";
+                if (loadMoreLogs) {
+                    loadMoreLogs.hidden = !payload.has_more_logs;
+                }
+                if (payload.result_tree !== null && payload.result_tree !== undefined) {
+                    renderResult(resultRoot, payload.result_tree, detail.getAttribute("data-is-config-sync") === "true");
+                    renderSummary(summaryRoot, payload.result_tree.summary);
+                }
+                if (terminalStatuses.indexOf(payload.status) >= 0) {
+                    active = false;
+                    detail.setAttribute("data-task-active", "false");
+                    var cancel = detail.querySelector(".task-cancel-button");
+                    if (cancel) cancel.remove();
+                }
+            } catch (error) {
+                // 轮询失败时保留已显示日志，并在下个周期重试。
+            } finally {
+                busy = false;
+            }
+        }
+        if (loadMoreLogs && !active) {
+            loadMoreLogs.hidden = loadMoreLogs.dataset.hasMore !== "true";
+        }
+        if (active) window.setInterval(function () { poll(false); }, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".task-cancel-button").forEach(function (button) {
+            button.addEventListener("click", function () { cancelTask(button); });
+        });
+        initializeSearchTags();
+        initializeRowNavigation();
+        initializeListPolling();
+        initializeDetailPolling();
+    });
+}());

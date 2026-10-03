@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% set is_source = package_kind == "source" %}
+{% block title %}{{ "Nginx 源码包" if is_source else "第三方模块包" }} - ngxops{% endblock %}
+{% block page_title %}<i class="bi {{ 'bi-archive' if is_source else 'bi-puzzle' }}" aria-hidden="true"></i> {{ "Nginx 源码包" if is_source else "第三方模块包" }}{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm" href="/upgrade/center/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>升级中心</a>
+            {% if is_source %}<a class="btn btn-outline-secondary btn-sm" href="/upgrade/modules/">模块包</a>{% else %}<a class="btn btn-outline-secondary btn-sm" href="/upgrade/packages/">源码包</a>{% endif %}
+        </div>
+        {% if can_create %}<a class="btn btn-primary btn-sm" href="{{ '/upgrade/packages/upload/' if is_source else '/upgrade/modules/upload/' }}"><i class="bi bi-upload me-1" aria-hidden="true"></i>上传包</a>{% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle data-table mb-0">
+                <thead class="table-light"><tr>
+                    <th>{{ "包名称" if is_source else "模块名称" }}</th><th>版本</th><th>大小</th><th>MD5</th><th>描述</th><th>上传人</th><th>上传时间</th><th class="text-end">操作</th>
+                </tr></thead>
+                <tbody>
+                {% for package in packages %}
+                    <tr>
+                        <td><strong>{{ package.name }}</strong>{% if is_source and package.is_official %} <span class="badge text-bg-success">官方</span>{% endif %}</td>
+                        <td><code>{{ package.version or "-" }}</code></td>
+                        <td>{{ (package.file_size / 1048576)|round(2) }} MB</td>
+                        <td><code title="{{ package.file_md5 }}">{{ package.file_md5[:12] }}…</code></td>
+                        <td class="text-break">{{ package.description or "-" }}</td>
+                        <td>{{ package.creator.username if package.creator else "-" }}</td>
+                        <td><small>{{ package.created_at.strftime("%Y-%m-%d %H:%M") if package.created_at else "-" }}</small></td>
+                        <td class="text-end text-nowrap">
+                            <a class="btn btn-outline-primary btn-sm" href="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}{{ package.id }}/download/" title="下载包" aria-label="下载 {{ package.name }}"><i class="bi bi-download" aria-hidden="true"></i></a>
+                            {% if can_delete %}<form class="d-inline" method="post" action="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}{{ package.id }}/delete/">
+                                {% include "includes/csrf_field.html" %}
+                                <button class="btn btn-outline-danger btn-sm" type="submit" title="删除包" aria-label="删除 {{ package.name }}" onclick="return confirm('确认删除这个包？正在执行的任务使用中的包不能删除。')"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                            </form>{% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="8">{% set message = "暂无包记录" %}{% include "includes/empty_state.html" %}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include "includes/pagination_footer.html" %}
+    </div>
+</section>
+{% endblock %}

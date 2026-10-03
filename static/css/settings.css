@@ -1,0 +1,20 @@
+.settings-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 20px; align-items: start; }
+.settings-nav { border-right: 1px solid #d8dee4; padding-right: 12px; }
+.settings-nav-title { color: #68737d; font-size: .75rem; font-weight: 700; margin: 4px 10px 10px; text-transform: uppercase; }
+.settings-nav-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 10px; color: #343a40; text-decoration: none; border-radius: 4px; }
+.settings-nav-item:hover { background: #f1f4f6; color: #152b3c; }
+.settings-nav-item.active { background: #e8f2f1; color: #12645c; font-weight: 600; }
+.settings-panel { background: #fff; border: 1px solid #d8dee4; border-radius: 6px; }
+.settings-panel-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 20px; border-bottom: 1px solid #e5e9ec; }
+.settings-panel-header h2 { font-size: 1.1rem; margin: 0 0 4px; }
+.settings-panel-header p { font-size: .82rem; }
+.settings-fields { padding: 4px 20px; }
+.settings-field { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(220px, 36%); gap: 22px; align-items: center; padding: 14px 0; border-bottom: 1px solid #edf0f2; }
+.settings-field:last-child { border-bottom: 0; }
+.settings-field-copy { display: grid; gap: 4px; }
+.settings-field-copy strong { font-size: .9rem; font-weight: 600; }
+.settings-field-copy small { color: #68737d; font-size: .78rem; line-height: 1.45; }
+.settings-control { display: flex; align-items: center; gap: 8px; }
+.settings-unit { min-width: 30px; color: #68737d; font-size: .82rem; }
+.settings-readonly { padding: 12px 20px; border-top: 1px solid #e5e9ec; color: #68737d; font-size: .82rem; }
+@media (max-width: 760px) { .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; } .settings-nav { display: flex; gap: 4px; overflow-x: auto; border: 0; padding: 0 0 5px; } .settings-nav-title { display: none; } .settings-nav-item { flex: 0 0 auto; border: 1px solid #d8dee4; } .settings-field { grid-template-columns: minmax(0, 1fr); gap: 8px; } .settings-control { max-width: 100%; } .settings-panel-header { align-items: flex-start; } }

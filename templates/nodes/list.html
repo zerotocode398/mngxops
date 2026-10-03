@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}节点管理 - ngxops{% endblock %}
+{% block page_title %}节点管理{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h2 class="h6 mb-0"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>节点列表</h2>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-secondary btn-sm" href="/nodes/groups/"><i class="bi bi-collection me-1" aria-hidden="true"></i>节点组</a>
+            <button class="btn btn-outline-secondary btn-sm" type="button" id="exportNodes"><i class="bi bi-download me-1" aria-hidden="true"></i>导出</button>
+            {% if permissions.create %}
+            <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#importNodesModal"><i class="bi bi-upload me-1" aria-hidden="true"></i>批量导入</button>
+            <a class="btn btn-primary btn-sm" href="/nodes/create/?return_to={{ list_return_to|urlencode }}"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>新增节点</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end mb-3">
+            <div class="col-12 col-lg-4">
+                <label class="form-label small mb-1" for="nodeSearch">搜索</label>
+                <input class="form-control form-control-sm" id="nodeSearch" name="search" value="{{ search }}" placeholder="主机名或 IP；多个词用逗号分隔">
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+                <label class="form-label small mb-1" for="nodeGroup">节点组</label>
+                <select class="form-select form-select-sm" id="nodeGroup" name="group">
+                    <option value="">全部节点组</option>
+                    {% for group in groups %}<option value="{{ group.id }}"{% if group_filter|int == group.id %} selected{% endif %}>{{ group.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+                <label class="form-label small mb-1" for="nodeEnvironment">环境</label>
+                <select class="form-select form-select-sm" id="nodeEnvironment" name="environment">
+                    <option value="">全部环境</option>
+                    <option value="dev"{% if environment_filter == "dev" %} selected{% endif %}>开发</option>
+                    <option value="test"{% if environment_filter == "test" %} selected{% endif %}>测试</option>
+                    <option value="prod"{% if environment_filter == "prod" %} selected{% endif %}>生产</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+                <label class="form-label small mb-1" for="nodeStatus">SSH 状态</label>
+                <select class="form-select form-select-sm" id="nodeStatus" name="status">
+                    <option value="">全部状态</option>
+                    <option value="online"{% if status_filter == "online" %} selected{% endif %}>在线</option>
+                    <option value="offline"{% if status_filter == "offline" %} selected{% endif %}>离线</option>
+                    <option value="unknown"{% if status_filter == "unknown" %} selected{% endif %}>未知</option>
+                </select>
+            </div>
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <div class="col-auto d-flex gap-2">
+                <button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button>
+                {% if search or group_filter or environment_filter or status_filter %}<a class="btn btn-outline-secondary btn-sm" href="/nodes/?per_page={{ pagination.per_page }}">清空</a>{% endif %}
+            </div>
+        </form>
+
+        {% if permissions.ssh_test or permissions.lock or permissions.unlock or permissions.delete %}
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <span class="small text-muted" id="selectedNodeCount">未选择节点</span>
+            {% if permissions.ssh_test %}<button class="btn btn-outline-primary btn-sm node-bulk-probe" type="button" disabled><i class="bi bi-plug me-1" aria-hidden="true"></i>批量探测 SSH</button>{% endif %}
+            {% if permissions.lock %}<button class="btn btn-outline-warning btn-sm node-bulk-action" type="button" data-action="lock" disabled><i class="bi bi-lock me-1" aria-hidden="true"></i>批量锁定</button>{% endif %}
+            {% if permissions.unlock %}<button class="btn btn-outline-success btn-sm node-bulk-action" type="button" data-action="unlock" disabled><i class="bi bi-unlock me-1" aria-hidden="true"></i>批量解锁</button>{% endif %}
+            {% if permissions.delete %}<button class="btn btn-outline-danger btn-sm node-bulk-delete" type="button" disabled><i class="bi bi-trash me-1" aria-hidden="true"></i>批量删除</button>{% endif %}
+        </div>
+        {% if permissions.ssh_test %}<div class="small text-muted mb-2" id="nodeProbeTaskStatus" aria-live="polite"></div>{% endif %}
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle data-table mb-0">
+                <thead class="table-light"><tr>
+                    <th class="text-center" style="width:34px"><input class="form-check-input" type="checkbox" id="selectAllNodes" aria-label="全选本页节点"></th>
+                    <th>主机名 / IP</th><th>节点组</th><th>环境</th><th>SSH</th><th>Nginx</th><th>凭证</th><th>探测时间</th><th class="text-end">操作</th>
+                </tr></thead>
+                <tbody>
+                {% for node in nodes %}
+                    <tr data-node-id="{{ node.id }}">
+                        <td class="text-center"><input class="form-check-input node-select" type="checkbox" value="{{ node.id }}" aria-label="选择 {{ node.hostname }}"></td>
+                        <td><strong><button class="btn btn-link btn-sm p-0 align-baseline node-detail-open" type="button" data-node-id="{{ node.id }}">{{ node.hostname }}</button></strong>{% if node.is_locked %}<span class="badge text-bg-warning ms-1">已锁定</span>{% endif %}<br><span class="text-muted small font-monospace">{{ node.ip }}:{{ node.port }}</span></td>
+                        <td>{% for group in node.groups %}<span class="badge text-bg-light border me-1">{{ group.name }}</span>{% else %}<span class="text-muted">-</span>{% endfor %}</td>
+                        <td>{% if node.environment == "prod" %}<span class="badge text-bg-danger">生产</span>{% elif node.environment == "test" %}<span class="badge text-bg-warning">测试</span>{% else %}<span class="badge text-bg-info">开发</span>{% endif %}</td>
+                        <td><span class="badge node-ssh-badge {% if node.status == 'online' %}text-bg-success{% elif node.status == 'offline' %}text-bg-secondary{% else %}text-bg-light border text-muted{% endif %}" data-status="{{ node.status }}">{% if node.status == "online" %}在线{% elif node.status == "offline" %}离线{% else %}未知{% endif %}</span></td>
+                        <td><span class="badge node-nginx-badge {% if node.nginx_available is true %}text-bg-success{% elif node.nginx_available is false %}text-bg-warning{% else %}text-bg-light border text-muted{% endif %}" data-available="{% if node.nginx_available is true %}true{% elif node.nginx_available is false %}false{% else %}null{% endif %}" data-version="{{ node.nginx_version }}">{% if node.nginx_available is true %}{{ node.nginx_version or '可用' }}{% elif node.nginx_available is false %}未检测到{% else %}未知{% endif %}</span></td>
+                        <td>{% if node.credential %}<span title="{{ node.credential.username }}">{{ node.credential.name }}</span>{% else %}<span class="text-muted">未配置</span>{% endif %}</td>
+                        <td><small class="text-muted node-probe-time">{{ node.last_probe_at.strftime("%Y-%m-%d %H:%M") if node.last_probe_at else "未探测" }}</small></td>
+                        <td class="text-end text-nowrap">
+                            {% if permissions.ssh_test %}<button class="btn btn-outline-success btn-sm node-probe" type="button" data-node-id="{{ node.id }}" title="探测 SSH 与 Nginx" aria-label="探测 {{ node.hostname }}"{% if node.is_locked or not node.credential or not node.credential.is_enabled %} disabled{% endif %}><i class="bi bi-plug" aria-hidden="true"></i></button>{% endif %}
+                            {% if permissions.update %}<a class="btn btn-outline-primary btn-sm" href="/nodes/{{ node.id }}/edit/?return_to={{ list_return_to|urlencode }}" title="编辑节点" aria-label="编辑节点 {{ node.hostname }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>{% endif %}
+                            {% if permissions.delete %}<a class="btn btn-outline-danger btn-sm" href="/nodes/{{ node.id }}/delete/?return_to={{ list_return_to|urlencode }}" title="删除节点" aria-label="删除节点 {{ node.hostname }}"><i class="bi bi-trash" aria-hidden="true"></i></a>{% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="9">{% set message = "没有符合条件的节点" %}{% include "includes/empty_state.html" %}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include "includes/pagination_footer.html" %}
+    </div>
+</section>
+
+<div class="modal fade" id="nodeDetailModal" tabindex="-1" aria-labelledby="nodeDetailTitle" aria-hidden="true" data-can-probe="{{ 'true' if permissions.ssh_test else 'false' }}">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title h6" id="nodeDetailTitle"><i class="bi bi-server me-1" aria-hidden="true"></i><span id="detailHostname">节点详情</span></h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+        <div class="modal-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <h3 class="h6 text-muted">基本信息</h3>
+                    <dl class="row small mb-0">
+                        <dt class="col-4">IP / 端口</dt><dd class="col-8" id="detailAddress">-</dd>
+                        <dt class="col-4">环境</dt><dd class="col-8" id="detailEnvironment">-</dd>
+                        <dt class="col-4">SSH 状态</dt><dd class="col-8" id="detailStatus">-</dd>
+                        <dt class="col-4">凭证</dt><dd class="col-8" id="detailCredential">-</dd>
+                        <dt class="col-4">节点组</dt><dd class="col-8" id="detailGroups">-</dd>
+                        <dt class="col-4">备注</dt><dd class="col-8 text-break" id="detailDescription">-</dd>
+                        <dt class="col-4">SSH 探测</dt><dd class="col-8" id="detailProbeAt">-</dd>
+                    </dl>
+                </div>
+                <div class="col-md-6 border-start-md">
+                    <div class="d-flex align-items-center justify-content-between gap-2 mb-2"><h3 class="h6 text-muted mb-0">Nginx 能力</h3><button class="btn btn-outline-secondary btn-sm" id="detectNginxBtn" type="button"{% if not permissions.ssh_test %} disabled title="无 SSH 探测权限"{% endif %}><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>重新检测</button></div>
+                    <dl class="row small mb-1"><dt class="col-4">状态</dt><dd class="col-8" id="detailNginxStatus">-</dd><dt class="col-4">版本</dt><dd class="col-8 font-monospace" id="detailNginxVersion">-</dd><dt class="col-4">路径</dt><dd class="col-8 font-monospace text-break" id="detailNginxPath">-</dd></dl>
+                    <div class="small text-muted mb-3" id="detailNginxTask" aria-live="polite"></div>
+                    <div class="d-flex align-items-center justify-content-between gap-2 mb-2"><h3 class="h6 text-muted mb-0">系统信息</h3><button class="btn btn-outline-secondary btn-sm" id="refreshSystemInfoBtn" type="button"{% if not permissions.ssh_test %} disabled title="无 SSH 探测权限"{% endif %}><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>刷新</button></div>
+                    <div id="detailSystemInfo" class="small" aria-live="polite"><span class="text-muted">尚未采集</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-secondary btn-sm" type="button" data-bs-dismiss="modal">关闭</button></div>
+    </div></div>
+</div>
+
+{% if permissions.create %}
+<div class="modal fade" id="importNodesModal" tabindex="-1" aria-labelledby="importNodesTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title h6" id="importNodesTitle"><i class="bi bi-upload me-1" aria-hidden="true"></i>批量导入节点</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+        <div class="modal-body">
+            <p class="small text-muted mb-3">使用模板填写节点信息。所有行通过校验后才会写入。</p>
+            <a class="btn btn-outline-secondary btn-sm mb-3" href="/api/nodes/import-template"><i class="bi bi-file-earmark-arrow-down me-1" aria-hidden="true"></i>下载导入模板</a>
+            <form id="nodeImportForm" enctype="multipart/form-data">
+                {% include "includes/csrf_field.html" %}
+                <label class="form-label" for="nodeImportFile">Excel 文件</label>
+                <input class="form-control" id="nodeImportFile" name="file" type="file" accept=".xlsx" required>
+                <div class="small mt-2" id="nodeImportResult" aria-live="polite"></div>
+                <div class="modal-footer px-0 pb-0 mt-3"><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-primary" type="submit" id="nodeImportSubmit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>开始导入</button></div>
+            </form>
+        </div>
+    </div></div>
+</div>
+{% endif %}
+<div class="node-list-state" hidden data-export-query="{{ export_query }}" data-per-page="{{ pagination.per_page }}" data-can-probe="{{ 'true' if permissions.ssh_test else 'false' }}" data-batch-max="{{ batch_max_count }}"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(function () {
+    var state = $(".node-list-state").data();
+    var $checks = $(".node-select");
+    var batchMax = Number(state.batchMax) || 3;
+    function selectedIds() { return $checks.filter(":checked").map(function () { return this.value; }).get(); }
+    function updateSelection() {
+        var count = selectedIds().length;
+        $("#selectedNodeCount").text(count ? "已选择 " + count + " 个节点" : "未选择节点");
+        $(".node-bulk-action, .node-bulk-delete, .node-bulk-probe").prop("disabled", count < 1 || count > batchMax);
+    }
+    $("#selectAllNodes").on("change", function () { $checks.prop("checked", this.checked); updateSelection(); });
+    $checks.on("change", updateSelection);
+    $("#exportNodes").on("click", function () {
+        var ids = selectedIds();
+        var query = ids.length ? "ids=" + encodeURIComponent(ids.join(",")) : (state.exportQuery || "");
+        if (!ids.length && !window.confirm("未选择节点，将按当前筛选条件导出全部匹配节点。继续吗？")) return;
+        window.location.href = "/api/nodes/export" + (query ? "?" + query : "");
+    });
+    $(".node-bulk-action").on("click", function () {
+        var action = $(this).data("action");
+        var ids = selectedIds();
+        if (ids.length > batchMax) return;
+        window.showConfirm("确认节点操作", (action === "lock" ? "锁定" : "解锁") + "选中的 " + ids.length + " 个节点？", function () {
+            $.ajax({url: "/api/nodes/lock", method: "POST", contentType: "application/json", data: JSON.stringify({action: action, node_ids: ids.map(Number)})})
+                .done(function (result) { window.showToast(result.message, "success"); window.location.reload(); })
+                .fail(function (xhr) { window.showToast(xhr.responseJSON && xhr.responseJSON.message || "操作失败", "danger"); });
+        });
+    });
+    $(".node-bulk-delete").on("click", function () {
+        var ids = selectedIds();
+        if (ids.length > batchMax) return;
+        window.showConfirm("确认批量删除", "从运维清单移除选中的 " + ids.length + " 个节点？历史记录会保留。", function () {
+            $.ajax({url: "/api/nodes/batch-delete", method: "POST", contentType: "application/json", data: JSON.stringify({node_ids: ids.map(Number)})})
+                .done(function (result) { window.showToast(result.message, "success"); window.location.reload(); })
+                .fail(function (xhr) { window.showToast(xhr.responseJSON && xhr.responseJSON.message || "删除失败", "danger"); });
+        });
+    });
+    $("#nodeImportForm").on("submit", function (event) {
+        event.preventDefault();
+        var form = this;
+        var $button = $("#nodeImportSubmit");
+        $("#nodeImportResult").empty();
+        $button.prop("disabled", true);
+        $.ajax({url: "/api/nodes/import", method: "POST", data: new FormData(form), processData: false, contentType: false})
+            .done(function (result) { window.showToast(result.message, "success"); window.location.reload(); })
+            .fail(function (xhr) {
+                var result = xhr.responseJSON || {};
+                var $list = $("<ul class='mb-0 ps-3'></ul>");
+                (result.errors || []).slice(0, 30).forEach(function (item) { $list.append($("<li></li>").text((item.row ? "第 " + item.row + " 行：" : "") + item.message)); });
+                if (!$list.children().length) $list.append($("<li></li>").text(result.message || "导入失败"));
+                $("#nodeImportResult").addClass("text-danger").empty().append($list);
+            })
+            .always(function () { $button.prop("disabled", false); });
+    });
+});
+</script>
+<script src="{{ request.url_for('static', path='js/nodes.js') }}"></script>
+{% endblock %}

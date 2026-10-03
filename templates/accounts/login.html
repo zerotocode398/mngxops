@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>登录 - ngxops</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ request.url_for('static', path='css/accounts.css') }}">
+</head>
+<body class="login-page">
+<main class="login-card">
+    <header class="login-header">
+        <span class="login-brand-mark"><i class="bi bi-hdd-network" aria-hidden="true"></i></span>
+        <h1>ngxops</h1>
+        <p>Nginx 集中式管理平台</p>
+    </header>
+    <div class="login-body">
+        {% if error_type %}
+            <div class="alert {% if error_type == 'account_locked' %}alert-warning{% else %}alert-danger{% endif %} login-error-alert" role="alert" id="loginErrorAlert">
+                {% if error_type == 'account_locked' %}
+                    <i class="bi bi-lock-fill me-1" aria-hidden="true"></i>
+                {% elif error_type == 'user_disabled' %}
+                    <i class="bi bi-person-x-fill me-1" aria-hidden="true"></i>
+                {% else %}
+                    <i class="bi bi-x-circle-fill me-1" aria-hidden="true"></i>
+                {% endif %}
+                <strong>{{ error_message }}</strong>
+                <span class="login-error-progress"></span>
+            </div>
+        {% endif %}
+        {% if show_conflict %}
+            <div class="conflict-warning text-center">
+                <i class="bi bi-exclamation-triangle-fill conflict-icon" aria-hidden="true"></i>
+                <h2 class="h6">检测到该账号已在其他地方登录</h2>
+                <dl class="conflict-details">
+                    <div><dt>IP</dt><dd>{{ conflict_ip }}</dd></div>
+                    <div><dt>浏览器</dt><dd>{{ conflict_agent }}</dd></div>
+                </dl>
+                <p class="small text-muted mb-0">如果继续登录，之前的会话将被强制下线</p>
+            </div>
+            <form method="post" action="/login/">
+                {% include "includes/csrf_field.html" %}
+                <input type="hidden" name="confirm_kick" value="1">
+                {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+                <button type="submit" class="btn btn-primary btn-login mb-2">
+                    <i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>强制登录
+                </button>
+            </form>
+            <a class="btn btn-outline-secondary w-100" href="/login/">
+                <i class="bi bi-x-circle me-1" aria-hidden="true"></i>取消
+            </a>
+            <div class="conflict-countdown" id="conflictCountdown">
+                <div class="conflict-bar-wrap"><span class="conflict-bar"></span></div>
+                <p id="conflictTimerText">30 秒后未操作将返回登录页</p>
+            </div>
+        {% else %}
+            <form method="post" action="/login/">
+                {% include "includes/csrf_field.html" %}
+                {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+                <div class="form-floating mb-3">
+                    <input class="form-control" id="id_username" name="username" type="text"
+                           maxlength="100" value="{{ username }}" placeholder="用户名"
+                           autocomplete="username" required autofocus>
+                    <label for="id_username">用户名</label>
+                </div>
+                <div class="form-floating mb-4">
+                    <input class="form-control" id="id_password" name="password" type="password"
+                           placeholder="密码" autocomplete="current-password" required>
+                    <label for="id_password">密码</label>
+                </div>
+                <button type="submit" class="btn btn-primary btn-login">
+                    <i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>登录
+                </button>
+            </form>
+        {% endif %}
+    </div>
+</main>
+<script>
+    (function () {
+        var alert = document.getElementById('loginErrorAlert');
+        if (alert) {
+            window.setTimeout(function () {
+                if (alert.parentNode) alert.remove();
+            }, 5000);
+        }
+        var countdown = document.getElementById('conflictCountdown');
+        if (countdown) {
+            var seconds = 30;
+            var label = document.getElementById('conflictTimerText');
+            var timer = window.setInterval(function () {
+                seconds -= 1;
+                if (seconds <= 0) {
+                    window.clearInterval(timer);
+                    window.location.assign('/login/');
+                    return;
+                }
+                label.textContent = seconds + ' 秒后未操作将返回登录页';
+            }, 1000);
+        }
+    })();
+</script>
+</body>
+</html>

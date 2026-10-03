@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% set editing = target is defined and target %}
+{% block title %}{% if editing %}编辑用户{% else %}新增用户{% endif %} - ngxops{% endblock %}
+{% block page_title %}{% if editing %}编辑用户{% else %}新增用户{% endif %}{% endblock %}
+
+{% block content %}
+<form method="post" action="{% if editing %}/users/{{ target.id }}/edit/{% else %}/users/create/{% endif %}" class="rbac-form">
+    {% include "includes/csrf_field.html" %}
+    {% if errors %}<div class="alert alert-danger" role="alert">请检查标记字段{% if errors.get('relations') %}：{{ errors.get('relations') }}{% endif %}</div>{% endif %}
+    <section class="card mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-person-vcard me-1" aria-hidden="true"></i>基本信息</h2></div>
+        <div class="card-body"><div class="row g-3">
+            <div class="col-md-6"><label class="form-label" for="username">用户名</label><input class="form-control{% if errors.get('username') %} is-invalid{% endif %}" id="username" name="username" value="{{ values.get('username', '') }}" maxlength="150" required><div class="form-text">仅支持字母、数字、下划线与连字符</div>{% if errors.get('username') %}<div class="invalid-feedback">{{ errors.get('username') }}</div>{% endif %}</div>
+            <div class="col-md-6"><label class="form-label" for="email">邮箱</label><input class="form-control{% if errors.get('email') %} is-invalid{% endif %}" id="email" name="email" type="email" value="{{ values.get('email', '') }}" maxlength="254" required>{% if errors.get('email') %}<div class="invalid-feedback">{{ errors.get('email') }}</div>{% endif %}</div>
+            <div class="col-md-6"><label class="form-label" for="password1">{% if editing %}新密码{% else %}密码{% endif %}</label><input class="form-control{% if errors.get('password1') %} is-invalid{% endif %}" id="password1" name="password1" type="password" autocomplete="new-password" {% if not editing %}required{% endif %} placeholder="{% if editing %}留空表示不修改{% else %}至少 8 个字符{% endif %}">{% if errors.get('password1') %}<div class="invalid-feedback">{{ errors.get('password1') }}</div>{% endif %}</div>
+            <div class="col-md-6"><label class="form-label" for="password2">确认密码</label><input class="form-control{% if errors.get('password2') %} is-invalid{% endif %}" id="password2" name="password2" type="password" autocomplete="new-password" {% if not editing %}required{% endif %}>{% if errors.get('password2') %}<div class="invalid-feedback">{{ errors.get('password2') }}</div>{% endif %}</div>
+            <div class="col-12"><label class="form-label" for="remark">备注</label><textarea class="form-control" id="remark" name="remark" rows="2" maxlength="4000">{{ values.get('remark', '') }}</textarea></div>
+            {% if editing %}<div class="col-12"><label class="form-check"><input class="form-check-input" type="checkbox" name="is_superuser" value="true" {% if values.get('is_superuser') %}checked{% endif %} {% if target.id == current_user.id %}disabled{% endif %}><span class="form-check-label">超级管理员</span></label>{% if target.id == current_user.id %}<input type="hidden" name="is_superuser" value="true"><div class="form-text">不能在当前登录账户中移除超级管理员权限。</div>{% endif %}</div>{% endif %}
+        </div></div>
+    </section>
+    <section class="card mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-person-badge me-1" aria-hidden="true"></i>个人角色</h2></div>
+        <div class="card-body"><p class="form-text mt-0">最多选择 3 个。设置个人角色后，权限按个人角色计算，不再继承用户组角色。</p>{% if errors.get('roles') %}<div class="text-danger small mb-2">{{ errors.get('roles') }}</div>{% endif %}
+            <div class="row g-2">{% for role in all_roles %}<div class="col-sm-6 col-lg-4"><label class="form-check"><input class="form-check-input" type="checkbox" name="role_ids" value="{{ role.id }}" {% if role.id in selected_roles %}checked{% endif %}><span class="form-check-label">{{ role.name }}</span></label></div>{% else %}<div class="text-muted small">暂无角色</div>{% endfor %}</div>
+        </div>
+    </section>
+    <section class="card mb-3">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-people me-1" aria-hidden="true"></i>所属用户组</h2></div>
+        <div class="card-body"><div class="row g-2">{% for team in all_teams %}<div class="col-sm-6 col-lg-4"><label class="form-check"><input class="form-check-input" type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in selected_teams %}checked{% endif %}><span class="form-check-label">{{ team.name }}</span></label></div>{% else %}<div class="text-muted small">暂无用户组</div>{% endfor %}</div></div>
+    </section>
+    <section class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"><h2 class="h6 mb-0"><i class="bi bi-shield-lock me-1" aria-hidden="true"></i>用户直授权限</h2><button class="btn btn-outline-secondary btn-sm" type="button" data-permission-toggle>全局全选</button></div>
+        <div class="card-body"><p class="form-text mt-0">直授权限会额外叠加在角色权限之上。</p>
+            {% for resource in permission_matrix %}<div class="rbac-matrix-row"><div class="rbac-matrix-resource"><strong>{{ resource.label }}</strong><code>{{ resource.resource }}</code></div><div class="rbac-matrix-actions">{% for permission in resource.actions %}<label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="permission_ids" value="{{ permission.id }}" {% if permission.selected %}checked{% endif %}><span class="form-check-label" title="{{ permission.name }}">{{ permission.action_label }}</span></label>{% endfor %}</div></div>{% endfor %}
+        </div>
+    </section>
+    <div class="d-flex justify-content-between"><a class="btn btn-outline-secondary btn-sm" href="/users/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>保存用户</button></div>
+</form>
+{% endblock %}
+
+{% block extra_head %}<style>
+.rbac-matrix-row{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb}.rbac-matrix-resource{display:flex;gap:8px;align-items:center}.rbac-matrix-resource code{color:#6c757d;font-size:.78rem}.rbac-matrix-actions{display:flex;flex-wrap:wrap;gap:4px 12px}.rbac-matrix-actions .form-check-inline{margin:0}@media(max-width:767px){.rbac-matrix-row{grid-template-columns:1fr;gap:5px}}
+</style>{% endblock %}
+{% block scripts %}<script>
+$(function () {
+    $("[data-permission-toggle]").on("click", function () {
+        var checks = $("input[name='permission_ids']");
+        var selectAll = checks.length > 0 && checks.filter(":checked").length !== checks.length;
+        checks.prop("checked", selectAll);
+        $(this).text(selectAll ? "清空选择" : "全局全选");
+    });
+});
+</script>{% endblock %}

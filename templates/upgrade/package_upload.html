@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% set is_source = package_kind == "source" %}
+{% block title %}上传{{ "Nginx 源码包" if is_source else "第三方模块包" }} - ngxops{% endblock %}
+{% block page_title %}<i class="bi bi-upload" aria-hidden="true"></i> 上传{{ "Nginx 源码包" if is_source else "第三方模块包" }}{% endblock %}
+
+{% block content %}
+<section class="card upgrade-upload-panel">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h2 class="h6 mb-0">包信息</h2>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回列表</a>
+    </div>
+    <div class="card-body">
+        <form id="packageUploadForm" method="post" enctype="multipart/form-data" action="{{ '/upgrade/packages/upload/' if is_source else '/upgrade/modules/upload/' }}" data-kind="{{ package_kind }}">
+            {% include "includes/csrf_field.html" %}
+            <input type="hidden" name="overwrite" id="overwriteInput" value="">
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <label class="form-label" for="packageName">{{ "包名称" if is_source else "模块名称" }}</label>
+                    <input class="form-control" id="packageName" name="name" maxlength="100" required placeholder="{{ '如：官方稳定版' if is_source else '如：nginx-module-sts' }}">
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label" for="packageVersion">{{ "版本号" if is_source else "版本/标签" }}</label>
+                    <input class="form-control" id="packageVersion" name="version" maxlength="50" placeholder="{{ '可从 nginx-1.26.1.tar.gz 提取' if is_source else '如 v1.2.1，可留空' }}">
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="packageFile">归档文件</label>
+                    <input class="form-control" id="packageFile" name="package_file" type="file" accept="{{ '.tar.gz,.tgz' if is_source else '.tar.gz,.tgz,.zip' }}" required>
+                    <div class="form-text">最大 {{ package_limit }} MB；系统会校验归档结构、路径和文件大小。</div>
+                </div>
+                {% if is_source %}
+                <div class="col-12"><div class="form-check"><input class="form-check-input" id="isOfficial" name="is_official" type="checkbox" value="1"><label class="form-check-label" for="isOfficial">标记为官方包</label></div></div>
+                {% endif %}
+                <div class="col-12">
+                    <label class="form-label" for="packageDescription">描述</label>
+                    <textarea class="form-control" id="packageDescription" name="description" rows="3" maxlength="4000" placeholder="可选"></textarea>
+                </div>
+            </div>
+            <div class="mt-3 d-flex gap-2 align-items-center">
+                <button class="btn btn-primary" type="submit" id="uploadButton"><i class="bi bi-upload me-1" aria-hidden="true"></i>上传并校验</button>
+                <span class="small text-muted" id="fileSummary"></span>
+            </div>
+            <div class="mt-3 d-none" id="uploadProgressWrap" aria-live="polite">
+                <div class="d-flex justify-content-between small mb-1"><span id="uploadProgressLabel">准备上传</span><span id="uploadProgressPercent">0%</span></div>
+                <div class="progress" style="height: 8px"><div class="progress-bar progress-bar-striped progress-bar-animated" id="uploadProgressBar" style="width:0%"></div></div>
+            </div>
+            <div class="alert d-none mt-3 mb-0" id="uploadMessage" role="status"></div>
+        </form>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ request.url_for('static', path='js/upgrade-packages.js') }}"></script>
+<script>window.NGXOPS_PACKAGE_LIMIT_MB = {{ package_limit }};</script>
+{% endblock %}

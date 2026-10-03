@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}用户组管理 - ngxops{% endblock %}
+{% block page_title %}用户组管理{% endblock %}
+{% block content %}
+{% if notice %}<div class="rbac-notice" data-message="{{ notice.message }}" data-type="{{ notice.type }}" hidden></div>{% endif %}
+<section class="card"><div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"><h2 class="h6 mb-0"><i class="bi bi-people me-1" aria-hidden="true"></i>用户组列表</h2><a class="btn btn-primary btn-sm" href="/users/teams/create/"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>新增用户组</a></div>
+    <div class="card-body"><form method="get" class="row g-2 mb-3"><div class="col-sm-7 col-lg-5"><label class="visually-hidden" for="teamSearch">搜索用户组</label><input class="form-control form-control-sm" id="teamSearch" name="search" value="{{ search }}" placeholder="输入组名，多个词用逗号分隔"></div><div class="col-auto"><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>搜索</button></div>{% if search %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/users/teams/?per_page={{ pagination.per_page }}">清空</a></div>{% endif %}</form>
+        <div class="table-responsive"><table class="table table-sm table-hover align-middle data-table mb-0"><thead class="table-light"><tr><th>组名</th><th>成员数</th><th>关联角色</th><th>描述</th><th>创建人</th><th>创建时间</th><th class="text-end">操作</th></tr></thead><tbody>
+        {% for row in teams %}
+            <tr>
+                <td>{{ row.team.name }}</td>
+                <td><span class="badge text-bg-info">{{ row.member_count }}</span></td>
+                <td>{{ row.role_names|join(", ") if row.role_names else "-" }}</td>
+                <td>{{ row.team.description or "-" }}</td>
+                <td>{{ row.team.creator.username }}</td>
+                <td>{{ row.team.created_at.strftime("%Y-%m-%d %H:%M") if row.team.created_at else "-" }}</td>
+                <td class="text-end text-nowrap">
+                    <button class="btn btn-outline-success btn-sm" type="button" title="管理成员" aria-label="管理 {{ row.team.name }} 成员" data-team-id="{{ row.team.id }}" data-team-name="{{ row.team.name }}" data-manage-team><i class="bi bi-people" aria-hidden="true"></i></button>
+                    <a class="btn btn-outline-primary btn-sm" href="/users/teams/{{ row.team.id }}/edit/" title="编辑用户组" aria-label="编辑用户组 {{ row.team.name }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>
+                    <form class="d-inline" method="post" action="/users/teams/{{ row.team.id }}/delete/" data-confirm="确定删除用户组 {{ row.team.name }} 吗？组内用户不会被删除。">
+                        {% include "includes/csrf_field.html" %}
+                        <button class="btn btn-outline-danger btn-sm" type="submit" title="删除用户组" aria-label="删除用户组 {{ row.team.name }}"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                    </form>
+                </td>
+            </tr>
+        {% else %}<tr><td colspan="7">{% include "includes/empty_state.html" with context %}</td></tr>{% endfor %}
+        </tbody></table></div>{% include "includes/pagination_footer.html" %}
+    </div>
+</section>
+{% endblock %}
+{% block modals %}
+<div class="modal fade" id="teamMembersModal" tabindex="-1" aria-labelledby="teamMembersTitle" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-6" id="teamMembersTitle">管理成员</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><div class="row g-2 mb-3"><div class="col"><label class="visually-hidden" for="memberSearch">搜索用户</label><input class="form-control form-control-sm" id="memberSearch" placeholder="用户名或邮箱，回车搜索"></div><div class="col-auto"><button class="btn btn-outline-secondary btn-sm" type="button" id="memberSearchButton" aria-label="搜索成员"><i class="bi bi-search" aria-hidden="true"></i></button></div></div><div class="d-flex justify-content-between align-items-center mb-2"><small class="text-muted">所选 <span id="memberSelectedCount">0</span> · 共 <span id="memberTotalCount">0</span> 个用户</small><div><button class="btn btn-success btn-sm" type="button" id="addMembersButton" disabled><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>加入</button> <button class="btn btn-outline-danger btn-sm" type="button" id="removeMembersButton" disabled><i class="bi bi-dash-lg me-1" aria-hidden="true"></i>移出</button></div></div><div class="table-responsive" style="max-height:55vh"><table class="table table-sm table-hover align-middle"><thead class="table-light sticky-top"><tr><th><input class="form-check-input" id="selectVisibleMembers" type="checkbox" aria-label="选择本页"></th><th>用户名</th><th>邮箱</th><th>状态</th><th>归属</th></tr></thead><tbody id="teamMemberRows"><tr><td colspan="5" class="text-center text-muted py-4">选择用户组以加载成员</td></tr></tbody></table></div><div class="d-flex justify-content-between align-items-center mt-2"><small class="text-muted" id="memberPageLabel"></small><div><button class="btn btn-outline-secondary btn-sm" id="memberPrev" type="button" aria-label="上一页" disabled><i class="bi bi-chevron-left" aria-hidden="true"></i></button> <button class="btn btn-outline-secondary btn-sm" id="memberNext" type="button" aria-label="下一页" disabled><i class="bi bi-chevron-right" aria-hidden="true"></i></button></div></div></div></div></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+$(function () {
+    var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("teamMembersModal"));
+    var teamId = null;
+    var page = 1;
+    var totalPages = 1;
+    var selected = {};
+    var searchTimer = null;
+    function updateActions() {
+        var ids = Object.keys(selected);
+        var add = ids.filter(function (id) { return !selected[id]; }).length;
+        var remove = ids.filter(function (id) { return selected[id]; }).length;
+        $("#memberSelectedCount").text(ids.length);
+        $("#addMembersButton").prop("disabled", !add).html('<i class="bi bi-plus-lg me-1" aria-hidden="true"></i>加入 (' + add + ')');
+        $("#removeMembersButton").prop("disabled", !remove).html('<i class="bi bi-dash-lg me-1" aria-hidden="true"></i>移出 (' + remove + ')');
+    }
+    function loadMembers(nextPage) {
+        page = nextPage;
+        var query = {page: page, search: $("#memberSearch").val() || ""};
+        $("#teamMemberRows").html('<tr><td colspan="5" class="text-center text-muted py-4">加载中...</td></tr>');
+        $.getJSON("/api/users/teams/" + teamId + "/members", query).done(function (data) {
+            totalPages = data.total_pages;
+            $("#memberTotalCount").text(data.total_count);
+            $("#memberPageLabel").text("第 " + data.page + " / " + data.total_pages + " 页");
+            $("#memberPrev").prop("disabled", !data.has_previous);
+            $("#memberNext").prop("disabled", !data.has_next);
+            var body = $("#teamMemberRows").empty();
+            if (!data.users.length) body.append($('<tr><td colspan="5" class="text-center text-muted py-4">暂无匹配用户</td></tr>'));
+            data.users.forEach(function (user) {
+                var row = $("<tr>");
+                var checkbox = $('<input class="form-check-input" type="checkbox">').attr("data-user-id", user.id).prop("checked", !!selected[user.id]);
+                $("<td>").append(checkbox).appendTo(row);
+                var username = $("<td>").text(user.username);
+                if (user.is_superuser) username.append(' <span class="badge text-bg-warning">超管</span>');
+                username.appendTo(row);
+                $("<td>").text(user.email).appendTo(row);
+                $("<td>").append(user.is_active ? '<span class="badge text-bg-success">正常</span>' : '<span class="badge text-bg-danger">锁定</span>').appendTo(row);
+                $("<td>").append(user.is_member ? '<span class="badge text-bg-info">已加入</span>' : '<span class="text-muted">未加入</span>').appendTo(row);
+                row.toggleClass("table-info", user.is_member).appendTo(body);
+            });
+            $("#selectVisibleMembers").prop("checked", false);
+            updateActions();
+        }).fail(function (xhr) {
+            var message = xhr.responseJSON && xhr.responseJSON.message || "成员列表加载失败";
+            $("#teamMemberRows").html("").append($('<tr><td colspan="5" class="text-center text-danger py-4"></td></tr>').find("td").text(message).end());
+        });
+    }
+    $("[data-manage-team]").on("click", function () {
+        teamId = $(this).attr("data-team-id"); selected = {};
+        $("#teamMembersTitle").text("管理成员 · " + $(this).attr("data-team-name"));
+        $("#memberSearch").val(""); loadMembers(1); modal.show();
+    });
+    $("#memberSearchButton").on("click", function () { loadMembers(1); });
+    $("#memberSearch").on("keydown", function (event) { if (event.key === "Enter") { event.preventDefault(); loadMembers(1); } });
+    $("#memberPrev").on("click", function () { if (page > 1) loadMembers(page - 1); });
+    $("#memberNext").on("click", function () { if (page < totalPages) loadMembers(page + 1); });
+    $("#teamMemberRows").on("change", "input[type=checkbox]", function () {
+        var id = String($(this).attr("data-user-id"));
+        if (this.checked) selected[id] = $(this).closest("tr").hasClass("table-info"); else delete selected[id];
+        updateActions();
+    });
+    $("#selectVisibleMembers").on("change", function (event) {
+        $("#teamMemberRows input[data-user-id]").each(function () { $(this).prop("checked", event.target.checked).trigger("change"); });
+    });
+    function changeMembers(action) {
+        var ids = Object.keys(selected).filter(function (id) { return action === "add" ? !selected[id] : selected[id]; }).map(Number);
+        $.ajax({url: "/api/users/teams/" + teamId + "/members", method: "POST", contentType: "application/json", data: JSON.stringify({action: action, user_ids: ids})})
+            .done(function (data) { selected = {}; window.showToast(data.message, "success"); loadMembers(page); })
+            .fail(function (xhr) { var message = xhr.responseJSON && xhr.responseJSON.message || "成员变更失败"; window.showAlert("操作失败", message); });
+    }
+    $("#addMembersButton").on("click", function () { changeMembers("add"); });
+    $("#removeMembersButton").on("click", function () { window.showConfirm("确认移出", "确定移出选中的用户吗？", function () { changeMembers("remove"); }); });
+    $(".rbac-notice").each(function () { window.showToast($(this).attr("data-message"), $(this).attr("data-type")); });
+});
+</script>
+{% endblock %}

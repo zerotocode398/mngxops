@@ -1,0 +1,592 @@
+"""验证配置发现、单节点同步和批量同步任务边界。"""
+
+from dataclasses import replace
+from pathlib import Path
+import re
+import time
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from ngxops.accounts.models import User
+from ngxops.accounts.passwords import make_password
+from ngxops.app import create_app
+from ngxops.config import get_settings
+from ngxops.configs.discovery import _quote_glob_pattern, discover_remote_configs
+from ngxops.configs.tasks import (
+    MAX_RESULT_DETAIL_ITEMS,
+    MAX_RESULT_ERROR_ITEMS,
+    _compact_node_result,
+)
+from ngxops.configs.models import (
+    BindingVersion,
+    Config,
+    ConfigBinding,
+    ConfigSyncSetting,
+)
+from ngxops.credentials.crypto import encrypt_secret
+from ngxops.credentials.models import Credential
+from ngxops.database.migration_runner import upgrade_database
+from ngxops.database.session import session_scope
+from ngxops.nodes.models import Node, NodeGroup
+from ngxops.tasks.executor import MAX_RESULT_LENGTH, _serialize_result_tree
+from ngxops.tasks.models import Task
+
+
+@pytest.fixture
+def config_client(tmp_path):
+    """创建隔离 SQLite、启用凭证、在线节点和超级管理员会话。"""
+    settings = replace(
+        get_settings(),
+        data_dir=tmp_path,
+        resource_dir=Path.cwd(),
+        debug=False,
+        reload=False,
+    )
+    app = create_app(settings)
+    with TestClient(app, follow_redirects=False) as client:
+        upgrade_database(app.state.database.engine)
+        with session_scope(app.state.database.session_factory) as session:
+            with session.begin():
+                user = User(
+                    username="config-admin",
+                    password=make_password("config-admin-password-123"),
+                    is_superuser=True,
+                    is_active=True,
+                )
+                session.add(user)
+                session.flush()
+                user_id = user.id
+                credential = Credential(
+                    name="config-ssh",
+                    username="deploy",
+                    auth_type="password",
+                    password=encrypt_secret(
+                        app.state.credential_encryption_key,
+                        "not-for-task-storage",
+                    ),
+                    is_enabled=True,
+                    created_by=user_id,
+                )
+                session.add(credential)
+                session.flush()
+                node = Node(
+                    hostname="config-node",
+                    ip="192.0.2.80",
+                    port=22,
+                    credential_id=credential.id,
+                    environment="test",
+                    status="online",
+                    nginx_available=True,
+                    created_by=user_id,
+                )
+                session.add(node)
+                session.flush()
+                node_id = node.id
+        login_page = client.get("/login/")
+        token = re.search(
+            r'name="csrf_token" value="([^"]+)"', login_page.text
+        ).group(1)
+        login = client.post(
+            "/login/",
+            data={
+                "csrf_token": token,
+                "username": "config-admin",
+                "password": "config-admin-password-123",
+            },
+        )
+        assert login.status_code == 302
+        yield client, app, token, node_id, user_id
+
+
+def _wait_for_task(client, task_id):
+    """轮询真实任务状态直到进入终态。"""
+    for _index in range(150):
+        response = client.get("/api/tasks/{}".format(task_id))
+        assert response.status_code == 200, response.text
+        task = response.json()
+        if task["status"] in ("success", "failed", "cancelled"):
+            return task
+        time.sleep(0.02)
+    raise AssertionError("后台任务未在时限内结束")
+
+
+def _create_binding(session, node_id, user_id, name, path, content, status="synced"):
+    """创建配置标签、节点绑定及其初始版本快照。"""
+    config = Config(name=name, default_remote_path=path, created_by=user_id)
+    session.add(config)
+    session.flush()
+    binding = ConfigBinding(
+        config_id=config.id,
+        node_id=node_id,
+        remote_path=path,
+        content=content,
+        current_version=1,
+        sync_status=status,
+        synced_version=1 if status == "synced" else None,
+        created_by=user_id,
+    )
+    session.add(binding)
+    session.flush()
+    session.add(
+        BindingVersion(
+            binding_id=binding.id,
+            version=1,
+            content=content,
+            remark="初始版本",
+            created_by=user_id,
+        )
+    )
+    return binding.id
+
+
+def test_remote_discovery_expands_nested_and_relative_includes(monkeypatch):
+    """扫描器复用 SSH 连接、解析相对路径和 glob 并安全引用命令路径。"""
+    commands = []
+    response_map = {
+        "cat -- /etc/nginx/nginx.conf": (
+            b"include conf.d/*.conf; include ../sites/site.conf;"
+        ),
+        "ls -1d -- /etc/nginx/conf.d/*.conf 2>/dev/null": (
+            b"/etc/nginx/conf.d/app.conf\n/etc/nginx/conf.d/mime.types\n"
+        ),
+        "cat -- /etc/nginx/conf.d/app.conf": b"server { listen 80; }",
+        "cat -- /etc/sites/site.conf": b"server { listen 443; }",
+    }
+
+    class FakeChannel:
+        """提供伪造 SSH 流使用的成功退出状态。"""
+
+        def recv_exit_status(self):
+            """返回成功命令状态。"""
+            return 0
+
+    class FakeStream:
+        """将预设命令输出映射为 Paramiko 风格流。"""
+
+        def __init__(self, value):
+            """保存一个命令的伪造输出。"""
+            self.value = value
+            self.channel = FakeChannel()
+
+        def read(self):
+            """返回预设字节输出。"""
+            return self.value
+
+    class FakeSshClient:
+        """记录命令并提供预设主配置和 include 内容。"""
+
+        def exec_command(self, command, timeout=None):
+            """返回匹配命令的伪造 stdout/stderr 流。"""
+            commands.append(command)
+            return None, FakeStream(response_map[command]), FakeStream(b"")
+
+        def close(self):
+            """模拟关闭 SSH 连接。"""
+            return None
+
+    class FakeContext:
+        """提供发现任务需要的协作式取消检查点。"""
+
+        def check_cancelled(self):
+            """保持测试中的远程扫描继续运行。"""
+            return None
+
+    client = FakeSshClient()
+    monkeypatch.setattr(
+        "ngxops.configs.discovery._connect_ssh",
+        lambda *args: (client, ""),
+    )
+    paths = []
+    files, errors = discover_remote_configs(
+        {
+            "id": 1,
+            "hostname": "scan-node",
+            "ip": "192.0.2.1",
+            "port": 22,
+            "username": "deploy",
+            "auth_type": "password",
+            "password": "secret",
+            "private_key": "",
+        },
+        "/etc/nginx/nginx.conf",
+        FakeContext(),
+        progress_callback=lambda _count, path: paths.append(path),
+    )
+    assert errors == []
+    assert [item["path"] for item in files] == [
+        "/etc/nginx/nginx.conf",
+        "/etc/nginx/conf.d/app.conf",
+        "/etc/sites/site.conf",
+    ]
+    assert len(commands) == 4
+    assert paths == [item["path"] for item in files]
+    quoted = _quote_glob_pattern("/etc/nginx/conf.d/*.conf; touch /tmp/pwned")
+    assert "touch /tmp/pwned" in quoted
+    assert "'" in quoted
+
+
+def test_discovery_task_returns_paths_without_file_contents(config_client, monkeypatch):
+    """发现任务持久化路径清单、真实进度且不暴露正文或凭证明文。"""
+    client, app, csrf_token, node_id, _user_id = config_client
+    page = client.get("/configs/sync/")
+    assert page.status_code == 200, page.text
+    assert "config-node" in page.text
+    assert "/static/js/config-sync.js" in page.text
+
+    def fake_discovery(target, main_path, context, progress_callback=None):
+        """返回一份隔离测试使用的远程发现结果。"""
+        if progress_callback:
+            progress_callback(1, main_path)
+        return [
+            {
+                "path": main_path,
+                "name": "nginx.conf",
+                "content": "server { # private config body }",
+            }
+        ], []
+
+    monkeypatch.setattr(
+        "ngxops.configs.tasks.discover_remote_configs",
+        fake_discovery,
+    )
+    response = client.post(
+        "/api/configs/discover",
+        headers={"X-CSRFToken": csrf_token},
+        json={"node_id": node_id, "main_conf_path": "/etc/nginx/nginx.conf"},
+    )
+    assert response.status_code == 202, response.text
+    task = _wait_for_task(client, response.json()["task_id"])
+    assert task["status"] == "success"
+    assert task["progress"] == 100
+    assert task["result_tree"]["nodes"][0]["files"] == [
+        {"path": "/etc/nginx/nginx.conf"}
+    ]
+    assert "private config body" not in str(task["result_tree"])
+    with session_scope(app.state.database.session_factory) as session:
+        stored = session.get(Task, task["id"])
+        assert "not-for-task-storage" not in (stored.detail + stored.result_tree_json)
+        assert session.scalar(select(Config).where(Config.name == "nginx.conf")) is None
+        sync_setting = session.scalar(
+            select(ConfigSyncSetting).where(ConfigSyncSetting.node_id == node_id)
+        )
+        assert sync_setting.main_conf_path == "/etc/nginx/nginx.conf"
+        assert sync_setting.updated_by == stored.trigger_user_id
+
+
+def test_compact_batch_result_stays_within_task_result_limit():
+    """批量结果裁剪明细后保留计数且可写入统一任务结果树上限。"""
+    node_results = []
+    for node_id in range(1, 4):
+        item = {"name": "n" * 255, "path": "/" + ("p" * 499)}
+        error = {"path": "/" + ("e" * 499), "message": "x" * 128}
+        result = {
+            "node_id": node_id,
+            "hostname": "host-{}".format(node_id),
+            "ip": "192.0.2.{}".format(node_id),
+            "mode": "full",
+            "created": [dict(item) for _index in range(1000)],
+            "updated": [],
+            "orphaned": [],
+            "deleted": [],
+            "skipped": [],
+            "errors": [dict(error) for _index in range(100)],
+        }
+        node_results.append(_compact_node_result(result))
+
+    tree = {
+        "summary": {"total": 3, "success": 3, "failed": 0},
+        "nodes": node_results,
+    }
+    serialized = _serialize_result_tree(tree)
+
+    for compact in node_results:
+        assert len(compact["created"]) == MAX_RESULT_DETAIL_ITEMS
+        assert len(compact["errors"]) == MAX_RESULT_ERROR_ITEMS
+        assert compact["counts"]["created"] == 1000
+        assert compact["omitted_detail_count"] == 925
+        assert compact["omitted_error_count"] == 80
+    assert len(serialized.encode("utf-8")) <= MAX_RESULT_LENGTH
+
+
+def test_sync_wizard_combines_search_group_and_nginx_filters(config_client):
+    """节点同步向导按主机搜索、多个组关键词和 Nginx 状态共同过滤。"""
+    client, app, _csrf_token, node_id, user_id = config_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            matched = session.get(Node, node_id)
+            matched.hostname = "edge-api-01"
+            matched.ip = "198.51.100.10"
+            prod_group = NodeGroup(name="prod-east", created_by=user_id)
+            blue_group = NodeGroup(name="blue", created_by=user_id)
+            test_group = NodeGroup(name="test-east", created_by=user_id)
+            session.add_all([prod_group, blue_group, test_group])
+            matched.groups.extend([prod_group, blue_group])
+            session.add_all(
+                [
+                    Node(
+                        hostname="edge-api-02",
+                        ip="198.51.100.11",
+                        port=22,
+                        credential_id=matched.credential_id,
+                        environment="test",
+                        status="online",
+                        nginx_available=True,
+                        groups=[test_group],
+                        created_by=user_id,
+                    ),
+                    Node(
+                        hostname="edge-api-03",
+                        ip="203.0.113.12",
+                        port=22,
+                        credential_id=matched.credential_id,
+                        environment="test",
+                        status="online",
+                        nginx_available=True,
+                        groups=[prod_group, blue_group],
+                        created_by=user_id,
+                    ),
+                    Node(
+                        hostname="edge-api-04",
+                        ip="198.51.100.13",
+                        port=22,
+                        credential_id=matched.credential_id,
+                        environment="test",
+                        status="online",
+                        nginx_available=False,
+                        groups=[prod_group, blue_group],
+                        created_by=user_id,
+                    ),
+                ]
+            )
+
+    response = client.get(
+        "/configs/sync/?search=198.51.100&group_search=prod%2Cblue&nginx_available=true"
+    )
+
+    assert response.status_code == 200, response.text
+    assert "edge-api-01" in response.text
+    assert "edge-api-02" not in response.text
+    assert "edge-api-03" not in response.text
+    assert "edge-api-04" not in response.text
+
+
+def test_full_sync_versions_content_marks_missing_and_cleans_delete(
+    config_client,
+    monkeypatch,
+):
+    """全量同步更新版本、标记远程缺失且只在远程删除成功后移除绑定。"""
+    client, app, csrf_token, node_id, user_id = config_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            app_binding_id = _create_binding(
+                session,
+                node_id,
+                user_id,
+                "app.conf",
+                "/etc/nginx/conf.d/app.conf",
+                "old app",
+            )
+            gone_binding_id = _create_binding(
+                session,
+                node_id,
+                user_id,
+                "gone.conf",
+                "/etc/nginx/conf.d/gone.conf",
+                "gone",
+            )
+            modified_binding_id = _create_binding(
+                session,
+                node_id,
+                user_id,
+                "local.conf",
+                "/etc/nginx/conf.d/local.conf",
+                "local edit",
+                status="modified",
+            )
+            deleted_binding_id = _create_binding(
+                session,
+                node_id,
+                user_id,
+                "deleted.conf",
+                "/etc/nginx/conf.d/deleted.conf",
+                "pending delete",
+                status="marked_deleted",
+            )
+
+    def fake_discovery(target, main_path, context, progress_callback=None):
+        """返回仍存在的 app 配置用于全量同步烟测。"""
+        return [
+            {
+                "path": "/etc/nginx/conf.d/app.conf",
+                "name": "app.conf",
+                "content": "new app content",
+            }
+        ], []
+
+    class FakeChannel:
+        """提供成功的远程命令退出状态。"""
+
+        def recv_exit_status(self):
+            """返回远程删除成功状态码。"""
+            return 0
+
+    class FakeStream:
+        """提供 SSH 命令通道和空输出。"""
+
+        channel = FakeChannel()
+
+        def read(self):
+            """返回空命令输出。"""
+            return b""
+
+    class FakeSshClient:
+        """记录安全删除命令并返回成功状态。"""
+
+        def exec_command(self, command, timeout=None):
+            """返回成功退出的伪造远程命令流。"""
+            assert command == "rm -f -- /etc/nginx/conf.d/deleted.conf"
+            return None, FakeStream(), FakeStream()
+
+        def close(self):
+            """模拟关闭远程连接。"""
+            return None
+
+    monkeypatch.setattr(
+        "ngxops.configs.tasks.discover_remote_configs",
+        fake_discovery,
+    )
+    monkeypatch.setattr(
+        "ngxops.configs.tasks._connect_ssh",
+        lambda *args: (FakeSshClient(), ""),
+    )
+    response = client.post(
+        "/api/configs/sync",
+        headers={"X-CSRFToken": csrf_token},
+        json={"node_id": node_id, "mode": "full"},
+    )
+    assert response.status_code == 202, response.text
+    task = _wait_for_task(client, response.json()["task_id"])
+    assert task["status"] == "success"
+    node_result = task["result_tree"]["nodes"][0]
+    assert [item["name"] for item in node_result["updated"]] == ["app.conf"]
+    assert [item["name"] for item in node_result["orphaned"]] == ["gone.conf"]
+    assert [item["name"] for item in node_result["deleted"]] == ["deleted.conf"]
+    with session_scope(app.state.database.session_factory) as session:
+        app_binding = session.get(ConfigBinding, app_binding_id)
+        gone_binding = session.get(ConfigBinding, gone_binding_id)
+        modified_binding = session.get(ConfigBinding, modified_binding_id)
+        assert app_binding.current_version == 2
+        assert app_binding.sync_status == "synced"
+        assert app_binding.content == "new app content"
+        assert gone_binding.sync_status == "orphaned"
+        assert modified_binding.sync_status == "modified"
+        assert session.get(ConfigBinding, deleted_binding_id) is None
+        assert session.scalar(
+            select(BindingVersion).where(
+                BindingVersion.binding_id == app_binding_id,
+                BindingVersion.version == 2,
+            )
+        ) is not None
+
+
+def test_partial_sync_only_updates_selected_discovered_paths(
+    config_client,
+    monkeypatch,
+):
+    """部分同步忽略未选远程路径且不会把其他已同步绑定标为 orphan。"""
+    client, app, csrf_token, node_id, user_id = config_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            selected_id = _create_binding(
+                session,
+                node_id,
+                user_id,
+                "selected.conf",
+                "/etc/nginx/conf.d/selected.conf",
+                "old selected",
+            )
+            other_id = _create_binding(
+                session,
+                node_id,
+                user_id,
+                "other.conf",
+                "/etc/nginx/conf.d/other.conf",
+                "old other",
+            )
+
+    def fake_discovery(target, main_path, context, progress_callback=None):
+        """返回两个文件以核对部分同步路径过滤。"""
+        return [
+            {
+                "path": "/etc/nginx/conf.d/selected.conf",
+                "name": "selected.conf",
+                "content": "new selected",
+            },
+            {
+                "path": "/etc/nginx/conf.d/unselected.conf",
+                "name": "unselected.conf",
+                "content": "remote only",
+            },
+        ], []
+
+    monkeypatch.setattr(
+        "ngxops.configs.tasks.discover_remote_configs",
+        fake_discovery,
+    )
+    response = client.post(
+        "/api/configs/sync",
+        headers={"X-CSRFToken": csrf_token},
+        json={
+            "node_id": node_id,
+            "mode": "partial",
+            "selected_paths": ["/etc/nginx/conf.d/selected.conf"],
+        },
+    )
+    assert response.status_code == 202, response.text
+    task = _wait_for_task(client, response.json()["task_id"])
+    assert task["status"] == "success"
+    with session_scope(app.state.database.session_factory) as session:
+        selected = session.get(ConfigBinding, selected_id)
+        other = session.get(ConfigBinding, other_id)
+        assert selected.content == "new selected"
+        assert selected.current_version == 2
+        assert other.content == "old other"
+        assert other.sync_status == "synced"
+        assert session.scalar(
+            select(Config).where(Config.name == "unselected.conf")
+        ) is None
+
+
+def test_batch_sync_creates_persistent_task_with_default_parallel_limit(
+    config_client,
+    monkeypatch,
+):
+    """批量同步接受合格节点并通过统一任务 API 返回终态。"""
+    client, _app, csrf_token, node_id, _user_id = config_client
+
+    def fake_discovery(target, main_path, context, progress_callback=None):
+        """返回一个批量节点可成功读取的远程文件。"""
+        return [
+            {"path": main_path, "name": "nginx.conf", "content": "events {}"}
+        ], []
+
+    monkeypatch.setattr(
+        "ngxops.configs.tasks.discover_remote_configs",
+        fake_discovery,
+    )
+    response = client.post(
+        "/api/configs/sync/batch",
+        headers={"X-CSRFToken": csrf_token},
+        json={"node_ids": [node_id]},
+    )
+    assert response.status_code == 202, response.text
+    task = _wait_for_task(client, response.json()["task_id"])
+    assert task["operation_type"] == "config_batch_sync"
+    assert task["status"] == "success"
+    assert task["result_tree"]["summary"] == {
+        "total": 1,
+        "success": 1,
+        "failed": 0,
+    }

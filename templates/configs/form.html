@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}{% if config %}编辑配置标签{% else %}新增配置标签{% endif %} - ngxops{% endblock %}
+{% block page_title %}{% if config %}编辑配置标签{% else %}新增配置标签{% endif %}{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header"><h2 class="h6 mb-0">标签信息</h2></div>
+    <div class="card-body">
+        {% if notice %}<div class="alert alert-{{ 'danger' if notice.type == 'error' else 'success' }}">{{ notice.message }}</div>{% endif %}
+        {% if node %}<div class="alert alert-info py-2">保存后将同时在 <strong>{{ node.hostname }}</strong> 上创建初始绑定。</div>{% endif %}
+        <form method="post" action="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+            {% include "includes/csrf_field.html" %}
+            <div class="row g-3">
+                <div class="col-lg-6"><label class="form-label" for="configName">配置名称 <span class="text-danger">*</span></label><input class="form-control{% if errors.name %} is-invalid{% endif %}" id="configName" name="name" maxlength="255" required value="{{ values.name }}">{% if errors.name %}<div class="invalid-feedback">{{ errors.name }}</div>{% endif %}</div>
+                <div class="col-lg-6"><label class="form-label" for="configPath">默认远程路径</label><input class="form-control{% if errors.default_remote_path %} is-invalid{% endif %}" id="configPath" name="default_remote_path" maxlength="500" value="{{ values.default_remote_path }}" placeholder="/etc/nginx/conf.d/site.conf">{% if errors.default_remote_path %}<div class="invalid-feedback">{{ errors.default_remote_path }}</div>{% endif %}</div>
+                {% if errors.node %}<div class="col-12"><div class="alert alert-warning py-2 mb-0">{{ errors.node }}</div></div>{% endif %}
+                <div class="col-12"><label class="form-label" for="configTemplate">内容模板</label><textarea class="form-control font-monospace" id="configTemplate" name="template_content" rows="10" spellcheck="false">{{ values.template_content }}</textarea></div>
+                <div class="col-12"><label class="form-label" for="configDescription">描述</label><textarea class="form-control" id="configDescription" name="description" rows="3">{{ values.description }}</textarea></div>
+                <div class="col-12 d-flex justify-content-between pt-2"><a class="btn btn-outline-secondary" href="{% if config %}/configs/{{ config.id }}/{% else %}/configs/{% endif %}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>保存</button></div>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}

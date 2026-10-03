@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}角色管理 - ngxops{% endblock %}
+{% block page_title %}角色管理{% endblock %}
+
+{% block content %}
+{% if notice %}<div class="rbac-notice" data-message="{{ notice.message }}" data-type="{{ notice.type }}" hidden></div>{% endif %}
+<section class="card"><div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"><h2 class="h6 mb-0"><i class="bi bi-person-badge me-1" aria-hidden="true"></i>角色列表</h2><a class="btn btn-primary btn-sm" href="/users/roles/create/"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>新增角色</a></div>
+    <div class="card-body">
+        <form method="get" class="row g-2 mb-3"><div class="col-sm-7 col-lg-5"><label class="visually-hidden" for="roleSearch">搜索角色</label><input class="form-control form-control-sm" id="roleSearch" name="search" value="{{ search }}" placeholder="搜索角色名称"></div><div class="col-auto"><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>搜索</button></div>{% if search %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/users/roles/?per_page={{ pagination.per_page }}">清空</a></div>{% endif %}</form>
+        <div class="table-responsive"><table class="table table-sm table-hover align-middle data-table mb-0"><thead class="table-light"><tr><th>角色名称</th><th>描述</th><th>权限数</th><th>用户数</th><th>用户组数</th><th>创建人</th><th>创建时间</th><th class="text-end">操作</th></tr></thead><tbody>
+        {% for row in roles %}
+            <tr>
+                <td>{{ row.role.name }}</td><td>{{ row.role.description or "-" }}</td>
+                <td><span class="badge text-bg-secondary">{{ row.permission_count }}</span></td>
+                <td>{{ row.user_count }}</td><td>{{ row.team_count }}</td>
+                <td>{{ row.role.creator.username }}</td>
+                <td>{{ row.role.created_at.strftime("%Y-%m-%d %H:%M") if row.role.created_at else "-" }}</td>
+                <td class="text-end text-nowrap">
+                    <a class="btn btn-outline-success btn-sm" href="/users/roles/{{ row.role.id }}/manage-users/" title="管理用户" aria-label="管理 {{ row.role.name }} 用户"><i class="bi bi-people" aria-hidden="true"></i></a>
+                    <a class="btn btn-outline-primary btn-sm" href="/users/roles/{{ row.role.id }}/edit/" title="编辑角色" aria-label="编辑角色 {{ row.role.name }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>
+                    <form class="d-inline" method="post" action="/users/roles/{{ row.role.id }}/delete/" data-confirm="确定删除角色 {{ row.role.name }} 吗？此操作不可恢复。">
+                        {% include "includes/csrf_field.html" %}
+                        <button class="btn btn-outline-danger btn-sm" type="submit" title="删除角色" aria-label="删除角色 {{ row.role.name }}"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                    </form>
+                </td>
+            </tr>
+        {% else %}<tr><td colspan="8">{% include "includes/empty_state.html" with context %}</td></tr>{% endfor %}
+        </tbody></table></div>
+        {% include "includes/pagination_footer.html" %}
+    </div>
+</section>
+{% endblock %}
+{% block scripts %}<script>$(function(){var n=$(".rbac-notice");if(n.length&&window.showToast)window.showToast(n.attr("data-message"),n.attr("data-type"));});</script>{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}审阅配置修改 - ngxops{% endblock %}
+{% block page_title %}审阅配置修改{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2"><h2 class="h6 mb-0">{{ binding.config.name }} @ {{ binding.node.hostname }}</h2><span class="badge text-bg-primary">将生成 V{{ next_version }}</span></div>
+    <div class="card-body">
+        {% if notice %}<div class="alert alert-{{ 'danger' if notice.type == 'error' else 'success' }}">{{ notice.message }}</div>{% endif %}
+        <div class="row g-3 mb-3"><div class="col-md-6"><div class="small text-muted">当前路径</div><code>{{ binding.remote_path }}</code></div><div class="col-md-6"><div class="small text-muted">保存后路径</div><code>{{ remote_path }}</code></div></div>
+        <div class="table-responsive border rounded" style="max-height: 60vh; overflow: auto"><table class="table table-sm table-bordered mb-0"><thead class="table-light sticky-top"><tr><th style="width:52px">行</th><th>当前内容</th><th style="width:52px">行</th><th>保存后内容</th></tr></thead><tbody>{% for row in diff_rows %}<tr><td class="text-muted small">{{ row.left_no }}</td><td class="font-monospace small text-break {% if row.type in ['delete', 'replace'] %}table-danger{% endif %}" style="white-space: pre-wrap">{{ row.left }}</td><td class="text-muted small">{{ row.right_no }}</td><td class="font-monospace small text-break {% if row.type in ['insert', 'replace'] %}table-success{% endif %}" style="white-space: pre-wrap">{{ row.right }}</td></tr>{% else %}<tr><td colspan="4" class="text-center text-muted py-4">内容无变化</td></tr>{% endfor %}</tbody></table></div>
+        {% if remark %}<p class="small text-muted mt-3 mb-0">备注：{{ remark }}</p>{% endif %}
+        <div class="d-flex justify-content-between mt-3"><a class="btn btn-outline-secondary" href="/configs/bindings/{{ binding.id }}/edit/"><i class="bi bi-pencil me-1" aria-hidden="true"></i>返回修改</a><form method="post" action="/configs/bindings/{{ binding.id }}/edit/">{% include "includes/csrf_field.html" %}<input type="hidden" name="remote_path" value="{{ remote_path }}"><input type="hidden" name="content" value="{{ content }}"><input type="hidden" name="remark" value="{{ remark }}"><input type="hidden" name="expected_version" value="{{ expected_version }}"><input type="hidden" name="confirm_save" value="yes"><button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>确认并生成 V{{ next_version }}</button></form></div>
+    </div>
+</section>
+{% endblock %}

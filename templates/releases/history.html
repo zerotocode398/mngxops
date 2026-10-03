@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}发布历史 - ngxops{% endblock %}
+{% block page_title %}发布历史{% endblock %}
+
+{% block extra_head %}
+<style>
+    .release-history-table { min-width: 1080px; }
+    .release-history-path { max-width: 360px; overflow-wrap: anywhere; }
+    .release-history-version { white-space: nowrap; }
+    .release-history-item:hover { background: #f7f9fb; }
+    .release-history-node { background: #f4f6f8; }
+    .release-history-details[hidden] { display: none !important; }
+    .release-history-log { max-height: 180px; overflow: auto; white-space: pre-wrap; }
+    .release-history-content { max-height: 68vh; overflow: auto; white-space: pre; }
+    .release-history-check { width: 16px; height: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="card" id="releaseHistory" data-can-publish="{{ 'true' if can_publish else 'false' }}">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <h2 class="h6 mb-0"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>发布历史</h2>
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">已选 <strong id="historySelectedCount">0</strong> 项</span>
+            {% if can_publish %}
+            <button class="btn btn-primary btn-sm" type="button" id="historyRollbackSelected" disabled>
+                <i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>批量回滚
+            </button>
+            {% endif %}
+            <a class="btn btn-outline-secondary btn-sm" href="/releases/center/">
+                <i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>发布中心
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form id="historyFilterForm" class="mb-3" autocomplete="off">
+            <div class="row g-2 align-items-center">
+                <div class="col-lg-4">
+                    <input class="form-control form-control-sm" id="historySearch" type="search" maxlength="200"
+                           placeholder="搜索批次、主机、配置或路径" aria-label="搜索批次、主机、配置或路径">
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <input class="form-control form-control-sm" id="historyBatch" type="search" maxlength="64"
+                           placeholder="批次号" aria-label="批次号">
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <input class="form-control form-control-sm" id="historyNodeIp" type="search" maxlength="100"
+                           placeholder="节点 IP" aria-label="节点 IP">
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <select class="form-select form-select-sm" id="historyStatus" aria-label="批次状态">
+                        <option value="">全部状态</option>
+                        <option value="success">成功</option>
+                        <option value="partial">部分失败</option>
+                        <option value="failed">全部失败</option>
+                        <option value="running">执行中</option>
+                        <option value="pending">等待执行</option>
+                        <option value="cancelled">已取消</option>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-lg-2 d-grid">
+                    <button class="btn btn-outline-primary btn-sm" type="submit">
+                        <i class="bi bi-search me-1" aria-hidden="true"></i>筛选
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 release-history-table" aria-label="发布批次历史">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center" style="width:38px">
+                            {% if can_publish %}<input class="form-check-input release-history-check" id="historySelectPage" type="checkbox" aria-label="选择本页可回滚配置">{% endif %}
+                        </th>
+                        <th>批次 / 配置</th>
+                        <th>节点</th>
+                        <th>版本</th>
+                        <th>状态</th>
+                        <th>结果</th>
+                        <th class="text-end">回滚版本</th>
+                    </tr>
+                </thead>
+                <tbody id="historyRows">
+                    <tr><td colspan="7" class="text-center text-muted py-4">正在加载发布历史…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 border-top pt-2 mt-2">
+            <span class="small text-muted" id="historyPaginationSummary">-</span>
+            <div class="d-flex align-items-center gap-2">
+                <label class="small text-muted" for="historyPageSize">每页批次</label>
+                <select class="form-select form-select-sm" id="historyPageSize" style="width:86px">
+                    <option>10</option><option>20</option><option>50</option>
+                </select>
+                <div class="btn-group btn-group-sm" role="group" aria-label="历史分页">
+                    <button class="btn btn-outline-secondary" type="button" id="historyPreviousPage" title="上一页" aria-label="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                    <button class="btn btn-outline-secondary" type="button" id="historyNextPage" title="下一页" aria-label="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block modals %}
+<div class="modal fade" id="historyPreviewModal" tabindex="-1" aria-labelledby="historyPreviewTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title h6" id="historyPreviewTitle">配置版本预览</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+        <div class="modal-body"><pre class="release-history-content mb-0" id="historyPreviewContent">正在加载…</pre></div>
+        <div class="modal-footer"><button class="btn btn-secondary btn-sm" type="button" data-bs-dismiss="modal">关闭</button></div>
+    </div></div>
+</div>
+
+<div class="modal fade" id="historyVersionsModal" tabindex="-1" aria-labelledby="historyVersionsTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title h6" id="historyVersionsTitle">选择回滚版本</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+        <div class="modal-body">
+            <div class="small text-muted mb-2" id="historyVersionsSummary">-</div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light"><tr><th style="width:38px">选择</th><th>版本</th><th>备注</th><th>修改人</th><th>时间</th><th class="text-end">预览</th></tr></thead>
+                    <tbody id="historyVersionsRows"><tr><td colspan="6" class="text-center text-muted py-3">正在加载版本…</td></tr></tbody>
+                </table>
+            </div>
+            <div class="d-flex align-items-center justify-content-between border-top pt-2 mt-2">
+                <span class="small text-muted" id="historyVersionsPaginationSummary">-</span>
+                <div class="btn-group btn-group-sm" role="group" aria-label="版本分页">
+                    <button class="btn btn-outline-secondary" type="button" id="historyVersionsPreviousPage" title="上一页" aria-label="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                    <button class="btn btn-outline-secondary" type="button" id="historyVersionsNextPage" title="下一页" aria-label="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-outline-secondary btn-sm" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-primary btn-sm" type="button" id="historyChooseVersionSubmit" disabled><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>回滚所选版本</button></div>
+    </div></div>
+</div>
+
+<div class="modal fade" id="historyConfirmModal" tabindex="-1" aria-labelledby="historyConfirmTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title h6" id="historyConfirmTitle"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>确认回滚</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+        <div class="modal-body"><p class="small text-muted" id="historyConfirmSummary"></p><div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead class="table-light"><tr><th>节点</th><th>配置</th><th>当前版本</th><th>回滚至</th></tr></thead><tbody id="historyConfirmRows"></tbody></table></div></div>
+        <div class="modal-footer"><button class="btn btn-outline-secondary btn-sm" type="button" data-bs-dismiss="modal">返回</button><button class="btn btn-primary btn-sm" type="button" id="historyConfirmSubmit"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>开始回滚</button></div>
+    </div></div>
+</div>
+
+<div class="modal fade" id="historyProgressModal" tabindex="-1" aria-labelledby="historyProgressTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title h6" id="historyProgressTitle">回滚进度</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+        <div class="modal-body">
+            <div class="d-flex justify-content-between gap-2 small mb-1"><span id="historyProgressDetail">任务已创建</span><span id="historyProgressPercent">0%</span></div>
+            <div class="progress mb-3" role="progressbar" aria-label="回滚任务进度" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar progress-bar-striped progress-bar-animated" id="historyProgressBar" style="width:0%"></div></div>
+            <div class="small fw-semibold mb-1">执行结果</div><div class="border rounded p-2 mb-3" id="historyProgressTree" aria-live="polite"></div>
+            <div class="small fw-semibold mb-1">任务日志</div><pre class="border rounded bg-light p-2 small release-history-log mb-0" id="historyProgressLogs" aria-live="polite"></pre>
+            <div class="small mt-2" id="historyProgressFinal" aria-live="polite"></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-secondary btn-sm" type="button" data-bs-dismiss="modal">关闭</button></div>
+    </div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}"></script>{% endblock %}

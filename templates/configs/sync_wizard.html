@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}配置同步 - ngxops{% endblock %}
+{% block page_title %}配置同步{% endblock %}
+
+{% block content %}
+<section class="card" id="configSyncPage" data-can-sync="{{ 'true' if can_sync else 'false' }}" data-max-batch="{{ batch_max_count }}">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h2 class="h6 mb-1"><i class="bi bi-cloud-download me-1" aria-hidden="true"></i>远程配置发现与同步</h2>
+            <div class="small text-muted">可同步节点 {{ eligible_total }} 个</div>
+        </div>
+        <a class="btn btn-outline-secondary btn-sm" href="/configs/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>配置标签</a>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end mb-3">
+            <div class="col-12 col-md-5">
+                <label class="form-label small mb-1" for="configSyncSearch">搜索节点</label>
+                <input class="form-control form-control-sm" id="configSyncSearch" name="search" value="{{ search }}" maxlength="200" placeholder="主机名或 IP">
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label small mb-1" for="configSyncGroupSearch">节点组 / 标签</label>
+                <input class="form-control form-control-sm" id="configSyncGroupSearch" name="group_search" value="{{ group_search }}" maxlength="200" placeholder="多个词用逗号分隔">
+            </div>
+            <div class="col-8 col-md-3">
+                <label class="form-label small mb-1" for="configNginxFilter">Nginx 状态</label>
+                <select class="form-select form-select-sm" id="configNginxFilter" name="nginx_available">
+                    <option value="true"{% if nginx_filter == "true" %} selected{% endif %}>可用</option>
+                    <option value="false"{% if nginx_filter == "false" %} selected{% endif %}>未检测到</option>
+                    <option value="unknown"{% if nginx_filter == "unknown" %} selected{% endif %}>未知</option>
+                    <option value="all"{% if nginx_filter == "all" %} selected{% endif %}>全部</option>
+                </select>
+            </div>
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <div class="col-auto d-flex gap-2">
+                <button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button>
+                {% if search or group_search or nginx_filter != "true" %}<a class="btn btn-outline-secondary btn-sm" href="/configs/sync/?per_page={{ pagination.per_page }}">清空</a>{% endif %}
+            </div>
+        </form>
+
+        {% if can_sync %}
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+            <label class="form-check mb-0"><input class="form-check-input" type="checkbox" id="selectSyncNodes" aria-label="选择本页可同步节点"><span class="form-check-label small">全选可同步节点</span></label>
+            <span class="small text-muted" id="syncSelectionCount">未选择节点</span>
+            <button class="btn btn-primary btn-sm" type="button" id="batchConfigSync" disabled><i class="bi bi-cloud-download me-1" aria-hidden="true"></i>批量全量同步</button>
+            <span class="small text-muted">最多选择 {{ batch_max_count }} 个在线且 Nginx 可用的节点</span>
+        </div>
+        <div class="small mb-2" id="batchSyncStatus" role="status" aria-live="polite"></div>
+        <details class="small mb-3">
+            <summary>批量任务日志</summary>
+            <pre class="bg-light border rounded p-2 mt-2 mb-0" id="batchSyncResult" style="max-height:180px;white-space:pre-wrap"></pre>
+        </details>
+        {% endif %}
+
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light"><tr>
+                    {% if can_sync %}<th class="text-center" style="width:36px"><span class="visually-hidden">选择</span></th>{% endif %}
+                    <th>节点</th><th>SSH</th><th>Nginx</th><th>绑定统计</th><th>主配置路径</th><th>最近同步</th><th class="text-end">操作</th>
+                </tr></thead>
+                <tbody>
+                {% for row in nodes %}{% set node = row.node %}
+                    <tr>
+                        {% if can_sync %}<td class="text-center"><input class="form-check-input config-sync-node" type="checkbox" value="{{ node.id }}" data-hostname="{{ node.hostname }}"{% if preselect_node_id == node.id and row.eligible %} checked{% endif %}{% if not row.eligible %} disabled{% endif %} aria-label="选择 {{ node.hostname }}"></td>{% endif %}
+                        <td><strong>{{ node.hostname }}</strong><br><span class="small text-muted font-monospace">{{ node.ip }}:{{ node.port }}</span>{% if node.is_locked %}<span class="badge text-bg-warning ms-1">已锁定</span>{% endif %}</td>
+                        <td>{% if node.status == "online" %}<span class="badge text-bg-success">在线</span>{% elif node.status == "offline" %}<span class="badge text-bg-secondary">离线</span>{% else %}<span class="badge text-bg-light border text-muted">未知</span>{% endif %}</td>
+                        <td>{% if node.nginx_available is true %}<span class="badge text-bg-success">可用</span>{% elif node.nginx_available is false %}<span class="badge text-bg-warning">未检测到</span>{% else %}<span class="badge text-bg-light border text-muted">未知</span>{% endif %}</td>
+                        <td class="small text-nowrap">共 {{ row.binding_count }}<br><span class="text-success">已同步 {{ row.synced_count }}</span> / <span class="text-warning">待处理 {{ row.pending_count }}</span>{% if row.orphaned_count %} / <span class="text-muted">远程已删 {{ row.orphaned_count }}</span>{% endif %}{% if row.failed_count %} / <span class="text-danger">失败 {{ row.failed_count }}</span>{% endif %}</td>
+                        <td class="font-monospace small text-break">{{ row.main_conf_path }}</td>
+                        <td class="small text-muted text-nowrap">{{ row.last_sync.strftime('%Y-%m-%d %H:%M') if row.last_sync else '未同步' }}</td>
+                        <td class="text-end text-nowrap">
+                            {% if can_sync and row.eligible %}<button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#syncNode{{ node.id }}" title="发现并同步配置" aria-label="发现并同步 {{ node.hostname }} 的配置"><i class="bi bi-cloud-download" aria-hidden="true"></i></button>{% elif can_sync %}<button class="btn btn-outline-secondary btn-sm" type="button" disabled title="节点需在线且确认 Nginx 可用"><i class="bi bi-cloud-download" aria-hidden="true"></i></button>{% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="{{ 8 if can_sync else 7 }}">{% set message = "没有符合条件的节点" %}{% include "includes/empty_state.html" %}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include "includes/pagination_footer.html" %}
+    </div>
+</section>
+
+{% for row in nodes %}{% set node = row.node %}{% if can_sync and row.eligible %}
+<div class="modal fade" id="syncNode{{ node.id }}" tabindex="-1" aria-labelledby="syncNodeTitle{{ node.id }}" aria-hidden="true" data-node-id="{{ node.id }}">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header"><h2 class="modal-title h6" id="syncNodeTitle{{ node.id }}"><i class="bi bi-cloud-download me-1" aria-hidden="true"></i>{{ node.hostname }} 配置发现</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+            <div class="modal-body">
+                <label class="form-label small" for="mainConf{{ node.id }}">Nginx 主配置路径</label>
+                <div class="input-group mb-2"><input class="form-control form-control-sm main-conf-path" id="mainConf{{ node.id }}" value="{{ row.main_conf_path }}" maxlength="500" autocomplete="off"><button class="btn btn-outline-primary btn-sm discover-configs" type="button"><i class="bi bi-search me-1" aria-hidden="true"></i>发现配置</button></div>
+                <div class="small text-muted mb-3">{{ row.binding_count }} 条现有绑定</div>
+                <div class="border-top pt-3">
+                    <div class="d-flex justify-content-between align-items-center gap-2"><h3 class="h6 mb-0">发现的远程文件</h3><span class="small text-muted discovery-progress" aria-live="polite"></span></div>
+                    <div class="small text-muted discovery-errors mt-2" role="status"></div>
+                    <div class="config-discovery-files mt-2" aria-live="polite"><div class="small text-muted">尚未发现配置文件</div></div>
+                </div>
+                <div class="small text-muted mt-3 sync-task-status" role="status" aria-live="polite"></div>
+                <pre class="small bg-light border rounded p-2 mt-2 sync-task-result d-none" style="max-height:180px;white-space:pre-wrap"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-outline-primary btn-sm partial-config-sync" disabled><i class="bi bi-funnel me-1" aria-hidden="true"></i>同步勾选项</button>
+                <button type="button" class="btn btn-primary btn-sm full-config-sync"><i class="bi bi-cloud-download me-1" aria-hidden="true"></i>全量同步</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ request.url_for('static', path='js/config-sync.js') }}" defer></script>
+{% endblock %}

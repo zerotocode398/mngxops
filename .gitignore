@@ -1,4 +1,5 @@
 # Byte-compiled / optimized / DLL files
+resume.sqlite3
 __pycache__/
 *.py[codz]
 *$py.class
@@ -37,6 +38,7 @@ MANIFEST
 # 自动生成的 spec 可忽略；仓库内交付用 mngxops.spec 需入库
 *.spec
 !mngxops.spec
+!ngxops.spec
 
 # Installer logs
 pip-log.txt

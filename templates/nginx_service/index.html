@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Nginx 启停 - ngxops{% endblock %}
+{% block page_title %}<i class="bi bi-power" aria-hidden="true"></i> Nginx 启停{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-service.css') }}">{% endblock %}
+
+{% block content %}
+<div class="service-layout">
+    <section class="service-main">
+        <div class="d-flex justify-content-end mb-3">
+            <a class="btn btn-outline-secondary btn-sm" href="/nginx/service/history/"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>历史</a>
+        </div>
+        <section class="card mb-3">
+            <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-server me-1" aria-hidden="true"></i>目标节点</h2></div>
+            <div class="card-body">
+                <div class="service-selection" id="selectedNodes">
+                    <span class="text-muted small" id="emptySelection">选择在线且已检测到 Nginx 的节点，最多 {{ batch_max_count }} 台</span>
+                    <div class="service-chips" id="selectedChips"></div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#nodePickerModal">
+                        <i class="bi bi-search me-1" aria-hidden="true"></i><span id="selectNodeLabel">选择节点</span>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelection" disabled title="清空已选节点" aria-label="清空已选节点"><i class="bi bi-x-circle" aria-hidden="true"></i></button>
+                </div>
+            </div>
+        </section>
+
+        <section class="card mb-3">
+            <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-lightning-charge me-1" aria-hidden="true"></i>服务操作</h2></div>
+            <div class="card-body">
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-success btn-sm" data-service-action="start" {% if not can_operate %}disabled{% endif %}><i class="bi bi-play-fill me-1" aria-hidden="true"></i>启动</button>
+                    <button class="btn btn-outline-danger btn-sm" data-service-action="stop" {% if not can_operate %}disabled{% endif %}><i class="bi bi-stop-fill me-1" aria-hidden="true"></i>停止</button>
+                    <button class="btn btn-outline-primary btn-sm" data-service-action="reload" {% if not can_operate %}disabled{% endif %}><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>重载</button>
+                    <button class="btn btn-warning btn-sm" data-service-action="restart" {% if not can_operate %}disabled{% endif %}><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>重启</button>
+                </div>
+                {% if not can_operate %}<p class="small text-muted mt-2 mb-0">当前账号没有启停执行权限。</p>{% endif %}
+            </div>
+        </section>
+
+        <section class="card mb-3">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+                <h2 class="h6 mb-0"><i class="bi bi-list-task me-1" aria-hidden="true"></i>最近启停任务</h2>
+                <a href="/nginx/service/history/" class="btn btn-outline-secondary btn-sm">查看全部<i class="bi bi-chevron-right ms-1" aria-hidden="true"></i></a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0 data-table">
+                    <thead class="table-light"><tr><th>批次</th><th>目标节点</th><th>动作</th><th>状态</th><th>操作人</th><th>时间</th><th></th></tr></thead>
+                    <tbody>
+                    {% for task in recent_tasks %}
+                        <tr>
+                            <td><a href="/nginx/service/history/?search={{ task.source_batch|urlencode }}"><code>{{ task.source_batch }}</code></a></td>
+                            <td><span title="{{ task.target_hostnames }}">{{ task.target_hostnames|truncate(36, True) }}</span><small class="d-block text-muted">{{ task.target_ips|truncate(42, True) }}</small></td>
+                            <td><span class="badge text-bg-primary">{{ action_labels.get(task.target_configs, task.target_configs) }}</span></td>
+                            <td><span class="badge text-bg-{{ status_classes.get(task.status, 'secondary') }}">{{ status_labels.get(task.status, task.status) }}</span></td>
+                            <td>{{ operator_names.get(task.trigger_user_id, "-") }}</td>
+                            <td><small>{{ task.created_at.strftime("%m-%d %H:%M") if task.created_at else "-" }}</small></td>
+                            <td><a class="btn btn-outline-info btn-sm" href="/nginx/service/task/{{ task.id }}/log/" title="查看详情" aria-label="查看详情"><i class="bi bi-file-text" aria-hidden="true"></i></a></td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="7">{% set message = "暂无启停任务" %}{% include "includes/empty_state.html" %}</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </section>
+
+    <aside class="service-progress-column">
+        <section class="card service-progress-panel">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h2 class="h6 mb-0"><i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>执行进度</h2>
+                <span class="badge text-bg-secondary d-none" id="progressPercent">0%</span>
+            </div>
+            <div class="card-body">
+                <div id="progressPlaceholder" class="text-center text-muted py-4">
+                    <i class="bi bi-hourglass" aria-hidden="true"></i><p class="small mb-0 mt-2">批次提交后显示实时进度</p>
+                </div>
+                <div id="progressLive" class="d-none" {% if active_task %}data-task-id="{{ active_task.id }}"{% endif %}>
+                    <div class="small mb-2" id="batchNumberLabel"></div>
+                    <div class="progress mb-2" role="progressbar" aria-label="任务进度"><div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width:0%"></div></div>
+                    <p class="small text-muted mb-2" id="progressDetail"></p>
+                    <div class="service-node-progress" id="serviceNodesProgress"></div>
+                    <a class="btn btn-outline-secondary btn-sm mt-2" id="taskLogLink" href="#"><i class="bi bi-file-text me-1" aria-hidden="true"></i>查看完整日志</a>
+                </div>
+            </div>
+        </section>
+    </aside>
+</div>
+
+<div class="modal fade" id="nodePickerModal" tabindex="-1" aria-labelledby="nodePickerTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header"><h2 class="modal-title fs-6" id="nodePickerTitle">选择目标节点</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+            <div class="modal-body">
+                <label class="visually-hidden" for="nodeSearch">搜索主机名、IP 或节点组</label>
+                <input class="form-control form-control-sm mb-2" id="nodeSearch" type="search" placeholder="主机名、IP 或节点组" autocomplete="off">
+                <div class="table-responsive service-picker-table">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light"><tr><th class="text-center"><input type="checkbox" class="form-check-input" id="selectVisible" aria-label="选择当前可操作节点"></th><th>主机名 / IP</th><th>节点组</th><th>Nginx</th><th>状态</th></tr></thead>
+                        <tbody id="nodePickerRows"><tr><td colspan="5" class="text-center text-muted py-4">正在加载节点</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="small text-muted mt-2 d-flex justify-content-between"><span id="nodePickerCount">共 0 台</span><span id="nodePickerLimit">最多 {{ batch_max_count }} 台</span></div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-primary btn-sm" id="confirmNodeSelection"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>确认选择</button></div>
+        </div>
+    </div>
+</div>
+<div id="serviceConfig" data-can-operate="{{ 'true' if can_operate else 'false' }}" data-max-count="{{ batch_max_count }}" data-nodes-url="/api/nginx/service/nodes" data-execute-url="/api/nginx/service/execute" data-task-url-prefix="/api/nginx/service/tasks/" hidden></div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-service.js') }}"></script>{% endblock %}

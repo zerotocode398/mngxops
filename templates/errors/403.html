@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - ngxops{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<section class="error-state" role="alert">
+    <i class="bi bi-shield-lock" aria-hidden="true"></i>
+    <h2>{{ title }}</h2>
+    <p>{{ message }}</p>
+    <a class="btn btn-outline-primary btn-sm" href="/">
+        <i class="bi bi-house-door" aria-hidden="true"></i> 返回首页
+    </a>
+</section>
+{% endblock %}

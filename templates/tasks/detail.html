@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}任务详情 #{{ task.id }} - ngxops{% endblock %}
+{% block page_title %}任务详情 #{{ task.id }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="card task-detail-card" id="taskDetail"
+         data-task-id="{{ task.id }}" data-task-active="{{ 'true' if task.status in ('pending', 'running') else 'false' }}"
+         data-api-url="/api/tasks/{{ task.id }}" data-log-cursor="{{ log_cursor }}"
+         data-is-config-sync="{{ 'true' if is_config_sync_type else 'false' }}">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <h2 class="h6 mb-0"><i class="bi bi-card-text me-1" aria-hidden="true"></i>任务详情 #{{ task.id }}</h2>
+        <div class="d-flex flex-wrap gap-2">
+            {% if can_cancel %}
+            <button type="button" class="btn btn-outline-danger btn-sm task-cancel-button"
+                    data-cancel-url="/api/tasks/{{ task.id }}/cancel" data-task-id="{{ task.id }}"
+                    data-task-type="{{ operation_label }}">
+                <i class="bi bi-stop-circle me-1" aria-hidden="true"></i>取消任务
+            </button>
+            {% endif %}
+            {% if is_release_type and task.source_batch and can_read_releases %}
+            <a class="btn btn-outline-info btn-sm" href="/releases/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener">
+                <i class="bi bi-clock-history me-1" aria-hidden="true"></i>发布历史
+            </a>
+            {% endif %}
+            <a class="btn btn-outline-secondary btn-sm" href="/tasks/">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回任务中心
+            </a>
+        </div>
+    </div>
+    <div class="card-body task-detail-body">
+        <div class="row g-2 small mb-3 task-metadata">
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">任务类型</span><strong>{{ operation_label }}</strong></div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">来源批次</span>
+                {% if task.source_batch %}
+                    {% if is_release_type and can_read_releases %}<a href="/releases/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener"><code>{{ task.source_batch }}</code></a>
+                    {% else %}<a href="/tasks/?search={{ task.source_batch|urlencode }}"><code>{{ task.source_batch }}</code></a>{% endif %}
+                {% else %}<span>-</span>{% endif %}
+            </div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">状态</span><span class="badge task-status-badge status-{{ task.status }}" data-task-status>{{ status_label }}</span></div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">触发人</span><span>{{ trigger_username }}</span></div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">开始时间</span><span data-task-started>{{ task.started_at.strftime('%Y-%m-%d %H:%M:%S') if task.started_at else '-' }}</span></div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">结束时间</span><span data-task-finished>{{ task.finished_at.strftime('%Y-%m-%d %H:%M:%S') if task.finished_at else '-' }}</span></div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">创建时间</span><span>{{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</span></div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">进度</span><span data-task-progress-text>{{ task.progress }}%</span></div>
+        </div>
+
+        <div class="task-progress-track mb-3" role="progressbar" aria-label="任务进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ task.progress }}">
+            <div class="progress-bar" data-task-progress-bar style="width:{{ task.progress }}%"></div>
+        </div>
+        {% if task.detail %}<p class="small text-muted mb-3" data-task-detail>{{ task.detail }}</p>{% else %}<p class="small text-muted mb-3" data-task-detail></p>{% endif %}
+
+        {% if targets %}
+        <div class="mb-3">
+            <h3 class="h6 mb-2"><i class="bi bi-server me-1" aria-hidden="true"></i>目标节点（{{ targets|length }}{% if targets|length == 50 %}+{% endif %}）</h3>
+            <div class="d-flex flex-wrap gap-1">
+                {% for target in targets %}<span class="badge badge-outline">{{ target }}</span>{% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if target_configs %}
+        <div class="mb-3">
+            <h3 class="h6 mb-2"><i class="bi bi-file-earmark-code me-1" aria-hidden="true"></i>{% if task.operation_type == 'credential_enable_test' %}目标凭证{% else %}目标配置{% endif %}（{{ target_config_count }}）</h3>
+            <div class="d-flex flex-wrap gap-1">
+                {% for target in target_configs %}<span class="badge badge-outline">{{ target }}</span>{% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <hr>
+        <section class="mb-4" aria-labelledby="taskResultHeading">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                <h3 class="h6 mb-0" id="taskResultHeading"><i class="bi bi-diagram-3 me-1" aria-hidden="true"></i>执行结果</h3>
+                <span class="small text-muted" data-task-duration>{% if execution_duration %}耗时 {{ execution_duration }}{% endif %}</span>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-2" id="taskResultSummary">
+                {% if result_summary is mapping %}
+                    {% if result_summary.get('success') is not none %}<span class="badge bg-success">成功 {{ result_summary.get('success') }}</span>{% endif %}
+                    {% if result_summary.get('failed') is not none %}<span class="badge bg-danger">失败 {{ result_summary.get('failed') }}</span>{% endif %}
+                    {% if result_summary.get('total') is not none %}<span class="badge bg-secondary">共 {{ result_summary.get('total') }}</span>{% endif %}
+                {% endif %}
+            </div>
+            <div class="task-result-tree" id="taskResultTree" aria-live="polite">
+                {% if result_tree %}<p class="small text-muted mb-0">正在载入结果树…</p>
+                {% else %}<div class="empty-state"><i class="bi bi-hourglass-split" aria-hidden="true"></i><p>暂无结果数据</p></div>{% endif %}
+            </div>
+            <script type="application/json" id="taskResultData">{{ result_tree|tojson }}</script>
+            <script type="application/json" id="taskResultLabels">{{ result_field_labels|tojson }}</script>
+        </section>
+
+        <section aria-labelledby="taskLogsHeading">
+            <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                <h3 class="h6 mb-0" id="taskLogsHeading"><i class="bi bi-list-ul me-1" aria-hidden="true"></i>执行日志</h3>
+                <span class="small text-muted" data-log-count>{{ logs|length }} 条</span>
+            </div>
+            <div class="task-log-list" id="taskLogList" aria-live="polite">
+                {% for log in logs %}
+                <div class="task-log-row"><time>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</time><span class="task-log-level level-{{ log.level }}">{{ log.level }}</span><span class="task-log-message">{{ log.message }}</span></div>
+                {% else %}<p class="small text-muted mb-0" data-empty-logs>暂无执行日志</p>{% endfor %}
+            </div>
+            <button class="btn btn-outline-secondary btn-sm mt-2" type="button" id="taskLoadMoreLogs"
+                    data-has-more="{{ 'true' if has_more_logs else 'false' }}"{% if not has_more_logs %} hidden{% endif %}>
+                <i class="bi bi-arrow-down-circle me-1" aria-hidden="true"></i>加载更多日志
+            </button>
+        </section>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ request.url_for('static', path='js/task-center.js') }}"></script>
+{% endblock %}

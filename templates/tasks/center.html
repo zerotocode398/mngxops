@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}任务中心 - ngxops{% endblock %}
+{% block page_title %}任务中心{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="card task-center-card" id="taskCenter"
+         data-page="{{ pagination.page }}" data-page-size="{{ pagination.per_page }}">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <h2 class="h6 mb-0"><i class="bi bi-list-task me-1" aria-hidden="true"></i>任务中心</h2>
+        {% if can_publish %}
+        <a class="btn btn-primary btn-sm" href="/releases/center/">
+            <i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>发布中心
+        </a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-center mb-3" id="taskCenterFilterForm">
+            <div class="col-lg-6">
+                <div class="task-tag-input form-control form-control-sm" id="taskSearchTagWrapper">
+                    <input type="text" class="task-tag-input-field" id="taskSearchField"
+                           placeholder="搜索主机名或 IP 或批次号" aria-label="搜索主机名、IP 或批次号">
+                </div>
+                <input type="hidden" name="search" id="taskSearchHidden" value="{{ search }}">
+            </div>
+            <div class="col-sm-5 col-lg-3">
+                <select name="operation_type" class="form-select form-select-sm" aria-label="任务类型"
+                        onchange="this.form.submit()">
+                    <option value="">全部类型</option>
+                    {% for value, label in operation_type_choices %}
+                    <option value="{{ value }}"{% if operation_type_filter == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-sm-5 col-lg-2">
+                <select name="status" class="form-select form-select-sm" aria-label="任务状态"
+                        onchange="this.form.submit()">
+                    <option value="">全部状态</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}"{% if status_filter == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-sm-2 col-lg-1 d-grid">
+                {% if has_any_filter %}
+                <a class="btn btn-outline-secondary btn-sm" href="{{ page_path }}?per_page={{ pagination.per_page }}"
+                   title="清除筛选" aria-label="清除筛选"><i class="bi bi-x-circle" aria-hidden="true"></i></a>
+                {% else %}
+                <button class="btn btn-outline-primary btn-sm" type="submit" title="筛选" aria-label="筛选">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                </button>
+                {% endif %}
+            </div>
+        </form>
+
+        {% if rows %}
+        <div class="task-center-table-wrap">
+            <table class="table table-sm table-hover align-middle mb-0 task-center-table" aria-label="任务列表">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:5%">ID</th>
+                        <th style="width:14%">类型</th>
+                        <th style="width:9%">状态</th>
+                        <th style="width:12%">进度</th>
+                        <th style="width:23%">摘要</th>
+                        <th style="width:12%">操作人</th>
+                        <th style="width:14%">时间</th>
+                        <th style="width:11%">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    {% set task = row.task %}
+                    <tr class="task-center-row" data-task-id="{{ task.id }}"
+                        data-task-active="{{ 'true' if task.status in ('pending', 'running') else 'false' }}"
+                        data-detail-url="/tasks/{{ task.id }}/">
+                        <td><a href="/tasks/{{ task.id }}/" class="task-id-link"><code>#{{ task.id }}</code></a></td>
+                        <td><span class="badge badge-outline task-type-label" title="{{ row.operation_label }}">{{ row.operation_label }}</span></td>
+                        <td><span class="badge task-status-badge status-{{ task.status }}" data-task-status>{{ row.status_label }}</span></td>
+                        <td>
+                            <div class="progress task-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+                                 aria-valuenow="{{ task.progress }}">
+                                <div class="progress-bar" data-task-progress-bar style="width:{{ task.progress }}%"></div>
+                            </div>
+                            <small class="text-muted" data-task-progress-text>{{ task.progress }}%</small>
+                        </td>
+                        <td class="task-summary-cell">
+                            <div class="small text-truncate" data-task-summary-primary>
+                                {% if task.operation_type in ('release_publish', 'release_rollback', 'nginx_upgrade', 'nginx_rollback', 'nginx_install', 'nginx_service_control', 'nginx_uninstall') %}
+                                    {% if task.operation_type in ('release_publish', 'release_rollback') and task.source_batch and can_read_releases %}
+                                    <a href="/releases/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener"><code>{{ row.summary_primary }}</code></a>
+                                    {% else %}<code>{{ row.summary_primary }}</code>{% endif %}
+                                {% else %}{{ row.summary_primary }}{% endif %}
+                            </div>
+                            <div class="small text-muted text-truncate" data-task-summary-secondary>{{ row.summary_secondary }}</div>
+                        </td>
+                        <td class="text-truncate" title="{{ row.username }}"><small>{{ row.username }}</small></td>
+                        <td class="text-nowrap"><small>{{ task.created_at.strftime('%Y-%m-%d %H:%M') }}</small></td>
+                        <td class="text-nowrap" data-task-actions>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="任务操作">
+                                <a href="/tasks/{{ task.id }}/" class="btn btn-outline-info" title="详情" aria-label="详情">
+                                    <i class="bi bi-eye" aria-hidden="true"></i>
+                                </a>
+                                {% if row.can_cancel %}
+                                <button type="button" class="btn btn-outline-danger task-cancel-button"
+                                        data-cancel-url="/api/tasks/{{ task.id }}/cancel"
+                                        data-task-id="{{ task.id }}" data-task-type="{{ row.operation_label }}"
+                                        title="取消" aria-label="取消">
+                                    <i class="bi bi-stop-circle" aria-hidden="true"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-inbox" aria-hidden="true"></i>
+            <p>暂无任务数据</p>
+        </div>
+        {% endif %}
+        {% include "includes/pagination_footer.html" %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ request.url_for('static', path='js/task-center.js') }}"></script>
+{% endblock %}

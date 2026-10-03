@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Nginx 编译升级 - ngxops{% endblock %}
+{% block page_title %}<i class="bi bi-arrow-up-circle" aria-hidden="true"></i> Nginx 编译升级{% endblock %}
+
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}">{% endblock %}
+
+{% block content %}
+<div class="upgrade-toolbar mb-3">
+    <div class="btn-group btn-group-sm" role="group" aria-label="升级页面">
+        <a class="btn btn-primary" href="/upgrade/center/">升级中心</a>
+        <a class="btn btn-outline-secondary" href="/upgrade/packages/">源码包</a>
+        <a class="btn btn-outline-secondary" href="/upgrade/modules/">模块包</a>
+        <a class="btn btn-outline-secondary" href="/upgrade/history/">升级历史</a>
+    </div>
+</div>
+
+{% if can_create %}<div class="upgrade-stepper" id="upgradeStepper" aria-label="升级步骤">
+    <button class="upgrade-step active" type="button" data-step-target="1"><span>1</span>选择目标</button>
+    <button class="upgrade-step" type="button" data-step-target="2"><span>2</span>编译环境</button>
+    <button class="upgrade-step" type="button" data-step-target="3"><span>3</span>编译参数</button>
+    <button class="upgrade-step" type="button" data-step-target="4"><span>4</span>确认执行</button>
+</div>
+{% endif %}
+
+<div class="upgrade-layout">
+    <div class="upgrade-main-column">
+        {% if can_create %}
+        <section class="card upgrade-panel" id="upgradeStep1" data-step="1">
+            <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-primary me-2">1</span>选择目标节点与源码包</h2></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between align-items-center gap-2"><label class="form-label mb-1" for="nodeSearch">目标节点</label><span class="small text-muted">最多 {{ batch_max_count }} 个</span></div>
+                        <input class="form-control form-control-sm mb-2" id="nodeSearch" placeholder="搜索主机名、IP、节点组" autocomplete="off">
+                        <div class="table-responsive upgrade-node-table-wrap">
+                            <table class="table table-sm table-hover align-middle mb-0" id="upgradeNodeTable">
+                                <thead class="table-light"><tr><th></th><th>主机名 / IP</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
+                                <tbody>
+                                {% for node in nodes %}
+                                    <tr class="upgrade-node-row" data-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ (node.groups|map(attribute='name')|join(' ')))|lower }}">
+                                        <td><input class="form-check-input upgrade-node-check" type="checkbox" value="{{ node.id }}" aria-label="选择 {{ node.hostname }}"></td>
+                                        <td><strong>{{ node.hostname }}</strong><small class="text-muted d-block">{{ node.ip }}:{{ node.port }}</small></td>
+                                        <td>{{ {"dev":"开发","test":"测试","prod":"生产"}.get(node.environment, node.environment) }}</td>
+                                        <td><span class="badge text-bg-success">{{ node.nginx_version or "已检测" }}</span></td>
+                                        <td><small>{{ node.groups|map(attribute='name')|join('、') or "-" }}</small></td>
+                                    </tr>
+                                {% else %}<tr><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>没有满足升级条件的节点</p></div></td></tr>{% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="small text-muted mt-1">仅显示 SSH 在线、凭证已启用且检测到 Nginx 的未锁定节点；没有 Nginx 的节点请使用全新安装。</div>
+                        <div class="small mt-2" id="selectedNodeSummary">尚未选择节点</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between align-items-center mb-1"><label class="form-label mb-0">源码包</label>{% if can_create %}<a class="small" href="/upgrade/packages/upload/" target="_blank" rel="noopener">上传新包</a>{% endif %}</div>
+                        <input class="form-control form-control-sm mb-2" id="packageSearch" placeholder="搜索名称或版本" autocomplete="off">
+                        <div class="table-responsive upgrade-package-table-wrap">
+                            <table class="table table-sm table-hover align-middle mb-0" id="upgradePackageTable">
+                                <thead class="table-light"><tr><th></th><th>包名称</th><th>版本</th><th>大小</th><th>上传</th></tr></thead>
+                                <tbody>
+                                {% for package in packages %}
+                                    <tr class="upgrade-package-row" data-search="{{ (package.name ~ ' ' ~ package.version)|lower }}" data-package-id="{{ package.id }}" data-version="{{ package.version }}">
+                                        <td><input class="form-check-input upgrade-package-check" type="radio" name="source_package" value="{{ package.id }}" data-version="{{ package.version }}" data-name="{{ package.name }}"></td>
+                                        <td>{{ package.name }}{% if package.is_official %} <span class="badge text-bg-success">官方</span>{% endif %}</td>
+                                        <td><code>{{ package.version }}</code></td>
+                                        <td>{{ (package.file_size / 1048576)|round(2) }} MB</td>
+                                        <td><small>{{ package.created_at.strftime("%m-%d %H:%M") if package.created_at else "-" }} · {{ package.creator.username if package.creator else "-" }}</small></td>
+                                    </tr>
+                                {% else %}<tr><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>暂无源码包</p></div></td></tr>{% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="upgrade-panel-actions"><span class="small text-muted" id="stepOneCount">已选 0 个节点</span><button class="btn btn-primary btn-sm" type="button" id="stepOneNext" disabled>下一步 <i class="bi bi-chevron-right" aria-hidden="true"></i></button></div>
+            </div>
+        </section>
+
+        <section class="card upgrade-panel d-none" id="upgradeStep2" data-step="2">
+            <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-primary me-2">2</span>编译环境</h2></div>
+            <div class="card-body">
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-md-8"><label class="form-label" for="remoteWorkDir">远程编译工作目录</label><input class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}" placeholder="/tmp/nginx-upgrade"></div>
+                    <div class="col-12 col-md-4"><label class="form-label" for="makeJobs">并行编译 (-j)</label><input class="form-control form-control-sm" id="makeJobs" type="number" min="1" max="32" value="{{ default_make_jobs }}"></div>
+                </div>
+                <fieldset class="mb-2"><legend class="form-label">升级模式</legend>
+                    <div class="upgrade-mode-options">
+                        <label class="upgrade-mode-option"><input type="radio" name="upgradeMode" value="upgrade" checked><span><strong>平滑升级（同路径）</strong><small>保留当前 prefix，替换原 Nginx 二进制并按启动方式 reload。</small></span></label>
+                        <label class="upgrade-mode-option"><input type="radio" name="upgradeMode" value="switch_path"><span><strong>切换路径升级</strong><small>安装到新的 prefix；确认目标目录和服务启动配置可用。</small></span></label>
+                    </div>
+                </fieldset>
+                <div class="mt-3 d-none" id="targetPrefixWrap"><label class="form-label" for="targetPrefix">目标安装目录</label><input class="form-control form-control-sm" id="targetPrefix" placeholder="如 /usr/local/nginx-new"><div class="form-text">将 configure 中的 --prefix 调整为此绝对路径。</div></div>
+                <div class="upgrade-panel-actions"><button class="btn btn-outline-secondary btn-sm" type="button" data-step-target="1"><i class="bi bi-chevron-left" aria-hidden="true"></i>上一步</button><button class="btn btn-primary btn-sm" type="button" id="stepTwoNext">下一步 <i class="bi bi-chevron-right" aria-hidden="true"></i></button></div>
+            </div>
+        </section>
+
+        <section class="card upgrade-panel d-none" id="upgradeStep3" data-step="3">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap"><h2 class="h6 mb-0"><span class="badge text-bg-primary me-2">3</span>编译参数</h2><button class="btn btn-outline-primary btn-sm" id="refreshNginxV" type="button"><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>重新读取 nginx -V</button></div>
+            <div class="card-body">
+                <div class="small text-muted mb-2" id="fetchStatus">进入本步后将读取所选节点的 nginx -V 编译基线。</div>
+                <div id="nodeFetchResults" class="upgrade-fetch-results"></div>
+                <div class="alert alert-warning py-2 d-none" id="paramsMismatchNotice">各节点当前编译参数不同。模块增减会按各节点自己的参数基线计算。</div>
+                <div class="row g-3 mt-1">
+                    <div class="col-12 col-lg-6">
+                        <div class="d-flex justify-content-between align-items-center mb-2"><label class="form-label mb-0">Nginx 官方 configure 参数</label><input class="form-control form-control-sm upgrade-module-search" id="moduleSearch" placeholder="搜索参数"></div>
+                        <div class="upgrade-module-list" id="builtinModuleList"></div>
+                    </div>
+                    <div class="col-12 col-lg-6">
+                        <label class="form-label">第三方模块</label>
+                        <div id="thirdPartyRows"></div>
+                        <button class="btn btn-outline-primary btn-sm mt-2" type="button" id="addThirdParty"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>添加模块</button>
+                    </div>
+                </div>
+                <div class="upgrade-panel-actions"><button class="btn btn-outline-secondary btn-sm" type="button" data-step-target="2"><i class="bi bi-chevron-left" aria-hidden="true"></i>上一步</button><button class="btn btn-primary btn-sm" type="button" id="stepThreeNext" disabled>预览并下一步 <i class="bi bi-chevron-right" aria-hidden="true"></i></button></div>
+            </div>
+        </section>
+
+        <section class="card upgrade-panel d-none" id="upgradeStep4" data-step="4">
+            <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-success me-2">4</span>确认并开始升级</h2></div>
+            <div class="card-body">
+                <div id="upgradeSummary" class="upgrade-summary mb-3"></div>
+                <label class="form-label" for="finalConfigPreview">目标节点参数预览</label>
+                <pre class="upgrade-config-output" id="finalConfigPreview">./configure 等待生成…</pre>
+                <div class="mt-3"><div class="form-label">各节点清单</div><div id="confirmNodeList" class="upgrade-confirm-list"></div></div>
+                <div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="confirmUpgrade"><label class="form-check-label" for="confirmUpgrade">我确认以上节点、版本和编译参数无误，可以开始升级</label></div>
+                <div class="upgrade-panel-actions"><button class="btn btn-outline-secondary btn-sm" type="button" data-step-target="3"><i class="bi bi-chevron-left" aria-hidden="true"></i>上一步</button>{% if can_execute %}<button class="btn btn-success" type="button" id="startUpgrade" disabled><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>开始升级</button>{% else %}<span class="small text-muted">当前账号没有执行权限</span>{% endif %}</div>
+            </div>
+        </section>
+        {% else %}
+        <section class="card"><div class="card-body text-muted">当前账号没有读取节点编译参数的权限。</div></section>
+        {% endif %}
+    </div>
+
+    <aside class="upgrade-progress-column">
+        <section class="card upgrade-progress-card">
+            <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0"><i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>升级执行进度</h2><span class="badge text-bg-secondary d-none" id="batchProgressBadge">0%</span></div>
+            <div class="card-body">
+                <div class="text-center text-muted py-4" id="progressPlaceholder"><i class="bi bi-hourglass fs-4" aria-hidden="true"></i><p class="mb-0 mt-2 small">任务创建后显示真实进度</p></div>
+                <div class="d-none" id="progressLive"><div class="small mb-2" id="batchNumberLabel"></div><div class="progress mb-3" style="height:8px"><div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar" style="width:0%"></div></div><div id="batchTaskRows" class="upgrade-task-rows"></div></div>
+            </div>
+        </section>
+        <section class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0">最近任务</h2><a class="small" href="/upgrade/history/">全部历史</a></div>
+            <div class="list-group list-group-flush">
+                {% for run in latest_runs %}
+                    <a class="list-group-item list-group-item-action py-2" href="/upgrade/tasks/{{ run.task_id }}/"><div class="d-flex justify-content-between gap-2"><strong class="text-truncate">{{ run.node_hostname }}</strong><span class="badge text-bg-{{ 'success' if run.task.status == 'success' else ('danger' if run.task.status == 'failed' else ('info' if run.task.status == 'running' else 'secondary')) }}">{{ {"pending":"等待","running":"执行中","success":"成功","failed":"失败","cancelled":"取消"}.get(run.task.status, run.task.status) }}</span></div><small class="text-muted">{{ run.current_version or "未知" }} → {{ run.target_version }} · {{ run.batch_number }}</small></a>
+                {% else %}<div class="text-muted small p-3">暂无升级记录</div>{% endfor %}
+            </div>
+        </section>
+    </aside>
+</div>
+
+<template id="thirdPartyTemplate">
+    <div class="upgrade-third-party-row">
+        <div class="row g-2 align-items-end">
+            <div class="col-4"><label class="form-label small">来源</label><select class="form-select form-select-sm tp-source"><option value="git">在线 Git</option><option value="package">离线包</option></select></div>
+            <div class="col-8"><label class="form-label small">模块名</label><input class="form-control form-control-sm tp-name" maxlength="100" placeholder="模块目录名"></div>
+            <div class="col-12 tp-git-fields"><div class="row g-2"><div class="col-8"><label class="form-label small">Git 仓库 URL</label><input class="form-control form-control-sm tp-git" placeholder="https://… 或 git@…"></div><div class="col-4"><label class="form-label small">分支</label><input class="form-control form-control-sm tp-branch" value="master"></div></div></div>
+            <div class="col-10 tp-package-fields d-none"><label class="form-label small">离线模块包</label><select class="form-select form-select-sm tp-package"><option value="">选择已上传模块包</option>{% for package in module_packages %}<option value="{{ package.id }}" data-name="{{ package.name }}">{{ package.name }}{% if package.version %} ({{ package.version }}){% endif %}</option>{% endfor %}</select></div>
+            <div class="col-2 text-end"><button class="btn btn-outline-danger btn-sm tp-remove" type="button" title="移除此模块" aria-label="移除此模块"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
+        </div>
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}"></script>
+{% endblock %}

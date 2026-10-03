@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}登录日志 - ngxops{% endblock %}
+{% block page_title %}登录日志{% endblock %}
+
+{% block content %}
+<section class="container-fluid px-0">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h2 class="h5 mb-0"><i class="bi bi-box-arrow-in-right me-2" aria-hidden="true"></i>登录日志</h2>
+        <a class="btn btn-outline-info btn-sm" href="/audit/">
+            <i class="bi bi-journal-text me-1" aria-hidden="true"></i>操作日志
+        </a>
+    </div>
+
+    <form method="get" class="border-bottom pb-3 mb-3" id="loginSearchForm">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-xl-5">
+                <label class="form-label small mb-1" for="loginSearch">搜索</label>
+                <input class="form-control form-control-sm" id="loginSearch" name="search"
+                       value="{{ search }}" placeholder="用户名或 IP；多个词以逗号分隔">
+            </div>
+            <div class="col-6 col-xl-2">
+                <label class="form-label small mb-1" for="loginStatus">结果</label>
+                <select class="form-select form-select-sm" id="loginStatus" name="status">
+                    <option value="">全部结果</option>
+                    <option value="success"{% if status_filter == "success" %} selected{% endif %}>成功</option>
+                    <option value="failed"{% if status_filter == "failed" %} selected{% endif %}>失败</option>
+                </select>
+            </div>
+            <div class="col-6 col-xl-1">
+                <label class="form-label small mb-1" for="loginDateFrom">开始日期</label>
+                <input class="form-control form-control-sm" id="loginDateFrom" type="date" name="date_from" value="{{ date_from }}">
+            </div>
+            <div class="col-6 col-xl-1">
+                <label class="form-label small mb-1" for="loginDateTo">结束日期</label>
+                <input class="form-control form-control-sm" id="loginDateTo" type="date" name="date_to" value="{{ date_to }}">
+            </div>
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <div class="col-12 col-xl-3 d-flex gap-1">
+                <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button>
+                {% if has_filters %}<a class="btn btn-outline-secondary btn-sm" href="/audit/logins/" title="清空筛选" aria-label="清空筛选"><i class="bi bi-x-lg" aria-hidden="true"></i> 清空</a>{% endif %}
+            </div>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle mb-0">
+            <thead class="table-light"><tr>
+                <th>时间</th><th>用户名</th><th>来源 IP</th><th>浏览器信息</th><th>结果</th><th>失败原因</th>
+            </tr></thead>
+            <tbody>
+            {% for log in logs %}
+                <tr>
+                    <td class="text-nowrap"><small>{{ created_at_display.get(log.id) }}</small></td>
+                    <td>{{ log.username }}</td>
+                    <td class="text-nowrap">{{ log.ip or "-" }}</td>
+                    <td class="small text-break" style="max-width: 420px">{{ log.user_agent or "-" }}</td>
+                    <td>{% if log.status == "success" %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
+                    <td>{% if log.status == "failed" %}{{ fail_reason_labels.get(log.fail_reason, "未知") }}{% else %}-{% endif %}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6" class="text-center py-5 text-muted"><i class="bi bi-inbox fs-4 d-block mb-2" aria-hidden="true"></i>{% if has_filters %}没有符合条件的登录记录{% else %}暂无登录日志记录{% endif %}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% include "includes/pagination_footer.html" %}
+</section>
+{% endblock %}

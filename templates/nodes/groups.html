@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}节点组管理 - ngxops{% endblock %}
+{% block page_title %}节点组管理{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h2 class="h6 mb-0"><i class="bi bi-collection me-1" aria-hidden="true"></i>节点组</h2>
+        <div class="d-flex gap-2"><a class="btn btn-outline-secondary btn-sm" href="/nodes/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>节点列表</a>{% if can_create %}<a class="btn btn-primary btn-sm" href="/nodes/groups/create/"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>新增节点组</a>{% endif %}</div>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end mb-3"><div class="col-12 col-md-5"><label class="form-label small mb-1" for="groupSearch">搜索节点组</label><input class="form-control form-control-sm" id="groupSearch" name="search" value="{{ search }}" placeholder="节点组名称"></div><input type="hidden" name="per_page" value="{{ pagination.per_page }}"><div class="col-auto"><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button>{% if search %} <a class="btn btn-outline-secondary btn-sm" href="/nodes/groups/">清空</a>{% endif %}</div></form>
+        <div class="table-responsive"><table class="table table-sm table-hover align-middle data-table mb-0"><thead class="table-light"><tr><th>名称</th><th>描述</th><th>成员节点</th><th>创建时间</th><th class="text-end">操作</th></tr></thead><tbody>
+            {% for group in groups %}<tr><td><strong>{{ group.name }}</strong></td><td>{{ group.description or "-" }}</td><td><span class="badge text-bg-light border">{{ group_counts.get(group.id, 0) }} 台</span></td><td><small class="text-muted">{{ group.created_at.strftime("%Y-%m-%d %H:%M") if group.created_at else "-" }}</small></td><td class="text-end text-nowrap">{% if can_update %}<a class="btn btn-outline-primary btn-sm" href="/nodes/groups/{{ group.id }}/edit/" title="编辑节点组" aria-label="编辑 {{ group.name }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>{% endif %}{% if can_delete %}<a class="btn btn-outline-danger btn-sm" href="/nodes/groups/{{ group.id }}/delete/" title="删除节点组" aria-label="删除 {{ group.name }}"><i class="bi bi-trash" aria-hidden="true"></i></a>{% endif %}</td></tr>{% else %}<tr><td colspan="5">{% set message = "暂无节点组" %}{% include "includes/empty_state.html" %}</td></tr>{% endfor %}
+        </tbody></table></div>
+        {% include "includes/pagination_footer.html" %}
+    </div>
+</section>
+{% endblock %}

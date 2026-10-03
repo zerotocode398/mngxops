@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}绑定详情 - {{ binding.config.name }}{% endblock %}
+{% block page_title %}绑定详情{% endblock %}
+
+{% block content %}
+{% if notice %}<div class="alert alert-{{ 'danger' if notice.type == 'error' else 'success' }} alert-dismissible fade show" role="status">{{ notice.message }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button></div>{% endif %}
+<section class="card mb-3">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2"><h2 class="h6 mb-0">{{ binding.config.name }} @ {{ binding.node.hostname }}</h2><div class="d-flex gap-2"><a class="btn btn-outline-secondary btn-sm" href="/configs/{{ binding.config_id }}/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回标签</a><a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/versions/"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>版本历史</a>{% if can_update and binding.sync_status != 'marked_deleted' %}<a class="btn btn-outline-primary btn-sm" href="/configs/bindings/{{ binding.id }}/edit/"><i class="bi bi-pencil me-1" aria-hidden="true"></i>编辑</a>{% endif %}{% if can_delete %}<a class="btn btn-outline-danger btn-sm" href="/configs/bindings/{{ binding.id }}/delete/"><i class="bi bi-link-45deg me-1" aria-hidden="true"></i>解除绑定</a>{% endif %}</div></div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4"><div class="small text-muted">节点</div><div>{{ binding.node.hostname }} <span class="font-monospace small text-muted">{{ binding.node.ip }}</span></div></div>
+            <div class="col-md-4"><div class="small text-muted">远程路径</div><code>{{ binding.remote_path }}</code></div>
+            <div class="col-md-2"><div class="small text-muted">当前版本</div><div>V{{ binding.current_version }}</div></div>
+            <div class="col-md-2"><div class="small text-muted">同步状态</div><span class="badge {% if binding.sync_status == 'synced' %}text-bg-success{% elif binding.sync_status == 'modified' %}text-bg-primary{% elif binding.sync_status == 'failed' %}text-bg-danger{% elif binding.sync_status == 'marked_deleted' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ status_labels.get(binding.sync_status, binding.sync_status) }}</span></div>
+            <div class="col-md-4"><div class="small text-muted">来源</div><div>{{ source_labels.get(binding.source, binding.source) }}</div></div>
+            <div class="col-md-4"><div class="small text-muted">创建人</div><div>{{ binding.creator.username }}</div></div>
+            <div class="col-md-4"><div class="small text-muted">最后同步</div><div>{{ binding.last_sync_time.strftime('%Y-%m-%d %H:%M') if binding.last_sync_time else '-' }}</div></div>
+            {% if binding.last_sync_error %}<div class="col-12"><div class="small text-muted">最近同步错误</div><div class="text-danger small">{{ binding.last_sync_error }}</div></div>{% endif %}
+        </div>
+    </div>
+</section>
+<section class="card">
+    <div class="card-header d-flex align-items-center justify-content-between"><h2 class="h6 mb-0">当前配置内容</h2><a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/compare/"><i class="bi bi-intersect me-1" aria-hidden="true"></i>版本对比</a></div>
+    <div class="card-body p-0"><pre class="mb-0 p-3 bg-light font-monospace" style="max-height: 65vh; overflow: auto; white-space: pre">{{ binding.content }}</pre></div>
+</section>
+{% endblock %}

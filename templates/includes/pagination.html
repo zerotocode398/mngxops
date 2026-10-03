@@ -1,0 +1,21 @@
+{% if pagination and pagination.pages > 1 %}
+<nav aria-label="分页导航" class="pagination-nav">
+    <ul class="pagination pagination-sm justify-content-center mb-0">
+        {% if pagination.page > 1 %}
+            <li class="page-item"><a class="page-link" href="{{ request.url.include_query_params(page=1) }}" title="首页"><i class="bi bi-chevron-double-left" aria-hidden="true"></i><span>首页</span></a></li>
+            <li class="page-item"><a class="page-link" href="{{ request.url.include_query_params(page=pagination.page - 1) }}" title="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i><span>上一页</span></a></li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-double-left" aria-hidden="true"></i><span>首页</span></span></li>
+            <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left" aria-hidden="true"></i><span>上一页</span></span></li>
+        {% endif %}
+        <li class="page-item disabled"><span class="page-link page-count">{{ pagination.page }} / {{ pagination.pages }}</span></li>
+        {% if pagination.page < pagination.pages %}
+            <li class="page-item"><a class="page-link" href="{{ request.url.include_query_params(page=pagination.page + 1) }}" title="下一页"><span>下一页</span><i class="bi bi-chevron-right" aria-hidden="true"></i></a></li>
+            <li class="page-item"><a class="page-link" href="{{ request.url.include_query_params(page=pagination.pages) }}" title="末页"><span>末页</span><i class="bi bi-chevron-double-right" aria-hidden="true"></i></a></li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link"><span>下一页</span><i class="bi bi-chevron-right" aria-hidden="true"></i></span></li>
+            <li class="page-item disabled"><span class="page-link"><span>末页</span><i class="bi bi-chevron-double-right" aria-hidden="true"></i></span></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}

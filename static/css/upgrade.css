@@ -1,0 +1,53 @@
+.upgrade-toolbar { display: flex; justify-content: flex-end; }
+.upgrade-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--gray-200); }
+.upgrade-step { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 10px; border: 0; border-bottom: 2px solid transparent; color: var(--gray-600); background: transparent; font-size: 0.875rem; }
+.upgrade-step span { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--gray-300); border-radius: 50%; font-size: 0.75rem; }
+.upgrade-step.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.upgrade-step.active span, .upgrade-step.done span { color: #fff; background: var(--primary); border-color: var(--primary); }
+.upgrade-step.done { color: var(--gray-800); }
+.upgrade-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(290px, 0.8fr); gap: 16px; align-items: start; }
+.upgrade-main-column, .upgrade-progress-column { min-width: 0; }
+.upgrade-progress-column { position: sticky; top: 16px; }
+.upgrade-panel .card-body { padding-bottom: 14px; }
+.upgrade-panel-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--gray-100); }
+.upgrade-node-table-wrap { max-height: 240px; overflow: auto; border: 1px solid var(--gray-200); border-radius: 4px; }
+.upgrade-package-table-wrap { max-height: 210px; overflow: auto; border: 1px solid var(--gray-200); border-radius: 4px; }
+.upgrade-node-table-wrap thead, .upgrade-package-table-wrap thead { position: sticky; top: 0; z-index: 1; }
+.upgrade-mode-options { display: grid; gap: 8px; }
+.upgrade-mode-option { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--gray-300); border-radius: 4px; cursor: pointer; }
+.upgrade-mode-option:has(input:checked) { border-color: var(--primary); background: rgba(58, 112, 191, 0.06); }
+.upgrade-mode-option input { margin-top: 3px; }
+.upgrade-mode-option span { display: grid; gap: 2px; }
+.upgrade-mode-option small { color: var(--gray-600); }
+.upgrade-fetch-results { display: grid; gap: 6px; }
+.upgrade-fetch-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 9px; border: 1px solid var(--gray-200); border-radius: 4px; font-size: 0.8125rem; }
+.upgrade-fetch-row.failed { color: #842029; border-color: #f1aeb5; background: #f8d7da; }
+.upgrade-module-list { max-height: 380px; overflow: auto; border: 1px solid var(--gray-200); border-radius: 4px; padding: 4px 10px; }
+.upgrade-module-option { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--gray-100); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.upgrade-module-option:last-child { border-bottom: 0; }
+.upgrade-module-option code { color: var(--gray-800); }
+.upgrade-module-search { width: min(45%, 180px); }
+.upgrade-third-party-row { padding: 10px 0; border-bottom: 1px solid var(--gray-200); }
+.upgrade-third-party-row:first-child { padding-top: 0; }
+.upgrade-third-party-row:last-child { border-bottom: 0; }
+.upgrade-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; padding: 12px; border: 1px solid var(--gray-200); border-radius: 4px; background: var(--gray-50, #f8f9fa); }
+.upgrade-summary-item { min-width: 0; overflow-wrap: anywhere; }
+.upgrade-confirm-list, .upgrade-task-rows { display: grid; gap: 7px; }
+.upgrade-confirm-item, .upgrade-task-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--gray-200); border-radius: 4px; }
+.upgrade-config-output, .upgrade-log-output { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 4px; color: #e7edf5; background: #202832; font: 0.78rem/1.55 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+.upgrade-log-output { max-height: 520px; }
+.upgrade-log-output .log-error { color: #ff9b9b; }
+.upgrade-log-output .log-warning { color: #ffe18a; }
+.upgrade-upload-panel { max-width: 860px; }
+
+@media (max-width: 991.98px) {
+    .upgrade-layout { grid-template-columns: minmax(0, 1fr); }
+    .upgrade-progress-column { position: static; }
+}
+
+@media (max-width: 575.98px) {
+    .upgrade-step { flex-direction: column; gap: 4px; padding: 7px 3px; font-size: 0.72rem; }
+    .upgrade-summary { grid-template-columns: minmax(0, 1fr); }
+    .upgrade-toolbar { justify-content: stretch; }
+    .upgrade-toolbar .btn-group { display: grid; grid-template-columns: repeat(2, 1fr); width: 100%; }
+}

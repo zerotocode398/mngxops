@@ -1,0 +1,242 @@
+.task-center-table-wrap {
+    width: 100%;
+    overflow-x: hidden;
+}
+
+.task-center-table {
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+}
+
+.task-center-table th,
+.task-center-table td {
+    overflow: hidden;
+    vertical-align: middle;
+}
+
+.task-center-table thead th {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.task-center-row {
+    cursor: pointer;
+}
+
+.task-center-row:hover {
+    background: #f2f6f8;
+}
+
+.task-type-label {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+
+.task-id-link {
+    text-decoration: none;
+}
+
+.task-progress {
+    height: 6px;
+    min-width: 42px;
+    margin-bottom: 3px;
+}
+
+.task-progress-track {
+    height: 8px;
+    overflow: hidden;
+    border-radius: 4px;
+    background: #e9ecef;
+}
+
+.task-progress-track .progress-bar {
+    height: 100%;
+    background: #198754;
+    transition: width .2s ease;
+}
+
+.status-pending {
+    color: #fff;
+    background: #6c757d;
+}
+
+.status-running {
+    color: #fff;
+    background: #0d6efd;
+}
+
+.status-success {
+    color: #fff;
+    background: #198754;
+}
+
+.status-failed {
+    color: #fff;
+    background: #dc3545;
+}
+
+.status-cancelled {
+    color: #212529;
+    background: #ffc107;
+}
+
+.task-tag-input {
+    display: flex;
+    min-height: 31px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+}
+
+.task-tag-input-field {
+    min-width: 110px;
+    flex: 1 1 110px;
+    border: 0;
+    outline: 0;
+    font: inherit;
+}
+
+.task-tag-badge {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 5px;
+    overflow-wrap: anywhere;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #25333c;
+    background: #e9eef1;
+    font-size: .78rem;
+}
+
+.task-tag-remove {
+    padding: 0;
+    border: 0;
+    color: #56636b;
+    background: transparent;
+    line-height: 1;
+}
+
+.task-detail-body {
+    font-size: var(--fs-base);
+    line-height: 1.5;
+}
+
+.task-detail-body .text-muted {
+    font-size: var(--fs-sm);
+}
+
+.task-metadata > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 5px;
+    overflow-wrap: anywhere;
+}
+
+.task-result-tree {
+    max-height: 680px;
+    overflow: auto;
+    padding: 10px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: #fbfcfd;
+}
+
+.task-tree-list {
+    margin: 0;
+    padding-left: 1.15rem;
+    list-style: none;
+}
+
+.task-tree-item {
+    margin: 2px 0;
+}
+
+.task-tree-summary {
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.task-tree-fields {
+    display: grid;
+    grid-template-columns: minmax(100px, 170px) minmax(0, 1fr);
+    gap: 3px 10px;
+    margin: 5px 0 6px 14px;
+}
+
+.task-tree-fields dt,
+.task-tree-fields dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.task-tree-fields dt {
+    color: #66737b;
+    font-weight: 500;
+}
+
+.task-log-list {
+    max-height: 360px;
+    overflow: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.task-log-row {
+    display: grid;
+    grid-template-columns: 150px 64px minmax(0, 1fr);
+    gap: 8px;
+    padding: 6px 9px;
+    border-bottom: 1px solid #edf0f2;
+    font-size: .82rem;
+}
+
+.task-log-row:last-child {
+    border-bottom: 0;
+}
+
+.task-log-row time,
+.task-log-level {
+    color: #65727a;
+    white-space: nowrap;
+}
+
+.task-log-message {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 767.98px) {
+    .task-center-table th:nth-child(5),
+    .task-center-table td:nth-child(5) {
+        width: 21% !important;
+    }
+
+    .task-center-table th:nth-child(6),
+    .task-center-table td:nth-child(6),
+    .task-center-table th:nth-child(7),
+    .task-center-table td:nth-child(7) {
+        display: none;
+    }
+
+    .task-log-row {
+        grid-template-columns: 1fr auto;
+    }
+
+    .task-log-message {
+        grid-column: 1 / -1;
+    }
+
+    .task-tree-fields {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+}

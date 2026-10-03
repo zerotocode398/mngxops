@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}启停任务详情 - {{ task.source_batch }}{% endblock %}
+{% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> 启停任务详情{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+    <a class="btn btn-outline-secondary btn-sm" href="/nginx/service/history/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回历史</a>
+    <a class="btn btn-outline-primary btn-sm" href="/nginx/service/"><i class="bi bi-power me-1" aria-hidden="true"></i>启停操作台</a>
+    {% if can_view_task_center %}<a class="btn btn-outline-secondary btn-sm" href="/tasks/{{ task.id }}/" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>任务中心</a>{% endif %}
+</div>
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h2 class="h6 mb-0">任务信息</h2>
+        <div class="d-flex gap-2 align-items-center"><span class="badge text-bg-{{ status_class }}" id="taskStatus">{{ status_label }}</span><span class="badge text-bg-primary{% if task.status in ('success', 'failed', 'cancelled') %} d-none{% endif %}" id="taskProgress">{{ task.progress }}%</span></div>
+    </div>
+    <div class="card-body">
+        <dl class="row mb-0 small">
+            <dt class="col-sm-2">批次号</dt><dd class="col-sm-4"><code>{{ task.source_batch }}</code></dd>
+            <dt class="col-sm-2">动作</dt><dd class="col-sm-4">{{ action_label }}</dd>
+            <dt class="col-sm-2">目标节点</dt><dd class="col-sm-4">{% for target in targets %}<div>{{ target }}</div>{% else %}-{% endfor %}</dd>
+            <dt class="col-sm-2">创建时间</dt><dd class="col-sm-4">{{ task.created_at.strftime("%Y-%m-%d %H:%M:%S") if task.created_at else "-" }}</dd>
+            <dt class="col-sm-2">开始时间</dt><dd class="col-sm-4" id="startedAt">{{ task.started_at.strftime("%Y-%m-%d %H:%M:%S") if task.started_at else "-" }}</dd>
+            <dt class="col-sm-2">完成时间</dt><dd class="col-sm-4" id="finishedAt">{{ task.finished_at.strftime("%Y-%m-%d %H:%M:%S") if task.finished_at else "-" }}</dd>
+            <dt class="col-sm-2">执行摘要</dt><dd class="col-sm-10" id="taskDetail">{{ task.detail }}</dd>
+        </dl>
+    </div>
+</div>
+<div class="card mb-3">
+    <div class="card-header"><h2 class="h6 mb-0">节点结果</h2></div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead class="table-light"><tr><th>主机名</th><th>IP</th><th>状态</th><th>结果</th></tr></thead><tbody id="taskNodeResults">
+    {% if result_tree and result_tree.nodes %}{% for item in result_tree.nodes %}<tr><td>{{ item.hostname }}</td><td><code>{{ item.ip }}</code></td><td>{{ item.status }}</td><td>{{ item.message }}</td></tr>{% endfor %}{% else %}<tr><td colspan="4" class="text-muted">暂无结果</td></tr>{% endif %}
+    </tbody></table></div>
+</div>
+<div class="card">
+    <div class="card-header"><h2 class="h6 mb-0">完整执行日志</h2></div>
+    <div class="card-body"><pre class="service-log" id="serviceLog" aria-live="polite">{% for entry in logs %}[{{ entry.created_at.strftime("%H:%M:%S") if entry.created_at else "--:--:--" }}] {{ entry.message }}
+{% else %}暂无日志{% endfor %}</pre></div>
+</div>
+<div id="serviceTaskConfig" data-task-id="{{ task.id }}" data-url="/api/nginx/service/tasks/{{ task.id }}" data-log-cursor="{{ log_cursor }}" data-status="{{ task.status }}" hidden></div>
+{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-service.js') }}"></script>{% endblock %}

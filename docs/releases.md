@@ -1,0 +1,63 @@
+# 发布中心
+
+## 范围
+
+NX-040 提供按节点选择绑定和版本、预览配置、确认批次、异步执行与实时结果。页面为 `/releases/center/`，JSON 接口为 `/api/releases/*`。NX-041 提供发布历史和版本回滚；统一任务中心页面由 NX-042 实现。
+
+## 权限与选择规则
+
+- 页面及节点/绑定/版本读取需要 `releases.read` 或 `releases.publish`；创建发布需要 `releases.publish`。
+- 默认节点筛选为活动且 Nginx 已确认可用。可组合搜索主机名、IP、配置名、远程路径和节点组，并按节点组、环境、SSH 状态、Nginx 状态及绑定状态筛选。
+- 发布选择可包含普通绑定和 `marked_deleted` 绑定。执行前均要求节点活动、未锁定、SSH 在线且 `nginx_available=True`，并关联启用的 SSH 凭证；待删除绑定会执行远程删除、`nginx -t` 和节点统一 reload。
+- 请求最多包含 500 个绑定，涉及节点数和跨节点并发由 `node.batch_max_count` 控制，默认 3；同节点配置串行。绑定数限制用于保证统一任务 1 MiB 结果树上限。
+- 已删除、锁定、离线或 Nginx 未确认可用的绑定按参考行为跳过；若无可发布目标则返回 400。已有 `release_publish` 或 `release_rollback` 任务处于 pending/running 时，新批次返回 409。
+- 绑定版本从 `BindingVersion` 快照读取。未显式选择版本时使用绑定的 `current_version`。版本正文只由预览接口返回，节点和绑定列表不携带正文。
+
+## 执行
+
+批次号格式为 `release-YYMMDD-XXXX`，保存在统一任务的 `source_batch` 中。任务类型为 `release_publish`；节点及绑定结果、进度、日志和触发人使用 NX-005 的任务记录，不另建 Django 风格的发布任务表。任务结果树不包含配置正文、密码或私钥，绑定远程路径最多保留 160 个字符以满足 1 MiB 上限；远程命令原始输出不写入任务数据，避免 `nginx -t` 输出配置行。
+
+每个节点由一条 SSH 会话完成以下流程：
+
+1. 重新读取节点门禁并在连接前解密已启用凭证。
+2. 若远程目标文件存在，将其备份到 `{backup_dir}/{hostname}/文件名.时间戳.任务ID.绑定ID`；首次发布没有旧文件时跳过备份。
+3. 通过 SFTP 上传到唯一 `/tmp` 临时路径，校验临时文件大小和 MD5，再复制到目标路径并复核目标 MD5。
+4. 对每个目标执行节点配置的 Nginx 二进制 `-t`。同节点全部绑定通过后统一 reload；检测到活动 systemd `nginx` unit 时执行 `systemctl reload nginx`，已启用但未运行时执行 start，否则检查进程并使用 Nginx 二进制 reload/start。
+5. 所有步骤成功后更新绑定的 `synced_version`、`remote_content_hash`（MD5）、`sync_status` 和 `last_sync_time`。
+
+同节点任一绑定上传或 `nginx -t` 失败时，中止该节点其余绑定并恢复本批已替换文件；统一 reload 失败时也恢复本节点本批文件。首次发布失败会移除新目标文件。不同节点独立执行，某节点失败不阻止其他节点完成。
+
+`marked_deleted` 绑定会先备份现存文件，再删除并执行 `nginx -t`；整个节点统一 reload 成功后才物理删除本地绑定。校验、后续绑定或 reload 失败时恢复已删除文件并保留本地删除标记。相较参考执行器的删除分支，本实现为删除操作增加备份和失败恢复，避免校验失败后远程文件已删除而本地绑定仍存在。
+
+备份根目录由 `release.backup_dir` 系统设置控制，默认沿用 `/opt/app/mascloud/ansible/mngxops`。此路径指远程节点上的目录；`NGXOPS_RELEASE_BACKUP_DIR` 仅作为 v14 系统设置表不可用时的兼容默认值。
+
+## 任务与取消
+
+发布中心按 `GET /api/tasks/{task_id}` 轮询持久化任务进度、结果树和增量日志。拥有 `releases.publish` 的用户仅能读取本人创建的发布/回滚任务；拥有 `releases.read` 的用户可按任务模块规则读取全量任务。
+
+取消立即将通用任务置为 `cancelled` 并关闭已登记 SSH 客户端。执行器在节点/绑定检查点协作退出，并尽力恢复尚未 reload 的文件；已发出的远程命令无法强制终止，连接关闭或进程退出时远端操作可能已完成。单进程部署限制与任务协议见 [tasks.md](tasks.md)。
+
+## 发布历史与回滚
+
+发布历史页面为 `/releases/`，需要 `releases.read`；历史按 `source_batch` 分页，批次展开为节点和配置项，提供批次号、关键词、节点 IP 和结果状态筛选。已删除节点仍按任务结果树中的快照展示。版本徽标读取原 `BindingVersion` 快照，配置正文不进入历史列表或任务结果。
+
+单条回滚可选择与本次发布版本不同的任一现存绑定版本；批量回滚默认选择本次发布版本的上一版。同一绑定跨批次批量选择只允许使用最新历史项。成功和失败终态的配置项都可以尝试回滚，但远程删除项、缺失绑定、无目标版本及执行中/取消项不可回滚。
+
+创建时重新检查当前节点未删除、未锁定、SSH 在线、Nginx 已确认可用且凭证启用，同时要求绑定仍存在、未标记删除且远程路径未改变。节点在任务执行前再次按发布执行器规则复核；任一状态门禁不通过时不连接节点。批量请求中的失效项会在响应中列为跳过项；无可执行项返回 400。回滚沿用发布文件流程，先备份当前远程文件，再上传目标版本、校验 MD5 和 `nginx -t`，节点内统一 reload；失败时恢复回滚前的文件，首次没有远程文件时失败清除新目标。批量限制、同批次全局执行门禁和 SSH 会话复用与发布一致。
+
+回滚任务复用 NX-005 `Task`，类型为 `release_rollback`，写入新的 `release-YYMMDD-XXXX` 批次号，不新增数据库表或迁移。历史由 `Task.result_tree_json` 重建；物理删除或已清理的绑定仍保留显示快照，但不再允许回滚。新发布任务在 160 字符远程路径摘要之外保存 SHA-256 指纹，用于准确检查长路径是否变化，不保存配置正文。NX-041 之前创建且路径摘要已截断的历史任务没有指纹，无法安全确认超长路径是否仍一致，因此不能从该记录回滚。单条指定版本 API 只接收一个历史项，避免批量指定版本绕过默认上一版规则。
+
+## JSON 接口
+
+| 方法与路径 | 行为 |
+|---|---|
+| `GET /api/releases/nodes` | 搜索、组合筛选和分页查询节点，返回绑定状态统计。 |
+| `GET /api/releases/nodes/{node_id}/bindings` | 读取节点绑定和版本号（含标记删除项），不返回正文。 |
+| `GET /api/releases/versions/{version_id}` | 读取有权用户所选版本的正文供预览。 |
+| `POST /api/releases/publish` | 全量校验选择后返回批次号和 `release_publish` 任务 ID（202）。 |
+| `GET /api/releases/history` | 按批次筛选、分页读取发布/回滚结果树及上一版回滚摘要。 |
+| `GET /api/releases/history/{task_id}/bindings/{binding_id}/versions` | 分页读取单项的其他版本元数据。 |
+| `GET /api/releases/history/{task_id}/bindings/{binding_id}/versions/{version}` | 预览与该历史项关联绑定的指定版本正文。 |
+| `POST /api/releases/rollback` | 从历史创建 `release_rollback` 任务；单条可指定版本，批量默认上一版（202）。 |
+
+受保护 JSON API 使用会话 Cookie；POST 还要求全局 CSRF Cookie 和 `X-CSRFToken` 请求头。响应模型和错误码登记于 [api.md](api.md)。

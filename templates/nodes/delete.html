@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}删除节点 - ngxops{% endblock %}
+{% block page_title %}删除节点{% endblock %}
+
+{% block content %}
+<section class="card" style="max-width:760px">
+    <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-trash me-1" aria-hidden="true"></i>从运维清单移除节点</h2></div>
+    <div class="card-body">
+        <div class="alert alert-warning"><strong>{{ node.hostname }}</strong>（{{ node.ip }}）将从活跃节点清单中移除。节点数据和历史关联会保留；之后用相同 IP 新建时会恢复原记录。</div>
+        <dl class="row mb-4"><dt class="col-sm-3">SSH 端口</dt><dd class="col-sm-9">{{ node.port }}</dd><dt class="col-sm-3">环境</dt><dd class="col-sm-9">{{ node.environment }}</dd><dt class="col-sm-3">凭证</dt><dd class="col-sm-9">{{ node.credential.name if node.credential else "未配置" }}</dd><dt class="col-sm-3">节点组</dt><dd class="col-sm-9">{{ node.groups|map(attribute="name")|join("、") or "-" }}</dd></dl>
+        <form method="post" action="/nodes/{{ node.id }}/delete/">
+            {% include "includes/csrf_field.html" %}<input type="hidden" name="return_to" value="{{ return_to }}">
+            <div class="d-flex justify-content-between"><a class="btn btn-outline-secondary" href="{{ return_to }}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>取消</a><button class="btn btn-danger" type="submit"><i class="bi bi-trash me-1" aria-hidden="true"></i>确认移除</button></div>
+        </form>
+    </div>
+</section>
+{% endblock %}

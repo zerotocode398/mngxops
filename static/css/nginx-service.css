@@ -1,0 +1,116 @@
+.service-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.8fr) minmax(290px, 1fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.service-selection {
+    min-height: 56px;
+    border: 1px solid var(--gray-200, #e3e6e8);
+    border-radius: 4px;
+    padding: 0.65rem 0.75rem;
+    background: #fff;
+}
+
+.service-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.service-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    max-width: 100%;
+    padding: 0.25rem 0.45rem;
+    color: #174d67;
+    background: #eaf4f7;
+    border: 1px solid #bdd8e0;
+    border-radius: 4px;
+    font-size: 0.82rem;
+}
+
+.service-progress-column {
+    position: sticky;
+    top: 1rem;
+}
+
+.service-progress-panel {
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+}
+
+.service-picker-table {
+    min-height: 220px;
+    max-height: 52vh;
+    overflow: auto;
+}
+
+.service-picker-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.service-picker-node {
+    display: block;
+    font-weight: 600;
+}
+
+.service-picker-node small {
+    display: block;
+    color: var(--gray-600, #6c757d);
+    font-weight: 400;
+}
+
+.service-node-progress {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.service-node-item {
+    border: 1px solid var(--gray-200, #e3e6e8);
+    border-radius: 4px;
+    padding: 0.55rem 0.65rem;
+}
+
+.service-node-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.service-node-message {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--gray-600, #6c757d);
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+
+.service-log {
+    max-height: 62vh;
+    margin: 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.82rem;
+    line-height: 1.55;
+}
+
+@media (max-width: 900px) {
+    .service-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .service-progress-column {
+        position: static;
+    }
+
+    .service-progress-panel {
+        max-height: none;
+    }
+}

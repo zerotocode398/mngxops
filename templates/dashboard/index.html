@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% macro stat_card(stat_key, label, value, icon, tone, href='', alert_tone='') -%}
+    {% set current_tone = alert_tone if alert_tone and value > 0 else tone %}
+    {% if href %}
+    <a class="dashboard-stat-card stat-tone-{{ current_tone }}"
+       href="{{ href }}" data-stat-card="{{ stat_key }}"
+       data-tone-base="{{ tone }}" data-tone-positive="{{ alert_tone }}">
+    {% else %}
+    <div class="dashboard-stat-card stat-tone-{{ current_tone }}"
+         data-stat-card="{{ stat_key }}"
+         data-tone-base="{{ tone }}" data-tone-positive="{{ alert_tone }}">
+    {% endif %}
+        <span class="dashboard-stat-icon" aria-hidden="true"><i class="bi {{ icon }}"></i></span>
+        <span class="dashboard-stat-copy">
+            <span class="dashboard-stat-value" data-stat="{{ stat_key }}">{{ value }}</span>
+            <span class="dashboard-stat-label">{{ label }}</span>
+        </span>
+    {% if href %}</a>{% else %}</div>{% endif %}
+{%- endmacro %}
+
+{% block title %}系统概览 - ngxops{% endblock %}
+{% block page_title %}系统概览{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-page" data-dashboard-refresh
+     data-stats-url="/api/stats/" data-refresh-ms="{{ dashboard_refresh_ms }}">
+    <div class="dashboard-toolbar">
+        <div>
+            <h2 class="h6 mb-1">系统概览</h2>
+            <p class="small text-muted mb-0">节点、配置与近期任务状态</p>
+        </div>
+        <div class="dashboard-shortcuts">
+            {% if can_publish %}
+            <a class="btn btn-primary btn-sm" href="/releases/center/">
+                <i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>发布中心
+            </a>
+            {% endif %}
+            {% if can_read_configs %}
+            <a class="btn btn-outline-primary btn-sm" href="/configs/">
+                <i class="bi bi-folder2-open me-1" aria-hidden="true"></i>配置列表
+            </a>
+            {% endif %}
+            {% if can_create_nodes %}
+            <a class="btn btn-outline-secondary btn-sm" href="/nodes/create/">
+                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>新建节点
+            </a>
+            {% endif %}
+            {% if can_access_task_center %}
+            <a class="btn btn-outline-secondary btn-sm" href="/tasks/">
+                <i class="bi bi-list-task me-1" aria-hidden="true"></i>任务中心
+            </a>
+            {% endif %}
+            <button class="btn btn-outline-secondary btn-sm" type="button"
+                    onclick="window.location.reload()" title="手动刷新">
+                <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>刷新
+            </button>
+        </div>
+    </div>
+
+    <section class="dashboard-stat-group" aria-labelledby="dashboardNodesHeading">
+        <h2 class="dashboard-group-heading" id="dashboardNodesHeading">
+            <span class="dashboard-group-mark mark-nodes" aria-hidden="true"></span>节点
+        </h2>
+        <div class="dashboard-stat-grid">
+            {{ stat_card('node_count', '节点总数', node_count, 'bi-server', 'primary', '/nodes/' if can_read_nodes else '') }}
+            {{ stat_card('online_count', '在线', online_count, 'bi-check-circle', 'success', '/nodes/?status=online' if can_read_nodes else '') }}
+            {{ stat_card('offline_count', '离线', offline_count, 'bi-x-circle', 'danger', '/nodes/?status=offline' if can_read_nodes else '') }}
+            {{ stat_card('unknown_count', '未知', unknown_count, 'bi-question-circle', 'neutral', '/nodes/?status=unknown' if can_read_nodes else '', 'warning') }}
+        </div>
+    </section>
+
+    <section class="dashboard-stat-group" aria-labelledby="dashboardConfigsHeading">
+        <h2 class="dashboard-group-heading" id="dashboardConfigsHeading">
+            <span class="dashboard-group-mark mark-configs" aria-hidden="true"></span>配置绑定
+        </h2>
+        <div class="dashboard-stat-grid">
+            {{ stat_card('config_total', '配置总数', config_total, 'bi-files', 'primary', '/configs/' if can_read_configs else '') }}
+            {{ stat_card('config_synced', '已同步', config_synced, 'bi-check-circle', 'success', '/configs/?sync_status=synced' if can_read_configs else '') }}
+            {{ stat_card('pending_push_count', '待推送', pending_push_count, 'bi-send', 'info', '/configs/?sync_status=pending' if can_read_configs else '') }}
+            {{ stat_card('config_failed', '同步失败', config_failed, 'bi-exclamation-circle', 'danger', '/configs/?sync_status=failed' if can_read_configs else '') }}
+            {{ stat_card('config_orphaned', '远程已删除', config_orphaned, 'bi-file-earmark-x', 'warning', '/configs/?sync_status=orphaned' if can_read_configs else '') }}
+            {{ stat_card('config_marked_deleted', '标记删除', config_marked_deleted, 'bi-trash3', 'warning', '/configs/?sync_status=marked_deleted' if can_read_configs else '') }}
+        </div>
+    </section>
+
+    <section class="dashboard-stat-group" aria-labelledby="dashboardTasksHeading">
+        <h2 class="dashboard-group-heading" id="dashboardTasksHeading">
+            <span class="dashboard-group-mark mark-tasks" aria-hidden="true"></span>任务
+        </h2>
+        <div class="dashboard-stat-grid">
+            {{ stat_card('task_7d_total', '近 7 天任务', task_7d_total, 'bi-list-check', 'primary', '/tasks/' if can_access_task_center else '') }}
+            {{ stat_card('task_7d_success', '近 7 天成功', task_7d_success, 'bi-check-circle', 'success', '/tasks/?status=success' if can_access_task_center else '') }}
+            {{ stat_card('failed_7d_count', '近 7 天失败', failed_7d_count, 'bi-x-circle', 'neutral', '/tasks/?status=failed' if can_access_task_center else '', 'danger') }}
+            {{ stat_card('running_count', '执行中', running_count, 'bi-hourglass-split', 'info', '/tasks/?status=running' if can_access_task_center else '') }}
+        </div>
+    </section>
+
+    <section class="card dashboard-recent" aria-labelledby="recentTasksHeading">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <h2 class="h6 mb-0" id="recentTasksHeading">
+                <i class="bi bi-list-task me-1" aria-hidden="true"></i>最近任务
+            </h2>
+            {% if can_access_task_center %}
+            <a class="btn btn-outline-primary btn-sm" href="/tasks/">查看全部</a>
+            {% endif %}
+        </div>
+        <div class="table-responsive dashboard-recent-table">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">ID</th>
+                        <th scope="col">类型</th>
+                        <th scope="col">状态</th>
+                        <th scope="col">摘要</th>
+                        <th scope="col">操作人</th>
+                        <th scope="col">时间</th>
+                        <th scope="col" class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in recent_rows %}
+                    {% set task = row.task %}
+                    <tr>
+                        <td><a href="/tasks/{{ task.id }}/"><code>#{{ task.id }}</code></a></td>
+                        <td><span class="badge badge-outline">{{ row.operation_label }}</span></td>
+                        <td>
+                            <span class="badge text-bg-{{ {'success': 'success', 'failed': 'danger', 'running': 'info', 'pending': 'secondary', 'cancelled': 'warning'}.get(task.status, 'secondary') }}">
+                                {{ row.status_label }}
+                            </span>
+                        </td>
+                        <td class="dashboard-task-summary">
+                            <div class="text-truncate">
+                                {% if row.summary_is_batch %}<code>{{ row.summary_primary }}</code>{% else %}{{ row.summary_primary }}{% endif %}
+                            </div>
+                            {% if row.summary_secondary %}
+                            <div class="small text-muted text-truncate">{{ row.summary_secondary }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="text-truncate">{{ row.username }}</td>
+                        <td class="text-nowrap">
+                            <time datetime="{{ task.created_at.isoformat() }}">{{ task.created_at.strftime('%Y-%m-%d %H:%M') }}</time>
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-outline-info btn-sm" href="/tasks/{{ task.id }}/"
+                               title="查看详情" aria-label="查看任务 {{ task.id }} 详情">
+                                <i class="bi bi-eye" aria-hidden="true"></i><span class="ms-1">详情</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7">
+                            {% set message = "暂无任务记录" if can_access_task_center else "暂无可查看的任务" %}
+                            {% include "includes/empty_state.html" %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ request.url_for('static', path='js/dashboard.js') }}"></script>
+{% endblock %}

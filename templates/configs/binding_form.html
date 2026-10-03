@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}{% if binding %}编辑节点绑定{% else %}创建节点绑定{% endif %} - ngxops{% endblock %}
+{% block page_title %}{% if binding %}编辑节点绑定{% else %}创建节点绑定{% endif %}{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex align-items-center justify-content-between"><h2 class="h6 mb-0">{% if binding %}{{ binding.config.name }} @ {{ binding.node.hostname }}{% else %}绑定信息{% endif %}</h2>{% if next_version %}<span class="badge text-bg-primary">保存后 V{{ next_version }}</span>{% endif %}</div>
+    <div class="card-body">
+        {% if notice %}<div class="alert alert-{{ 'danger' if notice.type == 'error' else 'success' }}">{{ notice.message }}</div>{% endif %}
+        {% if errors.node_ids %}<div class="alert alert-warning py-2">{{ errors.node_ids }}</div>{% endif %}
+        {% if binding %}<div class="alert alert-info py-2">标签和目标节点固定在当前绑定中。保存后会先显示差异审阅页。</div>{% endif %}
+        <form method="post" action="{% if binding %}/configs/bindings/{{ binding.id }}/edit/{% else %}/configs/bindings/create/{% endif %}">
+            {% include "includes/csrf_field.html" %}
+            {% if binding %}<input type="hidden" name="expected_version" value="{{ binding.current_version }}">{% endif %}
+            <div class="row g-3">
+                {% if not binding %}
+                <div class="col-lg-6"><label class="form-label" for="bindingConfig">配置标签 <span class="text-danger">*</span></label><select class="form-select{% if errors.config_id %} is-invalid{% endif %}" id="bindingConfig" name="config_id" required><option value="">选择配置标签</option>{% for config in configs %}<option value="{{ config.id }}"{% if values.config_id == config.id|string %} selected{% endif %}>{{ config.name }}</option>{% endfor %}</select>{% if errors.config_id %}<div class="invalid-feedback">{{ errors.config_id }}</div>{% endif %}</div>
+                <div class="col-12"><fieldset><legend class="form-label fs-6">目标节点 <span class="text-danger">*</span></legend>{% if nodes %}<div class="table-responsive border rounded"><table class="table table-sm table-hover align-middle mb-0"><thead class="table-light"><tr><th style="width:40px"></th><th>主机名</th><th>IP</th><th>环境</th><th>节点组</th></tr></thead><tbody>{% for node in nodes %}<tr><td><input class="form-check-input" type="checkbox" name="node_ids" value="{{ node.id }}"{% if node.id in selected_node_ids %} checked{% endif %} aria-label="选择 {{ node.hostname }}"></td><td>{{ node.hostname }}</td><td class="font-monospace small">{{ node.ip }}</td><td>{{ node.environment }}</td><td>{% for group in node.groups %}<span class="badge text-bg-light border me-1">{{ group.name }}</span>{% else %}<span class="text-muted">-</span>{% endfor %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="small text-muted">没有在线、未锁定且 Nginx 可用的节点。</p>{% endif %}</fieldset></div>
+                {% else %}<div class="col-lg-6"><div class="small text-muted">配置标签</div><div>{{ binding.config.name }}</div></div><div class="col-lg-6"><div class="small text-muted">目标节点</div><div>{{ binding.node.hostname }} <span class="text-muted font-monospace">{{ binding.node.ip }}</span></div></div>{% endif %}
+                <div class="col-12"><label class="form-label" for="bindingPath">远程文件路径 <span class="text-danger">*</span></label><input class="form-control{% if errors.remote_path %} is-invalid{% endif %}" id="bindingPath" name="remote_path" maxlength="500" required value="{{ values.remote_path }}" placeholder="/etc/nginx/conf.d/site.conf">{% if errors.remote_path %}<div class="invalid-feedback">{{ errors.remote_path }}</div>{% endif %}</div>
+                <div class="col-12"><label class="form-label" for="bindingContent">配置内容</label><textarea class="form-control font-monospace" id="bindingContent" name="content" rows="20" spellcheck="false" wrap="off">{{ values.content }}</textarea></div>
+                {% if binding %}<div class="col-12"><label class="form-label" for="bindingRemark">修改备注</label><textarea class="form-control{% if errors.remark %} is-invalid{% endif %}" id="bindingRemark" name="remark" rows="2" maxlength="4000">{{ values.remark }}</textarea>{% if errors.remark %}<div class="invalid-feedback">{{ errors.remark }}</div>{% endif %}</div>{% endif %}
+                <div class="col-12 d-flex justify-content-between pt-2"><a class="btn btn-outline-secondary" href="{% if binding %}/configs/bindings/{{ binding.id }}/{% else %}/configs/{% if values.config_id %}{{ values.config_id }}/{% else %}{% endif %}{% endif %}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>取消</a><button class="btn btn-primary" type="submit"><i class="bi bi-eye me-1" aria-hidden="true"></i>{% if binding %}审阅差异{% else %}创建绑定{% endif %}</button></div>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% if pagination %}
+<div class="pagination-footer">
+    <div class="pagination-summary">
+        共 {{ pagination.total }} 条，第 {{ pagination.page }} / {{ pagination.pages }} 页
+    </div>
+    <div class="pagination-controls">
+        {% include "includes/pagination.html" %}
+    </div>
+    {% if pagination.per_page_options %}
+        <form method="get" class="per-page-form">
+            {% for key, value in request.query_params.items() %}
+                {% if key not in ["per_page", "page"] %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}
+            {% endfor %}
+            <label for="perPageSelect">每页</label>
+            <select class="form-select form-select-sm" id="perPageSelect" name="per_page">
+                {% for size in pagination.per_page_options %}
+                    <option value="{{ size }}"{% if pagination.per_page == size %} selected{% endif %}>{{ size }} 条/页</option>
+                {% endfor %}
+            </select>
+        </form>
+    {% endif %}
+</div>
+{% endif %}

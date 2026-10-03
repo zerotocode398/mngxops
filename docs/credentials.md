@@ -1,0 +1,30 @@
+# SSH 凭证
+
+## 页面
+
+- `/credentials/` 按名称/SSH 用户搜索，支持逗号分隔多词、认证方式、启用状态和分页。
+- `/credentials/create/`、`/{credential_id}/edit/`、`/{credential_id}/delete/` 提供凭证新增、修改和删除页面。
+- 认证方式为密码或私钥。私钥文件由浏览器读取到文本框，文件本身不单独上传；支持未加密的 RSA、ECDSA、Ed25519，不支持带口令私钥。mngxops 文档还列 DSA，但当前锁定的 Paramiko 5.0.0 已移除 `DSSKey`，无法校验或使用 DSA。
+- 编辑页不把现有密钥填入 HTML。留空表示保留原密文；眼睛操作通过受 RBAC 保护的解密 API 读取明文。
+
+## 权限与数据
+
+- 页面列表、凭证选择 API、密钥解密 API 使用 `credentials.read`；创建、编辑和删除分别使用 `create/update/delete`；开关使用 `credentials.enable`。
+- `(name, created_by)` 唯一。密码/私钥列为空或 Fernet 密文；密钥文件为数据目录 `.fernet_key`，不可与数据库分离备份。
+- 创建和修改校验名称、用户名、字段长度、认证材料及未加密私钥格式。保存凭证明文只在请求内存和授权解密响应中短暂出现。
+- 选项 API `GET /api/credentials` 仅返回启用凭证的非敏感摘要；解密 API `GET /api/credentials/{id}/secret?field=password|private_key` 需要 `credentials.read` 并禁止缓存。
+- 超级管理员可从列表按勾选或当前筛选范围下载明文 xlsx，也可整文件校验后批量导入；当前用户同名项更新，否则新建。导入任一行无效时整批不写入，限制 `.xlsx` 和 8 MiB。
+- 凭证明文导入/导出只在请求内存中解密或加密；审计只写数量、范围和最多 20 个名称，不记录密码或私钥。导出响应设置 `Cache-Control: no-store`。
+- 导入保留密码中的有效首尾空格（仅移除单元格外围换行），避免改变原始认证材料。
+
+## 启停与节点联调
+
+- `POST /api/credentials/{id}/toggle-enable` 需要 `credentials.enable` 与 CSRF。
+- 与参考项目相同，禁用时将活动关联节点置离线，重新启用时只测试未锁定节点；无活动关联节点时只启用，不创建空任务。
+- 启用任务经 NX-005 执行器运行，`node.batch_max_count` 控制最大并发 worker 数，默认 3；进度可由 `GET /api/credentials/{id}/enable-progress` 轮询。SSH 连接成功后单独执行 Nginx `-v`，SSH 状态和 Nginx 可用状态分开写回；锁定节点不计入连接测试结果。
+- 任务结果仅保存节点/IP、SSH 成功状态、Nginx 可用性/版本及汇总，不保存凭证明文或 Paramiko 异常文本。无可测试节点但有锁定关联节点时会创建完成任务并把凭证测试状态记为 `unknown`。
+
+## 与参考实现的范围差异
+
+- 凭证页面、导入导出 API 与操作审计遵循参考项目的超级管理员门禁和按勾选/筛选范围语义。私钥支持范围保持为当前 Paramiko 版本可校验的 RSA、ECDSA 和 Ed25519。
+- 页面通过公共 Jinja 布局、CSRF 字段、RBAC 导航、Toast 和分页组件实现；相关 JSON API 统一位于 `/api/` 并登记 OpenAPI。

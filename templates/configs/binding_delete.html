@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}解除节点绑定 - ngxops{% endblock %}
+{% block page_title %}解除节点绑定{% endblock %}
+
+{% block content %}
+<section class="card border-warning">
+    <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-link-45deg me-1" aria-hidden="true"></i>确认解除</h2></div>
+    <div class="card-body">
+        <p>配置 <strong>{{ binding.config.name }}</strong> 将从节点 <strong>{{ binding.node.hostname }}</strong> 解除绑定。</p>
+        <dl class="row mb-3"><dt class="col-sm-3">远程路径</dt><dd class="col-sm-9 font-monospace">{{ binding.remote_path }}</dd><dt class="col-sm-3">同步状态</dt><dd class="col-sm-9">{{ status_labels.get(binding.sync_status, binding.sync_status) }}</dd><dt class="col-sm-3">节点 Nginx</dt><dd class="col-sm-9">{% if binding.node.nginx_available is sameas true %}可用{% elif binding.node.nginx_available is sameas false %}不可用{% else %}未探测{% endif %}</dd></dl>
+        {% if binding.node.nginx_available is sameas true and binding.sync_status not in ['not_synced', 'orphaned', 'marked_deleted'] %}<div class="alert alert-warning">绑定将保留为“已标记删除”，下次配置同步时清理远程文件。</div>{% else %}<div class="alert alert-info">绑定及其版本记录将从平台删除{% if binding.node.nginx_available is not sameas true %}；节点没有可用 Nginx，不会尝试清理远程文件{% endif %}。</div>{% endif %}
+        <form method="post" action="/configs/bindings/{{ binding.id }}/delete/" class="d-flex justify-content-between">{% include "includes/csrf_field.html" %}<a class="btn btn-outline-secondary" href="/configs/bindings/{{ binding.id }}/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>取消</a><button class="btn btn-danger" type="submit"><i class="bi bi-link-45deg me-1" aria-hidden="true"></i>确认解除</button></form>
+    </div>
+</section>
+{% endblock %}

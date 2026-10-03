@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Nginx 安装 - ngxops{% endblock %}
+{% block page_title %}<i class="bi bi-download" aria-hidden="true"></i> Nginx 安装{% endblock %}
+
+{% block content %}
+<section class="install-toolbar">
+    <div class="d-flex flex-wrap gap-2">
+        {% if can_create %}<a class="btn btn-primary btn-sm" href="/nginx-install/center/"><i class="bi bi-play-fill me-1" aria-hidden="true"></i>开始安装</a>{% endif %}
+        {% if can_read %}<a class="btn btn-outline-secondary btn-sm" href="/nginx-install/history/"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>安装历史</a>{% endif %}
+        <a class="btn btn-outline-secondary btn-sm" href="/upgrade/packages/?nav=nginx_install"><i class="bi bi-archive me-1" aria-hidden="true"></i>源码包</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/upgrade/modules/?nav=nginx_install"><i class="bi bi-puzzle me-1" aria-hidden="true"></i>模块包</a>
+    </div>
+</section>
+
+<section class="install-metrics" aria-label="安装统计">
+    <div><span>源码包</span><strong>{{ package_count }}</strong></div>
+    <div><span>第三方模块包</span><strong>{{ module_package_count }}</strong></div>
+    <div><span>进行中</span><strong>{{ running_count }}</strong></div>
+    <div><span>近 7 天失败</span><strong class="{% if failed_7d_count %}text-danger{% endif %}">{{ failed_7d_count }}</strong></div>
+</section>
+
+<section class="card">
+    <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <h2 class="h6 mb-0">最近安装任务</h2>
+        {% if can_read %}<a class="btn btn-outline-secondary btn-sm" href="/nginx-install/history/">查看全部</a>{% endif %}
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle data-table mb-0">
+            <thead class="table-light"><tr><th>批次</th><th>目标节点</th><th>版本</th><th>安装路径</th><th>状态</th><th>配置同步</th><th>进度</th><th class="text-end">详情</th></tr></thead>
+            <tbody>
+            {% for run in recent_runs %}
+                {% set task = run.task %}
+                <tr>
+                    <td><a href="/nginx-install/history/?search={{ run.batch_number|urlencode }}"><code>{{ run.batch_number }}</code></a></td>
+                    <td><strong>{{ run.node_hostname }}</strong><small class="text-muted d-block">{{ run.node_ip }}</small></td>
+                    <td><code>{{ run.target_version }}</code></td>
+                    <td><code>{{ run.target_prefix }}</code></td>
+                    <td><span class="badge text-bg-{{ 'success' if task.status == 'success' else ('danger' if task.status == 'failed' else ('info' if task.status == 'running' else 'secondary')) }}">{{ {"pending":"等待执行","running":"执行中","success":"安装成功","failed":"安装失败","cancelled":"已取消"}.get(task.status, task.status) }}</span></td>
+                    <td>{% if run.sync_ok is sameas true %}<span class="badge text-bg-success">成功</span>{% elif run.sync_ok is sameas false %}<span class="badge text-bg-warning" title="{{ run.sync_detail }}">失败</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
+                    <td><div class="progress" style="height:6px;min-width:70px"><div class="progress-bar" style="width:{{ task.progress }}%"></div></div><small>{{ task.progress }}%</small></td>
+                    <td class="text-end"><a class="btn btn-outline-primary btn-sm" href="/nginx-install/task/{{ task.id }}/log/" title="查看安装详情" aria-label="查看安装详情"><i class="bi bi-file-text" aria-hidden="true"></i></a></td>
+                </tr>
+            {% else %}
+                <tr><td colspan="8">{% set message = "暂无安装任务" %}{% include "includes/empty_state.html" %}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

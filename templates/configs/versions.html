@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}版本历史 - {{ binding.config.name }}{% endblock %}
+{% block page_title %}绑定版本历史{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2"><div><h2 class="h6 mb-1">{{ binding.config.name }} @ {{ binding.node.hostname }}</h2><span class="small text-muted font-monospace">{{ binding.remote_path }}</span></div><div class="d-flex gap-2"><a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回绑定</a><a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/compare/"><i class="bi bi-intersect me-1" aria-hidden="true"></i>版本对比</a></div></div>
+    {% if notice %}<div class="alert alert-{{ 'danger' if notice.type == 'error' else 'success' }} alert-dismissible fade show m-3 mb-0" role="status">{{ notice.message }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button></div>{% endif %}
+    <div class="table-responsive"><table class="table table-hover table-sm align-middle mb-0"><thead class="table-light"><tr><th>版本</th><th>修改人</th><th>备注</th><th>时间</th><th>大小</th><th class="text-end">操作</th></tr></thead><tbody>
+        {% for version in versions %}<tr><td>{% if version.version == binding.current_version %}<span class="badge text-bg-success">{{ version.version_label }}</span><div class="small text-success">当前版本</div>{% else %}<span class="badge text-bg-secondary">{{ version.version_label }}</span>{% endif %}</td><td>{{ version.creator.username }}</td><td class="small">{{ version.remark or '-' }}</td><td class="small text-muted">{{ version.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td class="small text-muted">{{ version.content_bytes }} 字节</td><td class="text-end text-nowrap"><a class="btn btn-outline-info btn-sm" href="/configs/bindings/{{ binding.id }}/versions/{{ version.id }}/" title="查看版本"><i class="bi bi-eye" aria-hidden="true"></i><span class="visually-hidden">查看</span></a>{% if can_update and can_restore and version.version != binding.current_version %}<form class="d-inline" method="post" action="/configs/bindings/{{ binding.id }}/versions/{{ version.id }}/restore/" data-confirm-title="确认恢复版本" data-confirm="恢复后会生成一个新版本，并标记为本地修改。继续吗？">{% include "includes/csrf_field.html" %}<button class="btn btn-outline-warning btn-sm" type="submit" title="恢复此版本"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><span class="visually-hidden">恢复</span></button></form>{% endif %}</td></tr>
+        {% else %}<tr><td colspan="6"><div class="py-5 text-center"><i class="bi bi-clock-history fs-3 text-muted" aria-hidden="true"></i><p class="mb-0 mt-2 text-muted">暂无版本记录</p></div></td></tr>{% endfor %}
+    </tbody></table></div>
+    {% include "includes/pagination_footer.html" %}
+</section>
+{% endblock %}

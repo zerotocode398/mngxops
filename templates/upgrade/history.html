@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Nginx 升级历史 - ngxops{% endblock %}
+{% block page_title %}<i class="bi bi-clock-history" aria-hidden="true"></i> Nginx 升级历史{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h2 class="h6 mb-0">升级任务</h2>
+        <a class="btn btn-primary btn-sm" href="/upgrade/center/"><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>升级中心</a>
+    </div>
+    <div class="card-body border-bottom">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-12 col-md-6"><label class="form-label small" for="upgradeSearch">节点、IP、版本或批次</label><input class="form-control form-control-sm" id="upgradeSearch" name="search" value="{{ search }}" placeholder="可用逗号添加多个关键词"></div>
+            <div class="col-8 col-md-3"><label class="form-label small" for="upgradeStatus">状态</label><select class="form-select form-select-sm" id="upgradeStatus" name="status"><option value="">全部状态</option>{% for value, label in status_choices %}<option value="{{ value }}"{% if status_filter == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <div class="col-auto"><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button></div>
+            {% if search or status_filter %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/upgrade/history/">清空</a></div>{% endif %}
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle data-table mb-0">
+            <thead class="table-light"><tr><th>目标节点</th><th>当前版本 → 目标版本</th><th>批次 / 模式</th><th>状态</th><th>进度</th><th>创建时间</th><th class="text-end">详情</th></tr></thead>
+            <tbody>
+            {% for run in runs %}
+                {% set task = run.task %}
+                <tr>
+                    <td><strong>{{ run.node_hostname }}</strong><small class="text-muted d-block">{{ run.node_ip }}</small></td>
+                    <td><code>{{ run.current_version or "未知" }}</code> → <code>{{ run.target_version }}</code></td>
+                    <td><code>{{ run.batch_number }}</code><small class="text-muted d-block">{{ "二进制回滚" if run.upgrade_mode == "rollback" else ("平滑升级（同路径）" if run.upgrade_mode == "upgrade" else "切换路径升级") }}</small>{% if run.rolled_back_at %}<small class="text-warning-emphasis d-block">已回滚 · {{ run.rolled_back_at.strftime("%Y-%m-%d %H:%M") }}</small>{% endif %}</td>
+                    <td><span class="badge text-bg-{{ 'success' if task.status == 'success' else ('danger' if task.status == 'failed' else ('info' if task.status == 'running' else 'secondary')) }}">{{ {"pending":"等待执行","running":"执行中","success":"升级成功","failed":"升级失败","cancelled":"已取消"}.get(task.status, task.status) }}</span></td>
+                    <td><div class="progress" style="height:6px;min-width:72px"><div class="progress-bar" style="width:{{ task.progress }}%"></div></div><small>{{ task.progress }}%</small></td>
+                    <td><small>{{ run.created_at.strftime("%Y-%m-%d %H:%M") if run.created_at else "-" }}</small></td>
+                    <td class="text-end"><a class="btn btn-outline-primary btn-sm" href="/upgrade/tasks/{{ task.id }}/" title="查看任务详情" aria-label="查看任务详情"><i class="bi bi-file-text" aria-hidden="true"></i></a></td>
+                </tr>
+            {% else %}<tr><td colspan="7">{% set message = "暂无升级记录" %}{% include "includes/empty_state.html" %}</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% include "includes/pagination_footer.html" %}
+</section>
+{% endblock %}

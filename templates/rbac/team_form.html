@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% set editing = team is defined and team %}
+{% block title %}{% if editing %}编辑用户组{% else %}新增用户组{% endif %} - ngxops{% endblock %}
+{% block page_title %}{% if editing %}编辑用户组{% else %}新增用户组{% endif %}{% endblock %}
+{% block content %}
+<form method="post" action="{% if editing %}/users/teams/{{ team.id }}/edit/{% else %}/users/teams/create/{% endif %}">
+    {% include "includes/csrf_field.html" %}
+    {% if errors %}<div class="alert alert-danger" role="alert">请检查标记字段</div>{% endif %}
+    <section class="card mb-3"><div class="card-header"><h2 class="h6 mb-0">用户组信息</h2></div><div class="card-body row g-3"><div class="col-lg-6"><label class="form-label" for="teamName">组名</label><input class="form-control{% if errors.get('name') %} is-invalid{% endif %}" id="teamName" name="name" maxlength="100" value="{{ values.get('name', team.name if editing else '') }}" required>{% if errors.get('name') %}<div class="invalid-feedback">{{ errors.get('name') }}</div>{% endif %}</div><div class="col-12"><label class="form-label" for="teamDescription">描述</label><textarea class="form-control" id="teamDescription" name="description" rows="2">{{ values.get('description', team.description if editing else '') }}</textarea></div></div></section>
+    <section class="card mb-3"><div class="card-header"><h2 class="h6 mb-0">关联角色</h2></div><div class="card-body"><p class="form-text mt-0">只有没有个人角色的成员才会使用用户组角色权限。</p>{% if errors.get('roles') %}<div class="text-danger small mb-2">{{ errors.get('roles') }}</div>{% endif %}<div class="row g-2">{% for role in all_roles %}<div class="col-sm-6 col-lg-4"><label class="form-check"><input class="form-check-input" type="checkbox" name="role_ids" value="{{ role.id }}" {% if role.id in selected_roles %}checked{% endif %}><span class="form-check-label">{{ role.name }}</span></label></div>{% else %}<div class="text-muted small">暂无角色</div>{% endfor %}</div></div></section>
+    <div class="d-flex justify-content-between"><a class="btn btn-outline-secondary btn-sm" href="/users/teams/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>保存用户组</button></div>
+</form>
+{% endblock %}

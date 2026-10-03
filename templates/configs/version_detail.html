@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}V{{ version.version }} - {{ binding.config.name }}{% endblock %}
+{% block page_title %}版本详情{% endblock %}
+
+{% block content %}
+<section class="card mb-3">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2"><div><h2 class="h6 mb-1">{{ binding.config.name }} @ {{ binding.node.hostname }} · V{{ version.version }}</h2><span class="small text-muted">{{ version.created_at.strftime('%Y-%m-%d %H:%M:%S') }} · {{ version.creator.username }}{% if version.remark %} · {{ version.remark }}{% endif %}</span></div><a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/versions/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回版本历史</a></div>
+    {% if is_current %}<div class="alert alert-success m-3 mb-0 py-2">当前绑定指向此版本。</div>{% endif %}
+    <div class="card-body"><div class="small text-muted mb-1">文件路径</div><code>{{ binding.remote_path }}</code></div>
+</section>
+<section class="card">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <h2 class="h6 mb-0">配置内容 <span class="text-muted fw-normal">{{ version.content_bytes }} 字节</span></h2>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/compare/?target_version={{ version.id }}"><i class="bi bi-intersect me-1" aria-hidden="true"></i>选择版本对比</a>
+            {% if can_restore %}<form method="post" action="/configs/bindings/{{ binding.id }}/versions/{{ version.id }}/restore/" data-confirm-title="确认恢复版本" data-confirm="恢复后会生成 V{{ next_version }}，并标记为本地修改。继续吗？">{% include "includes/csrf_field.html" %}<button class="btn btn-outline-warning btn-sm" type="submit"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>恢复到 V{{ version.version }}</button></form>{% endif %}
+        </div>
+    </div>
+    <div class="card-body p-0"><pre class="mb-0 p-3 bg-light font-monospace" style="max-height: 70vh; overflow: auto; white-space: pre">{{ version.content }}</pre></div>
+</section>
+{% endblock %}

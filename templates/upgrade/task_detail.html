@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}升级任务详情 - {{ run.node_hostname }}{% endblock %}
+{% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> 升级任务详情{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}">{% endblock %}
+
+{% block content %}
+<div class="d-flex gap-2 mb-3 flex-wrap">
+    <a class="btn btn-outline-secondary btn-sm" href="/upgrade/history/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回历史</a>
+    <a class="btn btn-outline-primary btn-sm" href="/upgrade/center/"><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>升级中心</a>
+</div>
+<section class="card mb-3" id="upgradeTaskDetail" data-task-id="{{ task.id }}" data-task-status="{{ task.status }}" data-phase="{{ run.phase }}" data-can-cancel="{{ '1' if can_cancel else '0' }}" data-can-rollback="{{ '1' if can_rollback else '0' }}">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div><strong>{{ run.node_hostname }}</strong><small class="text-muted ms-2">{{ run.node_ip }}</small></div>
+        <div class="d-flex align-items-center gap-2"><span class="badge text-bg-info" id="taskStatus">{{ status_label }}</span>{% if can_cancel %}<button class="btn btn-outline-danger btn-sm" type="button" id="cancelUpgrade"><i class="bi bi-stop-circle me-1" aria-hidden="true"></i>取消任务</button>{% endif %}{% if can_rollback %}<button class="btn btn-warning btn-sm" type="button" id="rollbackUpgrade"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>回滚到旧版本</button>{% endif %}</div>
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-12 col-md-6"><span class="text-muted">当前版本：</span><code>{{ run.current_version or "未知" }}</code></div>
+            <div class="col-12 col-md-6"><span class="text-muted">目标版本：</span><code>{{ run.target_version }}</code></div>
+            <div class="col-12 col-md-6"><span class="text-muted">升级模式：</span>{{ mode_label }}</div>
+            <div class="col-12 col-md-6"><span class="text-muted">源码包：</span>{{ run.source_package_name or "-" }}</div>
+            <div class="col-12 col-md-6"><span class="text-muted">远程工作目录：</span><code>{{ run.remote_work_dir }}</code></div>
+            <div class="col-12 col-md-6"><span class="text-muted">编译并行数：</span>{{ run.make_jobs }}</div>
+            <div class="col-12 col-md-6"><span class="text-muted">批次：</span><code>{{ run.batch_number }}</code></div>
+            <div class="col-12 col-md-6"><span class="text-muted">备份路径：</span><code>{{ run.backup_binary_path or "-" }}</code></div>
+            {% if rolled_back %}<div class="col-12 col-md-6"><span class="text-muted">回滚时间：</span>{{ run.rolled_back_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>{% endif %}
+            <div class="col-12"><div class="progress mt-2" style="height:8px"><div class="progress-bar" id="taskProgress" style="width:{{ task.progress }}%"></div></div><small id="taskProgressLabel">{{ task.progress }}% · {{ task.detail }}</small></div>
+        </div>
+    </div>
+</section>
+
+{% if current_params or target_params %}
+<section class="card mb-3">
+    <div class="card-header"><h2 class="h6 mb-0">编译参数差异</h2></div>
+    <div class="card-body"><pre class="upgrade-config-output">./configure \
+{% for param in current_params %}{% if param in param_removed %}<span class="text-danger">- {{ param }}  [已移除]</span>
+{% else %}  {{ param }}
+{% endif %}{% endfor %}{% for param in param_added %}<span class="text-success">+ {{ param }}  [新增]</span>
+{% endfor %}</pre></div>
+</section>
+{% endif %}
+
+<section class="card">
+    <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0">完整执行日志</h2><span class="small text-muted" id="logLiveLabel">{% if task.status in ['pending', 'running'] %}实时更新中{% else %}已完成{% endif %}</span></div>
+    <div class="card-body"><pre class="upgrade-log-output" id="upgradeLog" data-after-log-id="{{ logs[-1].id if logs else 0 }}">{% for item in logs %}<span class="log-{{ item.level }}">{{ item.message }}</span>
+{% else %}暂无日志{% endfor %}</pre></div>
+</section>
+{% endblock %}
+
+{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}"></script>{% endblock %}

@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}删除{{ kind }} - ngxops{% endblock %}
+{% block page_title %}删除{{ kind }}{% endblock %}
+{% block content %}
+<section class="card"><div class="card-header"><h2 class="h6 mb-0">确认删除{{ kind }}</h2></div><div class="card-body"><p>确定要删除 {{ kind }} <strong>{{ target.username if kind == "用户" else target.name }}</strong> 吗？此操作不可恢复。</p>{% if details %}<p class="text-muted">{{ details }}</p>{% endif %}{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% else %}<form method="post" action="{% if kind == '用户' %}/users/{{ target.id }}/delete/{% elif kind == '角色' %}/users/roles/{{ target.id }}/delete/{% else %}/users/teams/{{ target.id }}/delete/{% endif %}">{% include "includes/csrf_field.html" %}<div class="d-flex justify-content-between"><a class="btn btn-outline-secondary btn-sm" href="{% if kind == '用户' %}/users/{% elif kind == '角色' %}/users/roles/{% else %}/users/teams/{% endif %}">取消</a><button class="btn btn-danger btn-sm" type="submit"><i class="bi bi-trash me-1" aria-hidden="true"></i>确认删除</button></div></form>{% endif %}</div></section>
+{% endblock %}
