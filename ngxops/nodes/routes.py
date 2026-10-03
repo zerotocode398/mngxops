@@ -627,7 +627,10 @@ def list_node_groups(
 ):
     """显示节点组、成员数量和筛选分页。"""
     search = request.query_params.get("search", "").strip()
-    query = select(NodeGroup).options(selectinload(NodeGroup.nodes)).order_by(NodeGroup.created_at.desc(), NodeGroup.id.desc())
+    query = select(NodeGroup).options(
+        selectinload(NodeGroup.nodes),
+        joinedload(NodeGroup.creator),
+    ).order_by(NodeGroup.created_at.desc(), NodeGroup.id.desc())
     for term in split_terms(search):
         query = query.where(NodeGroup.name.ilike("%{}%".format(term)))
     total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
