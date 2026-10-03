@@ -154,6 +154,7 @@ $(function () {
     var state = $(".node-list-state").data();
     var $checks = $(".node-select");
     var batchMax = Number(state.batchMax) || 3;
+    var nodeImportRequestId = 0;
     function selectedIds() { return $checks.filter(":checked").map(function () { return this.value; }).get(); }
     function updateSelection() {
         var count = selectedIds().length;
@@ -187,15 +188,26 @@ $(function () {
                 .fail(function (xhr) { window.showToast(xhr.responseJSON && xhr.responseJSON.message || "删除失败", "danger"); });
         });
     });
+    $("#importNodesModal").on("hidden.bs.modal", function () {
+        nodeImportRequestId += 1;
+        $("#nodeImportResult").removeClass("text-danger").empty();
+        var importForm = $("#nodeImportForm")[0];
+        if (importForm) importForm.reset();
+    });
     $("#nodeImportForm").on("submit", function (event) {
         event.preventDefault();
         var form = this;
         var $button = $("#nodeImportSubmit");
+        var requestId = ++nodeImportRequestId;
         $("#nodeImportResult").empty();
         $button.prop("disabled", true);
         $.ajax({url: "/api/nodes/import", method: "POST", data: new FormData(form), processData: false, contentType: false})
-            .done(function (result) { window.showToast(result.message, "success"); window.location.reload(); })
+            .done(function (result) {
+                window.showToast(result.message, "success");
+                window.location.reload();
+            })
             .fail(function (xhr) {
+                if (requestId !== nodeImportRequestId) return;
                 var result = xhr.responseJSON || {};
                 var $list = $("<ul class='mb-0 ps-3'></ul>");
                 (result.errors || []).slice(0, 30).forEach(function (item) {
