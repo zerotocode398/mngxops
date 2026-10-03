@@ -161,14 +161,22 @@ class NodeOperationResponse(BaseModel):
 
 
 class NodeImportError(BaseModel):
-    """描述工作簿中的一行校验问题。"""
+    """描述工作簿中的行级或合并校验问题。"""
 
-    row: int
+    row: int = Field(description="Excel 行号；多行相同问题合并时为 0")
+    row_range: Optional[str] = Field(
+        default=None,
+        description="合并错误影响的 Excel 行号或连续行范围",
+    )
     message: str
+    merged: bool = Field(
+        default=False,
+        description="是否将相同校验问题合并",
+    )
 
 
 class NodeImportResponse(BaseModel):
-    """描述节点批量导入结果或行级校验错误。"""
+    """描述节点批量导入结果或按原因合并的校验错误。"""
 
     success: bool
     message: str
@@ -985,7 +993,7 @@ def download_node_template(user: User = Depends(require_permission("nodes", "cre
     "/import",
     response_model=NodeImportResponse,
     summary="批量导入节点",
-    description="整份工作簿先校验再写入；任一行失败时不创建或恢复节点。",
+    description="整份工作簿先校验再写入；任一行失败时不创建或恢复节点。相同校验原因合并并附带受影响行号。",
     responses=api_error_responses((400, 401, 403, 409, 413, 422, 500)),
 )
 def import_nodes(

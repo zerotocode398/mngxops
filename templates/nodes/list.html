@@ -198,7 +198,9 @@ $(function () {
             .fail(function (xhr) {
                 var result = xhr.responseJSON || {};
                 var $list = $("<ul class='mb-0 ps-3'></ul>");
-                (result.errors || []).slice(0, 30).forEach(function (item) { $list.append($("<li></li>").text((item.row ? "第 " + item.row + " 行：" : "") + item.message)); });
+                (result.errors || []).slice(0, 30).forEach(function (item) {
+                    $list.append($("<li></li>").text(item.message));
+                });
                 if (!$list.children().length) $list.append($("<li></li>").text(result.message || "导入失败"));
                 $("#nodeImportResult").addClass("text-danger").empty().append($list);
             })

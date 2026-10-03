@@ -167,6 +167,66 @@ def _parse_import_port(value: str) -> Optional[int]:
     return port if 1 <= port <= 65535 else None
 
 
+def _format_import_error_rows(rows: Sequence[int]) -> str:
+    """把排序后的导入行号压缩成连续范围。"""
+    parts = []
+    start = rows[0]
+    end = rows[0]
+    for row_number in rows[1:]:
+        if row_number == end + 1:
+            end = row_number
+            continue
+        parts.append(
+            "第 {}{} 行".format(
+                start,
+                "-{}".format(end) if end > start else "",
+            )
+        )
+        start = row_number
+        end = row_number
+    parts.append(
+        "第 {}{} 行".format(
+            start,
+            "-{}".format(end) if end > start else "",
+        )
+    )
+    return "、".join(parts)
+
+
+def _merge_import_errors(errors: Sequence[dict]) -> List[dict]:
+    """合并相同错误原因并保留其对应的 Excel 行号。"""
+    grouped_rows = {}
+    message_order = []
+    for error in errors:
+        message = error.get("message", "").strip()
+        if not message:
+            continue
+        if message not in grouped_rows:
+            grouped_rows[message] = []
+            message_order.append(message)
+        row_number = error.get("row", 0)
+        if row_number not in grouped_rows[message]:
+            grouped_rows[message].append(row_number)
+
+    merged = []
+    for message in message_order:
+        rows = sorted(grouped_rows[message])
+        if len(rows) == 1 and rows[0] > 0:
+            merged.append({"row": rows[0], "message": message})
+        elif len(rows) > 1 and rows[0] > 0:
+            merged.append(
+                {
+                    "row": 0,
+                    "merged": True,
+                    "row_range": _format_import_error_rows(rows),
+                    "message": message,
+                }
+            )
+        else:
+            merged.append({"row": 0, "message": message})
+    return merged
+
+
 def parse_node_workbook(content: bytes) -> Tuple[List[Dict[str, str]], List[dict]]:
     """检查上传工作簿表头并提取节点数据行。"""
     if len(content) > 8 * 1024 * 1024:
@@ -294,7 +354,10 @@ def validate_node_import_rows(
                 credential_id = chosen.id
 
         if messages:
-            errors.append({"row": row_number, "message": "；".join(messages)})
+            errors.extend(
+                {"row": row_number, "message": message}
+                for message in messages
+            )
             continue
         cleaned.append(
             {
@@ -309,7 +372,7 @@ def validate_node_import_rows(
                 "description": row.get("备注", "")[:4000],
             }
         )
-    return cleaned, errors
+    return cleaned, _merge_import_errors(errors)
 
 
 def apply_node_import(
