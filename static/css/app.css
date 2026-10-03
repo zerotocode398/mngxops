@@ -570,9 +570,25 @@ body {
     cursor: pointer;
 }
 
+.toast-progress {
+    position: absolute;
+    z-index: 1;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: rgba(20, 24, 28, 0.42);
+    animation: toast-countdown linear forwards;
+}
+
 @keyframes toast-in {
     from { opacity: 0; transform: translateX(1rem); }
     to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-countdown {
+    from { width: 100%; }
+    to { width: 0%; }
 }
 
 @keyframes toast-out {
@@ -685,6 +701,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         scroll-behavior: auto !important;
+    }
+    *:not(.toast-progress),
+    *:not(.toast-progress)::before,
+    *:not(.toast-progress)::after {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;

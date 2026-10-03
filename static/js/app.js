@@ -137,6 +137,10 @@
             info: "bi-info-circle-fill"
         };
         var kind = icons[type] ? type : "info";
+        var lifetime = Number(duration);
+        if (!isFinite(lifetime) || lifetime <= 0) {
+            lifetime = 3000;
+        }
         var $toast = $("<div>", { "class": "toast-item toast-" + kind, role: "status" });
         $("<i>", { "class": "bi " + icons[kind], "aria-hidden": "true" }).appendTo($toast);
         $("<span>").text(message == null ? "" : String(message)).appendTo($toast);
@@ -148,6 +152,9 @@
         });
         $("<i>", { "class": "bi bi-x-lg", "aria-hidden": "true" }).appendTo($close);
         $close.appendTo($toast);
+        $("<div>", { "class": "toast-progress", "aria-hidden": "true" })
+            .css("animation-duration", lifetime + "ms")
+            .appendTo($toast);
         $("#toastContainer").append($toast);
         window.setTimeout(function () {
             if (!$toast.parent().length) {
@@ -155,7 +162,7 @@
             }
             $toast.addClass("removing");
             window.setTimeout(function () { $toast.remove(); }, 220);
-        }, duration || 3000);
+        }, lifetime);
     }
 
     function showAlert(title, message, asHtml) {
