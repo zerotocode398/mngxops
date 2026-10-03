@@ -19,7 +19,7 @@ from ngxops.api.contracts import api_error_responses
 from ngxops.audit.service import request_client_ip
 from ngxops.database.session import get_session
 from ngxops.nodes.models import Node
-from ngxops.security.dependencies import require_permission
+from ngxops.security.dependencies import require_any_permission, require_permission
 from ngxops.settings.service import read_setting
 from ngxops.tasks.executor import cancel_task
 from ngxops.tasks.models import Task, TaskLog
@@ -284,7 +284,9 @@ def _status_context(task: Task) -> dict:
 
 @router.get("/upgrade/", include_in_schema=False)
 def upgrade_home(
-    user: User = Depends(require_permission("upgrade", "read")),
+    user: User = Depends(
+        require_any_permission(("upgrade", "read"), ("upgrade", "execute"))
+    ),
 ) -> Response:
     """将 Nginx 升级首页导向升级中心。"""
     return RedirectResponse("/upgrade/center/", status_code=302)
@@ -293,7 +295,9 @@ def upgrade_home(
 @router.get("/upgrade/center/", include_in_schema=False)
 def upgrade_center(
     request: Request,
-    user: User = Depends(require_permission("upgrade", "read")),
+    user: User = Depends(
+        require_any_permission(("upgrade", "read"), ("upgrade", "execute"))
+    ),
     session: Session = Depends(get_session),
 ) -> Response:
     """渲染升级向导、可用节点、包列表和最近批次。"""
@@ -318,12 +322,18 @@ def upgrade_center(
         select(NginxModulePackage).options(joinedload(NginxModulePackage.creator))
         .order_by(NginxModulePackage.created_at.desc(), NginxModulePackage.id.desc())
     ).all()
-    latest_runs = session.scalars(
+    latest_runs_query = (
         select(NginxUpgradeRun)
         .join(Task, Task.id == NginxUpgradeRun.task_id)
         .options(joinedload(NginxUpgradeRun.task))
         .order_by(NginxUpgradeRun.created_at.desc())
-        .limit(read_setting(session, "dashboard.recent_tasks_count", 20))
+    )
+    if not _has_upgrade_permission(request, session, user, "read"):
+        latest_runs_query = latest_runs_query.where(Task.trigger_user_id == user.id)
+    latest_runs = session.scalars(
+        latest_runs_query.limit(
+            read_setting(session, "dashboard.recent_tasks_count", 20)
+        )
     ).all()
     return render_page(
         request,

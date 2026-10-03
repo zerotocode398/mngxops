@@ -1,6 +1,6 @@
 """提供当前用户、登录态与权限校验依赖。"""
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 from fastapi import Depends, Request
 from sqlalchemy import select
@@ -90,6 +90,41 @@ def require_permission(resource: str, action: str) -> Callable[..., User]:
                 PERM_CONFIG_ERROR_MESSAGE,
             )
         if checker(db_session, user, resource, action):
+            return user
+        raise PermissionDenied(PERM_DENIED_TITLE, PERM_DENIED_MESSAGE)
+
+    return permission_dependency
+
+
+def require_any_permission(
+    *resource_actions: Tuple[str, str]
+) -> Callable[..., User]:
+    """构造满足任一指定资源动作的 FastAPI 权限依赖。"""
+    if not resource_actions or any(
+        not resource or not action for resource, action in resource_actions
+    ):
+        raise ValueError("至少需要一个完整的资源与动作权限")
+
+    def permission_dependency(
+        request: Request,
+        db_session: Session = Depends(get_session),
+        user: User = Depends(require_authenticated_user),
+    ) -> User:
+        """要求当前账户持有任一候选权限。"""
+        if user.is_superuser:
+            return user
+        checker: Optional[PermissionChecker] = getattr(
+            request.app.state, "permission_checker", None
+        )
+        if checker is None:
+            raise PermissionDenied(
+                PERM_CONFIG_ERROR_TITLE,
+                PERM_CONFIG_ERROR_MESSAGE,
+            )
+        if any(
+            checker(db_session, user, resource, action)
+            for resource, action in resource_actions
+        ):
             return user
         raise PermissionDenied(PERM_DENIED_TITLE, PERM_DENIED_MESSAGE)
 

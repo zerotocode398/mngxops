@@ -79,6 +79,7 @@
 - 迁移版本 12 创建 `ngxops_nginx_uninstall_runs`，每个统一任务对应一个卸载快照；节点删除时外键置空，任务删除时级联清理。快照包含来源、软件包归属、prefix、批次、节点身份和清理选项，不包含 SSH 凭证。迁移补种 `nginx_uninstall.read/execute` 并将现有 `nodes.read`、`nodes.update` 的角色及个人直授分别复制到卸载查看和执行权限。
 - 迁移版本 13 创建 `ngxops_audit_logs`，保存操作人 ID/名称快照、模块、动作、来源 IP、结果、摘要、可选任务 ID、批次号和时间；用户删除时仅清空 ID，不删除历史。任务 ID 不设外键，以便任务保留策略清理后操作记录仍保留。
 - 迁移版本 14 创建 `ngxops_system_settings`，以唯一 key 保存已接线设置的字符串值、类型、分组和展示元数据；修改人删除时置空，分组/排序字段有索引。默认值按需补齐且不覆盖已有 value，清理与运行设置见 [settings.md](settings.md)。
+- 迁移版本 15 合并 Nginx 安装权限：`nginx_install.read` 授权迁移到 `upgrade.read`，`nginx_install.create` 授权迁移到 `upgrade.execute`，覆盖角色和用户直授权限后删除旧权限项。安装和升级从此共用 `upgrade.*` RBAC 资源，任务操作类型仍分开保存。
 - NX-052 启停批次直接复用 `ngxops_tasks` 与 `ngxops_task_logs`，不新增业务表或迁移；动作存放在 `target_configs`，`source_batch` 保存批次号，目标摘要和结构化结果分别存放在任务摘要字段与结果树中。
 - 凭证迁移不会读取或接管 mngxops 数据库中的旧记录。升级仍须显式停止服务、备份后执行 `python -m ngxops.database upgrade`。
 

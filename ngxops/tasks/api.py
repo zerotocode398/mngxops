@@ -35,12 +35,12 @@ _LIMITED_OPERATION_PERMISSIONS = {
     ("configs", "sync"): ("config_batch_sync", "config_discover"),
     ("nginx_service", "operate"): ("nginx_service_control",),
     ("upgrade", "execute"): ("nginx_upgrade", "nginx_rollback", "nginx_install"),
-    ("nginx_install", "read"): ("nginx_install",),
-    ("nginx_install", "create"): ("nginx_install",),
     ("nginx_uninstall", "read"): ("nginx_uninstall",),
     ("nginx_uninstall", "execute"): ("nginx_uninstall",),
 }
-_UPGRADE_POLL_OPERATIONS = frozenset(("nginx_upgrade", "nginx_rollback"))
+_UPGRADE_POLL_OPERATIONS = frozenset(
+    ("nginx_upgrade", "nginx_rollback", "nginx_install")
+)
 
 
 class TaskListItem(BaseModel):
@@ -373,7 +373,7 @@ def cancel_task_endpoint(
         ):
             return _api_error(400, "当前安装阶段不可取消")
         if not user.is_superuser and not _has_permission(
-            request, session, user, "nginx_install", "create"
+            request, session, user, "upgrade", "execute"
         ):
             raise PermissionDenied("无访问权限", "当前账号没有取消安装任务的权限。")
     if task.operation_type == "nginx_uninstall" and not _has_permission(

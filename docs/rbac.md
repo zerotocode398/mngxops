@@ -14,6 +14,8 @@
 
 个人角色最多 3 个；用户组角色不占该上限。用户、角色和用户组管理只允许超级管理员访问。相同解析函数接入 `require_permission` 与全局导航，菜单和页面门禁使用同一规则。
 
+Nginx 全新安装和编译安装/升级共用 `upgrade.read/create/delete/execute` 权限资源。迁移 v15 会将旧安装查看权限转换为 `upgrade.read`，旧安装创建权限转换为 `upgrade.execute`，并移除独立安装权限项；任务仍按 `nginx_install`、`nginx_upgrade` 等操作类型区分。
+
 ## 页面
 
 | 页面 | 路径 |

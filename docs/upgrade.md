@@ -4,7 +4,7 @@
 
 - `/upgrade/` 跳转到升级中心 `/upgrade/center/`；包管理位于 `/upgrade/packages/` 和 `/upgrade/modules/`，升级历史位于 `/upgrade/history/`，单个任务详情位于 `/upgrade/tasks/{task_id}/`。
 - 升级向导分为目标选择、编译环境、编译参数和确认执行四步。每次进入向导均从空白状态开始；只有当前打开的向导保留本次节点基线与选择。
-- 页面和接口使用 `upgrade.read`、`upgrade.create`、`upgrade.delete`、`upgrade.execute`。升级、取消和回滚任务受统一会话、CSRF、RBAC 与任务本人可见范围保护。
+- 页面和接口使用 `upgrade.read`、`upgrade.create`、`upgrade.delete`、`upgrade.execute`。升级中心允许 `upgrade.read` 或 `upgrade.execute` 进入；只读用户不能提交任务。升级、取消和回滚任务受统一会话、CSRF、RBAC 与任务本人可见范围保护。
 - 一批最多选择 `node.batch_max_count` 个节点，默认 3。目标必须未删除、未锁定、SSH 在线、已配置启用凭证且 `nginx_available=true`；门禁在创建任务和任务执行前分别检查。
 
 ## 包管理

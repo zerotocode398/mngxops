@@ -5,7 +5,7 @@
 {% block content %}
 <section class="install-toolbar">
     <div class="d-flex flex-wrap gap-2">
-        {% if can_create %}<a class="btn btn-primary btn-sm" href="/nginx-install/center/"><i class="bi bi-play-fill me-1" aria-hidden="true"></i>开始安装</a>{% endif %}
+        {% if can_execute %}<a class="btn btn-primary btn-sm" href="/nginx-install/center/"><i class="bi bi-play-fill me-1" aria-hidden="true"></i>开始安装</a>{% endif %}
         {% if can_read %}<a class="btn btn-outline-secondary btn-sm" href="/nginx-install/history/"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>安装历史</a>{% endif %}
         <a class="btn btn-outline-secondary btn-sm" href="/upgrade/packages/?nav=nginx_install"><i class="bi bi-archive me-1" aria-hidden="true"></i>源码包</a>
         <a class="btn btn-outline-secondary btn-sm" href="/upgrade/modules/?nav=nginx_install"><i class="bi bi-puzzle me-1" aria-hidden="true"></i>模块包</a>

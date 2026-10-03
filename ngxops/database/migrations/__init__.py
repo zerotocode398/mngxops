@@ -21,6 +21,9 @@ from ngxops.database.migrations.v0012_nginx_uninstall import (
 )
 from ngxops.database.migrations.v0013_audit_logs import MIGRATION as AUDIT_LOGS
 from ngxops.database.migrations.v0014_system_settings import MIGRATION as SYSTEM_SETTINGS
+from ngxops.database.migrations.v0015_shared_nginx_install_permissions import (
+    MIGRATION as SHARED_NGINX_INSTALL_PERMISSIONS,
+)
 
 
 MIGRATIONS: Tuple[Migration, ...] = (
@@ -38,4 +41,5 @@ MIGRATIONS: Tuple[Migration, ...] = (
     NGINX_UNINSTALL,
     AUDIT_LOGS,
     SYSTEM_SETTINGS,
+    SHARED_NGINX_INSTALL_PERMISSIONS,
 )

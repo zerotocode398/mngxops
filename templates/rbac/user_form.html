@@ -32,7 +32,7 @@
     <section class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"><h2 class="h6 mb-0"><i class="bi bi-shield-lock me-1" aria-hidden="true"></i>用户直授权限</h2><button class="btn btn-outline-secondary btn-sm" type="button" data-permission-toggle>全局全选</button></div>
         <div class="card-body"><p class="form-text mt-0">直授权限会额外叠加在角色权限之上。</p>
-            {% for resource in permission_matrix %}<div class="rbac-matrix-row"><div class="rbac-matrix-resource"><strong>{{ resource.label }}</strong><code>{{ resource.resource }}</code></div><div class="rbac-matrix-actions">{% for permission in resource.actions %}<label class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="permission_ids" value="{{ permission.id }}" {% if permission.selected %}checked{% endif %}><span class="form-check-label" title="{{ permission.name }}">{{ permission.action_label }}</span></label>{% endfor %}</div></div>{% endfor %}
+            {% include "rbac/_permission_matrix.html" %}
         </div>
     </section>
     <div class="d-flex justify-content-between"><a class="btn btn-outline-secondary btn-sm" href="/users/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>保存用户</button></div>
@@ -40,7 +40,7 @@
 {% endblock %}
 
 {% block extra_head %}<style>
-.rbac-matrix-row{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb}.rbac-matrix-resource{display:flex;gap:8px;align-items:center}.rbac-matrix-resource code{color:#6c757d;font-size:.78rem}.rbac-matrix-actions{display:flex;flex-wrap:wrap;gap:4px 12px}.rbac-matrix-actions .form-check-inline{margin:0}@media(max-width:767px){.rbac-matrix-row{grid-template-columns:1fr;gap:5px}}
+.rbac-matrix-row{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb}.rbac-matrix-resource{display:flex;gap:8px;align-items:center}.rbac-matrix-actions{display:flex;flex-wrap:wrap;gap:4px 12px}.rbac-matrix-actions .form-check-inline{margin:0}@media(max-width:767px){.rbac-matrix-row{grid-template-columns:1fr;gap:5px}}
 </style>{% endblock %}
 {% block scripts %}<script>
 $(function () {

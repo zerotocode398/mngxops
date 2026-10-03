@@ -1,0 +1,14 @@
+{% for resource in permission_matrix %}
+<div class="rbac-matrix-row">
+    <div class="rbac-matrix-resource"><strong>{{ resource.label }}</strong></div>
+    <div class="rbac-matrix-actions">
+        {% for permission in resource.actions %}
+        <label class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox" name="permission_ids"
+                   value="{{ permission.id }}" {% if permission.selected %}checked{% endif %}>
+            <span class="form-check-label" title="{{ permission.name }}">{{ permission.action_label }}</span>
+        </label>
+        {% endfor %}
+    </div>
+</div>
+{% endfor %}

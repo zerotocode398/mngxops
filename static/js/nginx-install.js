@@ -69,6 +69,8 @@
         var selected = {};
         var nodeRows = Array.prototype.slice.call(table.querySelectorAll("[data-node-row]"));
         var packageSelect = document.getElementById("sourcePackage");
+        var canExecute =
+            document.getElementById("installStepper").dataset.canExecute === "true";
         var modulePackages = readJson("installModulePackageData");
         var builtinModules = readJson("installBuiltinModuleData");
         var defaultModules = readJson("installDefaultModuleData");
@@ -132,7 +134,8 @@
         buildThirdPartyEditor();
         document.getElementById("step2Next").addEventListener("click", goToConfirmation);
         document.getElementById("confirmInstall").addEventListener("change", function () {
-            document.getElementById("startInstall").disabled = !this.checked || !!batchNumber;
+            document.getElementById("startInstall").disabled =
+                !canExecute || !this.checked || !!batchNumber;
         });
         document.getElementById("startInstall").addEventListener("click", confirmStart);
 
@@ -498,7 +501,8 @@
                 pollBatch();
                 pollTimer = window.setInterval(pollBatch, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
             }).catch(function (error) {
-                button.disabled = !document.getElementById("confirmInstall").checked;
+                button.disabled =
+                    !canExecute || !document.getElementById("confirmInstall").checked;
                 notify(error.message, "danger");
             });
         }

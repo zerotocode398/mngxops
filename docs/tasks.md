@@ -51,7 +51,7 @@ NX-040 发布使用 `release_publish` 任务。具备 `releases.publish` 的触�
 
 NX-050 升级和二进制回滚分别使用 `nginx_upgrade`、`nginx_rollback`。具备 `upgrade.execute` 的触发人可轮询本人任务，具备 `upgrade.read` 的触发人也可读取本人升级任务；结果树和日志沿用统一任务协议。取消限升级任务的参数获取和源码包上传阶段，回滚任务不可取消；升级记录、配置差异与回滚入口见 [upgrade.md](upgrade.md)。
 
-NX-051 全新安装使用 `nginx_install` 任务。具备 `nginx_install.create` 的触发人可轮询本人任务，具备 `nginx_install.read` 的用户可查看全部安装任务；取消仅允许 pending、工具检查、源码上传、解压和模块准备阶段。任务保留安装阶段、configure 参数及启动模式结果；SSH 凭证不进入参数、日志或结果树。安装成功后的完整配置同步作为同一任务的后续阶段运行，失败摘要单独保存且不改变安装成功状态。详情见 [nginx-install.md](nginx-install.md)。
+NX-051 全新安装使用 `nginx_install` 任务，但权限与编译升级共用 `upgrade.*`。具备 `upgrade.execute` 的触发人可轮询和取消本人安装任务，具备 `upgrade.read` 的用户可查看安装历史和全部安装批次；取消仅允许 pending、工具检查、源码上传、解压和模块准备阶段。任务保留安装阶段、configure 参数及启动模式结果；SSH 凭证不进入参数、日志或结果树。安装成功后的完整配置同步作为同一任务的后续阶段运行，失败摘要单独保存且不改变安装成功状态。详情见 [nginx-install.md](nginx-install.md)。
 
 NX-052 启停使用 `nginx_service_control` 任务，记录动作、`OP-YYMMDD-NNNN` 批次、目标摘要、逐节点状态、真实进度、结果树和增量日志。触发人通过启停操作台查看任务，`nginx_service.read` 可查看历史和任务日志，`nginx_service.operate` 可创建批次；统一任务中心也按启停操作权限控制本人任务。任务只保留非敏感节点信息，不保存 SSH 密码或私钥。远程动作遵守协作式取消边界。详情见 [nginx-service.md](nginx-service.md)。
 

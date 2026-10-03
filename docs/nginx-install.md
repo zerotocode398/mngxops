@@ -4,8 +4,8 @@
 
 - `/nginx-install/` 展示安装统计和最近任务；`/nginx-install/center/` 提供三步安装向导。
 - `/nginx-install/history/` 支持节点、IP、版本、安装路径、批次关键词和状态筛选；`/nginx-install/task/{task_id}/log/` 展示参数快照、增量日志和任务状态。
-- 页面及 API 使用独立的 `nginx_install.read`、`nginx_install.create` 权限。安装向导读取 NX-050 管理的源码包和离线模块包；相关包管理仍需 `upgrade.*` 权限。
-- 任务批次与统一任务中心使用 `nginx_install` 操作类型。创建权限可读取本人批次；读取权限可查看全部安装历史和批次。
+- 安装与升级共用 `upgrade.read/create/delete/execute` 权限：查看历史及下载包使用 `read`，上传源码/模块包使用 `create`，删除包使用 `delete`，安装或升级任务的执行与取消使用 `execute`。两个向导页面都允许 `read` 或 `execute` 进入；只读用户不能提交安装任务。安装页和 API 不再定义独立的 `nginx_install.*` 授权。
+- 任务批次与统一任务中心仍使用 `nginx_install` 操作类型，以区分具体工作流。`upgrade.execute` 可读取和取消本人安装任务；`upgrade.read` 可查看安装历史和全部安装批次。
 
 ## 向导与门禁
 
@@ -26,11 +26,11 @@
 
 ## JSON API
 
-- `POST /api/nginx-install/configure-preview`：校验参数并返回 configure 字符串和目标路径；需要 `nginx_install.create` 与 CSRF。
-- `POST /api/nginx-install/tasks`：全量复核包、参数和节点，创建每节点 `nginx_install` 任务及批次；需要 `nginx_install.create` 与 CSRF。
-- `GET /api/nginx-install/batches/{batch_number}`：读取有权查看的批次进度、节点任务和日志入口；创建权限仅能读取本人批次。
-- 任务增量日志与协作取消使用通用 `GET /api/tasks/{task_id}`、`POST /api/tasks/{task_id}/cancel`；取消额外检查安装阶段和本人权限。
+- `POST /api/nginx-install/configure-preview`：校验参数并返回 configure 字符串和目标路径；需要 `upgrade.read` 或 `upgrade.execute` 与 CSRF。
+- `POST /api/nginx-install/tasks`：全量复核包、参数和节点，创建每节点 `nginx_install` 任务及批次；需要 `upgrade.execute` 与 CSRF。
+- `GET /api/nginx-install/batches/{batch_number}`：读取有权查看的批次进度、节点任务和日志入口；`upgrade.execute` 仅能读取本人批次，`upgrade.read` 可读取全部批次。
+- 任务增量日志与协作取消使用通用 `GET /api/tasks/{task_id}`、`POST /api/tasks/{task_id}/cancel`；取消使用 `upgrade.execute` 并额外检查安装阶段。
 
 成功响应模型、状态码和认证方案登记在 [api.md](api.md)。参数快照、任务结果和日志不保存 SSH 密码或私钥。执行器和包锁目前位于单进程内，部署限制为单个 Uvicorn worker。最大节点数由 `node.batch_max_count` 设置控制，默认 3。
 
-部署前备份数据库、`.fernet_key`、`.secret_key` 和 `nginx_packages/`；然后显式运行 `python -m ngxops.database upgrade` 应用迁移 v11。当前验证使用伪造 SSH/任务提交，未连接真实节点、运行真实编译或验证 systemd 环境。
+部署前备份数据库、`.fernet_key`、`.secret_key` 和 `nginx_packages/`；然后显式运行 `python -m ngxops.database upgrade` 应用未执行迁移，包括 v15 的权限合并。迁移 v15 将旧 `nginx_install.read/create` 角色和个人直授权分别转换为 `upgrade.read/execute` 并删除旧权限项。当前验证使用伪造 SSH/任务提交，未连接真实节点、运行真实编译或验证 systemd 环境。

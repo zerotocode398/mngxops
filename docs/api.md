@@ -94,9 +94,9 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 | `POST /api/upgrade/tasks` | `upgrade.execute` 会话与 CSRF | `UpgradeTaskCreateResponse` | 400、401、403、409、422、500 |
 | `POST /api/upgrade/tasks/{task_id}/cancel` | `upgrade.execute` 会话与 CSRF | `UpgradeCancelResponse` | 400、401、403、404、409、422、500 |
 | `POST /api/upgrade/tasks/{task_id}/rollback` | `upgrade.execute` 会话与 CSRF | `UpgradeRollbackResponse` | 400、401、403、404、409、422、500 |
-| `POST /api/nginx-install/configure-preview` | `nginx_install.create` 会话与 CSRF | `InstallConfigureResponse` | 400、401、403、422、500 |
-| `POST /api/nginx-install/tasks` | `nginx_install.create` 会话与 CSRF | `InstallBatchResponse` | 400、401、403、409、422、500 |
-| `GET /api/nginx-install/batches/{batch_number}` | `nginx_install.read` 或 `nginx_install.create` 会话 | `InstallBatchProgressResponse` | 401、403、404、422、500 |
+| `POST /api/nginx-install/configure-preview` | `upgrade.read` 或 `upgrade.execute` 会话与 CSRF | `InstallConfigureResponse` | 400、401、403、422、500 |
+| `POST /api/nginx-install/tasks` | `upgrade.execute` 会话与 CSRF | `InstallBatchResponse` | 400、401、403、409、422、500 |
+| `GET /api/nginx-install/batches/{batch_number}` | `upgrade.read` 或任务触发人的 `upgrade.execute` 会话 | `InstallBatchProgressResponse` | 401、403、404、422、500 |
 | `GET /api/nginx/service/nodes` | `nginx_service.read` 会话 | `ServiceNodeListResponse` | 401、403、422、500 |
 | `POST /api/nginx/service/execute` | `nginx_service.operate` 会话与 CSRF | `ServiceExecuteResponse` | 400、401、403、422、500 |
 | `GET /api/nginx/service/tasks/{task_id}` | `nginx_service.read` 会话 | `ServiceTaskProgressResponse` | 401、403、404、422、500 |

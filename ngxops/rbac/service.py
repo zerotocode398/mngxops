@@ -99,8 +99,13 @@ def build_permission_matrix(
     action_labels = dict(ACTION_CHOICES)
     matrix = []
     for resource, label in RESOURCE_CHOICES:
+        available = {
+            item.action for item in permission_rows if item.resource == resource
+        }
         actions = []
-        for action in _actions_for_resource(resource, permission_rows):
+        for action, _label in ACTION_CHOICES:
+            if action not in available:
+                continue
             item = by_code.get(permission_code(resource, action))
             if item is None:
                 continue
@@ -117,12 +122,3 @@ def build_permission_matrix(
         if actions:
             matrix.append({"resource": resource, "label": label, "actions": actions})
     return matrix
-
-
-def _actions_for_resource(
-    resource: str,
-    permission_rows: Iterable[PermissionItem],
-) -> List[str]:
-    """返回已登记资源动作的稳定展示顺序。"""
-    available = {item.action for item in permission_rows if item.resource == resource}
-    return [action for action, _label in ACTION_CHOICES if action in available]

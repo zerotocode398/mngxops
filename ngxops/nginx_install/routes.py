@@ -27,6 +27,7 @@ from ngxops.nodes.models import Node
 from ngxops.security.dependencies import (
     PERM_DENIED_MESSAGE,
     PERM_DENIED_TITLE,
+    require_any_permission,
     require_authenticated_user,
     require_permission,
 )
@@ -163,16 +164,16 @@ class InstallBatchProgressResponse(BaseModel):
     progress: int
 
 
-def _has_install_permission(
+def _has_upgrade_permission(
     request: Request,
     session: Session,
     user: User,
     action: str,
 ) -> bool:
-    """读取安装资源的 RBAC 授权结果。"""
+    """读取安装与升级共用资源的 RBAC 授权结果。"""
     checker = getattr(request.app.state, "permission_checker", None)
     return user.is_superuser or bool(
-        checker and checker(session, user, "nginx_install", action)
+        checker and checker(session, user, "upgrade", action)
     )
 
 
@@ -260,14 +261,14 @@ def _node_install_items(session: Session) -> List[dict]:
 @router.get("/nginx-install/", include_in_schema=False)
 def nginx_install_home(
     request: Request,
-    user: User = Depends(require_authenticated_user),
+    user: User = Depends(
+        require_any_permission(("upgrade", "read"), ("upgrade", "execute"))
+    ),
     session: Session = Depends(get_session),
 ) -> Response:
     """显示 Nginx 安装统计、最近批次和向导入口。"""
-    can_read = _has_install_permission(request, session, user, "read")
-    can_create = _has_install_permission(request, session, user, "create")
-    if not can_read and not can_create:
-        raise PermissionDenied(PERM_DENIED_TITLE, PERM_DENIED_MESSAGE)
+    can_read = _has_upgrade_permission(request, session, user, "read")
+    can_execute = _has_upgrade_permission(request, session, user, "execute")
     since = datetime.utcnow() - timedelta(days=7)
     recent_query = (
         select(NginxInstallRun)
@@ -301,7 +302,7 @@ def nginx_install_home(
         "running_count": int(session.scalar(running_query) or 0),
         "failed_7d_count": int(session.scalar(failed_query) or 0),
         "recent_runs": recent_runs,
-        "can_create": can_create,
+        "can_execute": can_execute,
         "can_read": can_read,
     }
     return render_page(request, "nginx_install/index.html", context, user, session)
@@ -310,7 +311,9 @@ def nginx_install_home(
 @router.get("/nginx-install/center/", include_in_schema=False)
 def nginx_install_center(
     request: Request,
-    user: User = Depends(require_permission("nginx_install", "create")),
+    user: User = Depends(
+        require_any_permission(("upgrade", "read"), ("upgrade", "execute"))
+    ),
     session: Session = Depends(get_session),
 ) -> Response:
     """渲染三步安装向导及目标节点、源码包和模块包。"""
@@ -325,12 +328,18 @@ def nginx_install_center(
         .options(joinedload(NginxModulePackage.creator))
         .order_by(NginxModulePackage.created_at.desc(), NginxModulePackage.id.desc())
     ).all()
-    recent_runs = session.scalars(
+    recent_runs_query = (
         select(NginxInstallRun)
         .join(Task, Task.id == NginxInstallRun.task_id)
         .options(joinedload(NginxInstallRun.task))
         .order_by(NginxInstallRun.created_at.desc(), NginxInstallRun.id.desc())
-        .limit(read_setting(session, "dashboard.recent_tasks_count", 20))
+    )
+    if not _has_upgrade_permission(request, session, user, "read"):
+        recent_runs_query = recent_runs_query.where(Task.trigger_user_id == user.id)
+    recent_runs = session.scalars(
+        recent_runs_query.limit(
+            read_setting(session, "dashboard.recent_tasks_count", 20)
+        )
     ).all()
     return render_page(
         request,
@@ -349,7 +358,8 @@ def nginx_install_center(
             "batch_max_count": read_setting(session, "node.batch_max_count", 3),
             "builtin_modules": BUILTIN_ADD_MODULES,
             "default_modules": default_install_modules(),
-            "can_read": _has_install_permission(request, session, user, "read"),
+            "can_read": _has_upgrade_permission(request, session, user, "read"),
+            "can_execute": _has_upgrade_permission(request, session, user, "execute"),
             "nodes_json": _json_for_script(nodes),
             "module_packages_json": _json_for_script(
                 [
@@ -386,7 +396,7 @@ def nginx_install_history(
     status: str = Query("", max_length=20),
     page: int = Query(1, ge=1),
     per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=50),
-    user: User = Depends(require_permission("nginx_install", "read")),
+    user: User = Depends(require_permission("upgrade", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
     """按节点、版本、路径、批次和状态筛选安装历史。"""
@@ -458,9 +468,9 @@ def nginx_install_task_log(
     if run is None:
         raise HTTPException(status_code=404, detail="安装任务不存在")
     task = run.task
-    can_read = _has_install_permission(request, session, user, "read")
-    can_create = _has_install_permission(request, session, user, "create")
-    if not can_read and not (can_create and task.trigger_user_id == user.id):
+    can_read = _has_upgrade_permission(request, session, user, "read")
+    can_execute = _has_upgrade_permission(request, session, user, "execute")
+    if not can_read and not (can_execute and task.trigger_user_id == user.id):
         raise PermissionDenied(PERM_DENIED_TITLE, PERM_DENIED_MESSAGE)
     logs = session.scalars(
         select(TaskLog)
@@ -481,7 +491,7 @@ def nginx_install_task_log(
                 run.target_configure_opts
             ),
             "can_cancel": (
-                can_create
+                can_execute
                 and task.status in ("pending", "running")
                 and run.phase
                 in ("pending", "checking_tools", "uploading_package", "extracting_package", "preparing_modules")
@@ -501,7 +511,9 @@ def nginx_install_task_log(
 )
 def install_configure_preview(
     payload: InstallConfigureRequest,
-    user: User = Depends(require_permission("nginx_install", "create")),
+    user: User = Depends(
+        require_any_permission(("upgrade", "read"), ("upgrade", "execute"))
+    ),
 ) -> InstallConfigureResponse:
     """返回已校验的 configure 参数字符串和安装路径。"""
     try:
@@ -536,7 +548,7 @@ def install_configure_preview(
 def create_install_tasks(
     request: Request,
     payload: InstallBatchRequest,
-    user: User = Depends(require_permission("nginx_install", "create")),
+    user: User = Depends(require_permission("upgrade", "execute")),
     session: Session = Depends(get_session),
 ) -> InstallBatchResponse:
     """全量验证安装参数并创建异步批次。"""
@@ -598,10 +610,8 @@ def get_install_batch_progress(
     """返回当前用户可见的安装批次实时状态。"""
     session_factory = request.app.state.database.session_factory
     with session_scope(session_factory) as session:
-        can_read = _has_install_permission(request, session, user, "read")
-        can_create = _has_install_permission(request, session, user, "create")
-        if not can_read and not can_create:
-            raise PermissionDenied(PERM_DENIED_TITLE, PERM_DENIED_MESSAGE)
+        can_read = _has_upgrade_permission(request, session, user, "read")
+        can_execute = _has_upgrade_permission(request, session, user, "execute")
         owner_id = None if can_read or user.is_superuser else user.id
     try:
         result = load_install_batch(
