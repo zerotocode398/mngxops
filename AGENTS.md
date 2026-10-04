@@ -229,3 +229,15 @@ PS：这个产品主要面向 Linux 运维工程师，你看看应该如何设�
 16. **已确认**：角色新增/编辑页按“基本信息”“权限矩阵”分区为独立色条卡片，与原参考项目的角色表单分类一致；权限字段、校验、全选和保存行为不变。实现：templates/rbac/role_form.html、static/css/role-form.css、static/css/rbac-matrix.css。验证：tests/test_rbac.py 检查新增和编辑页卡片结构、样式资源及矩阵渲染。
 17. **已确认**：移除展开子菜单左侧的竖向树形引导线；菜单层级缩进、悬停/选中标记、折叠浮层边框保持不变。实现：static/css/app.css，并将 templates/base.html 的 app.css 资源版本递增至 v13。验证：tests/test_nodes.py 检查共享样式不再声明 submenu::before；git diff --check 通过。
 18. **已确认**：节点组名称以普通表格字重显示。移除“搜索节点组”字段标签和“筛选”按钮，保留带可访问名称的输入框与清空入口；按 Enter 提交 GET 查询，继续保留每页大小并重置到第一页。实现：templates/nodes/groups.html。验证：tests/test_nodes.py 检查渲染文案、名称单元格、Enter 提交处理和查询结果；节点专项测试 3 passed。
+19. **已确认**：用户组“选择关联角色”弹窗增加客户端分页（每页 10/25/50 项）；输入文字不再即时过滤，按 Enter 后应用查询。多个关键词改为 AND 匹配，因此“Nginx”与“执行”只保留同时包含两个关键词的角色；已选关系跨页保留。查询输入字号调整为全站紧凑正文大小。角色数据仍由表单页预载，无 API、保存字段或权限规则变化。与原参考项目的内嵌复选框列表不同，保留已确认的自定义弹窗，并在弹窗内本地分页和筛选。实现：`templates/rbac/_entity_picker_modal.html`、`static/js/user-form.js`、`static/css/app.css`、用户/用户组表单静态资源版本。验证：`tests/test_rbac.py` 检查 12 个角色行、分页控件、Enter 查询、AND 条件、分页逻辑和紧凑字号；JavaScript 语法检查及 RBAC 专项测试通过。
+```text
+Nginx ×，执行 ×
+输入名称或描述，按回车添加条件
+匹配 4 项
+已选 8 项
+选择	角色	描述
+Nginx 依赖包	源码包/模块包 上传、删除
+Nginx 卸载执行	-
+Nginx 启停	-
+Nginx 安装/升级	执行
+```

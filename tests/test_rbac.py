@@ -351,3 +351,43 @@ def test_user_and_team_forms_use_picker_cards_and_shared_pagination(rbac_client)
             select(User).where(User.username == "matrix-direct-user")
         )
         assert user_has_permission(session, direct_user, "nodes", "read")
+
+
+def test_team_role_picker_paginates_and_applies_search_on_enter(rbac_client):
+    """验证用户组角色弹窗分页控件、查询脚本和紧凑输入字号。"""
+    client, app, _token, _inherited_id, _personal_id = rbac_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            admin_id = session.scalar(
+                select(User.id).where(User.username == "rbac-admin")
+            )
+            session.add_all(
+                [
+                    Role(
+                        name="Role {:02d}".format(index),
+                        description="Nginx task",
+                        created_by=admin_id,
+                    )
+                    for index in range(12)
+                ]
+            )
+
+    team_form = client.get("/users/teams/create/")
+    picker_script = client.get("/static/js/user-form.js?v=2")
+    app_css = client.get("/static/css/app.css?v=14")
+
+    assert team_form.status_code == 200
+    assert team_form.text.count("data-picker-row data-picker-search-text=") == 12
+    assert 'aria-label="每页角色数"' in team_form.text
+    assert "data-picker-page-previous" in team_form.text
+    assert "data-picker-page-next" in team_form.text
+    assert "/static/js/user-form.js?v=2" in team_form.text
+    assert picker_script.status_code == 200
+    assert 'query.addEventListener("input"' not in picker_script.text
+    assert 'query.addEventListener("keydown"' in picker_script.text
+    assert 'event.key === ","' not in picker_script.text
+    assert "terms.every" in picker_script.text
+    assert "matchingRows.slice(firstIndex, firstIndex + pageSize)" in picker_script.text
+    assert app_css.status_code == 200
+    assert ".entity-picker-pagination-controls" in app_css.text
+    assert "font-size: var(--fs-base);" in app_css.text

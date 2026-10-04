@@ -35,6 +35,24 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="entity-picker-pagination" data-picker-pagination>
+                    <span class="pagination-summary">第 <strong data-picker-page-current>1</strong> / <strong data-picker-page-count>1</strong> 页</span>
+                    <div class="entity-picker-pagination-controls">
+                        <label class="small text-muted" for="{{ picker['id'] }}PageSize">每页</label>
+                        <select class="form-select form-select-sm" id="{{ picker['id'] }}PageSize"
+                                data-picker-page-size aria-label="每页{{ picker['item_label'] }}数">
+                            <option value="10" selected>10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                        <button class="btn btn-outline-secondary btn-sm" type="button" data-picker-page-previous aria-label="上一页" title="上一页">
+                            <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" type="button" data-picker-page-next aria-label="下一页" title="下一页">
+                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">取消</button>
