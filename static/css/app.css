@@ -223,16 +223,6 @@ body {
     padding: 2px 0;
 }
 
-.submenu::before {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 1.4rem;
-    border-left: 1px solid var(--sidebar-divider);
-    content: "";
-    pointer-events: none;
-}
-
 .submenu.show {
     display: block;
 }
@@ -290,7 +280,6 @@ body {
         background: var(--sidebar-bg-raised);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
     }
-    html.sidebar-collapsed .sidebar .submenu::before { display: none; }
     html.sidebar-collapsed .sidebar .submenu.show { display: none; }
     html.sidebar-collapsed .sidebar .nav-item-wrap.submenu-open > .submenu.show { display: block; }
     html.sidebar-collapsed .sidebar .submenu .nav-link {

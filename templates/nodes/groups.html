@@ -19,11 +19,9 @@
     <div class="card-body">
         <form method="get" class="node-groups-search-form">
             <div class="node-groups-search-field">
-                <label class="form-label small mb-1" for="groupSearch">搜索节点组</label>
-                <input class="form-control form-control-sm" id="groupSearch" name="search" value="{{ search }}" placeholder="按节点组名称筛选">
+                <input class="form-control form-control-sm" id="groupSearch" name="search" value="{{ search }}" placeholder="按节点组名称筛选" aria-label="按节点组名称筛选">
             </div>
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-            <button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button>
             {% if search %}<a class="btn btn-outline-secondary btn-sm" href="/nodes/groups/?per_page={{ pagination.per_page }}">清空</a>{% endif %}
         </form>
 
@@ -42,7 +40,7 @@
                 <tbody>
                     {% for group in groups %}
                     <tr>
-                        <td class="node-group-list-name"><strong>{{ group.name }}</strong></td>
+                        <td class="node-group-list-name">{{ group.name }}</td>
                         <td><a class="node-group-count-link" href="/nodes/?group={{ group.id }}" title="查看该组节点">{{ group_counts.get(group.id, 0) }} <span>台</span><i class="bi bi-arrow-up-right ms-1" aria-hidden="true"></i></a></td>
                         <td class="node-group-list-description">{{ group.description or "-" }}</td>
                         <td>{{ group.creator.username if group.creator else "-" }}</td>
@@ -63,4 +61,16 @@
         {% include "includes/pagination_footer.html" %}
     </div>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+$(function () {
+    $("#groupSearch").on("keydown", function (event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            this.form.requestSubmit();
+        }
+    });
+});
+</script>
 {% endblock %}

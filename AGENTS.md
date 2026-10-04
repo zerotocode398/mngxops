@@ -227,5 +227,5 @@ PS：这个产品主要面向 Linux 运维工程师，你看看应该如何设�
 14. **已确认**：服务端分页列表统一复用分页页脚，展示总数、当前/总页数与每页条数；发布中心/历史、用户组成员弹窗同步展示总数、页数和每页批次。GET 列表的关键词输入由全局控件统一转换为可移除蓝色标签，并保留中英文逗号分词规则。成员弹窗的搜索标记和每页选择器直接由模板渲染，成员 API 接受 `per_page` 并返回总数/总页数；共享标签脚本排除每页表单中用于保留筛选条件的隐藏字段。实现：`templates/includes/pagination_footer.html`、`static/js/app.js`、`static/css/app.css`、`templates/rbac/teams_list.html`、发布页面脚本。验证：`tests/test_rbac.py` 检查用户/角色/用户组分页、发布页搜索控件、成员分页 API 和共享脚本；`node --check` 与 `git diff --check` 通过。浏览器视觉与动态交互验证未执行；全套 `pytest -q tests` 为 18 passed、4 failed，失败均在配置同步测试，测试替身 `fake_discovery` 未接收生产调用的 `max_depth` 参数，与本项 RBAC/UI 改动无关。
 15. **已确认**：用户新建/编辑页的直授权限与角色权限统一使用资源/动作矩阵布局；提交字段和直授权限叠加规则保持不变。共享响应式样式位于 static/css/rbac-matrix.css，由 templates/rbac/user_form.html 和角色表单共同加载。验证：tests/test_rbac.py 检查用户表单矩阵和样式资源，并提交节点读取直授权限后确认权限解析生效。
 16. **已确认**：角色新增/编辑页按“基本信息”“权限矩阵”分区为独立色条卡片，与原参考项目的角色表单分类一致；权限字段、校验、全选和保存行为不变。实现：templates/rbac/role_form.html、static/css/role-form.css、static/css/rbac-matrix.css。验证：tests/test_rbac.py 检查新增和编辑页卡片结构、样式资源及矩阵渲染。
-17. 左侧菜单栏父子菜单结构树（竖线）的标记去掉。
-18. 节点组管理节点组名称表行的字体不应该粗体，请保持一致、“搜索节点组”文案可以删了、“筛选”文案可以删了，点击 enter 就可以自动筛选。
+17. **已确认**：移除展开子菜单左侧的竖向树形引导线；菜单层级缩进、悬停/选中标记、折叠浮层边框保持不变。实现：static/css/app.css，并将 templates/base.html 的 app.css 资源版本递增至 v13。验证：tests/test_nodes.py 检查共享样式不再声明 submenu::before；git diff --check 通过。
+18. **已确认**：节点组名称以普通表格字重显示。移除“搜索节点组”字段标签和“筛选”按钮，保留带可访问名称的输入框与清空入口；按 Enter 提交 GET 查询，继续保留每页大小并重置到第一页。实现：templates/nodes/groups.html。验证：tests/test_nodes.py 检查渲染文案、名称单元格、Enter 提交处理和查询结果；节点专项测试 3 passed。

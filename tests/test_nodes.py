@@ -97,6 +97,16 @@ def test_node_crud_restore_groups_and_lock_gate(node_client):
     group_list = client.get("/api/nodes/groups")
     assert group_list.status_code == 200
     assert group_list.json()["data"][0]["node_count"] == 1
+    group_page = client.get("/nodes/groups/?search=production")
+    assert group_page.status_code == 200
+    assert '<td class="node-group-list-name">production</td>' in group_page.text
+    assert "搜索节点组" not in group_page.text
+    assert ">筛选</button>" not in group_page.text
+    assert 'aria-label="按节点组名称筛选"' in group_page.text
+    assert "this.form.requestSubmit()" in group_page.text
+    app_css = client.get("/static/css/app.css?v=13")
+    assert app_css.status_code == 200
+    assert ".submenu::before" not in app_css.text
 
     locked = client.post(
         "/api/nodes/lock",
