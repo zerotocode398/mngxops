@@ -117,7 +117,7 @@
 
     function renderNodes() {
         var $rows = $("#releaseNodeRows").empty();
-        var autoExpand = !!($("#releaseSearch").val() || state.syncStatus);
+        var autoExpand = !!(window.getQueryTagValue("#releaseSearch") || state.syncStatus);
         if (!state.nodes.length) {
             $rows.append('<tr><td colspan="10" class="text-center text-muted py-4">没有匹配的节点</td></tr>');
             updateSelectionSummary();
@@ -227,7 +227,7 @@
         $("#releaseNodeRows").html('<tr><td colspan="10" class="text-center text-muted py-4">正在加载节点…</td></tr>');
         var syncValue = state.syncStatus;
         var query = {
-            search: $("#releaseSearch").val() || "",
+            search: window.getQueryTagValue("#releaseSearch") || "",
             group_id: $("#releaseGroupFilter").val() || undefined,
             environment: $("#releaseEnvironmentFilter").val() || "",
             status: $("#releaseNodeStatusFilter").val() || "",
@@ -255,7 +255,7 @@
                 maxBindingCount = response.max_binding_count || maxBindingCount;
                 renderNodes();
                 $("#releasePaginationSummary").text(
-                    "共 " + state.total + " 个节点 · 第 " + state.page + " / " + state.totalPages + " 页"
+                    "共 " + state.total + " 个节点 · 第 " + state.page + " / " + state.totalPages + " 页 · 每页 " + state.pageSize + " 个"
                 );
                 $("#releasePreviousPage").prop("disabled", state.page <= 1);
                 $("#releaseNextPage").prop("disabled", state.page >= state.totalPages);

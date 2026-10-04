@@ -1,14 +1,17 @@
 {% extends "base.html" %}
 
 {% set editing = target is defined and target %}
+{% set role_picker = {"id": "userRolePickerModal", "key": "user-roles", "title": "选择个人角色", "item_label": "角色", "choices": all_roles, "selected_ids": selected_roles, "limit": 3} %}
+{% set team_picker = {"id": "userTeamPickerModal", "key": "user-teams", "title": "选择所属用户组", "item_label": "用户组", "choices": all_teams, "selected_ids": selected_teams, "limit": 0} %}
 {% block title %}{% if editing %}编辑用户{% else %}新增用户{% endif %} - ngxops{% endblock %}
 {% block page_title %}{% if editing %}编辑用户{% else %}新增用户{% endif %}{% endblock %}
 
 {% block content %}
-<form method="post" action="{% if editing %}/users/{{ target.id }}/edit/{% else %}/users/create/{% endif %}" class="rbac-form">
+<form method="post" action="{% if editing %}/users/{{ target.id }}/edit/{% else %}/users/create/{% endif %}" class="rbac-form user-editor">
     {% include "includes/csrf_field.html" %}
     {% if errors %}<div class="alert alert-danger" role="alert">请检查标记字段{% if errors.get('relations') %}：{{ errors.get('relations') }}{% endif %}</div>{% endif %}
-    <section class="card mb-3">
+
+    <section class="card user-form-section user-form-section--basic">
         <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-person-vcard me-1" aria-hidden="true"></i>基本信息</h2></div>
         <div class="card-body"><div class="row g-3">
             <div class="col-md-6"><label class="form-label" for="username">用户名</label><input class="form-control{% if errors.get('username') %} is-invalid{% endif %}" id="username" name="username" value="{{ values.get('username', '') }}" maxlength="150" required><div class="form-text">仅支持字母、数字、下划线与连字符</div>{% if errors.get('username') %}<div class="invalid-feedback">{{ errors.get('username') }}</div>{% endif %}</div>
@@ -19,36 +22,47 @@
             {% if editing %}<div class="col-12"><label class="form-check"><input class="form-check-input" type="checkbox" name="is_superuser" value="true" {% if values.get('is_superuser') %}checked{% endif %} {% if target.id == current_user.id %}disabled{% endif %}><span class="form-check-label">超级管理员</span></label>{% if target.id == current_user.id %}<input type="hidden" name="is_superuser" value="true"><div class="form-text">不能在当前登录账户中移除超级管理员权限。</div>{% endif %}</div>{% endif %}
         </div></div>
     </section>
-    <section class="card mb-3">
+
+    <section class="card user-form-section user-form-section--roles">
         <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-person-badge me-1" aria-hidden="true"></i>个人角色</h2></div>
-        <div class="card-body"><p class="form-text mt-0">最多选择 3 个。设置个人角色后，权限按个人角色计算，不再继承用户组角色。</p>{% if errors.get('roles') %}<div class="text-danger small mb-2">{{ errors.get('roles') }}</div>{% endif %}
-            <div class="row g-2">{% for role in all_roles %}<div class="col-sm-6 col-lg-4"><label class="form-check"><input class="form-check-input" type="checkbox" name="role_ids" value="{{ role.id }}" {% if role.id in selected_roles %}checked{% endif %}><span class="form-check-label">{{ role.name }}</span></label></div>{% else %}<div class="text-muted small">暂无角色</div>{% endfor %}</div>
+        <div class="card-body">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button class="btn btn-outline-primary btn-sm" type="button" data-picker-open="user-roles" {% if not all_roles %}disabled{% endif %}><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>选择角色</button>
+                <span class="small text-muted">最多 3 个。存在有效用户组角色时，个人角色暂不参与权限计算。</span>
+            </div>
+            {% if errors.get('roles') %}<div class="text-danger small mt-2">{{ errors.get('roles') }}</div>{% endif %}
+            <div class="entity-picker-summary" data-picker-summary="user-roles" aria-live="polite"></div>
+            {% for role in all_roles %}<input class="visually-hidden" type="checkbox" name="role_ids" value="{{ role.id }}" data-picker-selection="user-roles" data-label="{{ role.name }}" {% if role.id in selected_roles %}checked{% endif %}>{% endfor %}
+            {% if not all_roles %}<div class="form-text mt-2">暂无角色，请先创建角色。</div>{% endif %}
         </div>
     </section>
-    <section class="card mb-3">
+
+    <section class="card user-form-section user-form-section--teams">
         <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-people me-1" aria-hidden="true"></i>所属用户组</h2></div>
-        <div class="card-body"><div class="row g-2">{% for team in all_teams %}<div class="col-sm-6 col-lg-4"><label class="form-check"><input class="form-check-input" type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in selected_teams %}checked{% endif %}><span class="form-check-label">{{ team.name }}</span></label></div>{% else %}<div class="text-muted small">暂无用户组</div>{% endfor %}</div></div>
-    </section>
-    <section class="card mb-3">
-        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"><h2 class="h6 mb-0"><i class="bi bi-shield-lock me-1" aria-hidden="true"></i>用户直授权限</h2><button class="btn btn-outline-secondary btn-sm" type="button" data-permission-toggle>全局全选</button></div>
-        <div class="card-body"><p class="form-text mt-0">直授权限会额外叠加在角色权限之上。</p>
-            {% include "rbac/_permission_matrix.html" %}
+        <div class="card-body">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button class="btn btn-outline-primary btn-sm" type="button" data-picker-open="user-teams" {% if not all_teams %}disabled{% endif %}><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>选择用户组</button>
+                <span class="small text-muted">用户组关联角色优先于个人角色；没有组角色时使用个人角色。</span>
+            </div>
+            <div class="entity-picker-summary" data-picker-summary="user-teams" aria-live="polite"></div>
+            {% for team in all_teams %}<input class="visually-hidden" type="checkbox" name="team_ids" value="{{ team.id }}" data-picker-selection="user-teams" data-label="{{ team.name }}" {% if team.id in selected_teams %}checked{% endif %}>{% endfor %}
+            {% if not all_teams %}<div class="form-text mt-2">暂无用户组，请先创建用户组。</div>{% endif %}
         </div>
     </section>
-    <div class="d-flex justify-content-between"><a class="btn btn-outline-secondary btn-sm" href="/users/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>保存用户</button></div>
+
+    <section class="card user-form-section user-form-section--permissions">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"><h2 class="h6 mb-0"><i class="bi bi-shield-lock me-1" aria-hidden="true"></i>用户直授权限</h2><button class="btn btn-outline-secondary btn-sm" type="button" data-permission-toggle>全局全选</button></div>
+        <div class="card-body"><p class="form-text mt-0">直授权限独立叠加在有效角色权限之上。</p>{% include "rbac/_permission_matrix.html" %}</div>
+    </section>
+
+    <div class="user-form-actions"><a class="btn btn-outline-secondary btn-sm" href="/users/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>保存用户</button></div>
 </form>
 {% endblock %}
 
-{% block extra_head %}<style>
-.rbac-matrix-row{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb}.rbac-matrix-resource{display:flex;gap:8px;align-items:center}.rbac-matrix-actions{display:flex;flex-wrap:wrap;gap:4px 12px}.rbac-matrix-actions .form-check-inline{margin:0}@media(max-width:767px){.rbac-matrix-row{grid-template-columns:1fr;gap:5px}}
-</style>{% endblock %}
-{% block scripts %}<script>
-$(function () {
-    $("[data-permission-toggle]").on("click", function () {
-        var checks = $("input[name='permission_ids']");
-        var selectAll = checks.length > 0 && checks.filter(":checked").length !== checks.length;
-        checks.prop("checked", selectAll);
-        $(this).text(selectAll ? "清空选择" : "全局全选");
-    });
-});
-</script>{% endblock %}
+{% block modals %}
+    {% set picker = role_picker %}{% include "rbac/_entity_picker_modal.html" %}
+    {% set picker = team_picker %}{% include "rbac/_entity_picker_modal.html" %}
+{% endblock %}
+
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/user-form.css') }}?v=1">{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/user-form.js') }}?v=1"></script>{% endblock %}

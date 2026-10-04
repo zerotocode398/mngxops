@@ -39,7 +39,7 @@
     <div class="card-body">
         <form id="releaseFilterForm" class="mb-3" autocomplete="off">
             <div class="row g-2 align-items-center">
-                <div class="col-lg-5"><input class="form-control form-control-sm" id="releaseSearch" type="search" maxlength="200" placeholder="搜索主机名、IP、配置名或远程路径" aria-label="搜索主机名、IP、配置名或远程路径"></div>
+                <div class="col-lg-5"><input class="form-control form-control-sm" id="releaseSearch" data-query-tags type="search" maxlength="200" placeholder="搜索主机名、IP、配置名或远程路径" aria-label="搜索主机名、IP、配置名或远程路径"></div>
                 <div class="col-sm-4 col-lg-2"><select class="form-select form-select-sm" id="releaseGroupFilter" aria-label="节点组"><option value="">全部节点组</option>{% for group in groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}</select></div>
                 <div class="col-sm-4 col-lg-2"><select class="form-select form-select-sm" id="releaseEnvironmentFilter" aria-label="环境"><option value="">全部环境</option><option value="dev">开发</option><option value="test">测试</option><option value="prod">生产</option></select></div>
                 <div class="col-sm-4 col-lg-1"><select class="form-select form-select-sm" id="releaseNodeStatusFilter" aria-label="SSH 状态"><option value="">全部 SSH</option><option value="online">在线</option><option value="offline">离线</option><option value="unknown">未知</option></select></div>
@@ -106,4 +106,4 @@
 <div id="releaseCenterState" hidden data-can-publish="{{ 'true' if can_publish else 'false' }}"></div>
 {% endblock %}
 
-{% block scripts %}<script src="/static/js/releases.js"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/releases.js') }}?v=2"></script>{% endblock %}

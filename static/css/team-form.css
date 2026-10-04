@@ -1,0 +1,187 @@
+.team-editor {
+    width: min(100%, 880px);
+    margin: 0 auto;
+}
+
+.team-form-section {
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+    border-left: 3px solid var(--primary);
+}
+
+.team-form-section--basic { border-left-color: var(--primary); }
+.team-form-section--roles { border-left-color: var(--info); }
+
+.team-form-section .card-header {
+    padding: 0.65rem 0.85rem;
+    background: var(--gray-100);
+}
+
+.team-form-section .card-body { padding: 0.85rem; }
+
+.team-form-fields {
+    display: grid;
+    max-width: 700px;
+    gap: 0.75rem;
+}
+
+.team-form-fields .form-label {
+    margin-bottom: 0.3rem;
+    font-weight: 500;
+}
+
+.team-form-fields textarea {
+    min-height: 5rem;
+    resize: vertical;
+}
+
+.team-role-selection-count {
+    color: var(--gray-600);
+    font-size: var(--fs-sm);
+}
+
+.team-role-help {
+    margin: 0 0 0.75rem;
+    color: var(--gray-600);
+    font-size: var(--fs-sm);
+}
+
+.team-role-tools {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.55rem;
+}
+
+.team-role-search { min-width: 0; }
+.team-role-search .input-group-text { color: var(--gray-600); background: #fff; }
+.team-role-filter { justify-self: end; }
+
+.team-role-filter .btn.active {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #fff;
+}
+
+.team-role-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.team-role-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+    max-height: min(48vh, 440px);
+    overflow: auto;
+    padding: 0.2rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--br-sm);
+    background: var(--gray-100);
+    scrollbar-gutter: stable;
+}
+
+.team-role-option[hidden],
+.team-role-empty[hidden],
+.team-role-tools[hidden],
+.team-role-actions[hidden] {
+    display: none !important;
+}
+
+.team-role-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    min-width: 0;
+    min-height: 64px;
+    margin: 0;
+    padding: 0.55rem 0.6rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--br-sm);
+    background: #fff;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.team-role-option:hover { border-color: var(--gray-500); }
+
+.team-role-option.is-selected {
+    border-color: rgba(var(--primary-rgb), 0.48);
+    background: var(--primary-soft);
+}
+
+.team-role-option .form-check-input {
+    flex: 0 0 1rem;
+    width: 1rem;
+    height: 1rem;
+    margin: 0.12rem 0 0;
+}
+
+.team-role-option-copy {
+    display: grid;
+    min-width: 0;
+    gap: 0.18rem;
+}
+
+.team-role-option-name {
+    color: var(--dark);
+    font-size: var(--fs-base);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.team-role-option-description {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--gray-600);
+    font-size: var(--fs-sm);
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.team-role-empty,
+.team-role-no-options {
+    display: flex;
+    min-height: 72px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.75rem;
+    color: var(--gray-600);
+    text-align: center;
+}
+
+.team-role-no-options {
+    flex-wrap: wrap;
+    border: 1px dashed var(--gray-400);
+    border-radius: var(--br-sm);
+}
+
+.team-role-no-options .bi { color: var(--gray-500); }
+
+.team-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-bottom: 0.25rem;
+}
+
+@media (max-width: 767.98px) {
+    .team-role-tools { grid-template-columns: minmax(0, 1fr); }
+    .team-role-filter { justify-self: stretch; }
+    .team-role-filter .btn { flex: 1 1 50%; }
+    .team-role-list { grid-template-columns: minmax(0, 1fr); max-height: 52vh; }
+}
+
+@media (max-width: 480px) {
+    .team-role-actions { align-items: flex-start; flex-direction: column; }
+    .team-role-actions > div { width: 100%; }
+    .team-role-actions .btn { flex: 1 1 auto; }
+}

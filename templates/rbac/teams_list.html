@@ -29,7 +29,7 @@
 </section>
 {% endblock %}
 {% block modals %}
-<div class="modal fade" id="teamMembersModal" tabindex="-1" aria-labelledby="teamMembersTitle" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-6" id="teamMembersTitle">管理成员</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><div class="row g-2 mb-3"><div class="col"><label class="visually-hidden" for="memberSearch">搜索用户</label><input class="form-control form-control-sm" id="memberSearch" placeholder="用户名或邮箱，回车搜索"></div><div class="col-auto"><button class="btn btn-outline-secondary btn-sm" type="button" id="memberSearchButton" aria-label="搜索成员"><i class="bi bi-search" aria-hidden="true"></i></button></div></div><div class="d-flex justify-content-between align-items-center mb-2"><small class="text-muted">所选 <span id="memberSelectedCount">0</span> · 共 <span id="memberTotalCount">0</span> 个用户</small><div><button class="btn btn-success btn-sm" type="button" id="addMembersButton" disabled><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>加入</button> <button class="btn btn-outline-danger btn-sm" type="button" id="removeMembersButton" disabled><i class="bi bi-dash-lg me-1" aria-hidden="true"></i>移出</button></div></div><div class="table-responsive" style="max-height:55vh"><table class="table table-sm table-hover align-middle"><thead class="table-light sticky-top"><tr><th><input class="form-check-input" id="selectVisibleMembers" type="checkbox" aria-label="选择本页"></th><th>用户名</th><th>邮箱</th><th>状态</th><th>归属</th></tr></thead><tbody id="teamMemberRows"><tr><td colspan="5" class="text-center text-muted py-4">选择用户组以加载成员</td></tr></tbody></table></div><div class="d-flex justify-content-between align-items-center mt-2"><small class="text-muted" id="memberPageLabel"></small><div><button class="btn btn-outline-secondary btn-sm" id="memberPrev" type="button" aria-label="上一页" disabled><i class="bi bi-chevron-left" aria-hidden="true"></i></button> <button class="btn btn-outline-secondary btn-sm" id="memberNext" type="button" aria-label="下一页" disabled><i class="bi bi-chevron-right" aria-hidden="true"></i></button></div></div></div></div></div></div>
+<div class="modal fade" id="teamMembersModal" tabindex="-1" aria-labelledby="teamMembersTitle" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-6" id="teamMembersTitle">管理成员</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><div class="row g-2 mb-3"><div class="col"><label class="visually-hidden" for="memberSearch">搜索用户</label><input class="form-control form-control-sm" id="memberSearch" data-query-tags placeholder="用户名或邮箱，回车搜索"></div><div class="col-auto"><button class="btn btn-outline-secondary btn-sm" type="button" id="memberSearchButton" aria-label="搜索成员"><i class="bi bi-search" aria-hidden="true"></i></button></div></div><div class="d-flex justify-content-between align-items-center mb-2"><small class="text-muted">所选 <span id="memberSelectedCount">0</span> · 共 <span id="memberTotalCount">0</span> 个用户</small><div><button class="btn btn-success btn-sm" type="button" id="addMembersButton" disabled><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>加入</button> <button class="btn btn-outline-danger btn-sm" type="button" id="removeMembersButton" disabled><i class="bi bi-dash-lg me-1" aria-hidden="true"></i>移出</button></div></div><div class="table-responsive" style="max-height:55vh"><table class="table table-sm table-hover align-middle"><thead class="table-light sticky-top"><tr><th><input class="form-check-input" id="selectVisibleMembers" type="checkbox" aria-label="选择本页"></th><th>用户名</th><th>邮箱</th><th>状态</th><th>归属</th></tr></thead><tbody id="teamMemberRows"><tr><td colspan="5" class="text-center text-muted py-4">选择用户组以加载成员</td></tr></tbody></table></div><div class="d-flex justify-content-between align-items-center mt-2"><small class="text-muted" id="memberPageLabel"></small><div class="d-flex align-items-center gap-1 flex-wrap"><label class="d-flex align-items-center gap-2 small text-muted mb-0" for="memberPageSize">每页<select class="form-select form-select-sm" id="memberPageSize" aria-label="每页用户数"><option>10</option><option>25</option><option>50</option><option>100</option></select></label><button class="btn btn-outline-secondary btn-sm" id="memberPrev" type="button" aria-label="上一页" disabled><i class="bi bi-chevron-left" aria-hidden="true"></i></button> <button class="btn btn-outline-secondary btn-sm" id="memberNext" type="button" aria-label="下一页" disabled><i class="bi bi-chevron-right" aria-hidden="true"></i></button></div></div></div></div></div></div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -38,8 +38,8 @@ $(function () {
     var teamId = null;
     var page = 1;
     var totalPages = 1;
+    var pageSize = 10;
     var selected = {};
-    var searchTimer = null;
     function updateActions() {
         var ids = Object.keys(selected);
         var add = ids.filter(function (id) { return !selected[id]; }).length;
@@ -50,12 +50,14 @@ $(function () {
     }
     function loadMembers(nextPage) {
         page = nextPage;
-        var query = {page: page, search: $("#memberSearch").val() || ""};
+        var query = {page: page, per_page: pageSize, search: window.getQueryTagValue("#memberSearch") || ""};
         $("#teamMemberRows").html('<tr><td colspan="5" class="text-center text-muted py-4">加载中...</td></tr>');
         $.getJSON("/api/users/teams/" + teamId + "/members", query).done(function (data) {
             totalPages = data.total_pages;
+            pageSize = data.per_page;
             $("#memberTotalCount").text(data.total_count);
-            $("#memberPageLabel").text("第 " + data.page + " / " + data.total_pages + " 页");
+            $("#memberPageSize").val(String(data.per_page));
+            $("#memberPageLabel").text("第 " + data.page + " / " + data.total_pages + " 页 · 每页 " + data.per_page + " 人");
             $("#memberPrev").prop("disabled", !data.has_previous);
             $("#memberNext").prop("disabled", !data.has_next);
             var body = $("#teamMemberRows").empty();
@@ -82,10 +84,12 @@ $(function () {
     $("[data-manage-team]").on("click", function () {
         teamId = $(this).attr("data-team-id"); selected = {};
         $("#teamMembersTitle").text("管理成员 · " + $(this).attr("data-team-name"));
-        $("#memberSearch").val(""); loadMembers(1); modal.show();
+        window.clearQueryTagValue("#memberSearch"); loadMembers(1); modal.show();
     });
     $("#memberSearchButton").on("click", function () { loadMembers(1); });
     $("#memberSearch").on("keydown", function (event) { if (event.key === "Enter") { event.preventDefault(); loadMembers(1); } });
+    $("#memberSearch").on("querytags:change", function () { loadMembers(1); });
+    $("#memberPageSize").on("change", function () { pageSize = Number(this.value) || 10; loadMembers(1); });
     $("#memberPrev").on("click", function () { if (page > 1) loadMembers(page - 1); });
     $("#memberNext").on("click", function () { if (page < totalPages) loadMembers(page + 1); });
     $("#teamMemberRows").on("change", "input[type=checkbox]", function () {

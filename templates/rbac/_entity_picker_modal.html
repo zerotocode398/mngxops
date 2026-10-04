@@ -1,0 +1,47 @@
+<div class="modal fade" id="{{ picker['id'] }}" tabindex="-1" aria-labelledby="{{ picker['id'] }}Title" aria-hidden="true"
+     data-picker-modal="{{ picker['key'] }}" data-picker-limit="{{ picker['limit'] or 0 }}">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-6" id="{{ picker['id'] }}Title">{{ picker['title'] }}</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div class="query-tag-input form-control mb-2" data-picker-query-wrapper>
+                    <input class="query-tag-input-field" type="text" data-picker-query
+                           placeholder="输入名称或描述，按回车添加条件" autocomplete="off" aria-label="{{ picker['title'] }}搜索条件">
+                </div>
+                <div class="d-flex flex-wrap justify-content-between gap-2 mb-2 small text-muted">
+                    <span>匹配 <strong data-picker-result-count>0</strong> 项</span>
+                    <span>已选 <strong data-picker-selected-count>0</strong> 项{% if picker['limit'] %}，最多 {{ picker['limit'] }} 项{% endif %}</span>
+                </div>
+                <div class="small text-danger mb-2" data-picker-limit-warning hidden>最多只能选择 {{ picker['limit'] }} 项。</div>
+                <div class="table-responsive entity-picker-table-wrap">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light"><tr><th class="entity-picker-check-column">选择</th><th>{{ picker['item_label'] }}</th><th>描述</th></tr></thead>
+                        <tbody>
+                        {% for item in picker['choices'] %}
+                            <tr data-picker-row data-picker-search-text="{{ item.name }} {{ item.description or '' }}">
+                                <td class="text-center"><input class="form-check-input" type="checkbox"
+                                    data-picker-choice="{{ picker['key'] }}" value="{{ item.id }}"
+                                    aria-label="选择{{ picker['item_label'] }} {{ item.name }}"></td>
+                                <td class="entity-picker-name">{{ item.name }}</td>
+                                <td class="text-muted">{{ item.description or "-" }}</td>
+                            </tr>
+                        {% else %}
+                            <tr data-picker-no-options><td colspan="3" class="text-center text-muted py-4">暂无可选{{ picker['item_label'] }}</td></tr>
+                        {% endfor %}
+                        <tr data-picker-no-match hidden><td colspan="3" class="text-center text-muted py-4">没有匹配项</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" data-picker-confirm="{{ picker['key'] }}">
+                    <i class="bi bi-check-lg me-1" aria-hidden="true"></i>确认选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

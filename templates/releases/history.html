@@ -37,7 +37,7 @@
         <form id="historyFilterForm" class="mb-3" autocomplete="off">
             <div class="row g-2 align-items-center">
                 <div class="col-lg-4">
-                    <input class="form-control form-control-sm" id="historySearch" type="search" maxlength="200"
+                    <input class="form-control form-control-sm" id="historySearch" data-query-tags type="search" maxlength="200"
                            placeholder="搜索批次、主机、配置或路径" aria-label="搜索批次、主机、配置或路径">
                 </div>
                 <div class="col-sm-4 col-lg-2">
@@ -159,4 +159,4 @@
 </div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=2"></script>{% endblock %}

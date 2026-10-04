@@ -162,7 +162,7 @@ _NAVIGATION = (
                     {
                         "id": "users:team_list",
                         "label": "用户组管理",
-                        "href": "/users/groups/",
+                        "href": "/users/teams/",
                     },
                 ),
             },

@@ -32,6 +32,234 @@
         }
     }
 
+    function initializeQueryTags() {
+        var forms = document.querySelectorAll("form[method='get']");
+        forms.forEach(function (form) {
+            var inputs = Array.prototype.slice.call(
+                form.querySelectorAll(
+                    "input:not([type='hidden'])[name='search'], " +
+                    "input:not([type='hidden'])[name='group_search']"
+                )
+            );
+            if (!inputs.length) {
+                return;
+            }
+
+            var controllers = inputs.map(function (input) {
+                var fieldName = input.name;
+                var initialTerms = splitTerms(input.value);
+                var terms = [];
+                input.dataset.queryTagsReady = "1";
+                var wrapper = document.createElement("div");
+                wrapper.className = "query-tag-input form-control form-control-sm";
+                wrapper.setAttribute("role", "group");
+                wrapper.setAttribute("aria-label", input.getAttribute("aria-label") || input.placeholder || "查询条件");
+                var hidden = document.createElement("input");
+                hidden.type = "hidden";
+                hidden.name = fieldName;
+                var host = input.parentNode;
+                host.insertBefore(wrapper, input);
+                wrapper.appendChild(input);
+                host.insertBefore(hidden, wrapper.nextSibling);
+                input.removeAttribute("name");
+                input.classList.remove("form-control", "form-control-sm");
+                input.classList.add("query-tag-input-field");
+                input.setAttribute("autocomplete", "off");
+                input.value = "";
+
+                function sync() {
+                    hidden.value = terms.join(",");
+                }
+
+                function addTerm(value) {
+                    var term = String(value || "").trim();
+                    if (!term || terms.some(function (item) {
+                        return item.toLocaleLowerCase() === term.toLocaleLowerCase();
+                    })) {
+                        return;
+                    }
+                    terms.push(term);
+                    var badge = document.createElement("span");
+                    badge.className = "query-tag-badge";
+                    badge.setAttribute("data-value", term);
+                    var label = document.createElement("span");
+                    label.className = "query-tag-label";
+                    label.textContent = term;
+                    var remove = document.createElement("button");
+                    remove.type = "button";
+                    remove.className = "query-tag-remove";
+                    remove.setAttribute("aria-label", "移除查询条件 " + term);
+                    remove.title = "移除此条件";
+                    remove.textContent = "×";
+                    remove.addEventListener("click", function () {
+                        terms = terms.filter(function (item) { return item !== term; });
+                        badge.remove();
+                        sync();
+                        var pageInput = form.querySelector("input[name='page']");
+                        if (pageInput) pageInput.value = "1";
+                        form.requestSubmit();
+                    });
+                    badge.append(label, remove);
+                    wrapper.insertBefore(badge, input);
+                }
+
+                function splitTerms(value) {
+                    return String(value || "").split(/[,，]/).map(function (item) {
+                        return item.trim();
+                    }).filter(Boolean);
+                }
+
+                initialTerms.forEach(addTerm);
+                sync();
+
+                input.addEventListener("input", function () {
+                    var pieces = input.value.split(/[,，]/);
+                    if (pieces.length < 2) {
+                        return;
+                    }
+                    pieces.slice(0, -1).forEach(addTerm);
+                    input.value = pieces[pieces.length - 1];
+                    sync();
+                });
+                input.addEventListener("keydown", function (event) {
+                    if (event.key === "Enter") {
+                        return;
+                    }
+                    if (event.key === "Backspace" && !input.value) {
+                        if (terms.length) {
+                            terms.pop();
+                            wrapper.querySelectorAll(".query-tag-badge").item(terms.length).remove();
+                            sync();
+                            form.requestSubmit();
+                        }
+                    }
+                });
+                wrapper.addEventListener("click", function (event) {
+                    if (event.target === wrapper) input.focus();
+                });
+
+                return {
+                    commit: function () {
+                        splitTerms(input.value).forEach(addTerm);
+                        input.value = "";
+                        sync();
+                    }
+                };
+            });
+
+            form.addEventListener("submit", function () {
+                controllers.forEach(function (controller) { controller.commit(); });
+            });
+        });
+        document.querySelectorAll("input[data-query-tags]").forEach(initializeDynamicQueryTags);
+    }
+
+    function initializeDynamicQueryTags(input) {
+        if (input.dataset.queryTagsReady) return;
+        input.dataset.queryTagsReady = "1";
+        var terms = [];
+        var wrapper = document.createElement("div");
+        wrapper.className = "query-tag-input form-control form-control-sm";
+        wrapper.setAttribute("role", "group");
+        wrapper.setAttribute("aria-label", input.getAttribute("aria-label") || input.placeholder || "查询条件");
+        var hidden = document.createElement("input");
+        hidden.type = "hidden";
+        var host = input.parentNode;
+        host.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+        host.insertBefore(hidden, wrapper.nextSibling);
+        input.type = "text";
+        input.classList.remove("form-control", "form-control-sm");
+        input.classList.add("query-tag-input-field");
+        input.setAttribute("autocomplete", "off");
+        var initial = splitQueryTerms(input.value);
+        input.value = "";
+
+        function sync() { hidden.value = terms.join(","); }
+        function addTerm(value) {
+            var term = String(value || "").trim();
+            if (!term || terms.some(function (item) {
+                return item.toLocaleLowerCase() === term.toLocaleLowerCase();
+            })) return;
+            terms.push(term);
+            var badge = document.createElement("span");
+            badge.className = "query-tag-badge";
+            badge.setAttribute("data-value", term);
+            var label = document.createElement("span");
+            label.className = "query-tag-label";
+            label.textContent = term;
+            var remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "query-tag-remove";
+            remove.setAttribute("aria-label", "移除查询条件 " + term);
+            remove.title = "移除此条件";
+            remove.textContent = "×";
+            remove.addEventListener("click", function () {
+                terms = terms.filter(function (item) { return item !== term; });
+                badge.remove();
+                sync();
+                if (input.form) input.form.requestSubmit();
+                else $(input).trigger("querytags:change");
+            });
+            badge.append(label, remove);
+            wrapper.insertBefore(badge, input);
+        }
+        initial.forEach(addTerm);
+        sync();
+        input.addEventListener("input", function () {
+            var pieces = input.value.split(/[,，]/);
+            if (pieces.length > 1) {
+                pieces.slice(0, -1).forEach(addTerm);
+                input.value = pieces[pieces.length - 1];
+                sync();
+            }
+        });
+        input.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") return;
+            if (event.key === "Backspace" && !input.value && terms.length) {
+                terms.pop();
+                wrapper.querySelectorAll(".query-tag-badge").item(terms.length).remove();
+                sync();
+                if (input.form) input.form.requestSubmit();
+                else $(input).trigger("querytags:change");
+            }
+        });
+        wrapper.addEventListener("click", function (event) {
+            if (event.target === wrapper) input.focus();
+        });
+        input.__ngxopsQueryTags = {
+            value: function () {
+                var values = terms.slice();
+                splitQueryTerms(input.value).forEach(function (term) {
+                    if (!values.some(function (item) { return item.toLocaleLowerCase() === term.toLocaleLowerCase(); })) {
+                        values.push(term);
+                    }
+                });
+                return values.join(",");
+            },
+            clear: function () {
+                terms = [];
+                input.value = "";
+                wrapper.querySelectorAll(".query-tag-badge").forEach(function (badge) { badge.remove(); });
+                sync();
+            }
+        };
+    }
+
+    function splitQueryTerms(value) {
+        return String(value || "").split(/[,，]/).map(function (item) { return item.trim(); }).filter(Boolean);
+    }
+
+    window.getQueryTagValue = function (selector) {
+        var input = typeof selector === "string" ? document.querySelector(selector) : selector;
+        return input && input.__ngxopsQueryTags ? input.__ngxopsQueryTags.value() : (input ? input.value : "");
+    };
+
+    window.clearQueryTagValue = function (selector) {
+        var input = typeof selector === "string" ? document.querySelector(selector) : selector;
+        if (input && input.__ngxopsQueryTags) input.__ngxopsQueryTags.clear();
+    };
+
     function safelyWrite(storage, key, value) {
         if (!storage) {
             return;
@@ -210,6 +438,7 @@
 
     $(function () {
         initializeNavigation();
+        initializeQueryTags();
 
         $("#sidebarToggleBtn").on("click", function () {
             if (window.matchMedia("(max-width: 767.98px)").matches) {
@@ -239,7 +468,7 @@
         });
 
         $(document).on("change", "select[name='per_page']", function () {
-            this.form.submit();
+            this.form.requestSubmit();
         });
 
         $(document).on("submit", "form[data-confirm]", function (event) {

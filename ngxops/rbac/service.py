@@ -22,19 +22,19 @@ from ngxops.rbac.permission_defs import (
 
 
 def _role_ids_for_user(db_session: Session, user_id: int) -> Set[int]:
-    """按个人角色优先级返回用户有效角色主键。"""
-    personal_ids = set(
-        db_session.scalars(
-            select(profile_roles.c.role_id).where(profile_roles.c.user_id == user_id)
-        ).all()
-    )
-    if personal_ids:
-        return personal_ids
-    return set(
+    """优先返回所属用户组角色，没有组角色时回退到个人角色。"""
+    team_role_ids = set(
         db_session.scalars(
             select(team_roles.c.role_id)
             .join(team_members, team_members.c.team_id == team_roles.c.team_id)
             .where(team_members.c.user_id == user_id)
+        ).all()
+    )
+    if team_role_ids:
+        return team_role_ids
+    return set(
+        db_session.scalars(
+            select(profile_roles.c.role_id).where(profile_roles.c.user_id == user_id)
         ).all()
     )
 
@@ -45,7 +45,7 @@ def user_has_permission(
     resource: str,
     action: str,
 ) -> bool:
-    """依次检查超管、直授、个人角色和用户组角色权限。"""
+    """依次检查超管、直授及有效角色权限。"""
     if not user.is_active:
         return False
     if user.is_superuser:

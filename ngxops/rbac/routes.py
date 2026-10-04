@@ -63,6 +63,7 @@ class TeamMembersResponse(BaseModel):
     has_next: bool
     has_previous: bool
     total_count: int
+    per_page: int
 
 
 class TeamMemberUpdateRequest(BaseModel):
@@ -118,6 +119,15 @@ def _page_values(page: int, per_page: int) -> tuple:
     """规范列表分页参数并限制每页最大行数。"""
     size = per_page if per_page in _PAGE_SIZES else _PAGE_SIZES[0]
     return max(1, page), size
+
+
+def _search_terms(search: str) -> List[str]:
+    """拆分支持中英文逗号的多关键词查询。"""
+    return [
+        term.strip()
+        for term in search.replace("，", ",").split(",")
+        if term.strip()
+    ]
 
 
 def _relation_ids(
@@ -457,8 +467,8 @@ def _list_users(
     """查询用户列表及每个账户的角色、用户组和登录状态。"""
     page, per_page = _page_values(page, per_page)
     statement = select(User)
-    if search.strip():
-        pattern = "%{}%".format(search.strip())
+    for term in _search_terms(search):
+        pattern = "%{}%".format(term)
         statement = statement.where(
             or_(User.username.ilike(pattern), User.email.ilike(pattern))
         )
@@ -475,12 +485,23 @@ def _list_users(
     rows = []
     now = datetime.utcnow()
     for user in users:
-        role_names = db_session.scalars(
+        effective_team_role_names = db_session.scalars(
             select(Role.name)
-            .join(profile_roles, profile_roles.c.role_id == Role.id)
-            .where(profile_roles.c.user_id == user.id)
+            .distinct()
+            .join(team_roles, team_roles.c.role_id == Role.id)
+            .join(team_members, team_members.c.team_id == team_roles.c.team_id)
+            .where(team_members.c.user_id == user.id)
             .order_by(Role.name)
         ).all()
+        if effective_team_role_names:
+            role_names = effective_team_role_names
+        else:
+            role_names = db_session.scalars(
+                select(Role.name)
+                .join(profile_roles, profile_roles.c.role_id == Role.id)
+                .where(profile_roles.c.user_id == user.id)
+                .order_by(Role.name)
+            ).all()
         team_names = db_session.scalars(
             select(Team.name)
             .join(team_members, team_members.c.team_id == Team.id)
@@ -770,8 +791,8 @@ def _list_roles(db_session: Session, search: str, page: int, per_page: int) -> d
     """查询角色列表及权限、用户和用户组关联数量。"""
     page, per_page = _page_values(page, per_page)
     statement = select(Role)
-    if search.strip():
-        statement = statement.where(Role.name.ilike("%{}%".format(search.strip())))
+    for term in _search_terms(search):
+        statement = statement.where(Role.name.ilike("%{}%".format(term)))
     total = db_session.scalar(
         select(func.count()).select_from(statement.subquery())
     ) or 0
@@ -1344,11 +1365,7 @@ def team_delete(
 
 def _member_search_terms(search: str) -> List[str]:
     """拆分逗号和中文逗号分隔的用户搜索标签。"""
-    return [
-        item.strip()
-        for item in search.replace("，", ",").split(",")
-        if item.strip()
-    ]
+    return _search_terms(search)
 
 
 @api_router.get(
@@ -1362,6 +1379,7 @@ def team_members_api(
     team_id: int,
     page: int = Query(default=1, ge=1),
     search: str = Query(default="", max_length=500),
+    per_page: int = Query(default=10, ge=1, le=100),
     admin: User = Depends(require_superuser),
     db_session: Session = Depends(get_session),
 ) -> TeamMembersResponse:
@@ -1378,10 +1396,12 @@ def team_members_api(
     total = db_session.scalar(
         select(func.count()).select_from(statement.subquery())
     ) or 0
-    total_pages = max(1, math.ceil(total / 10))
+    total_pages = max(1, math.ceil(total / per_page))
     page = min(page, total_pages)
     users = db_session.scalars(
-        statement.order_by(User.username).offset((page - 1) * 10).limit(10)
+        statement.order_by(User.username)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
     ).all()
     member_ids = set(
         db_session.scalars(
@@ -1390,11 +1410,19 @@ def team_members_api(
     )
     items = []
     for user in users:
-        role_count = db_session.scalar(
-            select(func.count()).select_from(profile_roles).where(
-                profile_roles.c.user_id == user.id
-            )
+        team_role_count = db_session.scalar(
+            select(func.count(func.distinct(team_roles.c.role_id)))
+            .join(team_members, team_members.c.team_id == team_roles.c.team_id)
+            .where(team_members.c.user_id == user.id)
         ) or 0
+        if team_role_count:
+            role_count = team_role_count
+        else:
+            role_count = db_session.scalar(
+                select(func.count()).select_from(profile_roles).where(
+                    profile_roles.c.user_id == user.id
+                )
+            ) or 0
         items.append(
             TeamMemberItem(
                 id=user.id,
@@ -1413,6 +1441,7 @@ def team_members_api(
         has_next=page < total_pages,
         has_previous=page > 1,
         total_count=total,
+        per_page=per_page,
     )
 
 

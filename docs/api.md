@@ -104,7 +104,7 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 | `GET /api/settings/all` | `settings.read` 会话 | `SettingsAllResponse` | 401、403、500 |
 | `POST /api/settings/group` | 超级管理员会话与 CSRF | `SettingsUpdateResponse` | 400、401、403、404、409、422、500 |
 
-用户组成员 GET 支持逗号分隔的用户名/邮箱搜索词和 10 条分页；POST 使用 `{ "action": "add" | "remove", "user_ids": [...] }` 对最多 200 个用户执行幂等增删。用户、角色和用户组的其余操作使用 Jinja2 表单页面，并由全局 CSRF 依赖保护。
+用户组成员 GET 支持逗号分隔的用户名/邮箱搜索词，`per_page` 默认为 10、允许 1–100；响应包含总数、页数和当前每页条数。POST 使用 `{ "action": "add" | "remove", "user_ids": [...] }` 对最多 200 个用户执行幂等增删。用户、角色和用户组的其余操作使用 Jinja2 表单页面，并由全局 CSRF 依赖保护。
 
 任务筛选、分页、增量日志游标、可见范围和取消检查点见 [tasks.md](tasks.md)。`GET /api/tasks` 的 `search` 参数按逗号切分，词间 AND，单词在批次号、主机名和 IP 中 OR；RBAC 管理范围和权限来源见 [rbac.md](rbac.md)。后续功能应在对应模块定义请求/响应模型、摘要、参数约束及会产生的状态码，并引用本文件的公共错误协议。
 

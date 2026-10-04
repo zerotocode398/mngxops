@@ -127,7 +127,7 @@
 
     function queryParams(page) {
         return {
-            search: $("#historySearch").val().trim(),
+            search: window.getQueryTagValue("#historySearch").trim(),
             batch: $("#historyBatch").val().trim(),
             node_ip: $("#historyNodeIp").val().trim(),
             status: $("#historyStatus").val(),
@@ -307,7 +307,7 @@
         }
         state.page = response.page;
         state.totalPages = response.total_pages;
-        $("#historyPaginationSummary").text("共 " + response.total + " 个批次 · 第 " + response.page + " / " + response.total_pages + " 页");
+        $("#historyPaginationSummary").text("共 " + response.total + " 个批次 · 第 " + response.page + " / " + response.total_pages + " 页 · 每页 " + state.pageSize + " 个");
         $("#historyPreviousPage").prop("disabled", state.page <= 1);
         $("#historyNextPage").prop("disabled", state.page >= state.totalPages);
         syncSelectionUi();
@@ -438,7 +438,7 @@
             + (dialog.selectedVersion ? " · 回滚至 V" + dialog.selectedVersion : "")
         );
         $("#historyVersionsPaginationSummary").text(
-            "共 " + response.total + " 个版本 · 第 " + response.page + " / " + response.total_pages + " 页"
+            "共 " + response.total + " 个版本 · 第 " + response.page + " / " + response.total_pages + " 页 · 每页 " + response.page_size + " 个"
         );
         $("#historyVersionsPreviousPage").prop("disabled", response.page <= 1);
         $("#historyVersionsNextPage").prop("disabled", response.page >= response.total_pages);
