@@ -102,7 +102,7 @@ def test_team_navigation_opens_distinct_team_management_page(rbac_client):
     assert users.status_code == 200
     for response in (users, roles, teams):
         assert "pagination-footer" in response.text
-        assert "/static/js/app.js?v=6" in response.text
+        assert "/static/js/app.js?v=7" in response.text
     assert legacy_role_alias.status_code == 200
     assert "角色列表" in legacy_role_alias.text
 
@@ -191,6 +191,26 @@ def test_team_role_takes_precedence_and_personal_role_is_fallback(rbac_client):
     assert member_page.json()["total_count"] == 1
     assert member_page.json()["total_pages"] == 1
     assert member_page.json()["users"][0]["role_count"] == 1
+    paged_members = client.get(
+        "/api/users/teams/{}/members".format(team_id),
+        params={"search": "ops", "page": 1, "per_page": 1},
+    )
+    next_member_page = client.get(
+        "/api/users/teams/{}/members".format(team_id),
+        params={"search": "ops", "page": 2, "per_page": 1},
+    )
+    assert paged_members.status_code == 200
+    assert paged_members.json()["total_count"] == 2
+    assert paged_members.json()["total_pages"] == 2
+    assert paged_members.json()["has_next"] is True
+    assert next_member_page.json()["page"] == 2
+    assert next_member_page.json()["has_previous"] is True
+    assert next_member_page.json()["has_next"] is False
+    out_of_range_member_page = client.get(
+        "/api/users/teams/{}/members".format(team_id),
+        params={"search": "ops", "page": 9, "per_page": 1},
+    )
+    assert out_of_range_member_page.json()["page"] == 2
 
     personal_user_row = client.get(
         "/users/", params={"search": "ops-personal"}
@@ -276,7 +296,7 @@ def test_user_and_team_forms_use_picker_cards_and_shared_pagination(rbac_client)
     team_list = client.get("/users/teams/")
     release_center = client.get("/releases/center/")
     release_history = client.get("/releases/")
-    shared_script = client.get("/static/js/app.js?v=6")
+    shared_script = client.get("/static/js/app.js?v=7")
 
     assert user_form.status_code == 200
     assert 'data-picker-open="user-roles"' in user_form.text
@@ -320,19 +340,32 @@ def test_user_and_team_forms_use_picker_cards_and_shared_pagination(rbac_client)
     for response in (user_list, role_list, team_list):
         assert response.status_code == 200
         assert "pagination-footer" in response.text
-        assert "/static/js/app.js?v=6" in response.text
+        assert "/static/js/app.js?v=7" in response.text
         assert "每页" in response.text
     assert "共 3 条，第 1 / 1 页" in user_list.text
     assert "共 1 条，第 1 / 1 页" in role_list.text
     assert "共 1 条，第 1 / 1 页" in team_list.text
     assert 'id="memberSearch" data-query-tags' in team_list.text
+    assert 'id="memberSearchButton"' not in team_list.text
     assert 'id="memberPageSize"' in team_list.text
+    for response, search_id in (
+        (user_list, "userSearch"),
+        (role_list, "roleSearch"),
+        (team_list, "teamSearch"),
+    ):
+        assert 'data-query-submit-on-enter data-preserve-query-focus' in response.text
+        assert 'id="{}"'.format(search_id) in response.text
+        assert '<i class="bi bi-search me-1" aria-hidden="true"></i>搜索</button>' not in response.text
     assert release_center.status_code == 200
     assert 'id="releaseSearch" data-query-tags' in release_center.text
     assert release_history.status_code == 200
     assert 'id="historySearch" data-query-tags' in release_history.text
     assert shared_script.status_code == 200
     assert "input:not([type='hidden'])[name='search']" in shared_script.text
+    assert 'event.key === "Delete"' in shared_script.text
+    assert "data-preserve-query-focus" in shared_script.text
+    assert "commitQueryTagValue" in shared_script.text
+    assert 'window.commitQueryTagValue("#memberSearch")' in team_list.text
 
     create_direct_permission_user = client.post(
         "/users/create/",

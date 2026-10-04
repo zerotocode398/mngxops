@@ -11,9 +11,8 @@
         <a class="btn btn-primary btn-sm" href="/users/create/"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>新增用户</a>
     </div>
     <div class="card-body">
-        <form method="get" class="row g-2 mb-3">
+        <form method="get" class="row g-2 mb-3" data-query-submit-on-enter data-preserve-query-focus>
             <div class="col-sm-7 col-lg-5"><label class="visually-hidden" for="userSearch">搜索用户</label><input class="form-control form-control-sm" id="userSearch" name="search" value="{{ search }}" placeholder="搜索用户名或邮箱"></div>
-            <div class="col-auto"><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>搜索</button></div>
             {% if search %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/users/?per_page={{ pagination.per_page }}">清空</a></div>{% endif %}
         </form>
         <div class="table-responsive">

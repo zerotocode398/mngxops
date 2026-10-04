@@ -45,6 +45,8 @@
                 return;
             }
 
+            var preserveQueryFocus = form.hasAttribute("data-preserve-query-focus");
+            var focusStorageKey = "ngxops_query_focus:" + window.location.pathname;
             var controllers = inputs.map(function (input) {
                 var fieldName = input.name;
                 var initialTerms = splitTerms(input.value);
@@ -123,10 +125,15 @@
                 });
                 input.addEventListener("keydown", function (event) {
                     if (event.key === "Enter") {
+                        if (form.hasAttribute("data-query-submit-on-enter")) {
+                            event.preventDefault();
+                            form.requestSubmit();
+                        }
                         return;
                     }
-                    if (event.key === "Backspace" && !input.value) {
+                    if ((event.key === "Backspace" || event.key === "Delete") && !input.value) {
                         if (terms.length) {
+                            event.preventDefault();
                             terms.pop();
                             wrapper.querySelectorAll(".query-tag-badge").item(terms.length).remove();
                             sync();
@@ -139,6 +146,7 @@
                 });
 
                 return {
+                    input: input,
                     commit: function () {
                         splitTerms(input.value).forEach(addTerm);
                         input.value = "";
@@ -148,8 +156,17 @@
             });
 
             form.addEventListener("submit", function () {
+                if (preserveQueryFocus) {
+                    safelyWrite(getStorage("sessionStorage"), focusStorageKey, "1");
+                }
                 controllers.forEach(function (controller) { controller.commit(); });
             });
+            if (preserveQueryFocus && safelyRead(getStorage("sessionStorage"), focusStorageKey, "") === "1") {
+                try {
+                    window.sessionStorage.removeItem(focusStorageKey);
+                } catch (error) {}
+                window.requestAnimationFrame(function () { controllers[0].input.focus(); });
+            }
         });
         document.querySelectorAll("input[data-query-tags]").forEach(initializeDynamicQueryTags);
     }
@@ -198,6 +215,7 @@
                 terms = terms.filter(function (item) { return item !== term; });
                 badge.remove();
                 sync();
+                input.focus();
                 if (input.form) input.form.requestSubmit();
                 else $(input).trigger("querytags:change");
             });
@@ -216,7 +234,8 @@
         });
         input.addEventListener("keydown", function (event) {
             if (event.key === "Enter") return;
-            if (event.key === "Backspace" && !input.value && terms.length) {
+            if ((event.key === "Backspace" || event.key === "Delete") && !input.value && terms.length) {
+                event.preventDefault();
                 terms.pop();
                 wrapper.querySelectorAll(".query-tag-badge").item(terms.length).remove();
                 sync();
@@ -237,6 +256,11 @@
                 });
                 return values.join(",");
             },
+            commit: function () {
+                splitQueryTerms(input.value).forEach(addTerm);
+                input.value = "";
+                sync();
+            },
             clear: function () {
                 terms = [];
                 input.value = "";
@@ -253,6 +277,11 @@
     window.getQueryTagValue = function (selector) {
         var input = typeof selector === "string" ? document.querySelector(selector) : selector;
         return input && input.__ngxopsQueryTags ? input.__ngxopsQueryTags.value() : (input ? input.value : "");
+    };
+
+    window.commitQueryTagValue = function (selector) {
+        var input = typeof selector === "string" ? document.querySelector(selector) : selector;
+        if (input && input.__ngxopsQueryTags) input.__ngxopsQueryTags.commit();
     };
 
     window.clearQueryTagValue = function (selector) {

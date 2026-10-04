@@ -242,3 +242,6 @@ Nginx 启停	-
 Nginx 安装/升级	执行
 ```
 20. **已确认**：登录页展示当前设置中的连续失败锁定次数和时长；达到阈值或锁定期间再次登录时，显示锁定状态及逐秒更新的剩余时间，到期提示可重试，也保留联系管理员提前解锁的入口说明。未知用户名和普通密码错误继续显示相同文案，不展示锁定前账户失败次数。锁定提示不会自动消失。实现：`ngxops/accounts/service.py`、`ngxops/accounts/routes.py`、`templates/accounts/login.html`、`static/css/accounts.css`、`docs/accounts.md`。验证：`tests/test_accounts_login.py` 覆盖默认和变更后的设置、第五次失败锁定、后续剩余时间及未知用户名错误文案；账户登录专项测试、Python 编译和 `git diff --check` 通过。
+
+21. **待确认**：用户列表、角色管理和用户组管理去掉独立搜索按钮，回车提交标签查询；列表重新加载后恢复查询框焦点，Backspace/Delete 可移除最后一个查询标签，仍可点标签上的移除按钮。实现：`static/js/app.js`、`templates/base.html`、`templates/rbac/users_list.html`、`templates/rbac/roles_list.html`、`templates/rbac/teams_list.html`。回归用例补充到 `tests/test_rbac.py`；未启动服务或进行浏览器验证。
+22. **待确认**：用户组管理成员弹窗去掉独立搜索按钮，回车将输入转为查询标签并搜索，焦点保持在查询框；标签支持 Backspace/Delete 和按钮移除。成员加载沿用服务端 `page/per_page/search` 分页、总数/总页数和 10/25/50/100 每页选项，并同步服务端回传的规范页码。实现：`static/js/app.js`、`templates/rbac/teams_list.html`、`docs/rbac.md`；回归用例补充到 `tests/test_rbac.py`。未启动服务或进行浏览器验证。
