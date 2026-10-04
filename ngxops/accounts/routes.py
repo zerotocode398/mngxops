@@ -12,11 +12,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from ngxops.accounts.service import (
+    DEFAULT_FAIL_COUNT,
+    DEFAULT_LOCK_MINUTES,
     LoginResult,
     authenticate_and_log,
     change_password,
     complete_login,
     find_login_session_conflict,
+    read_login_lock_policy,
 )
 from ngxops.audit.service import request_client_ip
 from ngxops.accounts.models import User
@@ -43,7 +46,15 @@ async def login_page(
     if user is not None:
         return RedirectResponse("/", status_code=302)
     next_url = _safe_next_url(request.query_params.get("next", ""))
-    return _render_login(request, next_url=next_url)
+    policy = await run_in_threadpool(
+        read_login_lock_policy, request.app.state.database.session_factory
+    )
+    return _render_login(
+        request,
+        next_url=next_url,
+        fail_threshold=policy.fail_threshold,
+        lock_minutes=policy.lock_minutes,
+    )
 
 
 @router.post("/login/", include_in_schema=False)
@@ -100,6 +111,8 @@ async def submit_login(request: Request) -> Response:
                 show_conflict=True,
                 conflict_ip=conflict.ip,
                 conflict_agent=_format_agent(conflict.user_agent),
+                fail_threshold=result.fail_threshold,
+                lock_minutes=result.lock_minutes,
             )
         finalized = await run_in_threadpool(
             complete_login,
@@ -113,7 +126,11 @@ async def submit_login(request: Request) -> Response:
             response = RedirectResponse(next_url or "/", status_code=302)
             _set_device_cookie(response, request, device_id)
             return response
-        result = LoginResult(status="inactive")
+        result = LoginResult(
+            status="inactive",
+            fail_threshold=result.fail_threshold,
+            lock_minutes=result.lock_minutes,
+        )
 
     error_type, error_message = _login_error(result)
     return _render_login(
@@ -122,6 +139,9 @@ async def submit_login(request: Request) -> Response:
         error_message=error_message,
         username=username[:100],
         next_url=next_url,
+        fail_threshold=result.fail_threshold,
+        lock_minutes=result.lock_minutes,
+        lock_remaining_seconds=result.lock_remaining_seconds,
         status_code=200,
     )
 
@@ -145,10 +165,15 @@ async def _confirm_kick_login(request: Request) -> Response:
     next_url = _safe_next_url(str(request.session.get("pending_login_next", "")))
     if user_id < 1 or not device_id:
         logout_user(request)
+        policy = await run_in_threadpool(
+            read_login_lock_policy, request.app.state.database.session_factory
+        )
         return _render_login(
             request,
             error_type="auth_failed",
             error_message="确认已过期，请重新登录",
+            fail_threshold=policy.fail_threshold,
+            lock_minutes=policy.lock_minutes,
         )
     completed = await run_in_threadpool(
         complete_login,
@@ -160,10 +185,15 @@ async def _confirm_kick_login(request: Request) -> Response:
     )
     if not completed:
         logout_user(request)
+        policy = await run_in_threadpool(
+            read_login_lock_policy, request.app.state.database.session_factory
+        )
         return _render_login(
             request,
             error_type="user_disabled",
             error_message="用户已停用，请重新登录",
+            fail_threshold=policy.fail_threshold,
+            lock_minutes=policy.lock_minutes,
         )
     _establish_session(request, user_id, device_id, ip, user_agent)
     response = RedirectResponse(next_url or "/", status_code=302)
@@ -249,6 +279,9 @@ def _render_login(
     show_conflict: bool = False,
     conflict_ip: str = "",
     conflict_agent: str = "",
+    fail_threshold: int = DEFAULT_FAIL_COUNT,
+    lock_minutes: int = DEFAULT_LOCK_MINUTES,
+    lock_remaining_seconds: int = 0,
 ) -> Response:
     """渲染独立登录页并提供签名 CSRF 表单令牌。"""
     return request.app.state.templates.TemplateResponse(
@@ -263,6 +296,10 @@ def _render_login(
             "show_conflict": show_conflict,
             "conflict_ip": conflict_ip,
             "conflict_agent": conflict_agent,
+            "login_lock_threshold": fail_threshold,
+            "login_lock_minutes": lock_minutes,
+            "lock_remaining_seconds": max(0, int(lock_remaining_seconds)),
+            "lock_remaining_text": _format_lock_remaining(lock_remaining_seconds),
         },
         status_code=status_code,
     )
@@ -383,8 +420,24 @@ def _login_error(result: LoginResult) -> tuple:
     if result.status == "inactive":
         return "user_disabled", "用户已锁定，请联系管理员"
     if result.status == "locked":
-        return "account_locked", "登录失败次数过多，请等待锁定时间到期或联系管理员解锁。"
+        return "account_locked", "连续登录失败已达到限制，账号已临时锁定。"
     return "auth_failed", "用户名或密码错误"
+
+
+def _format_lock_remaining(seconds: int) -> str:
+    """将剩余锁定秒数格式化为中文时长。"""
+    remaining = max(0, int(seconds))
+    hours, remainder = divmod(remaining, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours and not (minutes or seconds):
+        return "{} 小时".format(hours)
+    if hours:
+        return "{} 小时 {} 分 {} 秒".format(hours, minutes, seconds)
+    if minutes and not seconds:
+        return "{} 分钟".format(minutes)
+    if minutes:
+        return "{} 分 {} 秒".format(minutes, seconds)
+    return "{} 秒".format(seconds)
 
 
 def _safe_next_url(value: str) -> str:

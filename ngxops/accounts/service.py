@@ -3,6 +3,7 @@
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from math import ceil
 from typing import Dict, Optional
 
 from sqlalchemy import case, delete, select, text
@@ -34,6 +35,17 @@ class LoginResult:
 
     status: str
     user_id: Optional[int] = None
+    fail_threshold: int = DEFAULT_FAIL_COUNT
+    lock_minutes: int = DEFAULT_LOCK_MINUTES
+    lock_remaining_seconds: int = 0
+
+
+@dataclass(frozen=True)
+class LoginLockPolicy:
+    """描述当前登录失败阈值和临时锁定时长。"""
+
+    fail_threshold: int
+    lock_minutes: int
 
 
 @dataclass(frozen=True)
@@ -72,12 +84,7 @@ def authenticate_and_log(
     with session_scope(session_factory) as db_session:
         db_session.connection().exec_driver_sql("BEGIN IMMEDIATE")
         try:
-            fail_count = read_setting(
-                db_session, "auth.login_fail_lock_count", DEFAULT_FAIL_COUNT
-            )
-            lock_minutes = read_setting(
-                db_session, "auth.login_fail_lock_minutes", DEFAULT_LOCK_MINUTES
-            )
+            policy = _read_login_lock_policy(db_session)
             result = _record_login_attempt(
                 db_session,
                 username,
@@ -86,14 +93,36 @@ def authenticate_and_log(
                 snapshot,
                 ip,
                 user_agent,
-                fail_count,
-                lock_minutes,
+                policy.fail_threshold,
+                policy.lock_minutes,
             )
             db_session.commit()
             return result
         except Exception:
             db_session.rollback()
             raise
+
+
+def read_login_lock_policy(session_factory: sessionmaker) -> LoginLockPolicy:
+    """读取登录页需要展示的锁定策略。"""
+    with session_scope(session_factory) as db_session:
+        return _read_login_lock_policy(db_session)
+
+
+def _read_login_lock_policy(db_session: Session) -> LoginLockPolicy:
+    """从当前会话读取锁定次数和时长设置。"""
+    return LoginLockPolicy(
+        fail_threshold=int(
+            read_setting(
+                db_session, "auth.login_fail_lock_count", DEFAULT_FAIL_COUNT
+            )
+        ),
+        lock_minutes=int(
+            read_setting(
+                db_session, "auth.login_fail_lock_minutes", DEFAULT_LOCK_MINUTES
+            )
+        ),
+    )
 
 
 def _load_login_snapshot(
@@ -118,7 +147,7 @@ def _record_login_attempt(
     snapshot: Optional[tuple],
     ip: str,
     user_agent: str,
-    fail_count: int,
+    fail_threshold: int,
     lock_minutes: int,
 ) -> LoginResult:
     """在已取得 SQLite 写锁后校验最新账户状态并写入结果。"""
@@ -129,6 +158,7 @@ def _record_login_attempt(
     status = "invalid"
     reason = "user_not_found"
     user_id = None
+    lock_remaining_seconds = 0
 
     if user is not None:
         user_id = user.id
@@ -144,6 +174,7 @@ def _record_login_attempt(
             ):
                 status = "locked"
                 reason = "user_locked"
+                lock_remaining_seconds = _lock_remaining_seconds(state, now)
             else:
                 valid = password_valid
                 if snapshot is None or snapshot[0] != user.id:
@@ -152,19 +183,44 @@ def _record_login_attempt(
                     valid = check_password(password, user.password)
                 if valid:
                     clear_login_fail_lock(db_session, user.id)
-                    return LoginResult(status="success", user_id=user.id)
+                    return LoginResult(
+                        status="success",
+                        user_id=user.id,
+                        fail_threshold=fail_threshold,
+                        lock_minutes=lock_minutes,
+                    )
                 status = "invalid"
                 reason = "wrong_password"
                 failed_count = record_login_failure(
-                    db_session, user.id, now, fail_count, lock_minutes
+                    db_session, user.id, now, fail_threshold, lock_minutes
                 )
-                if failed_count >= fail_count:
+                if failed_count >= fail_threshold:
                     status = "locked"
+                    state = db_session.get(
+                        LoginFailureState, user.id, populate_existing=True
+                    )
+                    lock_remaining_seconds = _lock_remaining_seconds(state, now)
 
     db_session.add(
         _make_login_log(username, ip, user_agent, "failed", reason)
     )
-    return LoginResult(status=status, user_id=user_id)
+    return LoginResult(
+        status=status,
+        user_id=user_id,
+        fail_threshold=fail_threshold,
+        lock_minutes=lock_minutes,
+        lock_remaining_seconds=lock_remaining_seconds,
+    )
+
+
+def _lock_remaining_seconds(
+    state: Optional[LoginFailureState], now: datetime
+) -> int:
+    """向上取整计算未到期的锁定秒数。"""
+    if state is None or state.login_locked_until is None:
+        return 0
+    remaining = (state.login_locked_until - now).total_seconds()
+    return max(0, ceil(remaining))
 
 
 def find_login_session_conflict(

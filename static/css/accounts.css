@@ -71,6 +71,21 @@
     overflow: hidden;
 }
 
+.login-lock-policy {
+    margin-top: 0.9rem;
+    color: #5c6570;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.login-lock-policy .bi { color: #397c78; }
+
+.login-lock-countdown {
+    color: #664d03;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
 .login-error-progress {
     position: absolute;
     right: 0;

@@ -241,3 +241,4 @@ Nginx 卸载执行	-
 Nginx 启停	-
 Nginx 安装/升级	执行
 ```
+20. **已确认**：登录页展示当前设置中的连续失败锁定次数和时长；达到阈值或锁定期间再次登录时，显示锁定状态及逐秒更新的剩余时间，到期提示可重试，也保留联系管理员提前解锁的入口说明。未知用户名和普通密码错误继续显示相同文案，不展示锁定前账户失败次数。锁定提示不会自动消失。实现：`ngxops/accounts/service.py`、`ngxops/accounts/routes.py`、`templates/accounts/login.html`、`static/css/accounts.css`、`docs/accounts.md`。验证：`tests/test_accounts_login.py` 覆盖默认和变更后的设置、第五次失败锁定、后续剩余时间及未知用户名错误文案；账户登录专项测试、Python 编译和 `git diff --check` 通过。

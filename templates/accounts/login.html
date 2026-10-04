@@ -7,7 +7,7 @@
     <title>登录 - ngxops</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="{{ request.url_for('static', path='css/accounts.css') }}">
+    <link rel="stylesheet" href="{{ request.url_for('static', path='css/accounts.css') }}?v=2">
 </head>
 <body class="login-page">
 <main class="login-card">
@@ -18,7 +18,7 @@
     </header>
     <div class="login-body">
         {% if error_type %}
-            <div class="alert {% if error_type == 'account_locked' %}alert-warning{% else %}alert-danger{% endif %} login-error-alert" role="alert" id="loginErrorAlert">
+            <div class="alert {% if error_type == 'account_locked' %}alert-warning{% else %}alert-danger{% endif %} login-error-alert" role="alert" id="loginErrorAlert" data-login-auto-dismiss="{% if error_type == 'account_locked' %}false{% else %}true{% endif %}">
                 {% if error_type == 'account_locked' %}
                     <i class="bi bi-lock-fill me-1" aria-hidden="true"></i>
                 {% elif error_type == 'user_disabled' %}
@@ -27,7 +27,13 @@
                     <i class="bi bi-x-circle-fill me-1" aria-hidden="true"></i>
                 {% endif %}
                 <strong>{{ error_message }}</strong>
-                <span class="login-error-progress"></span>
+                {% if error_type == 'account_locked' %}
+                    <p class="login-lock-countdown mb-0 mt-2" data-login-lock-countdown="{{ lock_remaining_seconds }}" role="timer" aria-live="polite">
+                        <span data-login-lock-message>剩余 <strong data-login-lock-time>{{ lock_remaining_text }}</strong> 后自动解除，也可联系管理员提前解锁。</span>
+                    </p>
+                {% else %}
+                    <span class="login-error-progress"></span>
+                {% endif %}
             </div>
         {% endif %}
         {% if show_conflict %}
@@ -74,16 +80,50 @@
                     <i class="bi bi-box-arrow-in-right me-1" aria-hidden="true"></i>登录
                 </button>
             </form>
+            <p class="login-lock-policy mb-0" role="note">
+                <i class="bi bi-shield-lock me-1" aria-hidden="true"></i>
+                连续登录失败 {{ login_lock_threshold }} 次后将临时锁定 {{ login_lock_minutes }} 分钟。
+            </p>
         {% endif %}
     </div>
 </main>
 <script>
     (function () {
         var alert = document.getElementById('loginErrorAlert');
-        if (alert) {
+        if (alert && alert.getAttribute('data-login-auto-dismiss') !== 'false') {
             window.setTimeout(function () {
                 if (alert.parentNode) alert.remove();
             }, 5000);
+        }
+        var lockCountdown = document.querySelector('[data-login-lock-countdown]');
+        if (lockCountdown) {
+            var remaining = Math.max(0, Number(lockCountdown.getAttribute('data-login-lock-countdown')) || 0);
+            var lockMessage = lockCountdown.querySelector('[data-login-lock-message]');
+            var lockTime = lockCountdown.querySelector('[data-login-lock-time]');
+            function formatLockRemaining(seconds) {
+                var hours = Math.floor(seconds / 3600);
+                var minutes = Math.floor((seconds % 3600) / 60);
+                var rest = seconds % 60;
+                if (hours && !(minutes || rest)) return hours + ' 小时';
+                if (hours) return hours + ' 小时 ' + minutes + ' 分 ' + rest + ' 秒';
+                if (minutes && !rest) return minutes + ' 分钟';
+                if (minutes) return minutes + ' 分 ' + rest + ' 秒';
+                return rest + ' 秒';
+            }
+            function updateLockCountdown() {
+                if (remaining <= 0) {
+                    lockMessage.textContent = '锁定时间已到，可以再次尝试登录。';
+                    return false;
+                }
+                lockTime.textContent = formatLockRemaining(remaining);
+                remaining -= 1;
+                return true;
+            }
+            if (updateLockCountdown()) {
+                var lockTimer = window.setInterval(function () {
+                    if (!updateLockCountdown()) window.clearInterval(lockTimer);
+                }, 1000);
+            }
         }
         var countdown = document.getElementById('conflictCountdown');
         if (countdown) {
