@@ -263,7 +263,14 @@ def test_user_and_team_forms_use_picker_cards_and_shared_pagination(rbac_client)
     assert team_response.status_code == 303
 
     user_form = client.get("/users/create/")
+    role_form = client.get("/users/roles/create/")
     team_form = client.get("/users/teams/create/")
+    with session_scope(_app.state.database.session_factory) as session:
+        role_id = session.scalar(select(Role.id).where(Role.name == "可搜索角色"))
+        nodes_read_id = session.scalar(
+            select(PermissionItem.id).where(PermissionItem.code == "nodes.read")
+        )
+    role_edit_form = client.get("/users/roles/{}/edit/".format(role_id))
     user_list = client.get("/users/")
     role_list = client.get("/users/roles/")
     team_list = client.get("/users/teams/")
@@ -277,11 +284,26 @@ def test_user_and_team_forms_use_picker_cards_and_shared_pagination(rbac_client)
     assert "userRolePickerModal" in user_form.text
     assert "userTeamPickerModal" in user_form.text
     assert "/static/css/user-form.css?v=1" in user_form.text
+    assert "/static/css/rbac-matrix.css?v=1" in user_form.text
+    assert "rbac-matrix-row" in user_form.text
     assert team_form.status_code == 200
     assert 'class="card team-form-section team-form-section--basic"' in team_form.text
     assert 'class="card team-form-section team-form-section--roles"' in team_form.text
     assert "teamRolePickerModal" in team_form.text
     assert "/static/css/team-form.css?v=1" in team_form.text
+    for response in (role_form, role_edit_form):
+        assert response.status_code == 200
+        assert 'class="card role-form-section role-form-section--basic"' in response.text
+        assert 'class="card role-form-section role-form-section--permissions"' in response.text
+        assert "/static/css/role-form.css?v=1" in response.text
+        assert "/static/css/rbac-matrix.css?v=1" in response.text
+        assert "rbac-matrix-row" in response.text
+    matrix_css = client.get("/static/css/rbac-matrix.css?v=1")
+    role_css = client.get("/static/css/role-form.css?v=1")
+    assert matrix_css.status_code == 200
+    assert "grid-template-columns" in matrix_css.text
+    assert role_css.status_code == 200
+    assert "role-form-section--permissions" in role_css.text
     for section in (
         "user-form-section--basic",
         "user-form-section--roles",
@@ -311,3 +333,21 @@ def test_user_and_team_forms_use_picker_cards_and_shared_pagination(rbac_client)
     assert 'id="historySearch" data-query-tags' in release_history.text
     assert shared_script.status_code == 200
     assert "input:not([type='hidden'])[name='search']" in shared_script.text
+
+    create_direct_permission_user = client.post(
+        "/users/create/",
+        data={
+            "csrf_token": token,
+            "username": "matrix-direct-user",
+            "email": "matrix-direct@example.test",
+            "password1": "Qv8!Jr2#Lt6@",
+            "password2": "Qv8!Jr2#Lt6@",
+            "permission_ids": [str(nodes_read_id)],
+        },
+    )
+    assert create_direct_permission_user.status_code == 303
+    with session_scope(_app.state.database.session_factory) as session:
+        direct_user = session.scalar(
+            select(User).where(User.username == "matrix-direct-user")
+        )
+        assert user_has_permission(session, direct_user, "nodes", "read")

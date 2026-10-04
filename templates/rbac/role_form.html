@@ -2,16 +2,59 @@
 {% set editing = role is defined and role %}
 {% block title %}{% if editing %}编辑角色{% else %}新增角色{% endif %} - ngxops{% endblock %}
 {% block page_title %}{% if editing %}编辑角色{% else %}新增角色{% endif %}{% endblock %}
+
 {% block content %}
-<form method="post" action="{% if editing %}/users/roles/{{ role.id }}/edit/{% else %}/users/roles/create/{% endif %}">
+<form method="post" action="{% if editing %}/users/roles/{{ role.id }}/edit/{% else %}/users/roles/create/{% endif %}" class="rbac-form role-editor">
     {% include "includes/csrf_field.html" %}
-    {% if errors %}<div class="alert alert-danger" role="alert">请检查标记字段</div>{% endif %}
-    <section class="card mb-3"><div class="card-header"><h2 class="h6 mb-0">角色信息</h2></div><div class="card-body row g-3"><div class="col-lg-6"><label class="form-label" for="roleName">角色名称</label><input class="form-control{% if errors.get('name') %} is-invalid{% endif %}" id="roleName" name="name" maxlength="100" value="{{ values.get('name', role.name if editing else '') }}" required>{% if errors.get('name') %}<div class="invalid-feedback">{{ errors.get('name') }}</div>{% endif %}</div><div class="col-12"><label class="form-label" for="roleDescription">描述</label><textarea class="form-control" id="roleDescription" name="description" rows="2">{{ values.get('description', role.description if editing else '') }}</textarea></div></div></section>
-    <section class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0">权限矩阵</h2><button class="btn btn-outline-secondary btn-sm" type="button" data-permission-toggle>全局全选</button></div><div class="card-body"><p class="form-text mt-0">更新和删除权限保留在矩阵中，实际页面接线由对应功能模块负责。</p>{% if errors.get('permissions') %}<div class="text-danger small mb-2">{{ errors.get('permissions') }}</div>{% endif %}
-        {% include "rbac/_permission_matrix.html" %}
-    </div></section>
-    <div class="d-flex justify-content-between"><a class="btn btn-outline-secondary btn-sm" href="/users/roles/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>保存角色</button></div>
+    {% if errors %}<div class="alert alert-danger" role="alert">请检查标记字段{% if errors.get('permissions') %}：{{ errors.get('permissions') }}{% endif %}</div>{% endif %}
+
+    <section class="card role-form-section role-form-section--basic">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-tag me-1" aria-hidden="true"></i>基本信息</h2></div>
+        <div class="card-body role-form-fields">
+            <div>
+                <label class="form-label" for="roleName">角色名称</label>
+                <input class="form-control{% if errors.get('name') %} is-invalid{% endif %}" id="roleName" name="name" maxlength="100" value="{{ values.get('name', role.name if editing else '') }}" required>
+                {% if errors.get('name') %}<div class="invalid-feedback">{{ errors.get('name') }}</div>{% endif %}
+            </div>
+            <div>
+                <label class="form-label" for="roleDescription">描述</label>
+                <textarea class="form-control" id="roleDescription" name="description" rows="3" maxlength="4000">{{ values.get('description', role.description if editing else '') }}</textarea>
+            </div>
+        </div>
+    </section>
+
+    <section class="card role-form-section role-form-section--permissions">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h2 class="h6 mb-0"><i class="bi bi-shield-lock me-1" aria-hidden="true"></i>权限矩阵</h2>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-permission-toggle>全局全选</button>
+        </div>
+        <div class="card-body">
+            <p class="form-text mt-0">更新和删除权限保留在矩阵中，实际页面接线由对应功能模块负责。</p>
+            {% if errors.get('permissions') %}<div class="text-danger small mb-2">{{ errors.get('permissions') }}</div>{% endif %}
+            {% include "rbac/_permission_matrix.html" %}
+        </div>
+    </section>
+
+    <div class="role-form-actions">
+        <a class="btn btn-outline-secondary btn-sm" href="/users/roles/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a>
+        <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>保存角色</button>
+    </div>
 </form>
 {% endblock %}
-{% block extra_head %}<style>.rbac-matrix-row{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb}.rbac-matrix-resource{display:flex;gap:8px;align-items:center}.rbac-matrix-actions{display:flex;flex-wrap:wrap;gap:4px 12px}.rbac-matrix-actions .form-check-inline{margin:0}@media(max-width:767px){.rbac-matrix-row{grid-template-columns:1fr;gap:5px}}</style>{% endblock %}
-{% block scripts %}<script>$(function(){ $("[data-permission-toggle]").on("click",function(){var c=$("input[name='permission_ids']"),s=c.length>0&&c.filter(":checked").length!==c.length;c.prop("checked",s);$(this).text(s?"清空选择":"全局全选");}); });</script>{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/role-form.css') }}?v=1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/rbac-matrix.css') }}?v=1">
+{% endblock %}
+{% block scripts %}
+<script>
+$(function () {
+    $("[data-permission-toggle]").on("click", function () {
+        var checks = $("input[name='permission_ids']");
+        var selectAll = checks.length > 0 && checks.filter(":checked").length !== checks.length;
+        checks.prop("checked", selectAll);
+        $(this).text(selectAll ? "清空选择" : "全局全选");
+    });
+});
+</script>
+{% endblock %}

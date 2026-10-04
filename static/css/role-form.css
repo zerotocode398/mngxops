@@ -1,0 +1,48 @@
+.role-editor {
+    width: min(100%, 920px);
+    margin: 0 auto;
+}
+
+.role-form-section {
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+    border-left: 3px solid var(--primary);
+}
+
+.role-form-section--basic { border-left-color: var(--primary); }
+.role-form-section--permissions { border-left-color: var(--success); }
+
+.role-form-section .card-header {
+    padding: 0.65rem 0.85rem;
+    background: var(--gray-100);
+}
+
+.role-form-section .card-body { padding: 0.85rem; }
+
+.role-form-fields {
+    display: grid;
+    max-width: 700px;
+    gap: 0.75rem;
+}
+
+.role-form-fields .form-label {
+    margin-bottom: 0.3rem;
+    font-weight: 500;
+}
+
+.role-form-fields textarea {
+    min-height: 5rem;
+    resize: vertical;
+}
+
+.role-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-bottom: 0.25rem;
+}
+
+@media (max-width: 575.98px) {
+    .role-form-section .card-body { padding: 0.7rem; }
+}

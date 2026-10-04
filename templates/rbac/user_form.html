@@ -64,5 +64,8 @@
     {% set picker = team_picker %}{% include "rbac/_entity_picker_modal.html" %}
 {% endblock %}
 
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/user-form.css') }}?v=1">{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/user-form.css') }}?v=1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/rbac-matrix.css') }}?v=1">
+{% endblock %}
 {% block scripts %}<script src="{{ request.url_for('static', path='js/user-form.js') }}?v=1"></script>{% endblock %}

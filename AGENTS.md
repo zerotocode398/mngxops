@@ -225,7 +225,7 @@ PS：这个产品主要面向 Linux 运维工程师，你看看应该如何设�
 12. **已确认**：用户个人角色、所属用户组和用户组关联角色均使用可搜索多选弹窗；取消不修改主表单选择，确认后更新表单值，最多 3 个个人角色的限制保留。实现：`templates/rbac/user_form.html`、`templates/rbac/team_form.html`、`templates/rbac/_entity_picker_modal.html`、`static/js/user-form.js`。验证：`tests/test_rbac.py` 检查三个弹窗、角色上限和关系字段；取消/确认过程尚未用浏览器自动化执行。
 13. **已确认**：新增/编辑用户和用户组按参考项目使用紧凑分区卡片，左侧色条区分基本信息、角色、用户组和权限。实现：`templates/rbac/user_form.html`、`templates/rbac/team_form.html`、`static/css/user-form.css`、`static/css/team-form.css`。验证：`tests/test_rbac.py` 检查页面渲染、分区类名和样式资源；浏览器视觉验证未执行。
 14. **已确认**：服务端分页列表统一复用分页页脚，展示总数、当前/总页数与每页条数；发布中心/历史、用户组成员弹窗同步展示总数、页数和每页批次。GET 列表的关键词输入由全局控件统一转换为可移除蓝色标签，并保留中英文逗号分词规则。成员弹窗的搜索标记和每页选择器直接由模板渲染，成员 API 接受 `per_page` 并返回总数/总页数；共享标签脚本排除每页表单中用于保留筛选条件的隐藏字段。实现：`templates/includes/pagination_footer.html`、`static/js/app.js`、`static/css/app.css`、`templates/rbac/teams_list.html`、发布页面脚本。验证：`tests/test_rbac.py` 检查用户/角色/用户组分页、发布页搜索控件、成员分页 API 和共享脚本；`node --check` 与 `git diff --check` 通过。浏览器视觉与动态交互验证未执行；全套 `pytest -q tests` 为 18 passed、4 failed，失败均在配置同步测试，测试替身 `fake_discovery` 未接收生产调用的 `max_depth` 参数，与本项 RBAC/UI 改动无关。
-15. 用户管理用户列表用户直授权限，也调整为矩阵类型，同角色管理。
-16. 用户管理角色管理的 UI 也采用卡片分类形。
+15. **已确认**：用户新建/编辑页的直授权限与角色权限统一使用资源/动作矩阵布局；提交字段和直授权限叠加规则保持不变。共享响应式样式位于 static/css/rbac-matrix.css，由 templates/rbac/user_form.html 和角色表单共同加载。验证：tests/test_rbac.py 检查用户表单矩阵和样式资源，并提交节点读取直授权限后确认权限解析生效。
+16. **已确认**：角色新增/编辑页按“基本信息”“权限矩阵”分区为独立色条卡片，与原参考项目的角色表单分类一致；权限字段、校验、全选和保存行为不变。实现：templates/rbac/role_form.html、static/css/role-form.css、static/css/rbac-matrix.css。验证：tests/test_rbac.py 检查新增和编辑页卡片结构、样式资源及矩阵渲染。
 17. 左侧菜单栏父子菜单结构树（竖线）的标记去掉。
 18. 节点组管理节点组名称表行的字体不应该粗体，请保持一致、“搜索节点组”文案可以删了、“筛选”文案可以删了，点击 enter 就可以自动筛选。
