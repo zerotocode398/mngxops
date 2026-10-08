@@ -2,7 +2,7 @@
 
 import json
 import math
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 from urllib.parse import urlencode
 
@@ -51,6 +51,7 @@ _MAX_PASSWORD_LENGTH = 4096
 _MAX_PRIVATE_KEY_LENGTH = 65536
 _MAX_DESCRIPTION_LENGTH = 4000
 _PRIVATE_KEY_FORMATS = "RSA/ECDSA/Ed25519"
+_BEIJING_TIMEZONE = timezone(timedelta(hours=8))
 
 
 class CredentialApiItem(BaseModel):
@@ -204,6 +205,14 @@ def _last_test_display(result: str) -> str:
         "failed": "全部失败",
         "unknown": "未测试",
     }.get(result, "未测试")
+
+
+def _format_beijing_time(value: Optional[datetime]) -> str:
+    """将以 UTC 保存的时间格式化为北京时间。"""
+    if value is None:
+        return "-"
+    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return utc_value.astimezone(_BEIJING_TIMEZONE).strftime("%Y-%m-%d %H:%M")
 
 
 def _render_form(
@@ -381,6 +390,10 @@ def credential_list_page(
         context={
             "credentials": credentials,
             "node_counts": node_counts,
+            "updated_at_display": {
+                credential.id: _format_beijing_time(credential.updated_at)
+                for credential in credentials
+            },
             "search": search,
             "auth_type": auth_type,
             "status": status,
@@ -594,6 +607,44 @@ def credential_delete_submit(
             deleted_name = credential.name
             write_session.delete(credential)
     return _redirect_with_notice(request, "凭证 {} 已删除".format(deleted_name))
+
+
+@router.post("/bulk-delete/", include_in_schema=False)
+def credential_bulk_delete_submit(
+    request: Request,
+    credential_ids: List[int] = Form(default=[]),
+    user: User = Depends(require_permission("credentials", "delete")),
+) -> Response:
+    """在单个事务中删除所选凭证并记录汇总审计。"""
+    selected_ids = list(dict.fromkeys(value for value in credential_ids if value > 0))
+    if not selected_ids:
+        raise HTTPException(status_code=400, detail="请至少选择一条凭证")
+
+    with session_scope(request.app.state.database.session_factory) as write_session:
+        prepare_audit_session(
+            write_session, user.id, user.username, request_client_ip(request)
+        )
+        with write_session.begin():
+            credentials = write_session.scalars(
+                select(Credential)
+                .where(Credential.id.in_(selected_ids))
+                .order_by(Credential.id.asc())
+            ).all()
+            if len(credentials) != len(selected_ids):
+                raise HTTPException(status_code=404, detail="部分凭证不存在")
+            names = [credential.name for credential in credentials]
+            with suppress_model_audit(write_session):
+                for credential in credentials:
+                    write_session.delete(credential)
+            detail = "批量删除 {} 条凭证".format(len(credentials))
+            name_preview = credential_name_preview(names)
+            if name_preview:
+                detail += "：" + name_preview
+            write_audit_log(write_session, "凭证管理", "批量删除凭证", detail)
+
+    return _redirect_with_notice(
+        request, "已删除 {} 条凭证".format(len(selected_ids))
+    )
 
 
 @api_router.get(

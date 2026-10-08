@@ -102,7 +102,7 @@ def test_team_navigation_opens_distinct_team_management_page(rbac_client):
     assert users.status_code == 200
     for response in (users, roles, teams):
         assert "pagination-footer" in response.text
-        assert "/static/js/app.js?v=7" in response.text
+        assert "/static/js/app.js?v=8" in response.text
     assert legacy_role_alias.status_code == 200
     assert "角色列表" in legacy_role_alias.text
 
@@ -296,7 +296,7 @@ def test_user_and_team_forms_use_picker_cards_and_shared_pagination(rbac_client)
     team_list = client.get("/users/teams/")
     release_center = client.get("/releases/center/")
     release_history = client.get("/releases/")
-    shared_script = client.get("/static/js/app.js?v=7")
+    shared_script = client.get("/static/js/app.js?v=8")
 
     assert user_form.status_code == 200
     assert 'data-picker-open="user-roles"' in user_form.text
@@ -340,7 +340,7 @@ def test_user_and_team_forms_use_picker_cards_and_shared_pagination(rbac_client)
     for response in (user_list, role_list, team_list):
         assert response.status_code == 200
         assert "pagination-footer" in response.text
-        assert "/static/js/app.js?v=7" in response.text
+        assert "/static/js/app.js?v=8" in response.text
         assert "每页" in response.text
     assert "共 3 条，第 1 / 1 页" in user_list.text
     assert "共 1 条，第 1 / 1 页" in role_list.text

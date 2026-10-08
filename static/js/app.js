@@ -578,11 +578,21 @@
         }
         displayConfirm(options);
     };
-    window.submitPostConfirm = function (title, message, actionUrl) {
+    window.submitPostConfirm = function (title, message, actionUrl, fields) {
         window.showConfirm(title, message, function () {
             var $form = $("<form>", { method: "post", action: actionUrl });
             var token = $("meta[name='csrf-token']").attr("content") || "";
             $("<input>", { type: "hidden", name: "csrf_token", value: token }).appendTo($form);
+            Object.keys(fields || {}).forEach(function (name) {
+                var values = Array.isArray(fields[name]) ? fields[name] : [fields[name]];
+                values.forEach(function (value) {
+                    $("<input>", {
+                        type: "hidden",
+                        name: name,
+                        value: String(value)
+                    }).appendTo($form);
+                });
+            });
             $form.appendTo(document.body).trigger("submit");
         });
     };

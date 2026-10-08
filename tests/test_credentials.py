@@ -1,6 +1,7 @@
 """验证 SSH 凭证加密、管理页面和受保护 API。"""
 
 from dataclasses import replace
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
 import re
@@ -13,6 +14,7 @@ from sqlalchemy import select
 from ngxops.accounts.models import User
 from ngxops.accounts.passwords import make_password
 from ngxops.app import create_app
+from ngxops.audit.models import AuditLog
 from ngxops.config import get_settings
 from ngxops.credentials.models import Credential
 from ngxops.database.migration_runner import upgrade_database
@@ -73,7 +75,17 @@ def test_credential_lifecycle_and_secret_protection(authenticated_client):
     )
     assert invalid_key_response.status_code == 200
     assert "私钥格式无效" in invalid_key_response.text
+    assert "SSH 认证信息" in invalid_key_response.text
     assert "not-a-private-key" not in invalid_key_response.text
+    assert (
+        'class="card credential-form-section credential-form-section--basic"'
+        in invalid_key_response.text
+    )
+    assert (
+        'class="card credential-form-section credential-form-section--auth"'
+        in invalid_key_response.text
+    )
+    assert "credentials-form.css?v=1" in invalid_key_response.text
 
     response = client.post(
         "/credentials/create/",
@@ -134,6 +146,17 @@ def test_credential_lifecycle_and_secret_protection(authenticated_client):
         },
     )
     assert update_response.status_code == 303
+    edit_form = client.get("/credentials/{}/edit/".format(credential_id))
+    assert edit_form.status_code == 200
+    assert "凭证信息" in edit_form.text
+    assert (
+        'class="card credential-form-section credential-form-section--basic"'
+        in edit_form.text
+    )
+    assert (
+        'class="card credential-form-section credential-form-section--auth"'
+        in edit_form.text
+    )
     with session_scope(app.state.database.session_factory) as session:
         credential = session.get(Credential, credential_id)
         assert credential.password == ciphertext
@@ -200,3 +223,112 @@ def test_credential_api_requires_a_session(tmp_path):
         response = client.get("/api/credentials")
     assert response.status_code == 401
     assert response.json()["success"] is False
+
+
+def test_credential_list_query_cards_beijing_time_and_bulk_delete(
+    authenticated_client,
+):
+    """验证凭证列表查询标签、分区布局、北京时间和批量删除。"""
+    client, app, csrf_token = authenticated_client
+    with session_scope(app.state.database.session_factory) as session:
+        admin_id = session.scalar(
+            select(User.id).where(User.username == "credential-admin")
+        )
+        matching = Credential(
+            name="production-deploy",
+            username="deploy",
+            auth_type="password",
+            password="encrypted-value",
+            private_key="",
+            created_by=admin_id,
+            updated_at=datetime(2024, 12, 31, 20, 15),
+        )
+        other_term = Credential(
+            name="production-backup",
+            username="backup",
+            auth_type="password",
+            password="encrypted-value",
+            private_key="",
+            created_by=admin_id,
+            updated_at=datetime(2024, 12, 31, 19, 15),
+        )
+        other_filter = Credential(
+            name="production-key",
+            username="deploy",
+            auth_type="key",
+            password="",
+            private_key="encrypted-value",
+            is_enabled=False,
+            created_by=admin_id,
+            updated_at=datetime(2024, 12, 31, 18, 15),
+        )
+        session.add_all([matching, other_term, other_filter])
+        session.flush()
+        matching_id = matching.id
+        other_term_id = other_term.id
+        session.commit()
+
+    response = client.get(
+        "/credentials/",
+        params={
+            "search": "prod,deploy",
+            "auth_type": "password",
+            "status": "enabled",
+            "per_page": 25,
+        },
+    )
+    assert response.status_code == 200
+    assert "production-deploy" in response.text
+    assert "production-backup" not in response.text
+    assert "production-key" not in response.text
+    assert "2025-01-01 04:15" in response.text
+    assert "data-query-submit-on-enter" in response.text
+    assert "data-preserve-query-focus" in response.text
+    assert "data-query-tags" in response.text
+    assert "筛选</button>" not in response.text
+    assert 'name="search" value="prod,deploy"' in response.text
+    assert 'name="auth_type" value="password"' in response.text
+    assert 'name="status" value="enabled"' in response.text
+    assert 'value="password" selected' in response.text
+    assert 'value="enabled" selected' in response.text
+    assert response.text.count('class="card credential-toolbar-card"') == 1
+    assert "credential-filter-card" not in response.text
+    assert "credential-table-card" not in response.text
+    assert "credential-select-col" in response.text
+    assert "id=\"deleteSelectedCredentials\"" in response.text
+    assert "class=\"btn btn-outline-danger btn-sm credential-delete\"" in response.text
+    assert "app.js?v=8" in response.text
+    assert "credentials.css?v=1" in response.text
+
+    invalid_bulk_delete = client.post(
+        "/credentials/bulk-delete/",
+        data={
+            "csrf_token": csrf_token,
+            "credential_ids": [str(matching_id), "999999"],
+        },
+    )
+    assert invalid_bulk_delete.status_code == 404
+    with session_scope(app.state.database.session_factory) as session:
+        assert session.get(Credential, matching_id) is not None
+
+    bulk_delete = client.post(
+        "/credentials/bulk-delete/",
+        data={
+            "csrf_token": csrf_token,
+            "credential_ids": [str(matching_id), str(other_term_id)],
+        },
+    )
+    assert bulk_delete.status_code == 303
+    with session_scope(app.state.database.session_factory) as session:
+        assert session.get(Credential, matching_id) is None
+        assert session.get(Credential, other_term_id) is None
+        audit = session.scalar(
+            select(AuditLog).where(AuditLog.action == "批量删除凭证")
+        )
+        assert audit is not None
+        assert "2 条凭证" in audit.detail
+
+    shared_script = client.get("/static/js/app.js?v=8")
+    assert shared_script.status_code == 200
+    assert "Array.isArray(fields[name])" in shared_script.text
+    assert "function (title, message, actionUrl, fields)" in shared_script.text
