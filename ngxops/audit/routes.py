@@ -160,6 +160,13 @@ def audit_log_list(
     rows = []
     for log in page_data["items"]:
         can_view_task = log.task_id in visible_task_ids
+        task_detail_prefix = "创建任务：#{}".format(log.task_id or "")
+        task_link_in_detail = bool(
+            log.task_id and log.detail.startswith(task_detail_prefix)
+        )
+        task_detail_suffix = (
+            log.detail[len(task_detail_prefix) :] if task_link_in_detail else ""
+        )
         rows.append(
             {
                 "log": log,
@@ -169,6 +176,11 @@ def audit_log_list(
                     else MODULE_LINKS.get(log.module)
                 ),
                 "can_view_task": can_view_task,
+                "task_link_in_detail": task_link_in_detail,
+                "task_detail_suffix": task_detail_suffix,
+                "task_detail_preview_suffix": task_detail_suffix[
+                    : max(0, 80 - len(task_detail_prefix))
+                ],
                 "created_at_display": _format_created_at(log.created_at),
             }
         )

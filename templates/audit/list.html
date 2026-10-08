@@ -77,7 +77,7 @@
                     <td>{% if row.log.result == "success" %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
                     <td class="audit-detail-cell">
                         <div class="audit-detail-preview">
-                            <span>{{ row.log.detail[:80] }}{% if row.log.detail|length > 80 %}...{% endif %}</span>
+                            <span>{% if row.task_link_in_detail %}创建任务：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{{ row.task_detail_preview_suffix }}{% if row.log.detail|length > 80 %}...{% endif %}{% else %}{{ row.log.detail[:80] }}{% if row.log.detail|length > 80 %}...{% endif %}{% endif %}</span>
                             {% if row.log.detail|length > 80 %}
                             <button class="btn btn-link btn-sm p-0 audit-detail-toggle" type="button"
                                     aria-label="展开详情" title="展开详情" aria-expanded="false"
@@ -86,9 +86,9 @@
                             </button>
                             {% endif %}
                         </div>
-                        {% if row.log.detail|length > 80 %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">{{ row.log.detail }}</div>{% endif %}
+                        {% if row.log.detail|length > 80 %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">{% if row.task_link_in_detail %}创建任务：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{{ row.task_detail_suffix }}{% else %}{{ row.log.detail }}{% endif %}</div>{% endif %}
                         {% if row.log.source_batch %}<div class="small text-muted audit-detail-meta">批次：{{ row.log.source_batch }}</div>{% endif %}
-                        {% if row.log.task_id %}<span class="small audit-detail-meta">任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" title="查看任务详情">#{{ row.log.task_id }}</a>{% else %}<span>#{{ row.log.task_id }}</span>{% endif %}</span>{% endif %}
+                        {% if row.log.task_id and not row.task_link_in_detail %}<span class="small audit-detail-meta">任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}<span>#{{ row.log.task_id }}</span>{% endif %}</span>{% endif %}
                     </td>
                 </tr>
             {% else %}

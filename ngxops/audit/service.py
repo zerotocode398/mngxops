@@ -208,8 +208,11 @@ def _task_event(obj, actor_id: Optional[int], ip: str) -> Optional[Dict[str, obj
         "ip": ip,
         "result": "success",
         "detail": detail,
-        "task_id": getattr(obj, "id", None),
+        "task_id": None,
         "source_batch": getattr(obj, "source_batch", "") or "",
+        "_task_obj": obj,
+        "_target_summary": target_summary,
+        "_compact_task_detail": operation_type == "credential_enable_test",
     }
 
 
@@ -321,6 +324,16 @@ def _write_after_flush(session: Session, flush_context) -> None:
     """在业务对象获得主键后将本次审计摘要加入同一事务。"""
     pending = session.info.pop("audit_pending_entries", [])
     for values in pending:
+        task_obj = values.pop("_task_obj", None)
+        target_summary = values.pop("_target_summary", "")
+        compact_task_detail = values.pop("_compact_task_detail", False)
+        if task_obj is not None:
+            task_id = getattr(task_obj, "id", None)
+            values["task_id"] = task_id
+            if compact_task_detail and task_id is not None:
+                values["detail"] = "创建任务：#{}{}".format(
+                    task_id, target_summary
+                )
         actor_id = values["user_id"]
         username = values["username"]
         if not username and actor_id is not None:

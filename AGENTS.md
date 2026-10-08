@@ -323,3 +323,12 @@ Nginx 安装/升级	执行
 68. **已完成**：节点列表探测时间列标题改为“探测时间”，时间仍按北京时间展示。实现：`templates/nodes/list.html`、`docs/nodes.md`。
 69. **已完成**：凭证启用测试在任务创建后立即显示带“查看完整日志”的提示，任务结束后显示测试结果摘要；禁用操作不创建 SSH 任务。实现：`templates/credentials/list.html`、`docs/credentials.md`。未启动服务或进行浏览器验证。
 70. **已完成**：操作日志关联任务显示可点击的 `#任务ID`，直接跳转统一任务详情。实现：`templates/audit/list.html`、`docs/audit.md`。未启动服务或进行浏览器验证。
+71. **已完成**：凭证关联节点数量采用与节点组“成员节点”一致的字号、链接强调和跳转图标样式。实现：`templates/credentials/list.html`、`static/css/credentials.css`、`docs/credentials.md`。
+72. **已完成**：凭证列表“最近测试”列仅保留测试结果，不显示测试时间。实现：`templates/credentials/list.html`、`docs/credentials.md`。
+73. **已完成**：凭证启用测试审计摘要改为“创建任务：#ID 目标…”，任务 ID 在 flush 后正确关联，避免重复输出内部操作类型和凭证 ID；详情中的 `#ID` 在新标签页跳转任务详情。实现：`ngxops/audit/service.py`、`ngxops/audit/routes.py`、`templates/audit/list.html`、`docs/audit.md`。未启动服务或进行浏览器验证。
+74. 操作日志，凭证管理当锁定时记录的信息不对，应该是锁定凭证 「xxxx」
+```text
+2026-10-08 16:44:17	wangtianci	凭证管理	更新凭证管理	127.0.0.1	成功	 更新「zxdg-root」
+```
+75. SSH 探测“查看完整日志”需要新建浏览器窗口查看，另外 SSH 右上角相关任务提示弹窗显示时间过长，这个公共方法可以统一为 3s。
+76. 节点列表查询条件“全部状态”，这个对应的是什么 SSH 还是 Nginx，我有点没理清。   
