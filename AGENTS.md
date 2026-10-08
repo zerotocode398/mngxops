@@ -336,3 +336,4 @@ Nginx 安装/升级	执行
 78. **已答复**：建议保留 SSH“未知”状态，用于区分尚无有效探测结论与实际连接失败的“离线”；新建/恢复节点、解锁或重新启用凭证后的异步探测期间都需要该状态。
 79. **已完成**：凭证管理关联节点数量按钮移除跳转箭头，保留自定义弹窗提示。实现：`templates/credentials/list.html`、`docs/credentials.md`。
 80. **已完成**：关联节点弹窗加入公共查询标签、焦点恢复和条件清空行为，支持按主机名/IP/节点组搜索及 SSH/Nginx 状态筛选，关键词和筛选条件按 AND 组合；分页保留条件并支持 10/25/50/100 条。弹窗为只读列表，没有跨页勾选操作；查询逻辑位于模板内联脚本，未修改静态资源，无需递增静态版本。实现：`ngxops/credentials/routes.py`、`templates/credentials/list.html`、`docs/credentials.md`、`docs/api.md`。
+81. **已完成**：凭证关联节点弹窗移除 SSH/Nginx 状态和节点组筛选，只按主机名/IP搜索，多个关键词按 AND 匹配；查询行不显示 X 清空按钮。分页调整为凭证列表标准，显示总数、当前/总页数、首页/上一页/下一页/末页及每页 10/25/50/100 条，并保留查询条件。接口改为 `page/per_page`。实现：`ngxops/credentials/routes.py`、`templates/credentials/list.html`、`docs/credentials.md`、`docs/api.md`。未运行自动化测试或浏览器验证。

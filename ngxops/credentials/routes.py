@@ -38,7 +38,7 @@ from ngxops.database.session import get_session, session_scope
 from ngxops.security.dependencies import require_permission, require_superuser
 from ngxops.settings.service import read_setting
 from ngxops.ui import render_page
-from ngxops.nodes.models import Node, NodeGroup
+from ngxops.nodes.models import Node
 from ngxops.tasks.executor import create_task
 from ngxops.tasks.models import Task
 
@@ -93,7 +93,7 @@ class CredentialRelatedNodeListResponse(BaseModel):
     credential_name: str
     items: List[CredentialRelatedNodeApiItem]
     page: int
-    page_size: int
+    per_page: int
     total: int
     pages: int
 
@@ -918,14 +918,12 @@ def list_enabled_credentials(
 def list_credential_related_nodes(
     credential_id: int = Path(..., ge=1),
     search: str = Query(""),
-    status: Literal["", "online", "offline", "unknown"] = Query(""),
-    nginx_status: Literal["", "available", "unavailable", "unknown"] = Query(""),
     page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=100),
+    per_page: int = Query(10, ge=1, le=100),
     user: User = Depends(require_permission("credentials", "read")),
     session: Session = Depends(get_session),
 ) -> CredentialRelatedNodeListResponse:
-    """按关键词和状态筛选分页返回凭证关联节点。"""
+    """按主机名或 IP 关键词分页返回凭证关联节点。"""
     credential = session.get(Credential, credential_id)
     if credential is None:
         raise HTTPException(status_code=404, detail="凭证不存在")
@@ -941,28 +939,20 @@ def list_credential_related_nodes(
             or_(
                 Node.hostname.ilike(pattern),
                 Node.ip.ilike(pattern),
-                Node.groups.any(NodeGroup.name.ilike(pattern)),
             )
         )
-    if status:
-        conditions.append(Node.status == status)
-    if nginx_status == "available":
-        conditions.append(Node.nginx_available.is_(True))
-    elif nginx_status == "unavailable":
-        conditions.append(Node.nginx_available.is_(False))
-    elif nginx_status == "unknown":
-        conditions.append(Node.nginx_available.is_(None))
     total = int(
         session.scalar(select(func.count()).select_from(Node).where(*conditions)) or 0
     )
-    pages = max(1, int(math.ceil(total / float(page_size))))
+    per_page = per_page if per_page in PAGE_SIZES else PAGE_SIZES[0]
+    pages = max(1, int(math.ceil(total / float(per_page))))
     page = min(page, pages)
     nodes = session.scalars(
         select(Node)
         .where(*conditions)
         .order_by(Node.hostname.asc(), Node.id.asc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
     ).all()
     status_labels = {"online": "在线", "offline": "离线", "unknown": "未知"}
     return CredentialRelatedNodeListResponse(
@@ -982,7 +972,7 @@ def list_credential_related_nodes(
             for node in nodes
         ],
         page=page,
-        page_size=page_size,
+        per_page=per_page,
         total=total,
         pages=pages,
     )
