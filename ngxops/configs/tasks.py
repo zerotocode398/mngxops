@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
+import paramiko
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, sessionmaker
 
@@ -369,6 +370,7 @@ def _cleanup_marked_bindings(
     target: dict,
     context: TaskContext,
     task_id: int,
+    client: Optional[paramiko.SSHClient] = None,
 ) -> Tuple[List[dict], List[dict]]:
     """安全删除远程已标记文件并仅在远程成功后删除本地绑定。"""
     with session_scope(session_factory) as session:
@@ -387,24 +389,26 @@ def _cleanup_marked_bindings(
     if not pending:
         return [], []
 
-    client, error = _connect_ssh(
-        target["ip"],
-        target["port"],
-        target["username"],
-        target["auth_type"],
-        target["password"],
-        target["private_key"],
-        context,
-        target.get("ssh_timeout", 10),
-        target.get("detect_retries", 1),
-    )
+    owns_client = client is None
     if client is None:
-        errors = [
-            {"path": item["path"], "message": error}
-            for item in pending
-        ]
-        _record_cleanup_errors(session_factory, target["id"], task_id, errors)
-        return [], errors
+        client, error = _connect_ssh(
+            target["ip"],
+            target["port"],
+            target["username"],
+            target["auth_type"],
+            target["password"],
+            target["private_key"],
+            context,
+            target.get("ssh_timeout", 10),
+            target.get("detect_retries", 1),
+        )
+        if client is None:
+            errors = [
+                {"path": item["path"], "message": error}
+                for item in pending
+            ]
+            _record_cleanup_errors(session_factory, target["id"], task_id, errors)
+            return [], errors
 
     deleted = []
     errors = []
@@ -437,7 +441,8 @@ def _cleanup_marked_bindings(
                             {"name": item["name"], "path": item["path"]}
                         )
     finally:
-        client.close()
+        if owns_client:
+            client.close()
     _record_cleanup_errors(session_factory, target["id"], task_id, errors)
     return deleted, errors
 
@@ -479,6 +484,7 @@ def _sync_node(
     mode: str,
     selected_paths: Sequence[str],
     main_conf_path: Optional[str],
+    ssh_client: Optional[paramiko.SSHClient] = None,
 ) -> dict:
     """发现并同步一个节点，按模式应用远程缺失和部分选择规则。"""
     target, target_error = _load_target(
@@ -504,12 +510,79 @@ def _sync_node(
         return result
     result["hostname"] = target["hostname"]
     result["ip"] = target["ip"]
-    files, errors = discover_remote_configs(
-        target,
-        target["main_conf_path"],
-        context,
-        max_depth=target["max_discover_depth"],
-    )
+    owns_client = ssh_client is None
+    connection_error = ""
+    if ssh_client is None:
+        ssh_client, connection_error = _connect_ssh(
+            target["ip"],
+            target["port"],
+            target["username"],
+            target["auth_type"],
+            target["password"],
+            target["private_key"],
+            context,
+            target.get("ssh_timeout", 10),
+            target.get("detect_retries", 1),
+        )
+    if ssh_client is None:
+        errors = [{"path": target["main_conf_path"], "message": connection_error}]
+        return _apply_sync_results(
+            context,
+            session_factory,
+            user_id,
+            task_id,
+            mode,
+            selected_paths,
+            main_conf_path,
+            target,
+            result,
+            [],
+            errors,
+            None,
+        )
+    try:
+        files, errors = discover_remote_configs(
+            target,
+            target["main_conf_path"],
+            context,
+            max_depth=target["max_discover_depth"],
+            client=ssh_client,
+        )
+        return _apply_sync_results(
+            context,
+            session_factory,
+            user_id,
+            task_id,
+            mode,
+            selected_paths,
+            main_conf_path,
+            target,
+            result,
+            files,
+            errors,
+            ssh_client,
+        )
+    finally:
+        if owns_client:
+            ssh_client.close()
+
+
+def _apply_sync_results(
+    context: TaskContext,
+    session_factory: sessionmaker,
+    user_id: int,
+    task_id: int,
+    mode: str,
+    selected_paths: Sequence[str],
+    main_conf_path: Optional[str],
+    target: dict,
+    result: dict,
+    files: List[dict],
+    errors: List[dict],
+    ssh_client: Optional[paramiko.SSHClient],
+) -> dict:
+    """將遠端發現結果寫入本地綁定，並按模式處理缺失路徑。"""
+    node_id = target["id"]
     result["errors"].extend(errors)
     discovered_paths = {item["path"] for item in files}
     selected_set = set(selected_paths)
@@ -548,7 +621,7 @@ def _sync_node(
             )
 
     _mark_failed_paths(session_factory, node_id, task_id, errors)
-    if mode == "full" and not errors:
+    if mode == "full" and not errors and ssh_client is not None:
         result["orphaned"] = _mark_missing_bindings(
             session_factory,
             node_id,
@@ -559,17 +632,19 @@ def _sync_node(
             target,
             context,
             task_id,
+            ssh_client,
         )
         result["deleted"] = deleted
         result["errors"].extend(delete_errors)
     elif mode == "partial":
         # 与参考实现一致，部分同步也清理 marked_deleted；只在发现完整时执行。
-        if not errors:
+        if not errors and ssh_client is not None:
             deleted, delete_errors = _cleanup_marked_bindings(
                 session_factory,
                 target,
                 context,
                 task_id,
+                ssh_client,
             )
             result["deleted"] = deleted
             result["errors"].extend(delete_errors)

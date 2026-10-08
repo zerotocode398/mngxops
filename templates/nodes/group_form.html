@@ -61,7 +61,7 @@
 
     {% if nodes %}
         <div class="modal fade" id="nodeGroupPickerModal" tabindex="-1" aria-labelledby="nodeGroupPickerTitle" aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h2 class="modal-title fs-6" id="nodeGroupPickerTitle"><i class="bi bi-search me-1" aria-hidden="true"></i>选择成员节点</h2>
@@ -136,5 +136,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/node-groups.js') }}"></script>
+<script src="{{ request.url_for('static', path='js/node-groups.js') }}?v=2"></script>
 {% endblock %}

@@ -447,6 +447,7 @@ def _sync_installed_configs(
     encryption_key: bytes,
     run: dict,
     context: TaskContext,
+    ssh_client: Any,
 ) -> Tuple[bool, str, dict]:
     """安装后复用配置发现与同步规则，且不改变安装任务成功状态。"""
     from ngxops.configs.tasks import _compact_node_result, _node_result_summary, _sync_node
@@ -462,6 +463,7 @@ def _sync_installed_configs(
             "full",
             (),
             run["main_conf_path"],
+            ssh_client=ssh_client,
         )
     except TaskCancelled:
         raise
@@ -686,7 +688,7 @@ def _run_install(
 
         _phase(session_factory, task_id, context, "syncing_config", 95, "安装完成，自动同步 Nginx 配置")
         sync_ok, sync_detail, sync_result = _sync_installed_configs(
-            session_factory, encryption_key, run, context
+            session_factory, encryption_key, run, context, client
         )
         _save_sync_result(session_factory, task_id, sync_ok, sync_detail)
         _phase(session_factory, task_id, context, "success", 99, "Nginx 全新安装完成")

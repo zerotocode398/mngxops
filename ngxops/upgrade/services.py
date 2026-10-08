@@ -577,6 +577,9 @@ def _connect_target(target: dict, context: Optional[TaskContext] = None) -> para
             context.register_cancel_callback(client.close)
         try:
             client.connect(**options)
+            transport = client.get_transport()
+            if transport is not None:
+                transport.set_keepalive(30)
             return client
         except paramiko.AuthenticationException as exc:
             client.close()

@@ -121,10 +121,12 @@ def discover_remote_configs(
     context: TaskContext,
     progress_callback: Optional[Callable[[int, str], None]] = None,
     max_depth: int = MAX_INCLUDE_DEPTH,
+    client: Optional[paramiko.SSHClient] = None,
 ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
     """复用单条 SSH 连接递归读取配置文件并报告路径级错误。"""
     files = []
     errors = []
+    owns_client = client is None
 
     def add_error(path: str, message: str) -> None:
         """记录有界且不包含远程命令输出的路径错误摘要。"""
@@ -132,20 +134,21 @@ def discover_remote_configs(
             return
         safe_path = path[:500]
         errors.append({"path": safe_path, "message": message})
-    client, connect_error = _connect_ssh(
-        target["ip"],
-        target["port"],
-        target["username"],
-        target["auth_type"],
-        target["password"],
-        target["private_key"],
-        context,
-        target.get("ssh_timeout", 10),
-        target.get("detect_retries", 1),
-    )
     if client is None:
-        add_error(main_conf_path, connect_error)
-        return files, errors
+        client, connect_error = _connect_ssh(
+            target["ip"],
+            target["port"],
+            target["username"],
+            target["auth_type"],
+            target["password"],
+            target["private_key"],
+            context,
+            target.get("ssh_timeout", 10),
+            target.get("detect_retries", 1),
+        )
+        if client is None:
+            add_error(main_conf_path, connect_error)
+            return files, errors
 
     try:
         pending = [(main_conf_path, 0)]
@@ -210,5 +213,6 @@ def discover_remote_configs(
                         continue
                     pending.append((normalized_path, next_depth))
     finally:
-        client.close()
+        if owns_client:
+            client.close()
     return files, errors

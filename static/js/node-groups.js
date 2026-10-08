@@ -86,15 +86,11 @@
             updateSelection();
         }
 
-        $search.on("input querytags:change", function () { filterRows(true); });
+        $search.on("querytags:change", function () { filterRows(true); });
         $search.on("keydown", function (event) {
-            if (event.key !== "Enter") return;
+            if (event.key !== "Enter" || event.isComposing) return;
             event.preventDefault();
-            var value = this.value.trim();
-            if (value) {
-                this.value = value + ",";
-                this.dispatchEvent(new Event("input", {bubbles: true}));
-            }
+            window.commitQueryTagValue(this);
             filterRows(true);
         });
         $pageSize.on("change", function () { filterRows(true); });

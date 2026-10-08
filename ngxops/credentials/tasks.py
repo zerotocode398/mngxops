@@ -69,6 +69,9 @@ def _connect_ssh(
             else:
                 options["pkey"] = _load_private_key(private_key)
             client.connect(**options)
+            transport = client.get_transport()
+            if transport is not None:
+                transport.set_keepalive(30)
             return client, ""
         except paramiko.AuthenticationException:
             client.close()

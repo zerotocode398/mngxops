@@ -14,7 +14,11 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
-from ngxops.audit.service import suppress_model_audit, write_audit_log
+from ngxops.audit.service import (
+    request_client_ip,
+    suppress_model_audit,
+    write_audit_log,
+)
 from ngxops.credentials.models import Credential
 from ngxops.database.session import get_session, session_scope
 from ngxops.nodes.models import Node, NodeGroup, NodeSyncSetting
