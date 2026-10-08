@@ -52,7 +52,7 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 | `GET /api/users/teams/{team_id}/members` | 超级管理员会话 | `TeamMembersResponse` | 401、403、404、422、500 |
 | `POST /api/users/teams/{team_id}/members` | 超级管理员会话与 CSRF | `TeamMemberUpdateResponse` | 400、401、403、404、422、500 |
 | `GET /api/credentials` | `credentials.read` 会话 | `CredentialListResponse` | 401、403、422、500 |
-| `GET /api/credentials/{credential_id}/nodes` | `credentials.read` 会话 | `CredentialRelatedNodeListResponse`，含分页节点摘要及北京时间探测时间 | 401、403、404、422、500 |
+| `GET /api/credentials/{credential_id}/nodes` | `credentials.read` 会话 | `CredentialRelatedNodeListResponse`；支持逗号分隔的主机名/IP/节点组 `search`、SSH `status`、Nginx `nginx_status` 及 `page/page_size`，所有关键词和筛选条件按 AND 组合 | 401、403、404、422、500 |
 | `GET /api/credentials/{credential_id}/secret` | `credentials.read` 会话 | `CredentialSecretResponse` | 401、403、404、422、500 |
 | `POST /api/credentials/{credential_id}/toggle-enable` | `credentials.enable` 会话与 CSRF | `CredentialToggleResponse` | 401、403、404、422、500、503 |
 | `GET /api/credentials/{credential_id}/enable-progress` | `credentials.read` 会话 | `CredentialEnableProgressResponse` | 401、403、404、422、500 |

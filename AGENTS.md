@@ -323,7 +323,7 @@ Nginx 安装/升级	执行
 68. **已完成**：节点列表探测时间列标题改为“探测时间”，时间仍按北京时间展示。实现：`templates/nodes/list.html`、`docs/nodes.md`。
 69. **已完成**：凭证启用测试在任务创建后立即显示带“查看完整日志”的提示，任务结束后显示测试结果摘要；禁用操作不创建 SSH 任务。实现：`templates/credentials/list.html`、`docs/credentials.md`。未启动服务或进行浏览器验证。
 70. **已完成**：操作日志关联任务显示可点击的 `#任务ID`，直接跳转统一任务详情。实现：`templates/audit/list.html`、`docs/audit.md`。未启动服务或进行浏览器验证。
-71. **已完成**：凭证关联节点数量采用与节点组“成员节点”一致的字号、链接强调和跳转图标样式。实现：`templates/credentials/list.html`、`static/css/credentials.css`、`docs/credentials.md`。
+71. **已完成**：凭证关联节点数量采用与节点组“成员节点”一致的字号和链接强调样式。实现：`templates/credentials/list.html`、`static/css/credentials.css`、`docs/credentials.md`。
 72. **已完成**：凭证列表“最近测试”列仅保留测试结果，不显示测试时间。实现：`templates/credentials/list.html`、`docs/credentials.md`。
 73. **已完成**：凭证启用测试审计摘要改为“创建任务：#ID 目标…”，任务 ID 在 flush 后正确关联，避免重复输出内部操作类型和凭证 ID；详情中的 `#ID` 在新标签页跳转任务详情。实现：`ngxops/audit/service.py`、`ngxops/audit/routes.py`、`templates/audit/list.html`、`docs/audit.md`。未启动服务或进行浏览器验证。
 74. **已完成**：凭证启用/禁用写入明确审计动作和明细，分别显示“启用凭证「名称」”与“锁定凭证「名称」”，不再生成通用的凭证更新记录。实现：`ngxops/credentials/routes.py`、`docs/credentials.md`。
@@ -333,5 +333,6 @@ Nginx 安装/升级	执行
 75. **已完成**：节点 SSH 任务及凭证关联节点测试的“查看完整日志”链接在新标签页打开，相关任务 toast 调整为 3 秒。实现：`static/js/app.js`、`static/js/nodes.js`、`templates/credentials/list.html`、`docs/nodes.md`、`docs/credentials.md`。未启动服务或进行浏览器验证。
 76. **已完成**：节点列表状态筛选项明确为“全部 SSH 状态”；筛选仍对应 SSH 状态，Nginx 状态独立显示。实现：`templates/nodes/list.html`、`docs/nodes.md`。
 77. **已完成**：节点 SSH 探测和凭证关联节点测试在实际连接成功或失败后都会更新 `last_probe_at`，失败探测不再显示“未探测”；锁定跳过及未配置/不可用凭证等未发起 SSH 连接的情况不更新探测时间。文档说明 `unknown` 表示当前没有可用探测结论及其常见触发场景，包括新建/恢复节点、解锁或凭证启用后的异步探测，以及解锁探测时没有配置凭证。实现：`ngxops/nodes/tasks.py`、`ngxops/credentials/tasks.py`、`docs/nodes.md`。
-78. 节点 SSH 状态“未知”你觉得是否有必要保留？
-79. 
+78. **已答复**：建议保留 SSH“未知”状态，用于区分尚无有效探测结论与实际连接失败的“离线”；新建/恢复节点、解锁或重新启用凭证后的异步探测期间都需要该状态。
+79. **已完成**：凭证管理关联节点数量按钮移除跳转箭头，保留自定义弹窗提示。实现：`templates/credentials/list.html`、`docs/credentials.md`。
+80. **已完成**：关联节点弹窗加入公共查询标签、焦点恢复和条件清空行为，支持按主机名/IP/节点组搜索及 SSH/Nginx 状态筛选，关键词和筛选条件按 AND 组合；分页保留条件并支持 10/25/50/100 条。弹窗为只读列表，没有跨页勾选操作；查询逻辑位于模板内联脚本，未修改静态资源，无需递增静态版本。实现：`ngxops/credentials/routes.py`、`templates/credentials/list.html`、`docs/credentials.md`、`docs/api.md`。

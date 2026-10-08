@@ -38,7 +38,7 @@ from ngxops.database.session import get_session, session_scope
 from ngxops.security.dependencies import require_permission, require_superuser
 from ngxops.settings.service import read_setting
 from ngxops.ui import render_page
-from ngxops.nodes.models import Node
+from ngxops.nodes.models import Node, NodeGroup
 from ngxops.tasks.executor import create_task
 from ngxops.tasks.models import Task
 
@@ -80,6 +80,7 @@ class CredentialRelatedNodeApiItem(BaseModel):
     ip: str
     status: Literal["online", "offline", "unknown"]
     status_display: str
+    nginx_available: Optional[bool]
     nginx_version: str
     probe_time: str
 
@@ -916,16 +917,41 @@ def list_enabled_credentials(
 )
 def list_credential_related_nodes(
     credential_id: int = Path(..., ge=1),
+    search: str = Query(""),
+    status: Literal["", "online", "offline", "unknown"] = Query(""),
+    nginx_status: Literal["", "available", "unavailable", "unknown"] = Query(""),
     page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=50),
+    page_size: int = Query(10, ge=1, le=100),
     user: User = Depends(require_permission("credentials", "read")),
     session: Session = Depends(get_session),
 ) -> CredentialRelatedNodeListResponse:
-    """分页返回凭证关联的活动节点及探测摘要。"""
+    """按关键词和状态筛选分页返回凭证关联节点。"""
     credential = session.get(Credential, credential_id)
     if credential is None:
         raise HTTPException(status_code=404, detail="凭证不存在")
-    conditions = (Node.credential_id == credential_id, Node.is_deleted.is_(False))
+    conditions = [Node.credential_id == credential_id, Node.is_deleted.is_(False)]
+    terms = [
+        term.strip()[:200]
+        for term in search.strip()[:200].replace("，", ",").split(",")
+        if term.strip()
+    ]
+    for term in terms:
+        pattern = "%{}%".format(term)
+        conditions.append(
+            or_(
+                Node.hostname.ilike(pattern),
+                Node.ip.ilike(pattern),
+                Node.groups.any(NodeGroup.name.ilike(pattern)),
+            )
+        )
+    if status:
+        conditions.append(Node.status == status)
+    if nginx_status == "available":
+        conditions.append(Node.nginx_available.is_(True))
+    elif nginx_status == "unavailable":
+        conditions.append(Node.nginx_available.is_(False))
+    elif nginx_status == "unknown":
+        conditions.append(Node.nginx_available.is_(None))
     total = int(
         session.scalar(select(func.count()).select_from(Node).where(*conditions)) or 0
     )
@@ -949,6 +975,7 @@ def list_credential_related_nodes(
                 ip=node.ip,
                 status=node.status,
                 status_display=status_labels.get(node.status, "未知"),
+                nginx_available=node.nginx_available,
                 nginx_version=node.nginx_version or "",
                 probe_time=_format_beijing_time(node.last_probe_at),
             )
