@@ -200,11 +200,11 @@ def _apply_node_test(
             if node is None:
                 return
             node.updated_at = now
+            node.last_probe_at = now
             if not result["ssh_success"]:
                 node.status = "offline"
                 return
             node.status = "online"
-            node.last_probe_at = now
             node.nginx_available = result["nginx_available"]
             node.last_nginx_probe_at = now
             node.nginx_version = result["nginx_version"] if result["nginx_available"] else ""

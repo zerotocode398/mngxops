@@ -180,9 +180,9 @@ def _apply_probe_result(
                     )
                     node.updated_at = now
                 return
+            node.last_probe_at = now
             if result["ssh_success"]:
                 node.status = "online"
-                node.last_probe_at = now
             else:
                 node.status = "offline"
             if update_nginx and result["ssh_success"]:
