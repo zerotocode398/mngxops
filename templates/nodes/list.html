@@ -40,7 +40,7 @@
             <div class="col-6 col-md-3 col-lg-2">
                 <label class="visually-hidden" for="nodeStatus">SSH 状态</label>
                 <select class="form-select form-select-sm" id="nodeStatus" name="status">
-                    <option value="">全部状态</option>
+                    <option value="">全部 SSH 状态</option>
                     <option value="online"{% if status_filter == "online" %} selected{% endif %}>在线</option>
                     <option value="offline"{% if status_filter == "offline" %} selected{% endif %}>离线</option>
                     <option value="unknown"{% if status_filter == "unknown" %} selected{% endif %}>未知</option>
@@ -275,5 +275,5 @@ $(function () {
     });
 });
 </script>
-<script src="{{ request.url_for('static', path='js/nodes.js') }}?v=3"></script>
+<script src="{{ request.url_for('static', path='js/nodes.js') }}?v=4"></script>
 {% endblock %}

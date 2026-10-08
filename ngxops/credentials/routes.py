@@ -1024,13 +1024,28 @@ def toggle_credential_enabled(
         )
         with write_session.begin():
             batch_limit = read_setting(write_session, "node.batch_max_count", 3)
-            credential = write_session.get(Credential, credential_id)
-            if credential is None:
+            credential_state = write_session.execute(
+                select(Credential.name, Credential.is_enabled).where(
+                    Credential.id == credential_id
+                )
+            ).one_or_none()
+            if credential_state is None:
                 raise HTTPException(status_code=404, detail="凭证不存在")
-            credential.is_enabled = not credential.is_enabled
-            credential.updated_at = datetime.utcnow()
-            is_enabled = credential.is_enabled
-            name = credential.name
+            name = credential_state.name
+            is_enabled = not credential_state.is_enabled
+            write_session.execute(
+                update(Credential)
+                .where(Credential.id == credential_id)
+                .values(is_enabled=is_enabled, updated_at=datetime.utcnow())
+                .execution_options(synchronize_session=False)
+            )
+            audit_action = "启用凭证" if is_enabled else "锁定凭证"
+            write_audit_log(
+                write_session,
+                "凭证管理",
+                audit_action,
+                "{}「{}」".format(audit_action, name),
+            )
             if is_enabled:
                 related_nodes = write_session.scalars(
                     select(Node)

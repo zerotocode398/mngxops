@@ -403,11 +403,15 @@
         var $content = $("<div>", {"class": "toast-content"});
         $("<span>").text(message == null ? "" : String(message)).appendTo($content);
         if (action && action.href && action.label) {
-            $("<a>", {
+            var $action = $("<a>", {
                 "class": "toast-action",
                 href: action.href,
                 text: action.label
-            }).appendTo($content);
+            });
+            if (action.target === "_blank") {
+                $action.attr({target: "_blank", rel: "noopener noreferrer"});
+            }
+            $action.appendTo($content);
         }
         $content.appendTo($toast);
         var $close = $("<button>", {

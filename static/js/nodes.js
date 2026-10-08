@@ -172,8 +172,12 @@ $(function () {
         window.showToast(
             task.detail || fallback,
             type,
-            10000,
-            {label: "查看完整日志", href: "/tasks/" + encodeURIComponent(task.id) + "/"}
+            3000,
+            {
+                label: "查看完整日志",
+                href: "/tasks/" + encodeURIComponent(task.id) + "/",
+                target: "_blank"
+            }
         );
     }
 
