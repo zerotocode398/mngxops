@@ -9,6 +9,9 @@
         var $counts = $("[data-node-selected-count]");
         var $resultCount = $("[data-node-result-count]");
         var $selectedNodes = $("[data-selected-nodes]");
+        var $pageLabel = $("[data-node-page-label]");
+        var $pageSize = $("#groupNodePageSize");
+        var currentPage = 1;
 
         if (!$rows.length) {
             return;
@@ -61,23 +64,42 @@
             });
         }
 
-        function filterRows() {
-            var term = $.trim($search.val() || "").toLowerCase();
-            var visibleCount = 0;
-
-            $rows.each(function () {
-                var matches = !term || (this.getAttribute("data-search-text") || "").indexOf(term) >= 0;
-                $(this).toggle(matches);
-                if (matches) {
-                    visibleCount += 1;
-                }
+        function filterRows(resetPage) {
+            var terms = window.getQueryTagValue($search[0]).split(",").map(function (term) {
+                return term.trim().toLocaleLowerCase();
+            }).filter(Boolean);
+            var matching = $rows.filter(function () {
+                var text = this.getAttribute("data-search-text") || "";
+                return terms.every(function (term) { return text.indexOf(term) >= 0; });
             });
-            $empty.prop("hidden", visibleCount > 0);
-            $resultCount.text(visibleCount);
+            var pageSize = Number($pageSize.val()) || 10;
+            var pageCount = Math.max(1, Math.ceil(matching.length / pageSize));
+            if (resetPage) currentPage = 1;
+            currentPage = Math.min(currentPage, pageCount);
+            $rows.hide();
+            matching.slice((currentPage - 1) * pageSize, currentPage * pageSize).show();
+            $empty.prop("hidden", matching.length > 0);
+            $resultCount.text(matching.length);
+            $pageLabel.text("第 " + currentPage + " / " + pageCount + " 页 · 共 " + matching.length + " 项");
+            $("[data-node-prev]").prop("disabled", currentPage <= 1);
+            $("[data-node-next]").prop("disabled", currentPage >= pageCount);
             updateSelection();
         }
 
-        $search.on("input", filterRows);
+        $search.on("input querytags:change", function () { filterRows(true); });
+        $search.on("keydown", function (event) {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            var value = this.value.trim();
+            if (value) {
+                this.value = value + ",";
+                this.dispatchEvent(new Event("input", {bubbles: true}));
+            }
+            filterRows(true);
+        });
+        $pageSize.on("change", function () { filterRows(true); });
+        $("[data-node-prev]").on("click", function () { currentPage -= 1; filterRows(false); });
+        $("[data-node-next]").on("click", function () { currentPage += 1; filterRows(false); });
         $selectAll.on("change", function () {
             var shouldSelect = this.checked;
             $rows.filter(":visible").find("[data-node-checkbox]:not(:disabled)").prop("checked", shouldSelect);
@@ -92,9 +114,11 @@
             updateSelection();
         });
         $("#nodeGroupPickerModal").on("shown.bs.modal", function () {
-            filterRows();
+            if ($search[0].__ngxopsQueryTags) $search[0].__ngxopsQueryTags.clear();
+            $search.val("");
+            filterRows(true);
             $search.trigger("focus");
         });
-        updateSelection();
+        filterRows(true);
     });
 }(jQuery));

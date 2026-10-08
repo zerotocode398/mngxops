@@ -8,7 +8,6 @@
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h2 class="h6 mb-0"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>节点列表</h2>
         <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-outline-secondary btn-sm" href="/nodes/groups/"><i class="bi bi-collection me-1" aria-hidden="true"></i>节点组</a>
             <button class="btn btn-outline-secondary btn-sm" type="button" id="exportNodes"><i class="bi bi-download me-1" aria-hidden="true"></i>导出</button>
             {% if permissions.create %}
             <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#importNodesModal"><i class="bi bi-upload me-1" aria-hidden="true"></i>批量导入</button>
@@ -17,20 +16,20 @@
         </div>
     </div>
     <div class="card-body">
-        <form method="get" class="row g-2 align-items-end mb-3">
+        <form method="get" class="row g-2 align-items-center mb-3" data-preserve-query-focus data-query-submit-on-enter>
             <div class="col-12 col-lg-4">
-                <label class="form-label small mb-1" for="nodeSearch">搜索</label>
-                <input class="form-control form-control-sm" id="nodeSearch" name="search" value="{{ search }}" placeholder="主机名或 IP；多个词用逗号分隔">
+                <label class="visually-hidden" for="nodeSearch">搜索主机名或 IP</label>
+                <input class="form-control form-control-sm" id="nodeSearch" name="search" value="{{ search }}" placeholder="搜索主机名或 IP" aria-label="搜索主机名或 IP">
             </div>
             <div class="col-6 col-md-3 col-lg-2">
-                <label class="form-label small mb-1" for="nodeGroup">节点组</label>
+                <label class="visually-hidden" for="nodeGroup">节点组</label>
                 <select class="form-select form-select-sm" id="nodeGroup" name="group">
                     <option value="">全部节点组</option>
                     {% for group in groups %}<option value="{{ group.id }}"{% if group_filter|int == group.id %} selected{% endif %}>{{ group.name }}</option>{% endfor %}
                 </select>
             </div>
             <div class="col-6 col-md-3 col-lg-2">
-                <label class="form-label small mb-1" for="nodeEnvironment">环境</label>
+                <label class="visually-hidden" for="nodeEnvironment">环境</label>
                 <select class="form-select form-select-sm" id="nodeEnvironment" name="environment">
                     <option value="">全部环境</option>
                     <option value="dev"{% if environment_filter == "dev" %} selected{% endif %}>开发</option>
@@ -39,7 +38,7 @@
                 </select>
             </div>
             <div class="col-6 col-md-3 col-lg-2">
-                <label class="form-label small mb-1" for="nodeStatus">SSH 状态</label>
+                <label class="visually-hidden" for="nodeStatus">SSH 状态</label>
                 <select class="form-select form-select-sm" id="nodeStatus" name="status">
                     <option value="">全部状态</option>
                     <option value="online"{% if status_filter == "online" %} selected{% endif %}>在线</option>
@@ -48,18 +47,19 @@
                 </select>
             </div>
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-            <div class="col-auto d-flex gap-2">
-                <button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button>
-                {% if search or group_filter or environment_filter or status_filter %}<a class="btn btn-outline-secondary btn-sm" href="/nodes/?per_page={{ pagination.per_page }}">清空</a>{% endif %}
+            <div class="col-auto">
+                {% if search or group_filter or environment_filter or status_filter %}<a class="btn btn-outline-secondary btn-sm" href="/nodes/?per_page={{ pagination.per_page }}" title="清空查询条件" aria-label="清空查询条件"><i class="bi bi-x-lg" aria-hidden="true"></i></a>{% endif %}
             </div>
         </form>
 
         {% if permissions.ssh_test or permissions.lock or permissions.unlock or permissions.delete %}
-        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <span class="small text-muted" id="selectedNodeCount">未选择节点</span>
-            {% if permissions.ssh_test %}<button class="btn btn-outline-primary btn-sm node-bulk-probe" type="button" disabled><i class="bi bi-plug me-1" aria-hidden="true"></i>批量探测 SSH</button>{% endif %}
-            {% if permissions.lock %}<button class="btn btn-outline-warning btn-sm node-bulk-action" type="button" data-action="lock" disabled><i class="bi bi-lock me-1" aria-hidden="true"></i>批量锁定</button>{% endif %}
-            {% if permissions.unlock %}<button class="btn btn-outline-success btn-sm node-bulk-action" type="button" data-action="unlock" disabled><i class="bi bi-unlock me-1" aria-hidden="true"></i>批量解锁</button>{% endif %}
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <span class="small text-muted" id="selectedNodeCount">未选择节点</span>
+                {% if permissions.ssh_test %}<button class="btn btn-outline-primary btn-sm node-bulk-probe" type="button" disabled><i class="bi bi-plug me-1" aria-hidden="true"></i>批量探测 SSH</button>{% endif %}
+                {% if permissions.lock %}<button class="btn btn-outline-warning btn-sm node-bulk-action" type="button" data-action="lock" disabled><i class="bi bi-lock me-1" aria-hidden="true"></i>批量锁定</button>{% endif %}
+                {% if permissions.unlock %}<button class="btn btn-outline-success btn-sm node-bulk-action" type="button" data-action="unlock" disabled><i class="bi bi-unlock me-1" aria-hidden="true"></i>批量解锁</button>{% endif %}
+            </div>
             {% if permissions.delete %}<button class="btn btn-outline-danger btn-sm node-bulk-delete" type="button" disabled><i class="bi bi-trash me-1" aria-hidden="true"></i>批量删除</button>{% endif %}
         </div>
         {% if permissions.ssh_test %}<div class="small text-muted mb-2" id="nodeProbeTaskStatus" aria-live="polite"></div>{% endif %}
@@ -84,7 +84,7 @@
                         <td class="text-end text-nowrap">
                             {% if permissions.ssh_test %}<button class="btn btn-outline-success btn-sm node-probe" type="button" data-node-id="{{ node.id }}" title="探测 SSH 与 Nginx" aria-label="探测 {{ node.hostname }}"{% if node.is_locked or not node.credential or not node.credential.is_enabled %} disabled{% endif %}><i class="bi bi-plug" aria-hidden="true"></i></button>{% endif %}
                             {% if permissions.update %}<a class="btn btn-outline-primary btn-sm" href="/nodes/{{ node.id }}/edit/?return_to={{ list_return_to|urlencode }}" title="编辑节点" aria-label="编辑节点 {{ node.hostname }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>{% endif %}
-                            {% if permissions.delete %}<a class="btn btn-outline-danger btn-sm" href="/nodes/{{ node.id }}/delete/?return_to={{ list_return_to|urlencode }}" title="删除节点" aria-label="删除节点 {{ node.hostname }}"><i class="bi bi-trash" aria-hidden="true"></i></a>{% endif %}
+                            {% if permissions.delete %}<button class="btn btn-outline-danger btn-sm node-delete" type="button" data-node-id="{{ node.id }}" data-node-name="{{ node.hostname }}" title="删除节点" aria-label="删除节点 {{ node.hostname }}"><i class="bi bi-trash" aria-hidden="true"></i></button>{% endif %}
                         </td>
                     </tr>
                 {% else %}
@@ -145,7 +145,7 @@
     </div></div>
 </div>
 {% endif %}
-<div class="node-list-state" hidden data-export-query="{{ export_query }}" data-per-page="{{ pagination.per_page }}" data-can-probe="{{ 'true' if permissions.ssh_test else 'false' }}" data-batch-max="{{ batch_max_count }}"></div>
+<div class="node-list-state" hidden data-export-query="{{ export_query }}" data-per-page="{{ pagination.per_page }}" data-total="{{ pagination.total }}" data-page="{{ pagination.page }}" data-pages="{{ pagination.pages }}" data-updated-node="{{ updated_node }}" data-can-probe="{{ 'true' if permissions.ssh_test else 'false' }}" data-batch-max="{{ batch_max_count }}"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -153,16 +153,81 @@
 $(function () {
     var state = $(".node-list-state").data();
     var $checks = $(".node-select");
+    var $selectAll = $("#selectAllNodes");
     var batchMax = Number(state.batchMax) || 3;
     var nodeImportRequestId = 0;
+    $("#nodeGroup, #nodeEnvironment, #nodeStatus").on("change", function () {
+        this.form.requestSubmit();
+    });
     function selectedIds() { return $checks.filter(":checked").map(function () { return this.value; }).get(); }
     function updateSelection() {
         var count = selectedIds().length;
-        $("#selectedNodeCount").text(count ? "已选择 " + count + " 个节点" : "未选择节点");
+        $("#selectedNodeCount").text(count ? "已选择 " + count + " / " + batchMax + " 个节点" : "未选择节点");
+        $checks.each(function () { this.disabled = !this.checked && count >= batchMax; });
+        $selectAll.prop("checked", $checks.length > 0 && count === $checks.length);
+        $selectAll.prop("indeterminate", count > 0 && count < $checks.length);
         $(".node-bulk-action, .node-bulk-delete, .node-bulk-probe").prop("disabled", count < 1 || count > batchMax);
     }
-    $("#selectAllNodes").on("change", function () { $checks.prop("checked", this.checked); updateSelection(); });
+    function reloadWithToast(message, type) {
+        var stored = false;
+        try {
+            window.sessionStorage.setItem("ngxops.nodeListToast", JSON.stringify({message: message, type: type}));
+            stored = true;
+        } catch (error) {
+        }
+        if (stored) {
+            window.location.reload();
+        } else {
+            window.showToast(message, type);
+            window.setTimeout(function () { window.location.reload(); }, 3200);
+        }
+    }
+    $selectAll.on("change", function () {
+        var count = selectedIds().length;
+        if (!this.checked || count >= batchMax) {
+            $checks.prop("checked", false);
+        } else {
+            var remaining = batchMax - count;
+            $checks.each(function () {
+                if (!this.checked && !this.disabled && remaining > 0) {
+                    this.checked = true;
+                    remaining -= 1;
+                }
+            });
+        }
+        updateSelection();
+    });
     $checks.on("change", updateSelection);
+    $(".node-delete").on("click", function () {
+        var nodeId = Number($(this).data("nodeId"));
+        var hostname = String($(this).data("nodeName") || "该节点");
+        window.showConfirm("确认删除节点", "从运维清单移除「" + hostname + "」？节点历史记录会保留。", function () {
+            $.ajax({
+                url: "/api/nodes/batch-delete",
+                method: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({node_ids: [nodeId]})
+            }).done(function (result) {
+                reloadWithToast(result.message, "success");
+            }).fail(function (xhr) {
+                window.showToast(xhr.responseJSON && xhr.responseJSON.message || "删除失败", "danger");
+            });
+        });
+    });
+    try {
+        var savedToast = window.sessionStorage.getItem("ngxops.nodeListToast");
+        if (savedToast) {
+            window.sessionStorage.removeItem("ngxops.nodeListToast");
+            savedToast = JSON.parse(savedToast);
+            window.showToast(savedToast.message, savedToast.type);
+        }
+    } catch (error) {}
+    if (state.updatedNode) {
+        window.showToast("节点「" + state.updatedNode + "」已更新", "success");
+        var currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.delete("updated");
+        window.history.replaceState({}, "", currentUrl.pathname + currentUrl.search + currentUrl.hash);
+    }
     $("#exportNodes").on("click", function () {
         var ids = selectedIds();
         var query = ids.length ? "ids=" + encodeURIComponent(ids.join(",")) : (state.exportQuery || "");
@@ -175,7 +240,7 @@ $(function () {
         if (ids.length > batchMax) return;
         window.showConfirm("确认节点操作", (action === "lock" ? "锁定" : "解锁") + "选中的 " + ids.length + " 个节点？", function () {
             $.ajax({url: "/api/nodes/lock", method: "POST", contentType: "application/json", data: JSON.stringify({action: action, node_ids: ids.map(Number)})})
-                .done(function (result) { window.showToast(result.message, "success"); window.location.reload(); })
+                .done(function (result) { reloadWithToast(result.message, "success"); })
                 .fail(function (xhr) { window.showToast(xhr.responseJSON && xhr.responseJSON.message || "操作失败", "danger"); });
         });
     });
@@ -184,7 +249,7 @@ $(function () {
         if (ids.length > batchMax) return;
         window.showConfirm("确认批量删除", "从运维清单移除选中的 " + ids.length + " 个节点？历史记录会保留。", function () {
             $.ajax({url: "/api/nodes/batch-delete", method: "POST", contentType: "application/json", data: JSON.stringify({node_ids: ids.map(Number)})})
-                .done(function (result) { window.showToast(result.message, "success"); window.location.reload(); })
+                .done(function (result) { reloadWithToast(result.message, "success"); })
                 .fail(function (xhr) { window.showToast(xhr.responseJSON && xhr.responseJSON.message || "删除失败", "danger"); });
         });
     });

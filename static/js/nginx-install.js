@@ -65,7 +65,7 @@
     function buildNodePicker() {
         var table = document.getElementById("installNodeTable");
         if (!table) return;
-        var maxNodes = 3;
+        var maxNodes = Number(document.getElementById("installStepper").dataset.batchMax) || 3;
         var selected = {};
         var nodeRows = Array.prototype.slice.call(table.querySelectorAll("[data-node-row]"));
         var packageSelect = document.getElementById("sourcePackage");

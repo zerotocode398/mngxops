@@ -17,12 +17,13 @@
         </div>
     </div>
     <div class="card-body">
-        <form method="get" class="node-groups-search-form">
+        <form method="get" class="node-groups-search-form" data-preserve-query-focus data-query-submit-on-enter>
             <div class="node-groups-search-field">
-                <input class="form-control form-control-sm" id="groupSearch" name="search" value="{{ search }}" placeholder="按节点组名称筛选" aria-label="按节点组名称筛选">
+                <label class="visually-hidden" for="groupSearch">搜索节点组名称</label>
+                <input class="form-control form-control-sm" id="groupSearch" name="search" value="{{ search }}" placeholder="搜索节点组名称" aria-label="搜索节点组名称">
             </div>
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-            {% if search %}<a class="btn btn-outline-secondary btn-sm" href="/nodes/groups/?per_page={{ pagination.per_page }}">清空</a>{% endif %}
+            {% if search %}<a class="btn btn-outline-secondary btn-sm" href="/nodes/groups/?per_page={{ pagination.per_page }}" title="清空查询条件" aria-label="清空查询条件"><i class="bi bi-x-lg" aria-hidden="true"></i></a>{% endif %}
         </form>
 
         <div class="table-responsive">
@@ -61,16 +62,4 @@
         {% include "includes/pagination_footer.html" %}
     </div>
 </section>
-{% endblock %}
-{% block scripts %}
-<script>
-$(function () {
-    $("#groupSearch").on("keydown", function (event) {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            this.form.requestSubmit();
-        }
-    });
-});
-</script>
 {% endblock %}

@@ -61,7 +61,7 @@
                 <tbody>
                 {% for row in nodes %}{% set node = row.node %}
                     <tr>
-                        {% if can_sync %}<td class="text-center"><input class="form-check-input config-sync-node" type="checkbox" value="{{ node.id }}" data-hostname="{{ node.hostname }}"{% if preselect_node_id == node.id and row.eligible %} checked{% endif %}{% if not row.eligible %} disabled{% endif %} aria-label="选择 {{ node.hostname }}"></td>{% endif %}
+                        {% if can_sync %}<td class="text-center"><input class="form-check-input config-sync-node" type="checkbox" value="{{ node.id }}" data-hostname="{{ node.hostname }}" data-eligible="{{ 'true' if row.eligible else 'false' }}"{% if preselect_node_id == node.id and row.eligible %} checked{% endif %}{% if not row.eligible %} disabled{% endif %} aria-label="选择 {{ node.hostname }}"></td>{% endif %}
                         <td><strong>{{ node.hostname }}</strong><br><span class="small text-muted font-monospace">{{ node.ip }}:{{ node.port }}</span>{% if node.is_locked %}<span class="badge text-bg-warning ms-1">已锁定</span>{% endif %}</td>
                         <td>{% if node.status == "online" %}<span class="badge text-bg-success">在线</span>{% elif node.status == "offline" %}<span class="badge text-bg-secondary">离线</span>{% else %}<span class="badge text-bg-light border text-muted">未知</span>{% endif %}</td>
                         <td>{% if node.nginx_available is true %}<span class="badge text-bg-success">可用</span>{% elif node.nginx_available is false %}<span class="badge text-bg-warning">未检测到</span>{% else %}<span class="badge text-bg-light border text-muted">未知</span>{% endif %}</td>

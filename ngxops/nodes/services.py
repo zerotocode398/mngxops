@@ -321,11 +321,13 @@ def validate_node_import_rows(
             messages.append("IP 地址格式不合法")
         if ip:
             if ip in seen_ips:
-                messages.append("文件内 IP 与第 {} 行重复".format(seen_ips[ip]))
+                messages.append(
+                    "IP 地址「{}」与第 {} 行重复".format(ip, seen_ips[ip])
+                )
             seen_ips[ip] = row_number
             existing = existing_nodes.get(ip)
             if existing is not None and not existing.is_deleted:
-                messages.append("IP 已被活跃节点占用")
+                messages.append("IP 地址「{}」已被活跃节点占用".format(ip))
         if port is None:
             messages.append("SSH端口必须是 1 到 65535 的整数")
         if not environment:

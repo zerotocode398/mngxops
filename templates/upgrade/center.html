@@ -14,7 +14,7 @@
     </div>
 </div>
 
-{% if can_create %}<div class="upgrade-stepper" id="upgradeStepper" aria-label="升级步骤">
+{% if can_create %}<div class="upgrade-stepper" id="upgradeStepper" aria-label="升级步骤" data-batch-max="{{ batch_max_count }}">
     <button class="upgrade-step active" type="button" data-step-target="1"><span>1</span>选择目标</button>
     <button class="upgrade-step" type="button" data-step-target="2"><span>2</span>编译环境</button>
     <button class="upgrade-step" type="button" data-step-target="3"><span>3</span>编译参数</button>

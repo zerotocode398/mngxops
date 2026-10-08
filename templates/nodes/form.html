@@ -1,123 +1,58 @@
 {% extends "base.html" %}
 
+{% set node_group_picker = {"id": "nodeGroupPicker", "key": "node-groups", "title": "选择节点组", "item_label": "节点组", "choices": groups, "limit": 3} %}
 {% block title %}{% if is_edit %}编辑节点{% else %}新增节点{% endif %} - ngxops{% endblock %}
 {% block page_title %}{% if is_edit %}编辑节点{% else %}新增节点{% endif %}{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/node-form.css') }}">
+{% endblock %}
+
 {% block content %}
-<section class="card">
-    <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-server me-1" aria-hidden="true"></i>节点资产信息</h2></div>
-    <div class="card-body">
-        <form method="post" action="{% if is_edit %}/nodes/{{ node.id }}/edit/{% else %}/nodes/create/{% endif %}">
-            {% include "includes/csrf_field.html" %}
-            <input type="hidden" name="return_to" value="{{ return_to }}">
-            <div class="row g-3">
-                <div class="col-md-6"><label class="form-label" for="nodeHostname">主机名 <span class="text-danger">*</span></label><input class="form-control{% if errors.hostname %} is-invalid{% endif %}" id="nodeHostname" name="hostname" maxlength="100" required value="{{ values.hostname|default(node.hostname if node else '') }}">{% if errors.hostname %}<div class="invalid-feedback">{{ errors.hostname }}</div>{% endif %}</div>
-                <div class="col-md-6"><label class="form-label" for="nodeIp">IP 地址 <span class="text-danger">*</span></label><input class="form-control{% if errors.ip %} is-invalid{% endif %}" id="nodeIp" name="ip" required placeholder="例如 192.168.1.100" value="{{ values.ip|default(node.ip if node else '') }}">{% if errors.ip %}<div class="invalid-feedback">{{ errors.ip }}</div>{% endif %}</div>
-                <div class="col-md-3"><label class="form-label" for="nodePort">SSH 端口 <span class="text-danger">*</span></label><input class="form-control{% if errors.port %} is-invalid{% endif %}" id="nodePort" name="port" type="number" min="1" max="65535" required value="{{ values.port|default(node.port if node else default_port) }}">{% if errors.port %}<div class="invalid-feedback">{{ errors.port }}</div>{% endif %}</div>
-                <div class="col-md-3"><label class="form-label" for="nodeEnvironment">所属环境</label><select class="form-select{% if errors.environment %} is-invalid{% endif %}" id="nodeEnvironment" name="environment">{% for code, label in environment_choices %}<option value="{{ code }}"{% if values.environment|default(node.environment if node else 'dev') == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% if errors.environment %}<div class="invalid-feedback">{{ errors.environment }}</div>{% endif %}</div>
-                <div class="col-md-6"><label class="form-label" for="nodeCredential">SSH 凭证</label><select class="form-select{% if errors.credential_id %} is-invalid{% endif %}" id="nodeCredential" name="credential_id"><option value="">不设置</option>{% for credential in credentials %}<option value="{{ credential.id }}"{% if values.credential_id|default(node.credential_id if node else '')|string == credential.id|string %} selected{% endif %}>{{ credential.name }} · {{ credential.username }} · {{ "密码认证" if credential.auth_type == "password" else "密钥认证" }}</option>{% endfor %}</select>{% if errors.credential_id %}<div class="invalid-feedback">{{ errors.credential_id }}</div>{% endif %}</div>
-                <div class="col-md-6"><label class="form-label" for="nodeNginxPath">Nginx 可执行路径</label><input class="form-control{% if errors.nginx_path %} is-invalid{% endif %}" id="nodeNginxPath" name="nginx_path" maxlength="255" value="{{ values.nginx_path|default(node.nginx_path if node else default_nginx_path) }}">{% if errors.nginx_path %}<div class="invalid-feedback">{{ errors.nginx_path }}</div>{% endif %}</div>
-                <div class="col-md-6"><label class="form-label" for="nodeMainConfPath">Nginx 主配置路径</label><input class="form-control{% if errors.main_conf_path %} is-invalid{% endif %}" id="nodeMainConfPath" name="main_conf_path" maxlength="500" value="{{ values.main_conf_path|default(node.sync_setting.main_conf_path if node and node.sync_setting else default_main_conf_path) }}">{% if errors.main_conf_path %}<div class="invalid-feedback">{{ errors.main_conf_path }}</div>{% endif %}</div>
-                <div class="col-12"><label class="form-label" for="nodeDescription">备注</label><textarea class="form-control{% if errors.description %} is-invalid{% endif %}" id="nodeDescription" name="description" rows="3" maxlength="4000">{{ values.description|default(node.description if node else '') }}</textarea>{% if errors.description %}<div class="invalid-feedback">{{ errors.description }}</div>{% endif %}</div>
-                <div class="col-12">
-                    <fieldset><legend class="form-label fs-6">节点组 <small class="text-muted fw-normal">最多选择 3 个</small></legend>
-                        <div class="d-flex align-items-center flex-wrap gap-2">
-                            {% if groups %}<button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#nodeGroupPicker"><i class="bi bi-collection me-1" aria-hidden="true"></i>选择节点组</button>{% else %}<a class="btn btn-outline-secondary btn-sm" href="/nodes/groups/create/"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>创建节点组</a>{% endif %}
-                            <span class="small text-muted" id="selectedGroupCount"></span>
-                        </div>
-                        <div class="d-flex flex-wrap gap-2 mt-2" id="selectedGroupTags" aria-live="polite"></div>
-                        <div id="selectedGroupInputs">{% for group in groups %}{% if group.id in selected_groups %}<input type="hidden" name="group_ids" value="{{ group.id }}">{% endif %}{% endfor %}</div>
-                        {% if errors.group_ids %}<div class="text-danger small mt-1">{{ errors.group_ids }}</div>{% endif %}
-                    </fieldset>
+<form method="post" action="{% if is_edit %}/nodes/{{ node.id }}/edit/{% else %}/nodes/create/{% endif %}" id="nodeForm" class="node-editor">
+    {% include "includes/csrf_field.html" %}
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <section class="card node-form-section node-form-section--basic">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>基本信息</h2></div>
+        <div class="card-body"><div class="row g-3">
+            <div class="col-md-6"><label class="form-label" for="nodeHostname">主机名 <span class="text-danger">*</span></label><input class="form-control{% if errors.hostname %} is-invalid{% endif %}" id="nodeHostname" name="hostname" maxlength="100" required value="{{ values.hostname|default(node.hostname if node else '') }}">{% if errors.hostname %}<div class="invalid-feedback">{{ errors.hostname }}</div>{% endif %}</div>
+            <div class="col-md-6"><label class="form-label" for="nodeIp">IP 地址 <span class="text-danger">*</span></label><input class="form-control{% if errors.ip %} is-invalid{% endif %}" id="nodeIp" name="ip" required placeholder="例如 192.168.1.100" value="{{ values.ip|default(node.ip if node else '127.0.0.1') }}">{% if errors.ip %}<div class="invalid-feedback">{{ errors.ip }}</div>{% endif %}</div>
+            <div class="col-md-6"><label class="form-label" for="nodeEnvironment">所属环境</label><select class="form-select{% if errors.environment %} is-invalid{% endif %}" id="nodeEnvironment" name="environment">{% for code, label in environment_choices %}<option value="{{ code }}"{% if values.environment|default(node.environment if node else 'dev') == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% if errors.environment %}<div class="invalid-feedback">{{ errors.environment }}</div>{% endif %}</div>
+            <div class="col-md-6"><label class="form-label" for="nodeDescription">备注</label><textarea class="form-control{% if errors.description %} is-invalid{% endif %}" id="nodeDescription" name="description" rows="2" maxlength="4000">{{ values.description|default(node.description if node else '') }}</textarea>{% if errors.description %}<div class="invalid-feedback">{{ errors.description }}</div>{% endif %}</div>
+        </div></div>
+    </section>
+    <section class="card node-form-section node-form-section--ssh">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-plug me-1" aria-hidden="true"></i>SSH 认证信息</h2></div>
+        <div class="card-body"><div class="row g-3">
+            <div class="col-md-3"><label class="form-label" for="nodePort">SSH 端口 <span class="text-danger">*</span></label><input class="form-control{% if errors.port %} is-invalid{% endif %}" id="nodePort" name="port" type="number" min="1" max="65535" required value="{{ values.port|default(node.port if node else default_port) }}">{% if errors.port %}<div class="invalid-feedback">{{ errors.port }}</div>{% endif %}</div>
+            <div class="col-md-9"><label class="form-label" for="nodeCredential">SSH 凭证</label><select class="form-select{% if errors.credential_id %} is-invalid{% endif %}" id="nodeCredential" name="credential_id"><option value="">不设置</option>{% for credential in credentials %}<option value="{{ credential.id }}"{% if values.credential_id|default(node.credential_id if node else '')|string == credential.id|string %} selected{% endif %}>{{ credential.name }} · {{ credential.username }} · {{ "密码认证" if credential.auth_type == "password" else "密钥认证" }}</option>{% endfor %}</select>{% if errors.credential_id %}<div class="invalid-feedback">{{ errors.credential_id }}</div>{% endif %}</div>
+        </div></div>
+    </section>
+    <section class="card node-form-section node-form-section--nginx">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-file-earmark-code me-1" aria-hidden="true"></i>Nginx 配置</h2></div>
+        <div class="card-body"><div class="row g-3">
+            <div class="col-md-6"><label class="form-label" for="nodeNginxPath">Nginx 可执行路径</label><input class="form-control{% if errors.nginx_path %} is-invalid{% endif %}" id="nodeNginxPath" name="nginx_path" maxlength="255" value="{{ values.nginx_path|default(node.nginx_path if node else default_nginx_path) }}">{% if errors.nginx_path %}<div class="invalid-feedback">{{ errors.nginx_path }}</div>{% endif %}</div>
+            <div class="col-md-6"><label class="form-label" for="nodeMainConfPath">Nginx 主配置路径</label><input class="form-control{% if errors.main_conf_path %} is-invalid{% endif %}" id="nodeMainConfPath" name="main_conf_path" maxlength="500" value="{{ values.main_conf_path|default(node.sync_setting.main_conf_path if node and node.sync_setting else default_main_conf_path) }}">{% if errors.main_conf_path %}<div class="invalid-feedback">{{ errors.main_conf_path }}</div>{% endif %}</div>
+        </div></div>
+    </section>
+    <section class="card node-form-section node-form-section--groups">
+        <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-collection me-1" aria-hidden="true"></i>节点组</h2></div>
+        <div class="card-body">
+            <fieldset><legend class="visually-hidden">节点组</legend>
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    {% if groups %}<button class="btn btn-outline-secondary btn-sm" type="button" data-picker-open="node-groups"><i class="bi bi-collection me-1" aria-hidden="true"></i>选择节点组</button>{% else %}<a class="btn btn-outline-secondary btn-sm" href="/nodes/groups/create/"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>创建节点组</a>{% endif %}
+                    <span class="small text-muted">最多选择 3 个</span>
                 </div>
-                <div class="col-12 d-flex justify-content-between pt-2"><a class="btn btn-outline-secondary" href="{{ return_to }}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>{% if is_edit %}保存修改{% else %}创建节点{% endif %}</button></div>
-            </div>
-        </form>
-    </div>
-</section>
-{% if groups %}
-<div class="modal fade" id="nodeGroupPicker" tabindex="-1" aria-labelledby="nodeGroupPickerTitle" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content">
-        <div class="modal-header"><h2 class="modal-title h6" id="nodeGroupPickerTitle"><i class="bi bi-collection me-1" aria-hidden="true"></i>选择节点组</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
-        <div class="modal-body">
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-2"><input class="form-control form-control-sm" id="nodeGroupSearch" type="search" placeholder="搜索节点组"><span class="small text-muted text-nowrap" id="nodeGroupPickerCount">已选 0 / 3</span></div>
-            <div class="table-responsive border rounded"><table class="table table-sm table-hover align-middle mb-0"><thead class="table-light"><tr><th style="width:38px"></th><th>节点组</th><th>描述</th></tr></thead><tbody id="nodeGroupPickerRows">
-                {% for group in groups %}<tr class="node-group-option" data-name="{{ group.name }}"><td><input class="form-check-input node-group-option-check" type="checkbox" value="{{ group.id }}" aria-label="选择 {{ group.name }}"></td><td>{{ group.name }}</td><td class="text-muted">{{ group.description or "-" }}</td></tr>{% endfor %}
-            </tbody></table></div>
-            <div class="small text-danger mt-2" id="nodeGroupPickerError" role="status"></div>
+                <div class="entity-picker-summary" data-picker-summary="node-groups" aria-live="polite"></div>
+                {% for group in groups %}<input class="visually-hidden" type="checkbox" name="group_ids" value="{{ group.id }}" data-picker-selection="node-groups" data-label="{{ group.name }}" {% if group.id in selected_groups %}checked{% endif %}>{% endfor %}
+                {% if errors.group_ids %}<div class="text-danger small mt-1">{{ errors.group_ids }}</div>{% endif %}
+            </fieldset>
         </div>
-        <div class="modal-footer"><button class="btn btn-outline-secondary btn-sm" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-primary btn-sm" type="button" id="confirmNodeGroups"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>确认选择</button></div>
-    </div></div>
-</div>
-{% endif %}
+    </section>
+    <div class="node-form-actions"><a class="btn btn-outline-secondary btn-sm" href="{{ return_to }}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>{% if is_edit %}保存修改{% else %}创建节点{% endif %}</button></div>
+</form>
 {% endblock %}
 
-{% block scripts %}
-<script>
-$(function () {
-    var selected = new Set({{ selected_groups|list|tojson }});
-    var pending = new Set(selected);
-    var $picker = $("#nodeGroupPicker");
+{% block modals %}{% if groups %}{% set picker = node_group_picker %}{% include "rbac/_entity_picker_modal.html" %}{% endif %}{% endblock %}
 
-    function renderSelectedGroups() {
-        var $tags = $("#selectedGroupTags").empty();
-        var $inputs = $("#selectedGroupInputs").empty();
-        selected.forEach(function (id) {
-            var $row = $(".node-group-option-check[value='" + id + "']").closest("tr");
-            var name = $row.find("td").eq(1).text();
-            var $tag = $("<span class='badge text-bg-light border d-inline-flex align-items-center gap-1'></span>");
-            $tag.append($("<span></span>").text(name));
-            var $remove = $("<button>", {
-                type: "button",
-                "class": "btn p-0 border-0 bg-transparent text-secondary",
-                title: "移除节点组",
-                "aria-label": "移除 " + name
-            });
-            $remove.append($("<i class='bi bi-x-lg' aria-hidden='true'></i>"));
-            $remove.on("click", function () { selected.delete(id); renderSelectedGroups(); });
-            $tag.append($remove);
-            $tags.append($tag);
-            $inputs.append($("<input>", {type: "hidden", name: "group_ids", value: id}));
-        });
-        $("#selectedGroupCount").text(selected.size ? "已选 " + selected.size + " / 3" : "未设置");
-    }
-
-    function syncPickerRows() {
-        $(".node-group-option-check").each(function () {
-            this.checked = pending.has(Number(this.value));
-        });
-        $("#nodeGroupPickerCount").text("已选 " + pending.size + " / 3");
-    }
-
-    $picker.on("show.bs.modal", function () {
-        pending = new Set(selected);
-        $("#nodeGroupPickerError").text("");
-        $("#nodeGroupSearch").val("").trigger("input");
-        syncPickerRows();
-    });
-    $(".node-group-option-check").on("change", function () {
-        var id = Number(this.value);
-        if (this.checked && pending.size >= 3) {
-            this.checked = false;
-            $("#nodeGroupPickerError").text("节点最多只能关联 3 个节点组。");
-            return;
-        }
-        if (this.checked) pending.add(id); else pending.delete(id);
-        $("#nodeGroupPickerError").text("");
-        syncPickerRows();
-    });
-    $("#nodeGroupSearch").on("input", function () {
-        var query = this.value.trim().toLocaleLowerCase();
-        $(".node-group-option").each(function () {
-            $(this).toggle($(this).data("name").toLocaleLowerCase().indexOf(query) >= 0);
-        });
-    });
-    $("#confirmNodeGroups").on("click", function () {
-        selected = new Set(pending);
-        renderSelectedGroups();
-        bootstrap.Modal.getOrCreateInstance($picker[0]).hide();
-    });
-    renderSelectedGroups();
-});
-</script>
-{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/user-form.js') }}?v=2"></script>{% endblock %}

@@ -152,13 +152,16 @@
     function updateSelection() {
         var boxes = document.querySelectorAll(".config-sync-node");
         var selected = selectedNodeIds();
+        boxes.forEach(function (checkbox) {
+            checkbox.disabled = checkbox.dataset.eligible !== "true" || (!checkbox.checked && selected.length >= maxBatch);
+        });
         if (selectionCount) {
-            selectionCount.textContent = selected.length ? "已选择 " + selected.length + " 个节点" : "未选择节点";
+            selectionCount.textContent = selected.length ? "已选择 " + selected.length + " / " + maxBatch + " 个节点" : "未选择节点";
         }
         if (batchButton) batchButton.disabled = selected.length === 0 || selected.length > maxBatch;
         if (selectAll) {
             var eligible = Array.prototype.filter.call(boxes, function (checkbox) {
-                return !checkbox.disabled;
+                return checkbox.dataset.eligible === "true";
             });
             selectAll.checked = eligible.length > 0 && eligible.every(function (checkbox) {
                 return checkbox.checked;
@@ -305,9 +308,19 @@
 
     if (selectAll) {
         selectAll.addEventListener("change", function () {
-            document.querySelectorAll(".config-sync-node").forEach(function (checkbox) {
-                if (!checkbox.disabled) checkbox.checked = selectAll.checked;
-            });
+            var selected = selectedNodeIds().length;
+            var boxes = document.querySelectorAll(".config-sync-node");
+            if (!selectAll.checked || selected >= maxBatch) {
+                boxes.forEach(function (checkbox) { checkbox.checked = false; });
+            } else {
+                var remaining = maxBatch - selected;
+                boxes.forEach(function (checkbox) {
+                    if (checkbox.dataset.eligible === "true" && !checkbox.checked && remaining > 0) {
+                        checkbox.checked = true;
+                        remaining -= 1;
+                    }
+                });
+            }
             updateSelection();
         });
     }

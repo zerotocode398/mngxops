@@ -59,20 +59,27 @@
 }
 
 .node-group-editor {
-    width: min(100%, 880px);
+    width: min(100%, 920px);
     margin: 0 auto;
 }
 
-.node-group-form-card {
-    margin-bottom: 0.7rem;
+.node-group-editor .node-group-form-card {
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+    border-left: 3px solid var(--primary);
+}
+
+.node-group-editor .node-group-form-card--nodes {
+    border-left-color: var(--success);
 }
 
 .node-group-form-card .card-header {
-    padding: 0.6rem 0.85rem;
+    padding: 0.65rem 0.85rem;
+    background: var(--gray-100);
 }
 
 .node-group-form-card .card-body {
-    padding: 0.8rem 0.85rem;
+    padding: 0.85rem;
 }
 
 .node-group-basic-fields {
@@ -82,7 +89,7 @@
 }
 
 .node-group-basic-fields .form-label {
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.3rem;
     font-weight: 500;
 }
 
@@ -163,6 +170,27 @@
     max-width: 440px;
 }
 
+.node-picker-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.node-picker-pagination select {
+    width: auto;
+    min-width: 72px;
+}
+
+.node-picker-pagination .btn {
+    width: 32px;
+    height: 32px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+}
+
 .node-group-select-visible {
     display: inline-flex;
     align-items: center;
@@ -214,12 +242,17 @@
 
 .node-group-form-actions {
     display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 0.65rem;
-    padding: 0.1rem 0;
+    padding-bottom: 0.25rem;
 }
 
 @media (max-width: 575.98px) {
+    .node-group-form-card .card-body {
+        padding: 0.7rem;
+    }
+
     .node-group-picker-actions {
         align-items: flex-start;
         flex-direction: column;
@@ -227,5 +260,10 @@
 
     .node-group-form-actions .btn {
         flex: 1 1 0;
+    }
+
+    .node-picker-pagination {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }

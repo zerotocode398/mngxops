@@ -13,7 +13,7 @@
     </div>
 </div>
 
-<div class="install-stepper" id="installStepper" aria-label="安装步骤" data-can-execute="{{ 'true' if can_execute else 'false' }}">
+<div class="install-stepper" id="installStepper" aria-label="安装步骤" data-can-execute="{{ 'true' if can_execute else 'false' }}" data-batch-max="{{ batch_max_count }}">
     <div class="install-step-tab active" data-step-tab="1"><span>1</span>选择目标</div>
     <div class="install-step-tab" data-step-tab="2"><span>2</span>编译参数</div>
     <div class="install-step-tab" data-step-tab="3"><span>3</span>确认安装</div>

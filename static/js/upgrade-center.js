@@ -3,6 +3,7 @@
 
     var center = document.getElementById("upgradeStepper");
     var detail = document.getElementById("upgradeTaskDetail");
+    var batchMax = center ? Number(center.dataset.batchMax) || 3 : 3;
     var token = document.querySelector("meta[name='csrf-token']");
     var csrfToken = token ? token.content : "";
 
@@ -69,7 +70,7 @@
         var checks = Array.from(document.querySelectorAll(".upgrade-node-check"));
         var selected = selectedNodeIds();
         checks.forEach(function (input) {
-            input.disabled = !input.checked && selected.length >= 3;
+            input.disabled = !input.checked && selected.length >= batchMax;
         });
         document.getElementById("stepOneCount").textContent = "已选 " + selected.length + " 个节点";
         document.getElementById("selectedNodeSummary").textContent = selected.length

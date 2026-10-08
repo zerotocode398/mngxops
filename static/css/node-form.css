@@ -1,0 +1,50 @@
+.node-editor {
+    width: min(100%, 920px);
+    margin: 0 auto;
+}
+
+.node-form-section {
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+    border-left: 3px solid var(--primary);
+}
+
+.node-form-section--ssh {
+    border-left-color: var(--success);
+}
+
+.node-form-section--nginx {
+    border-left-color: var(--info);
+}
+
+.node-form-section--groups {
+    border-left-color: var(--gray-600);
+}
+
+.node-form-section .card-header {
+    padding: 0.65rem 0.85rem;
+    background: var(--gray-100);
+}
+
+.node-form-section .card-body {
+    padding: 0.85rem;
+}
+
+.node-form-section .form-label {
+    margin-bottom: 0.3rem;
+    font-weight: 500;
+}
+
+.node-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-bottom: 0.25rem;
+}
+
+@media (max-width: 575.98px) {
+    .node-form-section .card-body {
+        padding: 0.7rem;
+    }
+}

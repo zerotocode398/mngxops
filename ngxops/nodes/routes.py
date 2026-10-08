@@ -298,6 +298,30 @@ def _return_to(request: Request, value: str = "") -> str:
     return "/nodes/"
 
 
+def _node_import_audit_detail(summary: str, nodes: List[dict]) -> str:
+    """生成包含节点主机名和 IP 且不超过审计详情长度的摘要。"""
+    prefix = summary + "；资产："
+    included = []
+    for index, item in enumerate(nodes):
+        label = "{} ({})".format(
+            " ".join(str(item.get("hostname", "")).splitlines())[:100],
+            " ".join(str(item.get("ip", "")).splitlines())[:45],
+        )
+        remaining = len(nodes) - index - 1
+        suffix = "……（另有 {} 台未列出）".format(remaining) if remaining else ""
+        candidate = prefix + "、".join(included + [label]) + suffix
+        if len(candidate) > 4000:
+            omitted = len(nodes) - len(included)
+            suffix = "……（另有 {} 台未列出）".format(omitted)
+            while included and len(prefix + "、".join(included) + suffix) > 4000:
+                included.pop()
+                omitted += 1
+                suffix = "……（另有 {} 台未列出）".format(omitted)
+            return (prefix + "、".join(included) + suffix)[:4000]
+        included.append(label)
+    return (prefix + "、".join(included))[:4000]
+
+
 def _validate_node_values(
     session: Session,
     values: dict,
@@ -403,6 +427,7 @@ def list_nodes(
             "group_filter": request.query_params.get("group", ""),
             "environment_filter": request.query_params.get("environment", ""),
             "status_filter": request.query_params.get("status", ""),
+            "updated_node": request.query_params.get("updated", ""),
             "batch_max_count": read_setting(session, "node.batch_max_count", MAX_BATCH_COUNT),
             "pagination": {
                 "page": page,
@@ -1037,7 +1062,7 @@ def import_nodes(
                 session,
                 "节点管理",
                 "导入节点",
-                "批量导入成功：" + "，".join(parts),
+                _node_import_audit_detail("批量导入成功：" + "，".join(parts), cleaned),
             )
             session.commit()
     except IntegrityError as exc:
