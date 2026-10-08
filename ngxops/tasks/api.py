@@ -31,6 +31,7 @@ _LIMITED_OPERATION_PERMISSIONS = {
         "node_system_info",
         "node_nginx_version",
     ),
+    ("nodes", "unlock"): ("node_batch_test",),
     ("credentials", "enable"): ("credential_enable_test",),
     ("configs", "sync"): ("config_batch_sync", "config_discover"),
     ("nginx_service", "operate"): ("nginx_service_control",),

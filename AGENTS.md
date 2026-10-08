@@ -308,3 +308,23 @@ Nginx 安装/升级	执行
 53. **已完成**：节点探测任务触发时补齐 `request_client_ip` 导入，修复节点列表主机详情及“测试连接”请求在任务入队时报 `NameError`。实现：`ngxops/nodes/routes.py`。已通过 Python 3.9 语法解析和导入项静态核对；未连接真实 SSH 节点。
 54. **已完成**：配置同步任务对每个节点只建立一条 SSH 连接，并复用于配置发现和待删除远程文件清理；Nginx 全新安装后的自动配置同步继续复用安装阶段的连接。SSH transport 每 30 秒发送 keepalive，降低长时间编译期间连接因空闲而断开的概率；连接由创建方在任务结束时关闭，独立发现/清理调用仍自行管理连接。实现：`ngxops/credentials/tasks.py`、`ngxops/configs/discovery.py`、`ngxops/configs/tasks.py`、`ngxops/upgrade/services.py`、`ngxops/nginx_install/services.py`、`docs/configs.md`、`docs/nginx-install.md`。未连接真实 SSH 节点。
 55. **已完成**：本节新增全局交互规范，统一右上角限时提示和自定义确认/提示弹窗、查询标签及焦点/删除行为、关键词与筛选条件 AND 关系、查询区域布局、分页条件保留、弹窗跨页选择和静态资源版本更新要求。
+56. **已完成**：节点批量锁定会将 SSH 状态写为离线；批量解锁清除锁定后自动创建持久化 SSH/Nginx 探测任务，完成后更新 SSH 状态、探测时间和 Nginx 版本。无凭证时状态保持未知，凭证不可用时记为离线；探测任务可由 `nodes.unlock` 用户本人查看。实现：`ngxops/nodes/routes.py`、`ngxops/nodes/tasks.py`、`ngxops/tasks/api.py`、节点列表脚本。未连接真实 SSH 节点。
+57. **已完成**：节点列表中的 SSH 探测、系统信息采集、Nginx 检测及解锁探测完成提示提供“查看完整日志”链接，指向对应任务详情；公共 toast 支持安全文本链接并在悬停时暂停关闭计时。实现：`static/js/app.js`、`static/css/app.css`、`static/js/nodes.js`。未启动服务或进行浏览器验证。
+58. **已完成**：包含结构化节点列表的任务详情使用逐节点紧凑清单，显示主机、状态和摘要，逐项完整结果按需展开；日志首屏限制 50 条，通过加载更多查看剩余日志，适合多节点任务扫描。实现：`ngxops/tasks/routes.py`、`templates/tasks/detail.html`、`static/js/task-center.js`、`static/css/task-center.css`、`docs/tasks.md`。未启动服务或进行浏览器验证。
+59. **已完成**：任务详情默认显示前三个目标节点；其余目标通过展开/收起控件查看，保留完整目标数。实现：`ngxops/tasks/routes.py`、`templates/tasks/detail.html`、`static/js/task-center.js`。未启动服务或进行浏览器验证。
+60. **已完成**：节点资料修改新增“节点调整”审计动作，记录节点标识和变更字段名，不写任意备注内容或变更前后值；节点任务审计增加任务说明和目标主机/IP 摘要，日志行可跳转对应任务详情。实现：`ngxops/audit/service.py`、`templates/audit/list.html`（复用既有任务链接）、`docs/audit.md`。遵循审计日志不可编辑规则。
+61. **已完成**：任务中心移除放大镜查询按钮并改用全局 `data-query-tags` 输入；回车提交、标签移除/退格、焦点恢复由公共脚本处理。筛选下拉在提交时保留未提交关键词、AND 组合和每页条数，查询布局与公共控件一致。实现：`templates/tasks/center.html`、`static/js/task-center.js`、`static/css/task-center.css`。未启动服务或进行浏览器验证。
+62. **已完成**：节点列表和详情弹窗的 SSH 探测时间统一按 CST（Asia/Shanghai，UTC+8）显示；SQLite 中的 UTC naive 时间未改变，详情 API 返回带时区偏移的北京时间。实现：`ngxops/nodes/routes.py`、`templates/nodes/list.html`、`static/js/nodes.js`、`docs/nodes.md`。未启动服务或进行浏览器验证。
+63. 节点列表，状态为已锁定的节点不支持重复锁定。
+64. 节点列表 SSH 相关操作的“查看完整日志”，不要等待结果才提示，再创建任务的时候就直接提示，你可以在任务执行完成后在显示其结果。
+65. 任务中心任务详情，执行结果记录是不是可以在简化下，详情的样式不是很好，可以默认前几个字符（不要让表换行），点击展开后再展开。
+66. 任务中心任务详情，执行日志。需要显示节点名称(IP)，另外日志级别不需要显示）
+```text
+2026-10-08 07:59:01 info 节点 1/3 10.10.77.102：SSH 成功
+2026-10-08 07:59:01 info 节点 2/3 112.33.17.255：SSH 成功
+2026-10-08 07:59:04 warning 节点 3/3 36.134.42.106：SSH 连接失败
+```
+67. 凭证管理，关联节点点击可以查看节点信息，显示主机名、IP、状态、Nginx 版本、探测时间（即可）。
+68. 节点列表，探测时间（CST）调整为“探测时间”。
+69. 凭证管理，启动/禁用等 SSH 相关操作的“查看完整日志”，不要等待结果才提示，再创建任务的时候就直接提示，你可以在任务执行完成后在显示其结果。可以参考调整点 64 实现方式。
+70. 操作日志没有跳转任务详情的功能，可以以任务中心的“ID”，比如 #12，点击后自动跳转到具体的任务详情，你可以参考 mngxops 实现方式。

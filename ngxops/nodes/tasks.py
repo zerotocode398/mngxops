@@ -154,6 +154,7 @@ def _apply_probe_result(
     result: dict,
     *,
     update_nginx: bool,
+    update_credential_error_state: bool = False,
 ) -> None:
     """仅将仍关联原凭证的探测结果写回活动节点。"""
     now = datetime.utcnow()
@@ -168,7 +169,16 @@ def _apply_probe_result(
             )
             if node is None:
                 return
-            if target["is_locked"] or target["credential_error"]:
+            if target["is_locked"]:
+                return
+            if target["credential_error"]:
+                if update_credential_error_state:
+                    node.status = (
+                        "unknown"
+                        if target["credential_error"] == "未配置 SSH 凭证"
+                        else "offline"
+                    )
+                    node.updated_at = now
                 return
             if result["ssh_success"]:
                 node.status = "online"
@@ -225,6 +235,7 @@ def _run_batch_probe(
     node_ids: List[int],
     encryption_key: bytes,
     max_workers: int = _MAX_PROBE_WORKERS,
+    update_credential_error_state: bool = False,
 ):
     """构造并发批量 SSH 与 Nginx 探测任务。"""
     def run(context: TaskContext) -> TaskOutcome:
@@ -250,7 +261,13 @@ def _run_batch_probe(
                 context.check_cancelled()
                 target = future_targets[future]
                 result = future.result()
-                _apply_probe_result(session_factory, target, result, update_nginx=True)
+                _apply_probe_result(
+                    session_factory,
+                    target,
+                    result,
+                    update_nginx=True,
+                    update_credential_error_state=update_credential_error_state,
+                )
                 results.append(result)
                 if not result["ssh_success"]:
                     failures += 1

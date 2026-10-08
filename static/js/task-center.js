@@ -115,6 +115,100 @@
         root.appendChild(resultValue(value, "", expandAll));
     }
 
+    function nodeStatus(result) {
+        if (result.ssh_success === false) return {label: "SSH 失败", style: "bg-danger"};
+        if (result.nginx_available === false) return {label: "未检测到 Nginx", style: "bg-warning text-dark"};
+        if (result.nginx_available === true) return {label: "SSH / Nginx 正常", style: "bg-success"};
+        if (result.ssh_success === true) return {label: "SSH 正常", style: "bg-success"};
+        if (result.success === true || result.status === "success" || result.status === "online") {
+            return {label: result.status === "online" ? "在线" : "成功", style: "bg-success"};
+        }
+        if (result.success === false || result.status === "failed" || result.status === "offline") {
+            return {label: result.status === "offline" ? "离线" : "失败", style: "bg-danger"};
+        }
+        return {label: result.status || "完成", style: "bg-secondary"};
+    }
+
+    function renderNodeResults(root, nodes) {
+        root.replaceChildren();
+        if (!nodes.length) {
+            var empty = document.createElement("p");
+            empty.className = "small text-muted mb-0";
+            empty.textContent = "暂无节点结果";
+            root.appendChild(empty);
+            return;
+        }
+        var table = document.createElement("table");
+        table.className = "table table-sm align-middle mb-0 task-node-result-table";
+        var body = document.createElement("tbody");
+        nodes.slice().sort(function (left, right) {
+            return Number(left.ssh_success === true) - Number(right.ssh_success === true);
+        }).forEach(function (result) {
+            var row = document.createElement("tr");
+            var nodeCell = document.createElement("td");
+            nodeCell.className = "task-node-result-host";
+            var host = document.createElement("strong");
+            host.textContent = result.hostname || result.name || "节点 #" + (result.node_id || "-");
+            nodeCell.appendChild(host);
+            if (result.ip) {
+                var address = document.createElement("small");
+                address.className = "d-block text-muted font-monospace";
+                address.textContent = result.ip;
+                nodeCell.appendChild(address);
+            }
+            var statusCell = document.createElement("td");
+            var status = nodeStatus(result);
+            var badge = document.createElement("span");
+            badge.className = "badge " + status.style;
+            badge.textContent = status.label;
+            statusCell.appendChild(badge);
+            var messageCell = document.createElement("td");
+            messageCell.className = "task-node-result-message";
+            var message = result.message || result.detail || result.action || "-";
+            if (typeof message !== "string") message = JSON.stringify(message);
+            messageCell.textContent = message.length > 240 ? message.slice(0, 237) + "..." : message;
+            var detailCell = document.createElement("td");
+            detailCell.className = "task-node-result-expand";
+            var details = document.createElement("details");
+            details.open = containsFailure(result);
+            var summary = document.createElement("summary");
+            summary.textContent = "详情";
+            details.append(summary, resultValue(result, "", false));
+            detailCell.appendChild(details);
+            row.append(nodeCell, statusCell, messageCell, detailCell);
+            body.appendChild(row);
+        });
+        table.appendChild(body);
+        root.appendChild(table);
+    }
+
+    function renderTaskResult(root, value, expandAll) {
+        var nodeResults = value && Array.isArray(value.nodes) ? value.nodes : [];
+        var hasNodeResults = nodeResults.length > 0 && nodeResults.every(function (item) {
+            return item && typeof item === "object" &&
+                (item.node_id !== undefined || item.hostname || item.ip);
+        });
+        if (hasNodeResults) {
+            renderNodeResults(root, nodeResults);
+            return;
+        }
+        renderResult(root, value, expandAll);
+    }
+
+    function initializeTargetToggle() {
+        var button = document.getElementById("taskToggleTargets");
+        var overflow = document.getElementById("taskTargetOverflow");
+        if (!button || !overflow) return;
+        button.addEventListener("click", function () {
+            var expanded = button.getAttribute("aria-expanded") === "true";
+            button.setAttribute("aria-expanded", expanded ? "false" : "true");
+            overflow.hidden = expanded;
+            button.textContent = expanded
+                ? "展开其余 " + button.dataset.count + " 台"
+                : "收起目标节点";
+        });
+    }
+
     function renderSummary(summary, value) {
         summary.replaceChildren();
         if (!value || typeof value !== "object") return;
@@ -181,64 +275,6 @@
                 }
             }
         );
-    }
-
-    function initializeSearchTags() {
-        var wrapper = document.getElementById("taskSearchTagWrapper");
-        var field = document.getElementById("taskSearchField");
-        var hidden = document.getElementById("taskSearchHidden");
-        var form = document.getElementById("taskCenterFilterForm");
-        if (!wrapper || !field || !hidden || !form) return;
-
-        function updateHidden() {
-            hidden.value = Array.from(wrapper.querySelectorAll(".task-tag-badge"))
-                .map(function (badge) { return badge.getAttribute("data-value"); })
-                .join(",");
-        }
-
-        function addTag(text) {
-            var value = text.trim();
-            if (!value) return;
-            var badge = document.createElement("span");
-            badge.className = "task-tag-badge";
-            badge.setAttribute("data-value", value);
-            var label = document.createElement("span");
-            label.textContent = value;
-            var remove = document.createElement("button");
-            remove.type = "button";
-            remove.className = "task-tag-remove";
-            remove.setAttribute("aria-label", "移除关键词 " + value);
-            remove.textContent = "×";
-            remove.addEventListener("click", function () {
-                badge.remove();
-                updateHidden();
-                field.focus();
-            });
-            badge.append(label, remove);
-            wrapper.insertBefore(badge, field);
-            updateHidden();
-        }
-
-        hidden.value.split(/[，,]/).map(function (value) { return value.trim(); })
-            .filter(Boolean).forEach(function (value) { addTag(value); });
-        field.value = "";
-        field.addEventListener("keydown", function (event) {
-            if (event.key === "Enter" || event.key === ",") {
-                event.preventDefault();
-                addTag(field.value);
-                field.value = "";
-                form.submit();
-            } else if (event.key === "Backspace" && !field.value) {
-                var badges = wrapper.querySelectorAll(".task-tag-badge");
-                if (badges.length) {
-                    badges[badges.length - 1].remove();
-                    updateHidden();
-                }
-            }
-        });
-        wrapper.addEventListener("click", function (event) {
-            if (event.target === wrapper) field.focus();
-        });
     }
 
     function initializeRowNavigation() {
@@ -315,7 +351,11 @@
         var initialResult = null;
         try { initialResult = JSON.parse(resultElement.textContent); } catch (error) {}
         try { fieldLabels = JSON.parse(labelsElement.textContent); } catch (error) {}
-        renderResult(resultRoot, initialResult, detail.getAttribute("data-is-config-sync") === "true");
+        renderTaskResult(
+            resultRoot,
+            initialResult,
+            detail.getAttribute("data-is-config-sync") === "true"
+        );
         renderSummary(summaryRoot, initialResult && initialResult.summary);
         var busy = false;
         if (loadMoreLogs) {
@@ -359,7 +399,11 @@
                     loadMoreLogs.hidden = !payload.has_more_logs;
                 }
                 if (payload.result_tree !== null && payload.result_tree !== undefined) {
-                    renderResult(resultRoot, payload.result_tree, detail.getAttribute("data-is-config-sync") === "true");
+                    renderTaskResult(
+                        resultRoot,
+                        payload.result_tree,
+                        detail.getAttribute("data-is-config-sync") === "true"
+                    );
                     renderSummary(summaryRoot, payload.result_tree.summary);
                 }
                 if (terminalStatuses.indexOf(payload.status) >= 0) {
@@ -384,7 +428,7 @@
         document.querySelectorAll(".task-cancel-button").forEach(function (button) {
             button.addEventListener("click", function () { cancelTask(button); });
         });
-        initializeSearchTags();
+        initializeTargetToggle();
         initializeRowNavigation();
         initializeListPolling();
         initializeDetailPolling();

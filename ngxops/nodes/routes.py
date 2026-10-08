@@ -1,7 +1,7 @@
 """提供节点、节点组页面及不含敏感信息的选择器 API。"""
 
 import math
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 from urllib.parse import quote
 
@@ -56,6 +56,22 @@ MAX_BATCH_COUNT = 3
 MAX_GROUPS_PER_NODE = 3
 MAX_NAME_LENGTH = 100
 MAX_DESCRIPTION_LENGTH = 4000
+_BEIJING_TZ = timezone(timedelta(hours=8), name="CST")
+
+
+def _beijing_datetime(value: Optional[datetime]) -> Optional[datetime]:
+    """将数据库中的 UTC 时间转换为带时区的北京时间。"""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(_BEIJING_TZ)
+
+
+def _beijing_datetime_display(value: Optional[datetime]) -> str:
+    """格式化节点列表中的探测时间为北京时间。"""
+    local_value = _beijing_datetime(value)
+    return local_value.strftime("%Y-%m-%d %H:%M") if local_value else "未探测"
 
 
 class NodeApiItem(BaseModel):
@@ -162,6 +178,7 @@ class NodeOperationResponse(BaseModel):
     success: bool = True
     message: str
     count: int
+    task_id: Optional[int] = None
 
 
 class NodeImportError(BaseModel):
@@ -426,6 +443,10 @@ def list_nodes(
         "nodes/list.html",
         {
             "nodes": nodes,
+            "probe_time_display": {
+                node.id: _beijing_datetime_display(node.last_probe_at)
+                for node in nodes
+            },
             "groups": groups,
             "search": request.query_params.get("search", ""),
             "group_filter": request.query_params.get("group", ""),
@@ -961,7 +982,8 @@ def api_batch_delete_nodes(
     "/lock",
     response_model=NodeOperationResponse,
     summary="批量锁定或解锁节点",
-    responses=api_error_responses((400, 401, 403, 404, 422, 500)),
+    description="锁定会将 SSH 状态设为离线；解锁后自动创建 SSH/Nginx 探测任务并返回 task_id。",
+    responses=api_error_responses((400, 401, 403, 404, 422, 500, 503)),
 )
 def api_lock_nodes(
     request: Request,
@@ -990,17 +1012,53 @@ def api_lock_nodes(
     )
     if len(nodes) != len(set(payload.node_ids)):
         raise HTTPException(status_code=404, detail="部分节点不存在或已删除")
-    for node in nodes:
-        node.is_locked = action == "lock"
-        node.status = "offline" if action == "lock" else "unknown"
-        node.updated_at = datetime.utcnow()
-    session.commit()
-    message = (
-        "已锁定 {} 个节点".format(len(nodes))
-        if action == "lock"
-        else "已解锁 {} 个节点，SSH 状态已重置为未知".format(len(nodes))
+    if action == "unlock" and getattr(request.app.state, "task_executor", None) is None:
+        raise HTTPException(status_code=503, detail="后台任务执行器尚未启动")
+
+    with suppress_model_audit(session):
+        for node in nodes:
+            node.is_locked = action == "lock"
+            node.status = "offline" if action == "lock" else "unknown"
+            node.updated_at = datetime.utcnow()
+        if action == "lock":
+            node_names = "、".join(node.hostname for node in nodes[:10])
+            remainder = len(nodes) - min(len(nodes), 10)
+            if remainder:
+                node_names += "等 {} 台".format(len(nodes))
+            write_audit_log(
+                session,
+                "节点管理",
+                "批量锁定节点",
+                "锁定 {} 台节点：{}".format(len(nodes), node_names),
+            )
+        session.commit()
+
+    if action == "lock":
+        return NodeOperationResponse(
+            message="已锁定 {} 个节点，SSH 状态已更新为离线".format(len(nodes)),
+            count=len(nodes),
+        )
+
+    task_id = _enqueue_node_task(
+        request,
+        session,
+        user,
+        operation_type="node_batch_test",
+        runner=_run_batch_probe(
+            request.app.state.database.session_factory,
+            [node.id for node in nodes],
+            request.app.state.credential_encryption_key,
+            update_credential_error_state=True,
+        ),
+        detail="节点解锁后 SSH/Nginx 探测（{} 台）".format(len(nodes)),
+        nodes=nodes,
+        subject_type="node",
     )
-    return NodeOperationResponse(message=message, count=len(nodes))
+    return NodeOperationResponse(
+        message="已解锁 {} 个节点，SSH/Nginx 探测任务已启动".format(len(nodes)),
+        count=len(nodes),
+        task_id=task_id,
+    )
 
 
 @api_router.get(
@@ -1161,8 +1219,8 @@ def api_get_node_detail(
             nginx_path=node.nginx_path or "",
             nginx_available=node.nginx_available,
             nginx_version=node.nginx_version or "",
-            last_probe_at=node.last_probe_at,
-            last_nginx_probe_at=node.last_nginx_probe_at,
+            last_probe_at=_beijing_datetime(node.last_probe_at),
+            last_nginx_probe_at=_beijing_datetime(node.last_nginx_probe_at),
             credential_name=credential.name if credential else "未配置",
             credential_username=credential.username if credential else "-",
             credential_auth_type=credential.auth_type if credential else "-",

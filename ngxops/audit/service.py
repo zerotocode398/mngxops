@@ -15,6 +15,7 @@ _TRACKED_TABLES = {
     "auth_user": "用户管理",
     "ngxops_credentials": "凭证管理",
     "ngxops_nodes": "节点管理",
+    "ngxops_node_sync_settings": "节点管理",
     "ngxops_node_groups": "节点分组",
     "ngxops_configs": "配置管理",
     "ngxops_config_bindings": "配置绑定",
@@ -24,6 +25,16 @@ _TRACKED_TABLES = {
     "ngxops_user_profiles": "用户管理",
     "ngxops_nginx_source_packages": "Nginx 升级",
     "ngxops_nginx_module_packages": "Nginx 升级",
+}
+
+_NODE_PROFILE_FIELDS = {
+    "hostname": "主机名",
+    "ip": "IP 地址",
+    "port": "SSH 端口",
+    "credential_id": "SSH 凭证",
+    "environment": "环境",
+    "nginx_path": "Nginx 路径",
+    "description": "备注",
 }
 
 _TASK_AUDIT_MAP = {
@@ -159,10 +170,36 @@ def _task_event(obj, actor_id: Optional[int], ip: str) -> Optional[Dict[str, obj
     module, action = _TASK_AUDIT_MAP.get(
         operation_type, ("任务中心", operation_type[:100])
     )
-    hosts = getattr(obj, "target_hostnames", "") or ""
-    ips = getattr(obj, "target_ips", "") or ""
-    targets = len([part for part in (hosts or ips).split(",") if part.strip()])
-    detail = "创建任务，目标 {} 台".format(targets) if targets else "创建异步任务"
+    hosts = [
+        part.strip()
+        for part in (getattr(obj, "target_hostnames", "") or "").split(",")
+        if part.strip()
+    ]
+    ips = [
+        part.strip()
+        for part in (getattr(obj, "target_ips", "") or "").split(",")
+        if part.strip()
+    ]
+    total = max(len(hosts), len(ips))
+    targets = []
+    for index in range(total):
+        host = hosts[index] if index < len(hosts) else ""
+        address = ips[index] if index < len(ips) else ""
+        if host and address:
+            targets.append("{} ({})".format(host, address))
+        else:
+            targets.append(host or address)
+    target_summary = ""
+    if targets:
+        preview = targets[:5]
+        remaining = total - len(preview)
+        target_summary = "；目标 {} 台：{}".format(
+            total,
+            "、".join(preview)
+            + ("；另有 {} 台".format(remaining) if remaining else ""),
+        )
+    task_detail = (getattr(obj, "detail", "") or "").strip()
+    detail = "创建任务：{}{}".format(task_detail or action, target_summary)
     return {
         "user_id": actor_id,
         "username": "",
@@ -210,6 +247,49 @@ def _capture_before_flush(session: Session, flush_context, instances) -> None:
             if object_action == "update" and not session.is_modified(
                 obj, include_collections=True
             ):
+                continue
+            if table_name == "ngxops_nodes" and object_action == "update":
+                changed_fields = [
+                    label
+                    for field, label in _NODE_PROFILE_FIELDS.items()
+                    if state.attrs[field].history.has_changes()
+                ]
+                if state.attrs.groups.history.has_changes():
+                    changed_fields.append("节点组")
+                if changed_fields:
+                    pending.append(
+                        {
+                            "user_id": actor_id,
+                            "username": username,
+                            "module": "节点管理",
+                            "action": "节点调整",
+                            "ip": ip,
+                            "result": "success",
+                            "detail": "调整节点资料：{}；变更字段：{}".format(
+                                _object_label(obj, table_name), "、".join(changed_fields)
+                            ),
+                            "task_id": None,
+                            "source_batch": "",
+                        }
+                    )
+                    continue
+            if table_name == "ngxops_node_sync_settings":
+                if object_action == "update" and state.attrs.main_conf_path.history.has_changes():
+                    pending.append(
+                        {
+                            "user_id": actor_id,
+                            "username": username,
+                            "module": "节点管理",
+                            "action": "节点调整",
+                            "ip": ip,
+                            "result": "success",
+                            "detail": "调整节点 #{}；变更字段：Nginx 主配置路径".format(
+                                getattr(obj, "node_id", "?")
+                            ),
+                            "task_id": None,
+                            "source_batch": "",
+                        }
+                    )
                 continue
             if (
                 table_name == "ngxops_nodes"

@@ -237,10 +237,10 @@ def task_detail(
         select(TaskLog)
         .where(TaskLog.task_id == task.id)
         .order_by(TaskLog.id.asc())
-        .limit(201)
+        .limit(51)
     ).all()
-    has_more_logs = len(log_rows) > 200
-    logs = log_rows[:200]
+    has_more_logs = len(log_rows) > 50
+    logs = log_rows[:50]
     targets = _target_nodes(task.target_hostnames, task.target_ips)
     target_configs = [
         item.strip()
@@ -278,7 +278,8 @@ def task_detail(
                 task.operation_type, task.operation_type
             ),
             "status_label": STATUS_LABELS.get(task.status, task.status),
-            "targets": targets[:50],
+            "targets": targets,
+            "target_node_count": len(targets),
             "target_configs": target_configs[:50],
             "target_config_count": len(target_configs),
             "trigger_username": trigger_username,
@@ -309,13 +310,10 @@ def _target_nodes(hostnames: str, ips: str) -> list:
     names = [item.strip() for item in (hostnames or "").split(",")]
     addresses = [item.strip() for item in (ips or "").split(",")]
     targets = []
-    seen = set()
-    for index, hostname in enumerate(names):
-        if not hostname or hostname in seen:
-            continue
-        seen.add(hostname)
+    for index in range(max(len(names), len(addresses))):
+        hostname = names[index] if index < len(names) else ""
         ip = addresses[index] if index < len(addresses) else ""
-        targets.append("{} ({})".format(ip, hostname) if ip else hostname)
-    if not targets and ips:
-        targets.extend(item.strip() for item in ips.split(",") if item.strip())
+        target = "{} ({})".format(ip, hostname) if ip and hostname else hostname or ip
+        if target:
+            targets.append(target)
     return targets

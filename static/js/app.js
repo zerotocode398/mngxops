@@ -386,7 +386,7 @@
         confirmModal.show();
     }
 
-    function showToast(message, type, duration) {
+    function showToast(message, type, duration, action) {
         var icons = {
             success: "bi-check-circle-fill",
             danger: "bi-x-circle-fill",
@@ -400,7 +400,16 @@
         }
         var $toast = $("<div>", { "class": "toast-item toast-" + kind, role: "status" });
         $("<i>", { "class": "bi " + icons[kind], "aria-hidden": "true" }).appendTo($toast);
-        $("<span>").text(message == null ? "" : String(message)).appendTo($toast);
+        var $content = $("<div>", {"class": "toast-content"});
+        $("<span>").text(message == null ? "" : String(message)).appendTo($content);
+        if (action && action.href && action.label) {
+            $("<a>", {
+                "class": "toast-action",
+                href: action.href,
+                text: action.label
+            }).appendTo($content);
+        }
+        $content.appendTo($toast);
         var $close = $("<button>", {
             "class": "toast-close",
             type: "button",
@@ -413,13 +422,26 @@
             .css("animation-duration", lifetime + "ms")
             .appendTo($toast);
         $("#toastContainer").append($toast);
-        window.setTimeout(function () {
+        var closeTimer = window.setTimeout(function () {
             if (!$toast.parent().length) {
                 return;
             }
             $toast.addClass("removing");
             window.setTimeout(function () { $toast.remove(); }, 220);
         }, lifetime);
+        if (action && action.href) {
+            $toast.on("mouseenter", function () {
+                window.clearTimeout(closeTimer);
+                $toast.find(".toast-progress").css("animation-play-state", "paused");
+            }).on("mouseleave", function () {
+                $toast.find(".toast-progress").css("animation-play-state", "running");
+                closeTimer = window.setTimeout(function () {
+                    if (!$toast.parent().length) return;
+                    $toast.addClass("removing");
+                    window.setTimeout(function () { $toast.remove(); }, 220);
+                }, lifetime);
+            });
+        }
     }
 
     function showAlert(title, message, asHtml) {

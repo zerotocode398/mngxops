@@ -4,7 +4,7 @@
 {% block page_title %}任务详情 #{{ task.id }}{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=1">
 {% endblock %}
 
 {% block content %}
@@ -56,10 +56,19 @@
 
         {% if targets %}
         <div class="mb-3">
-            <h3 class="h6 mb-2"><i class="bi bi-server me-1" aria-hidden="true"></i>目标节点（{{ targets|length }}{% if targets|length == 50 %}+{% endif %}）</h3>
+            <h3 class="h6 mb-2"><i class="bi bi-server me-1" aria-hidden="true"></i>目标节点（{{ target_node_count }}）</h3>
             <div class="d-flex flex-wrap gap-1">
-                {% for target in targets %}<span class="badge badge-outline">{{ target }}</span>{% endfor %}
+                {% for target in targets[:3] %}<span class="badge badge-outline">{{ target }}</span>{% endfor %}
             </div>
+            {% if target_node_count > 3 %}
+            <div class="d-flex flex-wrap gap-1 mt-1" id="taskTargetOverflow" hidden>
+                {% for target in targets[3:] %}<span class="badge badge-outline">{{ target }}</span>{% endfor %}
+            </div>
+            <button class="btn btn-link btn-sm px-0 mt-1" type="button" id="taskToggleTargets"
+                    data-count="{{ target_node_count - 3 }}" aria-expanded="false">
+                展开其余 {{ target_node_count - 3 }} 台
+            </button>
+            {% endif %}
         </div>
         {% endif %}
         {% if target_configs %}
@@ -112,5 +121,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/task-center.js') }}"></script>
+<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=1"></script>
 {% endblock %}

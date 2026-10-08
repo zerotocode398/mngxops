@@ -53,34 +53,34 @@
         </form>
 
         {% if permissions.ssh_test or permissions.lock or permissions.unlock or permissions.delete %}
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
             <div class="d-flex flex-wrap align-items-center gap-2">
-                <span class="small text-muted" id="selectedNodeCount">未选择节点</span>
-                {% if permissions.ssh_test %}<button class="btn btn-outline-primary btn-sm node-bulk-probe" type="button" disabled><i class="bi bi-plug me-1" aria-hidden="true"></i>批量探测 SSH</button>{% endif %}
+                {% if permissions.delete %}<button class="btn btn-outline-danger btn-sm node-bulk-delete" type="button" disabled><i class="bi bi-trash me-1" aria-hidden="true"></i>批量删除</button>{% endif %}
+                {% if permissions.ssh_test %}<button class="btn btn-outline-primary btn-sm node-bulk-probe" type="button" disabled><i class="bi bi-plug me-1" aria-hidden="true"></i>批量探测</button>{% endif %}
                 {% if permissions.lock %}<button class="btn btn-outline-warning btn-sm node-bulk-action" type="button" data-action="lock" disabled><i class="bi bi-lock me-1" aria-hidden="true"></i>批量锁定</button>{% endif %}
                 {% if permissions.unlock %}<button class="btn btn-outline-success btn-sm node-bulk-action" type="button" data-action="unlock" disabled><i class="bi bi-unlock me-1" aria-hidden="true"></i>批量解锁</button>{% endif %}
             </div>
-            {% if permissions.delete %}<button class="btn btn-outline-danger btn-sm node-bulk-delete" type="button" disabled><i class="bi bi-trash me-1" aria-hidden="true"></i>批量删除</button>{% endif %}
+            <span class="small text-muted" id="selectedNodeCount">未选择节点</span>
         </div>
-        {% if permissions.ssh_test %}<div class="small text-muted mb-2" id="nodeProbeTaskStatus" aria-live="polite"></div>{% endif %}
+        {% if permissions.ssh_test or permissions.unlock %}<div class="small text-muted mb-2" id="nodeProbeTaskStatus" aria-live="polite"></div>{% endif %}
         {% endif %}
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle data-table mb-0">
                 <thead class="table-light"><tr>
                     <th class="text-center" style="width:34px"><input class="form-check-input" type="checkbox" id="selectAllNodes" aria-label="全选本页节点"></th>
-                    <th>主机名 / IP</th><th>节点组</th><th>环境</th><th>SSH</th><th>Nginx</th><th>凭证</th><th>探测时间</th><th class="text-end">操作</th>
+                    <th>主机名 / IP</th><th>节点组</th><th>环境</th><th>SSH</th><th>Nginx</th><th>凭证</th><th>探测时间（CST）</th><th class="text-end">操作</th>
                 </tr></thead>
                 <tbody>
                 {% for node in nodes %}
                     <tr data-node-id="{{ node.id }}">
                         <td class="text-center"><input class="form-check-input node-select" type="checkbox" value="{{ node.id }}" aria-label="选择 {{ node.hostname }}"></td>
-                        <td><strong><button class="btn btn-link btn-sm p-0 align-baseline node-detail-open" type="button" data-node-id="{{ node.id }}">{{ node.hostname }}</button></strong>{% if node.is_locked %}<span class="badge text-bg-warning ms-1">已锁定</span>{% endif %}<br><span class="text-muted small font-monospace">{{ node.ip }}:{{ node.port }}</span></td>
+                        <td><strong><button class="btn btn-link btn-sm p-0 align-baseline node-detail-open" type="button" data-node-id="{{ node.id }}">{{ node.hostname }}</button></strong>{% if node.is_locked %}<span class="badge text-bg-warning ms-1 node-locked-badge">已锁定</span>{% endif %}<br><span class="text-muted small font-monospace">{{ node.ip }}:{{ node.port }}</span></td>
                         <td>{% for group in node.groups %}<span class="badge text-bg-light border me-1">{{ group.name }}</span>{% else %}<span class="text-muted">-</span>{% endfor %}</td>
                         <td>{% if node.environment == "prod" %}<span class="badge text-bg-danger">生产</span>{% elif node.environment == "test" %}<span class="badge text-bg-warning">测试</span>{% else %}<span class="badge text-bg-info">开发</span>{% endif %}</td>
                         <td><span class="badge node-ssh-badge {% if node.status == 'online' %}text-bg-success{% elif node.status == 'offline' %}text-bg-secondary{% else %}text-bg-light border text-muted{% endif %}" data-status="{{ node.status }}">{% if node.status == "online" %}在线{% elif node.status == "offline" %}离线{% else %}未知{% endif %}</span></td>
                         <td><span class="badge node-nginx-badge {% if node.nginx_available is true %}text-bg-success{% elif node.nginx_available is false %}text-bg-warning{% else %}text-bg-light border text-muted{% endif %}" data-available="{% if node.nginx_available is true %}true{% elif node.nginx_available is false %}false{% else %}null{% endif %}" data-version="{{ node.nginx_version }}">{% if node.nginx_available is true %}{{ node.nginx_version or '可用' }}{% elif node.nginx_available is false %}未检测到{% else %}未知{% endif %}</span></td>
                         <td>{% if node.credential %}<span title="{{ node.credential.username }}">{{ node.credential.name }}</span>{% else %}<span class="text-muted">未配置</span>{% endif %}</td>
-                        <td><small class="text-muted node-probe-time">{{ node.last_probe_at.strftime("%Y-%m-%d %H:%M") if node.last_probe_at else "未探测" }}</small></td>
+                        <td><small class="text-muted node-probe-time">{{ probe_time_display[node.id] }}</small></td>
                         <td class="text-end text-nowrap">
                             {% if permissions.ssh_test %}<button class="btn btn-outline-success btn-sm node-probe" type="button" data-node-id="{{ node.id }}" title="探测 SSH 与 Nginx" aria-label="探测 {{ node.hostname }}"{% if node.is_locked or not node.credential or not node.credential.is_enabled %} disabled{% endif %}><i class="bi bi-plug" aria-hidden="true"></i></button>{% endif %}
                             {% if permissions.update %}<a class="btn btn-outline-primary btn-sm" href="/nodes/{{ node.id }}/edit/?return_to={{ list_return_to|urlencode }}" title="编辑节点" aria-label="编辑节点 {{ node.hostname }}"><i class="bi bi-pencil" aria-hidden="true"></i></a>{% endif %}
@@ -111,7 +111,7 @@
                         <dt class="col-4">凭证</dt><dd class="col-8" id="detailCredential">-</dd>
                         <dt class="col-4">节点组</dt><dd class="col-8" id="detailGroups">-</dd>
                         <dt class="col-4">备注</dt><dd class="col-8 text-break" id="detailDescription">-</dd>
-                        <dt class="col-4">SSH 探测</dt><dd class="col-8" id="detailProbeAt">-</dd>
+                        <dt class="col-4">SSH 探测（CST）</dt><dd class="col-8" id="detailProbeAt">-</dd>
                     </dl>
                 </div>
                 <div class="col-md-6 border-start-md">
@@ -234,16 +234,6 @@ $(function () {
         if (!ids.length && !window.confirm("未选择节点，将按当前筛选条件导出全部匹配节点。继续吗？")) return;
         window.location.href = "/api/nodes/export" + (query ? "?" + query : "");
     });
-    $(".node-bulk-action").on("click", function () {
-        var action = $(this).data("action");
-        var ids = selectedIds();
-        if (ids.length > batchMax) return;
-        window.showConfirm("确认节点操作", (action === "lock" ? "锁定" : "解锁") + "选中的 " + ids.length + " 个节点？", function () {
-            $.ajax({url: "/api/nodes/lock", method: "POST", contentType: "application/json", data: JSON.stringify({action: action, node_ids: ids.map(Number)})})
-                .done(function (result) { reloadWithToast(result.message, "success"); })
-                .fail(function (xhr) { window.showToast(xhr.responseJSON && xhr.responseJSON.message || "操作失败", "danger"); });
-        });
-    });
     $(".node-bulk-delete").on("click", function () {
         var ids = selectedIds();
         if (ids.length > batchMax) return;
@@ -285,5 +275,5 @@ $(function () {
     });
 });
 </script>
-<script src="{{ request.url_for('static', path='js/nodes.js') }}"></script>
+<script src="{{ request.url_for('static', path='js/nodes.js') }}?v=1"></script>
 {% endblock %}

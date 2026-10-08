@@ -34,7 +34,8 @@
 ## 任务中心页面
 
 - `GET /tasks/` 提供统一任务列表，支持多关键词搜索、任务类型/状态筛选、每页 10/15/30/50 条和分页；筛选项自动提交。
-- `GET /tasks/{task_id}/` 展示触发人、批次、目标、进度、结构化结果树及持久化日志。活跃任务每 2 秒轮询状态、结果和增量日志；超过首屏日志量时可继续读取。
+- `GET /tasks/{task_id}/` 展示触发人、批次、目标、进度、结构化结果树及持久化日志。活跃任务每 2 秒轮询状态、结果和增量日志；首屏载入 50 条日志，超过首屏日志量时可继续读取。包含结构化节点列表的任务以紧凑清单显示逐节点状态和摘要，详细结果按需展开。
+- 目标节点默认显示前三台，更多目标可展开；节点列表 SSH 操作完成提示可直接跳转到对应任务详情。
 - `releases.read` 和超级管理员可查看全部任务。其他具备相关业务权限的用户仅查看自己触发且操作类型匹配的任务；详情和取消均隐藏不可见任务。
 - 发布/回滚批次链接跳转发布历史；其他批次可回到任务中心按批次搜索。
 - `config_discover` 是 ngxops 配置同步流程实际创建的操作类型，因此任务中心提供该筛选项。旧文档中未启用的 `config_drift_check` 与 `config_glob_preview` 保留兼容但隐藏。
@@ -47,7 +48,7 @@ NX-031 配置任务使用 `config_discover` 执行只读远程发现，使用 `c
 
 NX-040 发布使用 `release_publish` 任务。具备 `releases.publish` 的触发人可轮询本人任务；批次号保存在 `source_batch`，结果树按节点和绑定保存版本、远程路径摘要、阶段和摘要，不保存配置正文或 SSH 凭证。发布前先写节点级备份，再经 SFTP 上传临时文件，校验大小和 MD5、复制并校验目标文件；同节点所有绑定通过 `nginx -t` 后统一 reload。`marked_deleted` 绑定先备份再删除，节点统一 reload 成功后物理删除本地绑定。任一绑定准备失败或 reload 失败时，会恢复本节点本批已替换或删除的文件。取消会关闭已登记 SSH 客户端并在检查点恢复尚未 reload 的文件；已经发往远端的命令可能无法中止。远程命令原始输出不会保存，避免 `nginx -t` 回显配置行。详见 [releases.md](releases.md)。
 
-节点探测任务类型为 `node_ssh_test`、`node_batch_test`、`node_system_info` 和 `node_nginx_version`。具备 `nodes.ssh_test` 权限的用户可轮询本人创建的这些任务；结果树只包含节点标识、SSH/Nginx 状态、系统信息及摘要，不包含凭证明文或私钥。NX-040 发布任务使用 `release_publish` 类型；详情见 [releases.md](releases.md)。
+节点探测任务类型为 `node_ssh_test`、`node_batch_test`、`node_system_info` 和 `node_nginx_version`。具备 `nodes.ssh_test` 权限的用户可轮询本人创建的这些任务；解锁后自动创建的 `node_batch_test` 也允许 `nodes.unlock` 用户轮询本人任务。结果树只包含节点标识、SSH/Nginx 状态、系统信息及摘要，不包含凭证明文或私钥。NX-040 发布任务使用 `release_publish` 类型；详情见 [releases.md](releases.md)。
 
 NX-050 升级和二进制回滚分别使用 `nginx_upgrade`、`nginx_rollback`。具备 `upgrade.execute` 的触发人可轮询本人任务，具备 `upgrade.read` 的触发人也可读取本人升级任务；结果树和日志沿用统一任务协议。取消限升级任务的参数获取和源码包上传阶段，回滚任务不可取消；升级记录、配置差异与回滚入口见 [upgrade.md](upgrade.md)。
 

@@ -62,7 +62,7 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 | `GET /api/nodes/{node_id}` | `nodes.read` 会话 | `NodeDetailResponse` | 401、403、404、422、500 |
 | `GET /api/nodes/groups` | `nodes.read` 会话 | `NodeGroupListResponse` | 401、403、422、500 |
 | `POST /api/nodes/batch-delete` | `nodes.delete` 会话与 CSRF | `NodeOperationResponse` | 400、401、403、404、409、422、500 |
-| `POST /api/nodes/lock` | `nodes.lock` 或 `nodes.unlock` 会话与 CSRF | `NodeOperationResponse` | 400、401、403、404、422、500 |
+| `POST /api/nodes/lock` | `nodes.lock` 或 `nodes.unlock` 会话与 CSRF | `NodeOperationResponse`；解锁返回探测任务 `task_id` | 400、401、403、404、422、500、503 |
 | `POST /api/nodes/{node_id}/probe` | `nodes.ssh_test` 会话与 CSRF | `NodeTaskCreatedResponse`（202） | 400、401、403、404、422、500、503 |
 | `POST /api/nodes/probe` | `nodes.ssh_test` 会话与 CSRF | `NodeTaskCreatedResponse`（202） | 401、403、404、422、500、503 |
 | `POST /api/nodes/{node_id}/system-info` | `nodes.ssh_test` 会话与 CSRF | `NodeTaskCreatedResponse`（202） | 400、401、403、404、422、500、503 |
@@ -108,7 +108,7 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 
 任务筛选、分页、增量日志游标、可见范围和取消检查点见 [tasks.md](tasks.md)。`GET /api/tasks` 的 `search` 参数按逗号切分，词间 AND，单词在批次号、主机名和 IP 中 OR；RBAC 管理范围和权限来源见 [rbac.md](rbac.md)。后续功能应在对应模块定义请求/响应模型、摘要、参数约束及会产生的状态码，并引用本文件的公共错误协议。
 
-节点探测、系统信息和 Nginx 检测接口返回持久化任务 ID。具备 `nodes.ssh_test` 权限的用户可读取自己创建的对应任务；`GET /api/tasks/{task_id}` 返回实时进度、日志和结果树。
+节点探测、系统信息和 Nginx 检测接口返回持久化任务 ID。具备 `nodes.ssh_test` 权限的用户可读取自己创建的对应任务；解锁后自动创建的批量探测任务也允许 `nodes.unlock` 用户读取。`GET /api/tasks/{task_id}` 返回实时进度、日志和结果树。
 
 `POST /api/nodes/import` 的校验错误按单条原因合并；同一原因影响多行时，`errors[].row` 为 `0`、`errors[].merged` 为 `true`，受影响的 Excel 行号范围放在 `errors[].row_range`，`errors[].message` 仅包含异常原因。未合并错误保留原有行号语义，`row_range` 可省略。页面只显示去重后的 `message`，不显示行号。出现校验错误时整份工作簿不会写入。
 

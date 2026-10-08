@@ -93,6 +93,13 @@ $(function () {
     function patchNodeDetail(node) {
         var $row = $("tr[data-node-id='" + node.id + "']");
         var statusLabels = {online: "在线", offline: "离线", unknown: "未知"};
+        var $lockedBadge = $row.find(".node-locked-badge");
+        if (node.is_locked && !$lockedBadge.length) {
+            $("<span class='badge text-bg-warning ms-1 node-locked-badge'>已锁定</span>")
+                .insertAfter($row.find(".node-detail-open").closest("strong"));
+        } else if (!node.is_locked) {
+            $lockedBadge.remove();
+        }
         var $sshBadge = $row.find(".node-ssh-badge");
         if ($sshBadge.length) {
             $sshBadge.attr("data-status", node.status)
@@ -148,7 +155,62 @@ $(function () {
             refreshNodeDetail(result.node_id);
         });
         $("#nodeProbeTaskStatus").text("任务 #" + task.id + " · " + task.detail);
-        window.showToast(task.detail || successMessage, task.status === "success" ? "success" : "warning");
+        showTaskToast(task, successMessage);
+    }
+
+    function showTaskToast(task, fallback) {
+        window.showToast(
+            task.detail || fallback,
+            task.status === "success" ? "success" : "warning",
+            10000,
+            {label: "查看完整日志", href: "/tasks/" + encodeURIComponent(task.id) + "/"}
+        );
+    }
+
+    function selectedNodeIds() {
+        return $(".node-select:checked").map(function () {
+            return Number(this.value);
+        }).get();
+    }
+
+    function bulkNodeAction(button) {
+        var action = $(button).data("action");
+        var nodeIds = selectedNodeIds();
+        if (!nodeIds.length || nodeIds.length > batchMax) return;
+        window.showConfirm(
+            "确认节点操作",
+            (action === "lock" ? "锁定" : "解锁") + "选中的 " + nodeIds.length + " 个节点？",
+            function () {
+                $.ajax({
+                    url: "/api/nodes/lock",
+                    method: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({action: action, node_ids: nodeIds})
+                }).done(function (result) {
+                    if (action === "lock") {
+                        try {
+                            window.sessionStorage.setItem(
+                                "ngxops.nodeListToast",
+                                JSON.stringify({message: result.message, type: "success"})
+                            );
+                        } catch (error) {}
+                        window.location.reload();
+                        return;
+                    }
+                    nodeIds.forEach(refreshNodeDetail);
+                    $("#nodeProbeTaskStatus").text(result.message);
+                    pollTask(result.task_id, function (task) {
+                        $("#nodeProbeTaskStatus").text(
+                            "任务 #" + task.id + " · " + task.progress + "% · " + task.detail
+                        );
+                    }, function (task, xhr) {
+                        completeNodeTask(task, xhr, "解锁后 SSH/Nginx 探测完成");
+                    });
+                }).fail(function (xhr) {
+                    showRequestError(xhr, "节点操作失败");
+                });
+            }
+        );
     }
 
     function openNodeDetail(nodeId) {
@@ -179,6 +241,7 @@ $(function () {
             if (task.status === "success" && node && node.system_info) renderSystemInfo(node.system_info);
             else $("#detailSystemInfo").text(task.detail || "系统信息采集失败");
             refreshNodeDetail(activeNodeId);
+            showTaskToast(task, "系统信息采集完成");
         });
     }
 
@@ -199,7 +262,7 @@ $(function () {
                 $("#detailNginxVersion").text(node.nginx_version || "-");
             }
             refreshNodeDetail(activeNodeId);
-            window.showToast(task.detail, task.status === "success" ? "success" : "warning");
+            showTaskToast(task, "Nginx 版本检测完成");
         });
     }
 
@@ -228,12 +291,15 @@ $(function () {
         probeNodes([Number($(this).data("node-id"))]);
     });
     $(".node-bulk-probe").on("click", function () {
-        var ids = $(".node-select:checked").map(function () { return Number(this.value); }).get();
+        var ids = selectedNodeIds();
         if (ids.length > batchMax) {
             window.showToast("批量探测最多选择 " + batchMax + " 个节点", "warning");
             return;
         }
         probeNodes(ids);
+    });
+    $(".node-bulk-action").on("click", function () {
+        bulkNodeAction(this);
     });
     $("#refreshSystemInfoBtn").on("click", refreshSystemInfo);
     $("#detectNginxBtn").on("click", detectNginx);

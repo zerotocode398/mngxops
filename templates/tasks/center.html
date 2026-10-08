@@ -4,7 +4,7 @@
 {% block page_title %}任务中心{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=1">
 {% endblock %}
 
 {% block content %}
@@ -19,42 +19,38 @@
         {% endif %}
     </div>
     <div class="card-body">
-        <form method="get" class="row g-2 align-items-center mb-3" id="taskCenterFilterForm">
-            <div class="col-lg-6">
-                <div class="task-tag-input form-control form-control-sm" id="taskSearchTagWrapper">
-                    <input type="text" class="task-tag-input-field" id="taskSearchField"
-                           placeholder="搜索主机名或 IP 或批次号" aria-label="搜索主机名、IP 或批次号">
-                </div>
-                <input type="hidden" name="search" id="taskSearchHidden" value="{{ search }}">
+        <form method="get" class="row g-2 align-items-center mb-3" id="taskCenterFilterForm"
+              data-query-submit-on-enter data-preserve-query-focus>
+            <div class="col-12 col-xl-5">
+                <input type="search" class="form-control form-control-sm" name="search" data-query-tags
+                       value="{{ search }}" placeholder="搜索主机名、IP 或批次号" aria-label="搜索主机名、IP 或批次号">
             </div>
-            <div class="col-sm-5 col-lg-3">
+            <div class="col-sm-6 col-xl-3">
                 <select name="operation_type" class="form-select form-select-sm" aria-label="任务类型"
-                        onchange="this.form.submit()">
+                        onchange="this.form.requestSubmit()">
                     <option value="">全部类型</option>
                     {% for value, label in operation_type_choices %}
                     <option value="{{ value }}"{% if operation_type_filter == value %} selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-sm-5 col-lg-2">
+            <div class="col-sm-4 col-xl-2">
                 <select name="status" class="form-select form-select-sm" aria-label="任务状态"
-                        onchange="this.form.submit()">
+                        onchange="this.form.requestSubmit()">
                     <option value="">全部状态</option>
                     {% for value, label in status_choices %}
                     <option value="{{ value }}"{% if status_filter == value %} selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-sm-2 col-lg-1 d-grid">
-                {% if has_any_filter %}
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            <input type="hidden" name="page" value="1">
+            {% if has_any_filter %}
+            <div class="col-auto">
                 <a class="btn btn-outline-secondary btn-sm" href="{{ page_path }}?per_page={{ pagination.per_page }}"
                    title="清除筛选" aria-label="清除筛选"><i class="bi bi-x-circle" aria-hidden="true"></i></a>
-                {% else %}
-                <button class="btn btn-outline-primary btn-sm" type="submit" title="筛选" aria-label="筛选">
-                    <i class="bi bi-search" aria-hidden="true"></i>
-                </button>
-                {% endif %}
             </div>
+            {% endif %}
         </form>
 
         {% if rows %}
@@ -132,5 +128,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/task-center.js') }}"></script>
+<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=1"></script>
 {% endblock %}

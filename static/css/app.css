@@ -652,6 +652,21 @@ body {
 .toast-item.toast-info { background: var(--info); }
 .toast-item.removing { animation: toast-out 0.2s ease-in forwards; }
 
+.toast-content {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    gap: 0.2rem;
+}
+
+.toast-action {
+    width: fit-content;
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
 .toast-close {
     position: absolute;
     top: 0.35rem;
