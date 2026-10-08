@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Sequence, Tuple
 import paramiko
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ngxops.credentials.crypto import decrypt_secret, encrypt_secret
@@ -32,7 +31,7 @@ def build_credential_template_bytes() -> bytes:
     guide = workbook.create_sheet("填写说明")
     guide.append(["凭证批量导入说明"])
     guide.append(["表头和列顺序必须保持不变。"])
-    guide.append(["名称、SSH用户、认证方式为必填；名称与当前用户已有凭证重名时会更新。"])
+    guide.append(["名称、SSH用户、认证方式为必填；名称不能与文件内或当前用户已有凭证重复。"])
     guide.append(["认证方式填写密码认证/password 或密钥认证/key。"])
     guide.append(["密码认证填写密码，密钥认证填写未加密的 RSA、ECDSA 或 Ed25519 私钥。"])
     guide.append(["是否启用填写是/否；留空或填写 - 时默认启用。"])
@@ -91,11 +90,13 @@ def parse_credential_workbook(content: bytes) -> Tuple[List[Dict[str, Any]], Lis
 
 def validate_credential_rows(
     rows: Sequence[Dict[str, Any]],
+    existing_names: Sequence[str] = (),
 ) -> Tuple[List[dict], List[dict]]:
     """整份校验凭证字段、同名项和认证材料后返回可导入数据。"""
     errors = []
     cleaned = []
     seen_names = set()
+    existing_name_set = set(existing_names)
     for row in rows:
         row_errors = []
         name = str(row.get("name") or "").strip()
@@ -111,15 +112,19 @@ def validate_credential_rows(
         elif len(name) > 100:
             row_errors.append("名称长度不能超过 100 个字符")
         elif name in seen_names:
-            row_errors.append("文件中存在重复名称")
+            row_errors.append("工作簿中凭证名称「{}」重复".format(name))
         else:
             seen_names.add(name)
+            if name in existing_name_set:
+                row_errors.append(
+                    "凭证名称「{}」已存在于当前账号，不允许重复导入".format(name)
+                )
         if not username:
             row_errors.append("SSH 用户不能为空")
         elif len(username) > 100:
             row_errors.append("SSH 用户长度不能超过 100 个字符")
         if auth_type is None:
-            row_errors.append("认证方式无效")
+            row_errors.append("认证方式无效，请填写“密码认证”或“密钥认证”")
         if not enabled_valid:
             row_errors.append("是否启用请填写是或否")
         if len(password) > MAX_PASSWORD_LENGTH:
@@ -164,34 +169,26 @@ def apply_credential_rows(
     owner_id: int,
     encryption_key: bytes,
 ) -> dict:
-    """在调用方事务中更新当前用户同名凭证或创建新凭证。"""
+    """在调用方事务中创建已通过重名校验的凭证。"""
     created_names = []
-    updated_names = []
     for row in rows:
-        existing = session.scalar(
-            select(Credential).where(
-                Credential.name == row["name"],
-                Credential.created_by == owner_id,
-            )
+        credential = Credential(
+            name=row["name"],
+            created_by=owner_id,
+            username=row["username"],
+            auth_type=row["auth_type"],
+            password=encrypt_secret(encryption_key, row["password"]),
+            private_key=encrypt_secret(encryption_key, row["private_key"]),
+            is_enabled=row["is_enabled"],
+            description=row["description"],
         )
-        if existing is None:
-            existing = Credential(name=row["name"], created_by=owner_id)
-            session.add(existing)
-            created_names.append(row["name"])
-        else:
-            updated_names.append(row["name"])
-        existing.username = row["username"]
-        existing.auth_type = row["auth_type"]
-        existing.password = encrypt_secret(encryption_key, row["password"])
-        existing.private_key = encrypt_secret(encryption_key, row["private_key"])
-        existing.is_enabled = row["is_enabled"]
-        existing.description = row["description"]
+        session.add(credential)
+        created_names.append(row["name"])
     return {
         "created": len(created_names),
-        "updated": len(updated_names),
-        "total": len(created_names) + len(updated_names),
+        "updated": 0,
+        "total": len(created_names),
         "created_names": created_names,
-        "updated_names": updated_names,
     }
 
 

@@ -636,6 +636,7 @@ def credential_bulk_delete_submit(
             with suppress_model_audit(write_session):
                 for credential in credentials:
                     write_session.delete(credential)
+                write_session.flush()
             detail = "批量删除 {} 条凭证".format(len(credentials))
             name_preview = credential_name_preview(names)
             if name_preview:
@@ -673,7 +674,7 @@ def download_credential_template(
     response_model=CredentialImportResponse,
     summary="批量导入 SSH 凭证",
     description=(
-        "仅超级管理员可导入。先校验整个 xlsx，再在单个事务中创建或更新凭证；"
+        "需要 credentials.create 权限。先校验整个 xlsx，拒绝文件内及当前用户已有凭证重名，再在单个事务中新建凭证；"
         "错误响应不回显密码或私钥。"
     ),
     responses=api_error_responses((400, 401, 403, 413, 422, 500)),
@@ -681,7 +682,7 @@ def download_credential_template(
 def import_credentials(
     request: Request,
     file: UploadFile = File(...),
-    user: User = Depends(require_superuser),
+    user: User = Depends(require_permission("credentials", "create")),
     session: Session = Depends(get_session),
 ) -> CredentialImportResponse:
     """整文件校验凭证工作簿并加密保存认证材料。"""
@@ -714,7 +715,10 @@ def import_credentials(
                 "errors": parse_errors,
             },
         )
-    cleaned, errors = validate_credential_rows(rows)
+    existing_names = session.scalars(
+        select(Credential.name).where(Credential.created_by == user.id)
+    ).all()
+    cleaned, errors = validate_credential_rows(rows, existing_names)
     if errors:
         return JSONResponse(
             status_code=422,
@@ -749,13 +753,6 @@ def import_credentials(
                             credential_name_preview(result["created_names"]),
                         )
                     )
-                if result["updated"]:
-                    parts.append(
-                        "更新 {} 条：{}".format(
-                            result["updated"],
-                            credential_name_preview(result["updated_names"]),
-                        )
-                    )
                 write_audit_log(
                     session,
                     "凭证管理",
@@ -765,12 +762,24 @@ def import_credentials(
             session.commit()
     except IntegrityError as exc:
         session.rollback()
-        raise HTTPException(status_code=409, detail="凭证名称在导入期间发生冲突") from exc
+        existing_names = set(
+            session.scalars(
+                select(Credential.name).where(Credential.created_by == user.id)
+            ).all()
+        )
+        duplicate_names = [
+            row["name"] for row in cleaned if row["name"] in existing_names
+        ]
+        if duplicate_names:
+            detail = "凭证名称「{}」已存在于当前账号，不允许重复导入".format(
+                credential_name_preview(duplicate_names)
+            )
+        else:
+            detail = "导入期间发生凭证名称冲突，请检查工作簿内的重复名称后重试"
+        raise HTTPException(status_code=409, detail=detail) from exc
     parts = []
     if result["created"]:
         parts.append("新建 {} 条".format(result["created"]))
-    if result["updated"]:
-        parts.append("更新 {} 条".format(result["updated"]))
     return CredentialImportResponse(
         success=True,
         message="批量导入成功：" + "，".join(parts),

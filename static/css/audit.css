@@ -1,0 +1,37 @@
+.audit-log-table {
+    width: 100%;
+    min-width: 1000px;
+    table-layout: fixed;
+}
+
+.audit-log-table th,
+.audit-log-table td {
+    overflow-wrap: anywhere;
+}
+
+.audit-detail-preview {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.25rem;
+}
+
+.audit-detail-preview > span {
+    min-width: 0;
+}
+
+.audit-detail-toggle {
+    flex: 0 0 auto;
+    line-height: 1;
+}
+
+.audit-detail-full {
+    margin-top: 0.35rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.audit-detail-meta {
+    display: block;
+    margin-top: 0.25rem;
+    overflow-wrap: anywhere;
+}

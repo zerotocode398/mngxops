@@ -2,6 +2,9 @@
 
 {% block title %}操作日志 - ngxops{% endblock %}
 {% block page_title %}操作日志{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/audit.css') }}?v=1">
+{% endblock %}
 
 {% block content %}
 <section class="container-fluid px-0">
@@ -54,9 +57,14 @@
     </form>
 
     <div class="table-responsive">
-        <table class="table table-hover table-sm align-middle mb-0">
+        <table class="table table-hover table-sm align-middle mb-0 audit-log-table">
+            <colgroup>
+                <col style="width: 17%"><col style="width: 10%"><col style="width: 11%">
+                <col style="width: 15%"><col style="width: 12%"><col style="width: 8%">
+                <col style="width: 27%">
+            </colgroup>
             <thead class="table-light"><tr>
-                <th>时间</th><th>操作人</th><th>模块</th><th>动作</th><th>来源 IP</th><th>结果</th><th style="min-width: 260px">详情</th>
+                <th>时间</th><th>操作人</th><th>模块</th><th>动作</th><th>来源 IP</th><th>结果</th><th>详情</th>
             </tr></thead>
             <tbody>
             {% for row in rows %}
@@ -67,11 +75,20 @@
                     <td>{{ row.log.action }}</td>
                     <td class="text-nowrap">{{ row.log.ip or "-" }}</td>
                     <td>{% if row.log.result == "success" %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
-                    <td>
-                        <span class="audit-detail-short">{{ row.log.detail[:80] }}{% if row.log.detail|length > 80 %}...{% endif %}</span>
-                        {% if row.log.detail|length > 80 %}<span class="audit-detail-full d-none">{{ row.log.detail }}</span><button class="btn btn-link btn-sm p-0 ms-1 audit-detail-toggle" type="button" aria-label="展开详情" title="展开详情"><i class="bi bi-chevron-down" aria-hidden="true"></i></button>{% endif %}
-                        {% if row.log.source_batch %}<div class="small text-muted">批次：{{ row.log.source_batch }}</div>{% endif %}
-                        {% if row.log.task_id %}<a class="small" href="/tasks/{{ row.log.task_id }}/">查看任务 #{{ row.log.task_id }}</a>{% endif %}
+                    <td class="audit-detail-cell">
+                        <div class="audit-detail-preview">
+                            <span>{{ row.log.detail[:80] }}{% if row.log.detail|length > 80 %}...{% endif %}</span>
+                            {% if row.log.detail|length > 80 %}
+                            <button class="btn btn-link btn-sm p-0 audit-detail-toggle" type="button"
+                                    aria-label="展开详情" title="展开详情" aria-expanded="false"
+                                    aria-controls="audit-detail-{{ row.log.id }}">
+                                <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% if row.log.detail|length > 80 %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">{{ row.log.detail }}</div>{% endif %}
+                        {% if row.log.source_batch %}<div class="small text-muted audit-detail-meta">批次：{{ row.log.source_batch }}</div>{% endif %}
+                        {% if row.log.task_id %}<a class="small audit-detail-meta" href="/tasks/{{ row.log.task_id }}/">查看任务 #{{ row.log.task_id }}</a>{% endif %}
                     </td>
                 </tr>
             {% else %}
@@ -102,8 +119,11 @@ $(function () {
     $(document).on("click", ".audit-detail-toggle", function () {
         var $button = $(this);
         var $cell = $button.closest("td");
-        $cell.find(".audit-detail-short, .audit-detail-full").toggleClass("d-none");
-        $button.attr("aria-label", $cell.find(".audit-detail-short").hasClass("d-none") ? "收起详情" : "展开详情");
+        var expanded = $button.attr("aria-expanded") === "true";
+        $cell.find(".audit-detail-full").toggleClass("d-none", expanded);
+        $button.attr("aria-expanded", String(!expanded));
+        $button.attr("aria-label", expanded ? "展开详情" : "收起详情");
+        $button.attr("title", expanded ? "展开详情" : "收起详情");
         $button.find("i").toggleClass("bi-chevron-down bi-chevron-up");
     });
 });

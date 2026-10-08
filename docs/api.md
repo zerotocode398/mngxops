@@ -56,7 +56,7 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 | `POST /api/credentials/{credential_id}/toggle-enable` | `credentials.enable` 会话与 CSRF | `CredentialToggleResponse` | 401、403、404、422、500、503 |
 | `GET /api/credentials/{credential_id}/enable-progress` | `credentials.read` 会话 | `CredentialEnableProgressResponse` | 401、403、404、422、500 |
 | `GET /api/credentials/import-template` | `credentials.create` 会话 | xlsx 文件 | 401、403、500 |
-| `POST /api/credentials/import` | 超级管理员会话与 CSRF | `CredentialImportResponse` | 400、401、403、413、422、500 |
+| `POST /api/credentials/import` | `credentials.create` 会话与 CSRF | `CredentialImportResponse` | 400、401、403、413、422、500 |
 | `GET /api/credentials/export` | 超级管理员会话 | 含明文认证材料的 xlsx 文件 | 401、403、404、422、500 |
 | `GET /api/nodes` | `nodes.read` 会话 | `NodeListResponse` | 401、403、422、500 |
 | `GET /api/nodes/{node_id}` | `nodes.read` 会话 | `NodeDetailResponse` | 401、403、404、422、500 |
@@ -114,7 +114,7 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 
 配置发现与同步接口返回持久化任务 ID。具备 `configs.sync` 权限的用户可读取自己创建的 `config_discover` 和 `config_batch_sync` 任务；发现结果仅含远程路径和错误摘要，同步正文不会写入任务参数、结果或日志。发现清单与同步操作结果按任务 1 MiB 上限截取明细，完整路径操作通过增量任务日志保留。
 
-凭证解密 API 仅返回单个明文字段并设置 `Cache-Control: no-store`；凭证不会出现在选择器响应、任务参数或日志中。启停接口对活动关联节点创建异步测试任务，无关联节点时只改变凭证状态，不创建空任务。节点和凭证导入失败返回行号与通用校验信息，整份工作簿不写入；凭证导出/导入只供超级管理员使用并写入不含认证材料的操作审计。
+凭证解密 API 仅返回单个明文字段并设置 `Cache-Control: no-store`；凭证不会出现在选择器响应、任务参数或日志中。启停接口对活动关联节点创建异步测试任务，无关联节点时只改变凭证状态，不创建空任务。节点和凭证导入失败返回行号元数据与具体校验原因，整份工作簿不写入；凭证导出仅供超级管理员使用，导入要求 `credentials.create`，两者均写入不含认证材料的操作审计。
 
 配置标签、绑定和版本历史使用 Jinja2 页面路由；远程发现与同步使用上述 JSON API。页面路径、权限和状态规则见 [configs.md](configs.md)。
 
