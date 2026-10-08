@@ -68,12 +68,12 @@
             <table class="table table-sm table-hover align-middle data-table mb-0">
                 <thead class="table-light"><tr>
                     <th class="text-center" style="width:34px"><input class="form-check-input" type="checkbox" id="selectAllNodes" aria-label="全选本页节点"></th>
-                    <th>主机名 / IP</th><th>节点组</th><th>环境</th><th>SSH</th><th>Nginx</th><th>凭证</th><th>探测时间（CST）</th><th class="text-end">操作</th>
+                    <th>主机名 / IP</th><th>节点组</th><th>环境</th><th>SSH</th><th>Nginx</th><th>凭证</th><th>探测时间</th><th class="text-end">操作</th>
                 </tr></thead>
                 <tbody>
                 {% for node in nodes %}
                     <tr data-node-id="{{ node.id }}">
-                        <td class="text-center"><input class="form-check-input node-select" type="checkbox" value="{{ node.id }}" aria-label="选择 {{ node.hostname }}"></td>
+                        <td class="text-center"><input class="form-check-input node-select" type="checkbox" value="{{ node.id }}" data-locked="{{ 'true' if node.is_locked else 'false' }}" aria-label="选择 {{ node.hostname }}"></td>
                         <td><strong><button class="btn btn-link btn-sm p-0 align-baseline node-detail-open" type="button" data-node-id="{{ node.id }}">{{ node.hostname }}</button></strong>{% if node.is_locked %}<span class="badge text-bg-warning ms-1 node-locked-badge">已锁定</span>{% endif %}<br><span class="text-muted small font-monospace">{{ node.ip }}:{{ node.port }}</span></td>
                         <td>{% for group in node.groups %}<span class="badge text-bg-light border me-1">{{ group.name }}</span>{% else %}<span class="text-muted">-</span>{% endfor %}</td>
                         <td>{% if node.environment == "prod" %}<span class="badge text-bg-danger">生产</span>{% elif node.environment == "test" %}<span class="badge text-bg-warning">测试</span>{% else %}<span class="badge text-bg-info">开发</span>{% endif %}</td>
@@ -275,5 +275,5 @@ $(function () {
     });
 });
 </script>
-<script src="{{ request.url_for('static', path='js/nodes.js') }}?v=1"></script>
+<script src="{{ request.url_for('static', path='js/nodes.js') }}?v=3"></script>
 {% endblock %}

@@ -1015,28 +1015,38 @@ def api_lock_nodes(
     if action == "unlock" and getattr(request.app.state, "task_executor", None) is None:
         raise HTTPException(status_code=503, detail="后台任务执行器尚未启动")
 
+    newly_locked = [node for node in nodes if not node.is_locked]
+    nodes_to_update = newly_locked if action == "lock" else nodes
     with suppress_model_audit(session):
-        for node in nodes:
+        for node in nodes_to_update:
             node.is_locked = action == "lock"
             node.status = "offline" if action == "lock" else "unknown"
             node.updated_at = datetime.utcnow()
-        if action == "lock":
-            node_names = "、".join(node.hostname for node in nodes[:10])
-            remainder = len(nodes) - min(len(nodes), 10)
+        if action == "lock" and newly_locked:
+            node_names = "、".join(node.hostname for node in newly_locked[:10])
+            remainder = len(newly_locked) - min(len(newly_locked), 10)
             if remainder:
-                node_names += "等 {} 台".format(len(nodes))
+                node_names += "等 {} 台".format(remainder)
             write_audit_log(
                 session,
                 "节点管理",
                 "批量锁定节点",
-                "锁定 {} 台节点：{}".format(len(nodes), node_names),
+                "锁定 {} 台节点：{}".format(len(newly_locked), node_names),
             )
         session.commit()
 
     if action == "lock":
+        skipped = len(nodes) - len(newly_locked)
+        message = (
+            "所选节点均已锁定，无需重复锁定"
+            if not newly_locked
+            else "已锁定 {} 个节点，SSH 状态已更新为离线".format(len(newly_locked))
+        )
+        if skipped and newly_locked:
+            message += "；跳过 {} 个已锁定节点".format(skipped)
         return NodeOperationResponse(
-            message="已锁定 {} 个节点，SSH 状态已更新为离线".format(len(nodes)),
-            count=len(nodes),
+            message=message,
+            count=len(newly_locked),
         )
 
     task_id = _enqueue_node_task(

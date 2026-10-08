@@ -72,6 +72,31 @@ class CredentialListResponse(BaseModel):
     data: List[CredentialApiItem]
 
 
+class CredentialRelatedNodeApiItem(BaseModel):
+    """描述凭证关联节点弹窗使用的非敏感字段。"""
+
+    id: int
+    hostname: str
+    ip: str
+    status: Literal["online", "offline", "unknown"]
+    status_display: str
+    nginx_version: str
+    probe_time: str
+
+
+class CredentialRelatedNodeListResponse(BaseModel):
+    """描述凭证关联节点列表及分页信息。"""
+
+    success: bool = True
+    credential_id: int
+    credential_name: str
+    items: List[CredentialRelatedNodeApiItem]
+    page: int
+    page_size: int
+    total: int
+    pages: int
+
+
 class CredentialSecretResponse(BaseModel):
     """描述经授权解密返回的单个凭证字段。"""
 
@@ -879,6 +904,60 @@ def list_enabled_credentials(
             )
             for item in credentials
         ]
+    )
+
+
+@api_router.get(
+    "/{credential_id}/nodes",
+    response_model=CredentialRelatedNodeListResponse,
+    summary="查询凭证关联节点",
+    description="需要 credentials.read 权限；返回分页节点摘要，不包含凭证明文。",
+    responses=api_error_responses((401, 403, 404, 422, 500)),
+)
+def list_credential_related_nodes(
+    credential_id: int = Path(..., ge=1),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    user: User = Depends(require_permission("credentials", "read")),
+    session: Session = Depends(get_session),
+) -> CredentialRelatedNodeListResponse:
+    """分页返回凭证关联的活动节点及探测摘要。"""
+    credential = session.get(Credential, credential_id)
+    if credential is None:
+        raise HTTPException(status_code=404, detail="凭证不存在")
+    conditions = (Node.credential_id == credential_id, Node.is_deleted.is_(False))
+    total = int(
+        session.scalar(select(func.count()).select_from(Node).where(*conditions)) or 0
+    )
+    pages = max(1, int(math.ceil(total / float(page_size))))
+    page = min(page, pages)
+    nodes = session.scalars(
+        select(Node)
+        .where(*conditions)
+        .order_by(Node.hostname.asc(), Node.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    status_labels = {"online": "在线", "offline": "离线", "unknown": "未知"}
+    return CredentialRelatedNodeListResponse(
+        credential_id=credential.id,
+        credential_name=credential.name,
+        items=[
+            CredentialRelatedNodeApiItem(
+                id=node.id,
+                hostname=node.hostname,
+                ip=node.ip,
+                status=node.status,
+                status_display=status_labels.get(node.status, "未知"),
+                nginx_version=node.nginx_version or "",
+                probe_time=_format_beijing_time(node.last_probe_at),
+            )
+            for node in nodes
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+        pages=pages,
     )
 
 

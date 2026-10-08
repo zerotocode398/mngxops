@@ -4,7 +4,7 @@
 {% block page_title %}任务详情 #{{ task.id }}{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=2">
 {% endblock %}
 
 {% block content %}
@@ -99,6 +99,7 @@
             </div>
             <script type="application/json" id="taskResultData">{{ result_tree|tojson }}</script>
             <script type="application/json" id="taskResultLabels">{{ result_field_labels|tojson }}</script>
+            <script type="application/json" id="taskLogTargets">{{ log_target_map|tojson }}</script>
         </section>
 
         <section aria-labelledby="taskLogsHeading">
@@ -108,7 +109,7 @@
             </div>
             <div class="task-log-list" id="taskLogList" aria-live="polite">
                 {% for log in logs %}
-                <div class="task-log-row"><time>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</time><span class="task-log-level level-{{ log.level }}">{{ log.level }}</span><span class="task-log-message">{{ log.message }}</span></div>
+                <div class="task-log-row"><time>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</time><span class="task-log-message">{{ log.message }}</span></div>
                 {% else %}<p class="small text-muted mb-0" data-empty-logs>暂无执行日志</p>{% endfor %}
             </div>
             <button class="btn btn-outline-secondary btn-sm mt-2" type="button" id="taskLoadMoreLogs"
@@ -121,5 +122,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=1"></script>
+<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=2"></script>
 {% endblock %}

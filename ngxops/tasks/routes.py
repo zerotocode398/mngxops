@@ -242,6 +242,9 @@ def task_detail(
     has_more_logs = len(log_rows) > 50
     logs = log_rows[:50]
     targets = _target_nodes(task.target_hostnames, task.target_ips)
+    log_target_map = _task_log_target_map(
+        task.target_hostnames, task.target_ips
+    )
     target_configs = [
         item.strip()
         for item in (task.target_configs or "").split(",")
@@ -280,6 +283,7 @@ def task_detail(
             "status_label": STATUS_LABELS.get(task.status, task.status),
             "targets": targets,
             "target_node_count": len(targets),
+            "log_target_map": log_target_map,
             "target_configs": target_configs[:50],
             "target_config_count": len(target_configs),
             "trigger_username": trigger_username,
@@ -317,3 +321,14 @@ def _target_nodes(hostnames: str, ips: str) -> list:
         if target:
             targets.append(target)
     return targets
+
+
+def _task_log_target_map(hostnames: str, ips: str) -> list:
+    """配对任务目标的主机名和 IP，供日志展示使用。"""
+    names = [item.strip() for item in (hostnames or "").split(",")]
+    addresses = [item.strip() for item in (ips or "").split(",")]
+    return [
+        {"hostname": names[index], "ip": addresses[index]}
+        for index in range(min(len(names), len(addresses)))
+        if names[index] and addresses[index]
+    ]

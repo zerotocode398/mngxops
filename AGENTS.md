@@ -315,16 +315,11 @@ Nginx 安装/升级	执行
 60. **已完成**：节点资料修改新增“节点调整”审计动作，记录节点标识和变更字段名，不写任意备注内容或变更前后值；节点任务审计增加任务说明和目标主机/IP 摘要，日志行可跳转对应任务详情。实现：`ngxops/audit/service.py`、`templates/audit/list.html`（复用既有任务链接）、`docs/audit.md`。遵循审计日志不可编辑规则。
 61. **已完成**：任务中心移除放大镜查询按钮并改用全局 `data-query-tags` 输入；回车提交、标签移除/退格、焦点恢复由公共脚本处理。筛选下拉在提交时保留未提交关键词、AND 组合和每页条数，查询布局与公共控件一致。实现：`templates/tasks/center.html`、`static/js/task-center.js`、`static/css/task-center.css`。未启动服务或进行浏览器验证。
 62. **已完成**：节点列表和详情弹窗的 SSH 探测时间统一按 CST（Asia/Shanghai，UTC+8）显示；SQLite 中的 UTC naive 时间未改变，详情 API 返回带时区偏移的北京时间。实现：`ngxops/nodes/routes.py`、`templates/nodes/list.html`、`static/js/nodes.js`、`docs/nodes.md`。未启动服务或进行浏览器验证。
-63. 节点列表，状态为已锁定的节点不支持重复锁定。
-64. 节点列表 SSH 相关操作的“查看完整日志”，不要等待结果才提示，再创建任务的时候就直接提示，你可以在任务执行完成后在显示其结果。
-65. 任务中心任务详情，执行结果记录是不是可以在简化下，详情的样式不是很好，可以默认前几个字符（不要让表换行），点击展开后再展开。
-66. 任务中心任务详情，执行日志。需要显示节点名称(IP)，另外日志级别不需要显示）
-```text
-2026-10-08 07:59:01 info 节点 1/3 10.10.77.102：SSH 成功
-2026-10-08 07:59:01 info 节点 2/3 112.33.17.255：SSH 成功
-2026-10-08 07:59:04 warning 节点 3/3 36.134.42.106：SSH 连接失败
-```
-67. 凭证管理，关联节点点击可以查看节点信息，显示主机名、IP、状态、Nginx 版本、探测时间（即可）。
-68. 节点列表，探测时间（CST）调整为“探测时间”。
-69. 凭证管理，启动/禁用等 SSH 相关操作的“查看完整日志”，不要等待结果才提示，再创建任务的时候就直接提示，你可以在任务执行完成后在显示其结果。可以参考调整点 64 实现方式。
-70. 操作日志没有跳转任务详情的功能，可以以任务中心的“ID”，比如 #12，点击后自动跳转到具体的任务详情，你可以参考 mngxops 实现方式。
+63. **已完成**：节点列表批量锁定时，若所选节点均已锁定则在右上角显示“所选节点已锁定，无需再次锁定”警告；混合选择时只锁定未锁定节点，并以警告提示跳过数量。实现：`ngxops/nodes/routes.py`、`templates/nodes/list.html`、`static/js/nodes.js`、`docs/nodes.md`。未启动服务或进行浏览器验证。
+64. **已完成**：节点 SSH 探测、系统信息、Nginx 检测及解锁探测在任务创建后立即显示带“查看完整日志”的提示，完成后再次提示执行结果。实现：`static/js/nodes.js`。未启动服务或进行浏览器验证。
+65. **已完成**：任务详情节点结果摘要单行显示，超过 80 字符时省略；点击摘要展开完整结果，浮层不会撑开表格行，轮询更新时保留展开状态。实现：`static/js/task-center.js`、`static/css/task-center.css`。未启动服务或进行浏览器验证。
+66. **已完成**：任务详情初始和增量日志将目标 IP 映射为“主机名 (IP)”（如“节点 1/3 app-01 (10.10.77.102)：SSH 成功”），隐藏日志级别。实现：`ngxops/tasks/routes.py`、`templates/tasks/detail.html`、`static/js/task-center.js`、`static/css/task-center.css`。未启动服务或进行浏览器验证。
+67. **已完成**：凭证关联节点数量可打开分页弹窗，展示主机名、IP、SSH 状态、Nginx 版本和北京时间探测时间；新增 `GET /api/credentials/{credential_id}/nodes`，要求 `credentials.read`。实现：`ngxops/credentials/routes.py`、`templates/credentials/list.html`、`docs/credentials.md`、`docs/api.md`。未启动服务或进行浏览器验证。
+68. **已完成**：节点列表探测时间列标题改为“探测时间”，时间仍按北京时间展示。实现：`templates/nodes/list.html`、`docs/nodes.md`。
+69. **已完成**：凭证启用测试在任务创建后立即显示带“查看完整日志”的提示，任务结束后显示测试结果摘要；禁用操作不创建 SSH 任务。实现：`templates/credentials/list.html`、`docs/credentials.md`。未启动服务或进行浏览器验证。
+70. **已完成**：操作日志关联任务显示可点击的 `#任务ID`，直接跳转统一任务详情。实现：`templates/audit/list.html`、`docs/audit.md`。未启动服务或进行浏览器验证。

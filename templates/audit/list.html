@@ -88,7 +88,7 @@
                         </div>
                         {% if row.log.detail|length > 80 %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">{{ row.log.detail }}</div>{% endif %}
                         {% if row.log.source_batch %}<div class="small text-muted audit-detail-meta">批次：{{ row.log.source_batch }}</div>{% endif %}
-                        {% if row.log.task_id %}<a class="small audit-detail-meta" href="/tasks/{{ row.log.task_id }}/">查看任务 #{{ row.log.task_id }}</a>{% endif %}
+                        {% if row.log.task_id %}<span class="small audit-detail-meta">任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" title="查看任务详情">#{{ row.log.task_id }}</a>{% else %}<span>#{{ row.log.task_id }}</span>{% endif %}</span>{% endif %}
                     </td>
                 </tr>
             {% else %}

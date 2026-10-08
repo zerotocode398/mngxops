@@ -114,42 +114,58 @@
     table-layout: fixed;
 }
 
-.task-node-result-table td {
-    overflow-wrap: anywhere;
-}
-
 .task-node-result-host {
-    width: 25%;
-}
-
-.task-node-result-table td:nth-child(2) {
-    width: 20%;
-}
-
-.task-node-result-message {
-    width: 42%;
-}
-
-.task-node-result-expand {
-    width: 13%;
-    text-align: right;
+    width: 28%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.task-node-result-expand details[open] {
+.task-node-result-table td:nth-child(2) {
+    width: 22%;
+    white-space: nowrap;
+}
+
+.task-node-result-message {
+    width: 50%;
+    overflow: visible;
+    white-space: nowrap;
+}
+
+.task-node-result-details {
     position: relative;
+    max-width: 100%;
+}
+
+.task-node-result-preview {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    cursor: pointer;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.task-node-result-details[open] .task-node-result-full {
+    display: block;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
     z-index: 1;
-    min-width: min(360px, 80vw);
+    width: min(560px, 82vw);
+    max-height: 60vh;
+    overflow: auto;
     padding: 6px 8px;
     border: 1px solid #dee2e6;
     border-radius: 4px;
     background: #fff;
     text-align: left;
     white-space: normal;
+    overflow-wrap: anywhere;
 }
 
-.task-node-result-expand summary {
-    cursor: pointer;
+.task-node-result-full .task-tree-fields {
+    grid-template-columns: minmax(90px, 130px) minmax(0, 1fr);
 }
 
 #taskTargetOverflow[hidden] {
@@ -199,7 +215,7 @@
 
 .task-log-row {
     display: grid;
-    grid-template-columns: 150px 64px minmax(0, 1fr);
+    grid-template-columns: 150px minmax(0, 1fr);
     gap: 8px;
     padding: 6px 9px;
     border-bottom: 1px solid #edf0f2;
@@ -210,8 +226,7 @@
     border-bottom: 0;
 }
 
-.task-log-row time,
-.task-log-level {
+.task-log-row time {
     color: #65727a;
     white-space: nowrap;
 }
@@ -236,11 +251,7 @@
     }
 
     .task-log-row {
-        grid-template-columns: 1fr auto;
-    }
-
-    .task-log-message {
-        grid-column: 1 / -1;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .task-tree-fields {
@@ -250,6 +261,5 @@
 
     .task-node-result-host { width: 34%; }
     .task-node-result-table td:nth-child(2) { width: 26%; }
-    .task-node-result-message { width: auto; }
-    .task-node-result-expand { width: 52px; }
+    .task-node-result-message { width: 40%; }
 }

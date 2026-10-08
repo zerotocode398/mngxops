@@ -9,6 +9,7 @@
         cancelled: "已取消"
     };
     var fieldLabels = {};
+    var logTargetMap = [];
     var terminalStatuses = ["success", "failed", "cancelled"];
 
     function statusBadge(status) {
@@ -130,6 +131,10 @@
     }
 
     function renderNodeResults(root, nodes) {
+        var expandedResults = Object.create(null);
+        root.querySelectorAll(".task-node-result-details[open]").forEach(function (details) {
+            if (details.dataset.resultKey) expandedResults[details.dataset.resultKey] = true;
+        });
         root.replaceChildren();
         if (!nodes.length) {
             var empty = document.createElement("p");
@@ -143,7 +148,7 @@
         var body = document.createElement("tbody");
         nodes.slice().sort(function (left, right) {
             return Number(left.ssh_success === true) - Number(right.ssh_success === true);
-        }).forEach(function (result) {
+        }).forEach(function (result, index) {
             var row = document.createElement("tr");
             var nodeCell = document.createElement("td");
             nodeCell.className = "task-node-result-host";
@@ -166,16 +171,22 @@
             messageCell.className = "task-node-result-message";
             var message = result.message || result.detail || result.action || "-";
             if (typeof message !== "string") message = JSON.stringify(message);
-            messageCell.textContent = message.length > 240 ? message.slice(0, 237) + "..." : message;
-            var detailCell = document.createElement("td");
-            detailCell.className = "task-node-result-expand";
             var details = document.createElement("details");
-            details.open = containsFailure(result);
+            details.className = "task-node-result-details";
+            details.dataset.resultKey = String(
+                result.node_id || result.hostname || result.ip || index
+            );
+            details.open = Boolean(expandedResults[details.dataset.resultKey]);
             var summary = document.createElement("summary");
-            summary.textContent = "详情";
-            details.append(summary, resultValue(result, "", false));
-            detailCell.appendChild(details);
-            row.append(nodeCell, statusCell, messageCell, detailCell);
+            summary.className = "task-node-result-preview";
+            summary.title = message;
+            summary.textContent = message.length > 80 ? message.slice(0, 77) + "..." : message;
+            var fullResult = document.createElement("div");
+            fullResult.className = "task-node-result-full";
+            fullResult.appendChild(resultValue(result, "", false));
+            details.append(summary, fullResult);
+            messageCell.appendChild(details);
+            row.append(nodeCell, statusCell, messageCell);
             body.appendChild(row);
         });
         table.appendChild(body);
@@ -222,18 +233,36 @@
             });
     }
 
+    function formatLogMessage(message) {
+        var formatted = String(message || "");
+        var replacements = [];
+        logTargetMap.slice().sort(function (left, right) {
+            return String(right.ip || "").length - String(left.ip || "").length;
+        }).forEach(function (target, index) {
+            var hostname = String(target.hostname || "").trim();
+            var ip = String(target.ip || "").trim();
+            var label = hostname + " (" + ip + ")";
+            if (!hostname || !ip) return;
+            var token = "\u0000" + index + "\u0000";
+            formatted = formatted.split(label).join(token);
+            formatted = formatted.split(ip).join(token);
+            replacements.push({token: token, label: label});
+        });
+        replacements.forEach(function (item) {
+            formatted = formatted.split(item.token).join(item.label);
+        });
+        return formatted;
+    }
+
     function renderLog(log) {
         var row = document.createElement("div");
         row.className = "task-log-row";
         var time = document.createElement("time");
         time.textContent = log.created_at ? new Date(log.created_at).toLocaleString() : "";
-        var level = document.createElement("span");
-        level.className = "task-log-level level-" + (log.level || "info");
-        level.textContent = log.level || "info";
         var message = document.createElement("span");
         message.className = "task-log-message";
-        message.textContent = log.message || "";
-        row.append(time, level, message);
+        message.textContent = formatLogMessage(log.message);
+        row.append(time, message);
         return row;
     }
 
@@ -348,9 +377,14 @@
         var active = detail.getAttribute("data-task-active") === "true";
         var resultElement = document.getElementById("taskResultData");
         var labelsElement = document.getElementById("taskResultLabels");
+        var logTargetsElement = document.getElementById("taskLogTargets");
         var initialResult = null;
         try { initialResult = JSON.parse(resultElement.textContent); } catch (error) {}
         try { fieldLabels = JSON.parse(labelsElement.textContent); } catch (error) {}
+        try { logTargetMap = JSON.parse(logTargetsElement.textContent); } catch (error) {}
+        logList.querySelectorAll(".task-log-message").forEach(function (message) {
+            message.textContent = formatLogMessage(message.textContent);
+        });
         renderTaskResult(
             resultRoot,
             initialResult,

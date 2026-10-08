@@ -58,6 +58,10 @@ $(function () {
             headers: csrfHeaders(),
             data: JSON.stringify(payload || {})
         }).done(function (created) {
+            showTaskToast(
+                {id: created.task_id, status: "pending", detail: created.message},
+                "任务已创建，正在执行"
+            );
             if (onProgress) onProgress({id: created.task_id, status: "pending", progress: 0, detail: created.message});
             pollTask(created.task_id, onProgress || $.noop, onComplete || $.noop);
         }).fail(function (xhr) {
@@ -93,6 +97,9 @@ $(function () {
     function patchNodeDetail(node) {
         var $row = $("tr[data-node-id='" + node.id + "']");
         var statusLabels = {online: "在线", offline: "离线", unknown: "未知"};
+        $row.find(".node-select")
+            .attr("data-locked", node.is_locked ? "true" : "false")
+            .trigger("change");
         var $lockedBadge = $row.find(".node-locked-badge");
         if (node.is_locked && !$lockedBadge.length) {
             $("<span class='badge text-bg-warning ms-1 node-locked-badge'>已锁定</span>")
@@ -159,9 +166,12 @@ $(function () {
     }
 
     function showTaskToast(task, fallback) {
+        var type = task.status === "success"
+            ? "success"
+            : task.status === "pending" || task.status === "running" ? "info" : "warning";
         window.showToast(
             task.detail || fallback,
-            task.status === "success" ? "success" : "warning",
+            type,
             10000,
             {label: "查看完整日志", href: "/tasks/" + encodeURIComponent(task.id) + "/"}
         );
@@ -177,6 +187,13 @@ $(function () {
         var action = $(button).data("action");
         var nodeIds = selectedNodeIds();
         if (!nodeIds.length || nodeIds.length > batchMax) return;
+        var lockedCount = $(".node-select:checked").filter(function () {
+            return this.dataset.locked === "true";
+        }).length;
+        if (action === "lock" && lockedCount === nodeIds.length) {
+            window.showToast("所选节点已锁定，无需再次锁定", "warning");
+            return;
+        }
         window.showConfirm(
             "确认节点操作",
             (action === "lock" ? "锁定" : "解锁") + "选中的 " + nodeIds.length + " 个节点？",
@@ -191,7 +208,10 @@ $(function () {
                         try {
                             window.sessionStorage.setItem(
                                 "ngxops.nodeListToast",
-                                JSON.stringify({message: result.message, type: "success"})
+                                JSON.stringify({
+                                    message: result.message,
+                                    type: result.count < nodeIds.length ? "warning" : "success"
+                                })
                             );
                         } catch (error) {}
                         window.location.reload();
@@ -199,6 +219,10 @@ $(function () {
                     }
                     nodeIds.forEach(refreshNodeDetail);
                     $("#nodeProbeTaskStatus").text(result.message);
+                    showTaskToast(
+                        {id: result.task_id, status: "pending", detail: result.message},
+                        "解锁探测任务已创建，正在执行"
+                    );
                     pollTask(result.task_id, function (task) {
                         $("#nodeProbeTaskStatus").text(
                             "任务 #" + task.id + " · " + task.progress + "% · " + task.detail

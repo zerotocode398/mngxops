@@ -13,6 +13,8 @@ from ngxops.accounts.models import LoginLog, User
 from ngxops.audit.models import AuditLog
 from ngxops.database.session import get_session
 from ngxops.security.dependencies import require_permission
+from ngxops.tasks.api import _task_permissions
+from ngxops.tasks.models import Task
 from ngxops.ui import render_page
 
 
@@ -138,16 +140,35 @@ def audit_log_list(
     modules = session.scalars(
         select(AuditLog.module).distinct().order_by(AuditLog.module)
     ).all()
+    task_ids = {log.task_id for log in page_data["items"] if log.task_id}
+    visible_task_ids = set()
+    if task_ids:
+        can_read_all_tasks, allowed_operations, _ = _task_permissions(
+            request, session, user, include_poll_permissions=True
+        )
+        task_query = select(Task.id).where(Task.id.in_(task_ids))
+        if not can_read_all_tasks:
+            if allowed_operations:
+                task_query = task_query.where(
+                    Task.operation_type.in_(allowed_operations),
+                    Task.trigger_user_id == user.id,
+                )
+            else:
+                task_query = None
+        if task_query is not None:
+            visible_task_ids = set(session.scalars(task_query).all())
     rows = []
     for log in page_data["items"]:
+        can_view_task = log.task_id in visible_task_ids
         rows.append(
             {
                 "log": log,
                 "module_link": (
                     "/tasks/{}/".format(log.task_id)
-                    if log.task_id
+                    if can_view_task
                     else MODULE_LINKS.get(log.module)
                 ),
+                "can_view_task": can_view_task,
                 "created_at_display": _format_created_at(log.created_at),
             }
         )
