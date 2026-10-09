@@ -378,6 +378,22 @@ def _deploy_binding_file(
         if temporary_md5 != expected_md5:
             _log_release_step(context, item, "临时文件 MD5 与本地正文不一致", "error")
             return False, backup_path, "", "临时文件 MD5 校验失败"
+        remote_directory = (
+            remote_path.rsplit("/", 1)[0] if "/" in remote_path else "."
+        ) or "/"
+        directory_status, directory_output = _remote_step(
+            client,
+            "mkdir -p -- {}".format(shlex.quote(remote_directory)),
+            "创建远程目标目录",
+            context=context,
+            item=item,
+        )
+        if directory_status != 0:
+            raise ValueError(
+                "创建远程目标目录失败{}".format(
+                    _format_remote_detail(directory_output)
+                )
+            )
         copy_command = "cp -- {} {}".format(
             shlex.quote(temporary_path),
             shlex.quote(remote_path),

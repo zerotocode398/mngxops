@@ -80,7 +80,7 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 | `GET /api/nginx/uninstall/batches/{batch_number}` | 卸载查看权限或本人执行权限 | `UninstallBatchResponse` | 401、403、404、422、500 |
 | `GET /api/nginx/uninstall/tasks/{task_id}` | 卸载查看权限或本人执行权限 | `UninstallTaskDetailResponse` | 401、403、404、422、500 |
 | `GET /api/releases/nodes` | `releases.read` 或 `releases.publish` 会话 | `ReleaseNodeListResponse` | 401、403、422、500 |
-| `GET /api/releases/nodes/{node_id}/bindings` | `releases.read` 或 `releases.publish` 会话 | `ReleaseBindingsResponse`（支持 `page`、`page_size`、可选 `search`，默认 1/10，单页最多 100） | 401、403、404、422、500 |
+| `GET /api/releases/nodes/{node_id}/bindings` | `releases.read` 或 `releases.publish` 会话 | `ReleaseBindingsResponse`（支持 `page`、`page_size`、`search`、`sync_status`；默认 1/10，单页最多 100；`pending` 含 `not_synced`/`modified`） | 401、403、404、422、500 |
 | `GET /api/releases/versions/{version_id}` | `releases.read` 或 `releases.publish` 会话 | `ReleaseVersionContentResponse` | 401、403、404、422、500 |
 | `POST /api/releases/publish` | `releases.publish` 会话与 CSRF | `PublishCreatedResponse`（202） | 400、401、403、404、409、422、500、503 |
 | `GET /api/releases/history` | `releases.read` 会话 | `ReleaseHistoryResponse` | 401、403、422、500 |

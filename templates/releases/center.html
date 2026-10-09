@@ -15,6 +15,7 @@
     .release-status-label.active.status-failed { background: #dc3545; }
     .release-status-label.active.status-marked { background: #b02a37; }
     .release-filter-heading { color: #495057; font-weight: 600; }
+    .release-node-row { cursor: pointer; }
     .release-node-row:hover { background: #f5f8fa; }
     .release-node-row .node-chevron { transition: transform .15s ease; }
     .release-node-row [aria-expanded="true"] .node-chevron { transform: rotate(90deg); }
@@ -117,4 +118,4 @@
 <div id="releaseCenterState" hidden data-can-publish="{{ 'true' if can_publish else 'false' }}"></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/releases.js') }}?v=5"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/releases.js') }}?v=7"></script>{% endblock %}

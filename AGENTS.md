@@ -382,3 +382,11 @@ Nginx 安装/升级	执行
 111. **已完成**：修复公共查询标签控件的 `getQueryTagValue` 对表单标签只读到当前输入、读不到已提交标签的问题；发布页主机名/IP/配置名/路径搜索现可异步生效，多词仍按 AND 过滤节点。搜索命中配置名/路径时自动展开节点并分页显示命中绑定；仅主机名/IP 命中时展开显示全部绑定。节点级全选继续请求未过滤绑定，仍覆盖全部可发布项。实现：`static/js/app.js`、`templates/base.html`、`static/js/releases.js`、`ngxops/releases/api.py`、`docs/releases.md`、`docs/api.md`。
 112. **已完成**：绑定明细表改用固定布局和显式列宽，缩窄绑定状态/同步版本列并为发布版本选择器保留 176px，长配置名和路径可换行。实现：`templates/releases/center.html`、`static/js/releases.js`。静态验证：Python 3.9 编译 2 个模块、Node 检查 2 个脚本、Jinja 编译 2 个模板和 `git diff --check` 通过；未启动服务、运行 pytest 或做浏览器验证。
 113. **已完成**：发布任务创建和完成时使用全局右上角 toast 提示，并提供在新标签页查看完整任务日志的入口；发布中心移除任务进度弹窗，后台继续轮询任务状态并在成功后刷新节点列表。发布任务日志逐步记录 SSH/SFTP、远程备份、文件上传/复制、大小与 MD5 校验、`nginx -t`、失败恢复及 reload/start；非零退出保留远端诊断输出，不再以“远程输出已省略”替代。实现：`ngxops/releases/services.py`、`ngxops/credentials/tasks.py`、`static/js/releases.js`、`templates/releases/center.html`、`docs/releases.md`。静态验证：Python 3.9 编译、Node 检查、Jinja 模板编译和 `git diff --check` 通过；未启动应用、运行 pytest 或进行浏览器验证。
+114. **已完成**：发布文件复制前以当前 SSH 用户执行 shell 引用保护的 `mkdir -p -- <目标父目录>`；目录创建和后续复制均记录步骤、退出码及远端诊断日志。实现：`ngxops/releases/services.py`、`docs/releases.md`。
+115. **已完成**：任务详情来源批次跳转发布历史后，页面路由读取并回填 `search` 查询标签，历史数据按该批次初始化过滤。实现：`ngxops/releases/routes.py`、`templates/releases/history.html`。
+116. **已完成**：修复摘要批次号跳转触发 422 的原因；历史查询请求不再发送空 `status` 枚举，旧 `batch` API 参数仍兼容。实现：`static/js/release-history.js`。
+117. **已完成**：发布历史批次号和节点 IP 独立输入框合并为标准查询标签；多词按 AND 匹配批次、节点名称/IP、配置名称和远程路径，旧 API 参数保留兼容。实现：`ngxops/releases/routes.py`、`templates/releases/history.html`、`static/js/release-history.js`、`docs/releases.md`。
+118. **已完成**：移除发布历史“筛选”按钮；查询标签按回车提交，状态下拉变化时自动刷新。实现：`templates/releases/history.html`、`static/js/release-history.js`。
+119. **已完成**：节点绑定明细 API 增加状态筛选；`pending` 映射 `not_synced` 与 `modified`，其余支持状态按精确值过滤。分页结果只展示匹配项，节点全选仍跨筛选读取全部可发布绑定。实现：`ngxops/releases/api.py`、`static/js/releases.js`、`docs/releases.md`、`docs/api.md`。
+120. **已完成**：发布中心节点行空白区域和节点信息均可点击展开/收起绑定明细；展开按钮继续支持键盘操作，复选框等交互控件不触发行切换。实现：`static/js/releases.js`、`templates/releases/center.html`。
+121. **已完成**：绑定详情“返回标签”链接携带当前 `binding_id`；配置标签详情按该绑定的正文精确筛出相同内容的节点，正文不同的同名配置不再混显，相同正文仍可显示多个节点。直接打开标签详情时保留全部活跃绑定。详情字段标题由“内容模板”改为“配置内容”。实现：`ngxops/configs/routes.py`、`templates/configs/binding_detail.html`、`templates/configs/detail.html`、`docs/configs.md`。

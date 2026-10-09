@@ -27,6 +27,7 @@ router = APIRouter(prefix="/releases", tags=["releases"])
 @router.get("/", response_class=Response, summary="发布历史")
 def release_history(
     request: Request,
+    search: str = Query("", max_length=200),
     user: User = Depends(require_permission("releases", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
@@ -34,7 +35,7 @@ def release_history(
     return render_page(
         request,
         "releases/history.html",
-        context={"can_publish": can_publish(request, session, user)},
+        context={"can_publish": can_publish(request, session, user), "search": search},
         user=user,
         db_session=session,
     )

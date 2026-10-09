@@ -126,14 +126,16 @@
     }
 
     function queryParams(page) {
-        return {
+        var params = {
             search: window.getQueryTagValue("#historySearch").trim(),
-            batch: $("#historyBatch").val().trim(),
-            node_ip: $("#historyNodeIp").val().trim(),
-            status: $("#historyStatus").val(),
             page: page,
             page_size: state.pageSize
         };
+        var status = $("#historyStatus").val();
+        if (status) {
+            params.status = status;
+        }
+        return params;
     }
 
     function addPreviewButton(parent, item, version, title) {
@@ -612,6 +614,9 @@
         loadHistory(1);
         $("#historyFilterForm").on("submit", function (event) {
             event.preventDefault();
+            loadHistory(1);
+        });
+        $("#historyStatus").on("change", function () {
             loadHistory(1);
         });
         $("#historyPageSize").on("change", function () {

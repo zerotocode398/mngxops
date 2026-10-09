@@ -185,7 +185,7 @@
         var $state = $("[data-binding-state='" + id + "']");
         var $content = $("[data-binding-content='" + id + "']");
         if (!bindings.length) {
-            $state.text("该节点没有可发布的绑定").prop("hidden", false);
+            $state.text(state.syncStatus ? "该节点没有符合筛选条件的配置" : "该节点没有可发布的绑定").prop("hidden", false);
             $content.prop("hidden", true);
             return;
         }
@@ -365,9 +365,10 @@
         loadBindingsPage(id, state.bindingPageByNode[id] || 1);
     }
 
-    function fetchBindingsPage(nodeId, page, pageSize, search) {
+    function fetchBindingsPage(nodeId, page, pageSize, search, syncStatus) {
         var query = {page: page, page_size: pageSize};
         if (search) query.search = search;
+        if (syncStatus) query.sync_status = syncStatus;
         return $.getJSON(
             "/api/releases/nodes/" + encodeURIComponent(nodeId) + "/bindings",
             query
@@ -384,7 +385,8 @@
             id,
             page,
             requestedSize,
-            window.getQueryTagValue("#releaseSearch") || ""
+            window.getQueryTagValue("#releaseSearch") || "",
+            state.syncStatus
         )
             .done(function (response) {
                 state.bindingsByNode[id] = response.bindings || [];
@@ -696,6 +698,12 @@
         });
         $(document).on("click", "[data-node-toggle]", function () {
             toggleNode(this.getAttribute("data-node-toggle"));
+        });
+        $(document).on("click", ".release-node-row", function (event) {
+            if ($(event.target).closest("input, button, select, a, label").length) {
+                return;
+            }
+            toggleNode(this.getAttribute("data-node-row"));
         });
         $(document).on("change", "[data-node-select]", function () {
             selectAllForNode(this.getAttribute("data-node-select"), this.checked);

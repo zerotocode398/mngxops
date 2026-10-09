@@ -1242,7 +1242,7 @@ def list_release_nodes(
     "/nodes/{node_id}/bindings",
     response_model=ReleaseBindingsResponse,
     summary="读取节点可发布绑定",
-    description="分页返回节点绑定及版本号（包括标记删除项），不包含配置正文；search 可匹配配置名/路径，page_size 最大 100。",
+    description="分页返回节点绑定及版本号（包括标记删除项），不包含配置正文；search 可匹配配置名/路径，sync_status 可按绑定状态筛选，pending 包含未同步和本地已修改，page_size 最大 100。",
     responses=api_error_responses((401, 403, 404, 422, 500)),
 )
 def list_node_release_bindings(
@@ -1250,10 +1250,20 @@ def list_node_release_bindings(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     search: str = Query("", max_length=200),
+    sync_status: str = Query("", max_length=20),
     user: User = Depends(require_release_access),
     session: Session = Depends(get_session),
 ) -> ReleaseBindingsResponse:
     """分页返回节点可发布绑定和版本选择项。"""
+    if sync_status not in (
+        "",
+        "pending",
+        "synced",
+        "failed",
+        "orphaned",
+        "marked_deleted",
+    ):
+        raise HTTPException(status_code=422, detail="配置绑定状态无效")
     node = session.scalar(
         select(Node)
         .options(joinedload(Node.credential))
@@ -1273,6 +1283,13 @@ def list_node_release_bindings(
         .join(ConfigBinding.config)
         .where(ConfigBinding.node_id == node_id)
     )
+    if sync_status:
+        statuses = (
+            ("not_synced", "modified")
+            if sync_status == "pending"
+            else (sync_status,)
+        )
+        binding_query = binding_query.where(ConfigBinding.sync_status.in_(statuses))
     search_terms = [
         term.strip()
         for term in search.replace("，", ",").split(",")

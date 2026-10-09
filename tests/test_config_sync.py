@@ -594,6 +594,105 @@ def test_config_list_search_and_filters_are_visible(config_client):
     assert "edge-frontend.conf" in detail.text
 
 
+def test_config_detail_filters_nodes_by_selected_binding_content(config_client):
+    """验证从版本历史返回标签时只展示当前绑定正文相同的节点。"""
+    client, app, _csrf_token, node_id, user_id = config_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            config = Config(
+                name="nginx.conf",
+                template_content="label default content",
+                created_by=user_id,
+            )
+            session.add(config)
+            session.flush()
+            first_node = session.get(Node, node_id)
+            matching_node = Node(
+                hostname="nginx-node-matching",
+                ip="192.0.2.91",
+                port=22,
+                credential_id=first_node.credential_id,
+                environment="test",
+                status="online",
+                nginx_available=True,
+                created_by=user_id,
+            )
+            different_node = Node(
+                hostname="nginx-node-different",
+                ip="192.0.2.92",
+                port=22,
+                credential_id=first_node.credential_id,
+                environment="test",
+                status="online",
+                nginx_available=True,
+                created_by=user_id,
+            )
+            session.add_all([matching_node, different_node])
+            session.flush()
+            binding_specs = (
+                (first_node, "worker_processes 2;"),
+                (matching_node, "worker_processes 2;"),
+                (different_node, "worker_processes 8;"),
+            )
+            selected_binding_id = None
+            for binding_node, content in binding_specs:
+                binding = ConfigBinding(
+                    config_id=config.id,
+                    node_id=binding_node.id,
+                    remote_path="/etc/nginx/nginx.conf",
+                    content=content,
+                    current_version=1,
+                    sync_status="synced",
+                    synced_version=1,
+                    created_by=user_id,
+                )
+                session.add(binding)
+                session.flush()
+                if binding_node.id == first_node.id:
+                    selected_binding_id = binding.id
+                session.add(
+                    BindingVersion(
+                        binding_id=binding.id,
+                        version=1,
+                        content=content,
+                        remark="初始版本",
+                        created_by=user_id,
+                    )
+                )
+            config_id = config.id
+
+    versions = client.get(
+        "/configs/bindings/{}/versions/".format(selected_binding_id)
+    )
+    binding_detail = client.get(
+        "/configs/bindings/{}/".format(selected_binding_id)
+    )
+    filtered_detail = client.get(
+        "/configs/{}/?binding_id={}".format(config_id, selected_binding_id)
+    )
+    unfiltered_detail = client.get("/configs/{}/".format(config_id))
+    invalid_binding = client.get(
+        "/configs/{}/?binding_id=99999".format(config_id)
+    )
+
+    assert versions.status_code == 200, versions.text
+    assert '返回绑定' in versions.text
+    assert binding_detail.status_code == 200, binding_detail.text
+    assert 'href="/configs/{}/?binding_id={}"'.format(
+        config_id, selected_binding_id
+    ) in binding_detail.text
+    assert filtered_detail.status_code == 200, filtered_detail.text
+    assert "config-node" in filtered_detail.text
+    assert "nginx-node-matching" in filtered_detail.text
+    assert "nginx-node-different" not in filtered_detail.text
+    assert "仅显示与 config-node 配置内容完全相同的绑定" in filtered_detail.text
+    assert "配置内容" in filtered_detail.text
+    assert "内容模板" not in filtered_detail.text
+    assert unfiltered_detail.status_code == 200, unfiltered_detail.text
+    assert "nginx-node-different" in unfiltered_detail.text
+    assert invalid_binding.status_code == 404
+
+
 def test_create_config_can_bind_multiple_or_zero_nodes(config_client):
     """新增配置可一次绑定多个节点，也允许创建未绑定标签。"""
     client, app, csrf_token, node_id, user_id = config_client

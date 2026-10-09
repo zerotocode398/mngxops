@@ -34,21 +34,14 @@
         </div>
     </div>
     <div class="card-body">
-        <form id="historyFilterForm" class="mb-3" autocomplete="off">
+        <form id="historyFilterForm" method="get" action="/releases/" class="mb-3" autocomplete="off" data-query-submit-on-enter>
             <div class="row g-2 align-items-center">
-                <div class="col-lg-4">
-                    <input class="form-control form-control-sm" id="historySearch" data-query-tags type="search" maxlength="200"
-                           placeholder="搜索批次、主机、配置或路径" aria-label="搜索批次、主机、配置或路径">
+                <div class="col-12 col-lg-8">
+                    <label class="visually-hidden" for="historySearch">搜索发布历史</label>
+                    <input class="form-control form-control-sm" id="historySearch" name="search" data-query-tags type="search" maxlength="200" value="{{ search }}"
+                           placeholder="搜索批次号、节点名称、IP 或配置名称" aria-label="搜索批次号、节点名称、IP 或配置名称">
                 </div>
-                <div class="col-sm-4 col-lg-2">
-                    <input class="form-control form-control-sm" id="historyBatch" type="search" maxlength="64"
-                           placeholder="批次号" aria-label="批次号">
-                </div>
-                <div class="col-sm-4 col-lg-2">
-                    <input class="form-control form-control-sm" id="historyNodeIp" type="search" maxlength="100"
-                           placeholder="节点 IP" aria-label="节点 IP">
-                </div>
-                <div class="col-sm-4 col-lg-2">
+                <div class="col-12 col-sm-5 col-lg-3">
                     <select class="form-select form-select-sm" id="historyStatus" aria-label="批次状态">
                         <option value="">全部状态</option>
                         <option value="success">成功</option>
@@ -58,11 +51,6 @@
                         <option value="pending">等待执行</option>
                         <option value="cancelled">已取消</option>
                     </select>
-                </div>
-                <div class="col-sm-6 col-lg-2 d-grid">
-                    <button class="btn btn-outline-primary btn-sm" type="submit">
-                        <i class="bi bi-search me-1" aria-hidden="true"></i>筛选
-                    </button>
                 </div>
             </div>
         </form>
@@ -159,4 +147,4 @@
 </div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=2"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=3"></script>{% endblock %}

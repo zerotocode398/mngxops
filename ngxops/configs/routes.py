@@ -923,19 +923,40 @@ def delete_config(
 def config_detail(
     request: Request,
     config_id: int,
+    binding_id: Optional[int] = Query(None, ge=1),
     user: User = Depends(require_permission("configs", "read")),
     db_session: Session = Depends(get_session),
 ) -> Response:
-    """显示配置标签元数据和活跃节点上的绑定。"""
+    """显示配置标签元数据和所选绑定的同内容节点绑定。"""
     config = db_session.get(Config, config_id)
     if config is None:
         raise HTTPException(status_code=404, detail="配置标签不存在")
-    bindings = db_session.scalars(
+    content_filter_binding = None
+    if binding_id is not None:
+        content_filter_binding = db_session.scalar(
+            select(ConfigBinding)
+            .join(Node, ConfigBinding.node_id == Node.id)
+            .options(joinedload(ConfigBinding.node))
+            .where(
+                ConfigBinding.id == binding_id,
+                ConfigBinding.config_id == config_id,
+                Node.is_deleted.is_(False),
+            )
+        )
+        if content_filter_binding is None:
+            raise HTTPException(status_code=404, detail="配置标签绑定不存在")
+    binding_query = (
         select(ConfigBinding)
         .join(Node, ConfigBinding.node_id == Node.id)
         .options(joinedload(ConfigBinding.node))
         .where(ConfigBinding.config_id == config_id, Node.is_deleted.is_(False))
-        .order_by(Node.hostname.asc())
+    )
+    if content_filter_binding is not None:
+        binding_query = binding_query.where(
+            ConfigBinding.content == content_filter_binding.content
+        )
+    bindings = db_session.scalars(
+        binding_query.order_by(Node.hostname.asc(), Node.id.asc())
     ).all()
     return _render(
         request,
@@ -945,6 +966,7 @@ def config_detail(
         {
             "config": config,
             "bindings": bindings,
+            "content_filter_binding": content_filter_binding,
             "source_labels": SOURCE_LABELS,
             "status_labels": STATUS_LABELS,
             "can_create": _can(user, request, db_session, "create"),
