@@ -1,8 +1,10 @@
 """验证配置发现、单节点同步和批量同步任务边界。"""
 
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 import re
+from threading import Event
 import time
 
 import pytest
@@ -338,6 +340,9 @@ def test_discovery_lists_included_files_and_syncs_one_or_many_paths(
     ):
         """返回主配置和两条 include 文件路径供页面任务验证。"""
         seen_paths.append(main_path)
+        if progress_callback:
+            for index, item in enumerate(files, 1):
+                progress_callback(index, item["path"])
         return files, []
 
     class FakeSshClient:
@@ -368,6 +373,11 @@ def test_discovery_lists_included_files_and_syncs_one_or_many_paths(
     ]
     assert discovered_paths == [main_conf_path] + child_paths
     assert seen_paths == [main_conf_path]
+    assert any(
+        "config-node (192.0.2.80) 发现配置 {}".format(path) in log["message"]
+        for path in discovered_paths
+        for log in discovery_task["logs"]
+    )
 
     single = client.post(
         "/api/configs/sync",
@@ -503,8 +513,36 @@ def test_sync_wizard_uses_host_ip_search_and_default_nginx_filter(config_client)
     assert "Nginx 状态" not in response.text
     assert "批量任务日志" not in response.text
     assert "可同步节点 3 个" not in response.text
+    assert "config-sync-toolbar" in response.text
+    assert "全选可同步节点" in response.text
+    assert "最多选择 3 个节点" in response.text
+    assert "批量同步" in response.text
+    assert "config-discovery-select-all" in response.text
+    assert "config-sync-terminal" not in response.text
     assert "全量同步" in response.text
-    assert "批量全量同步" not in response.text
+
+
+def test_sync_wizard_displays_last_sync_time_in_beijing_time(config_client):
+    """同步向导将 UTC 数据库时间按 UTC+8 展示。"""
+    client, app, _csrf_token, node_id, user_id = config_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            binding_id = _create_binding(
+                session,
+                node_id,
+                user_id,
+                "nginx.conf",
+                "/etc/nginx/nginx.conf",
+                "events {}",
+            )
+            session.get(ConfigBinding, binding_id).last_sync_time = datetime(
+                2026, 10, 9, 3, 15
+            )
+
+    response = client.get("/configs/sync/")
+
+    assert response.status_code == 200, response.text
+    assert "2026-10-09 11:15" in response.text
 
 
 def test_config_list_search_and_filters_are_visible(config_client):
@@ -696,6 +734,14 @@ def test_full_sync_versions_content_marks_missing_and_cleans_delete(
                 "local edit",
                 status="modified",
             )
+            _create_binding(
+                session,
+                node_id,
+                user_id,
+                "same.conf",
+                "/etc/nginx/conf.d/same.conf",
+                "same content",
+            )
             deleted_binding_id = _create_binding(
                 session,
                 node_id,
@@ -715,7 +761,12 @@ def test_full_sync_versions_content_marks_missing_and_cleans_delete(
                 "path": "/etc/nginx/conf.d/app.conf",
                 "name": "app.conf",
                 "content": "new app content",
-            }
+            },
+            {
+                "path": "/etc/nginx/conf.d/same.conf",
+                "name": "same.conf",
+                "content": "same content",
+            },
         ], []
 
     class FakeChannel:
@@ -764,8 +815,14 @@ def test_full_sync_versions_content_marks_missing_and_cleans_delete(
     assert task["status"] == "success"
     node_result = task["result_tree"]["nodes"][0]
     assert [item["name"] for item in node_result["updated"]] == ["app.conf"]
+    assert [item["name"] for item in node_result["skipped"]] == ["same.conf"]
     assert [item["name"] for item in node_result["orphaned"]] == ["gone.conf"]
     assert [item["name"] for item in node_result["deleted"]] == ["deleted.conf"]
+    assert any(
+        "config-node (192.0.2.80) 跳过配置 /etc/nginx/conf.d/same.conf"
+        in log["message"]
+        for log in task["logs"]
+    )
     with session_scope(app.state.database.session_factory) as session:
         app_binding = session.get(ConfigBinding, app_binding_id)
         gone_binding = session.get(ConfigBinding, gone_binding_id)
@@ -874,7 +931,7 @@ def test_batch_sync_creates_persistent_task_with_default_parallel_limit(
     monkeypatch,
 ):
     """批量同步接受合格节点并通过统一任务 API 返回终态。"""
-    client, _app, csrf_token, node_id, _user_id = config_client
+    client, app, csrf_token, node_id, _user_id = config_client
 
     def fake_discovery(
         target, main_path, context, progress_callback=None, max_depth=3, client=None
@@ -911,3 +968,90 @@ def test_batch_sync_creates_persistent_task_with_default_parallel_limit(
         "success": 1,
         "failed": 0,
     }
+    assert any(
+        "config-node (192.0.2.80) 新增配置 /etc/nginx/nginx.conf"
+        in log["message"]
+        for log in task["logs"]
+    )
+    detail = client.get("/tasks/{}/".format(task["id"]))
+    assert detail.status_code == 200, detail.text
+    assert "task-log-list-terminal" in detail.text
+    assert "config-node (192.0.2.80) · 连接 SSH" in detail.text
+    assert 'id="taskLogHostFilter"' not in detail.text
+
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task_row = session.get(Task, task["id"])
+            task_row.target_hostnames = "config-node,config-node-2"
+            task_row.target_ips = "192.0.2.80,192.0.2.81"
+    detail = client.get("/tasks/{}/".format(task["id"]))
+    assert detail.status_code == 200, detail.text
+    assert 'id="taskLogHostFilter"' in detail.text
+    assert '<option value="192.0.2.80">config-node</option>' in detail.text
+    assert '<option value="192.0.2.81">config-node-2</option>' in detail.text
+
+
+def test_batch_sync_persists_active_node_and_config_progress(config_client, monkeypatch):
+    """批量任务在节点完成前持续显示当前节点步骤和配置路径。"""
+    client, _app, csrf_token, node_id, _user_id = config_client
+    started = Event()
+    release = Event()
+
+    def fake_sync_node(
+        context,
+        session_factory,
+        encryption_key,
+        current_node_id,
+        user_id,
+        task_id,
+        mode,
+        selected_paths,
+        main_conf_path,
+        ssh_client=None,
+        progress_callback=None,
+    ):
+        """暂停节点同步以检查持久化的活动进度。"""
+        progress_callback("同步配置 1/2：/etc/nginx/conf.d/site.conf")
+        started.set()
+        assert release.wait(3), "测试未释放同步工作线程"
+        return {
+            "node_id": current_node_id,
+            "hostname": "config-node",
+            "ip": "192.0.2.80",
+            "mode": mode,
+            "created": [{"name": "site.conf", "path": "/etc/nginx/conf.d/site.conf"}],
+            "updated": [],
+            "skipped": [],
+            "orphaned": [],
+            "deleted": [],
+            "errors": [],
+        }
+
+    monkeypatch.setattr("ngxops.configs.tasks._sync_node", fake_sync_node)
+    response = client.post(
+        "/api/configs/sync/batch",
+        headers={"X-CSRFToken": csrf_token},
+        json={"node_ids": [node_id]},
+    )
+    assert response.status_code == 202, response.text
+    try:
+        assert started.wait(3), "批量同步线程未启动"
+        task_response = client.get(
+            "/api/tasks/{}".format(response.json()["task_id"])
+        )
+        assert task_response.status_code == 200, task_response.text
+        task = task_response.json()
+        assert task["status"] == "running"
+        assert task["progress"] == 0
+        assert "0/1 个节点" in task["detail"]
+        assert "config-node" in task["detail"]
+        assert "/etc/nginx/conf.d/site.conf" in task["detail"]
+        task_detail = client.get("/tasks/{}/".format(task["id"]))
+        assert task_detail.status_code == 200, task_detail.text
+        assert "task-log-list-terminal" in task_detail.text
+        assert "config-node (192.0.2.80) · 同步配置 1/2" in task_detail.text
+    finally:
+        release.set()
+
+    task = _wait_for_task(client, response.json()["task_id"])
+    assert task["status"] == "success"

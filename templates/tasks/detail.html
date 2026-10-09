@@ -4,7 +4,7 @@
 {% block page_title %}任务详情 #{{ task.id }}{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=2">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=4">
 {% endblock %}
 
 {% block content %}
@@ -107,9 +107,18 @@
                 <h3 class="h6 mb-0" id="taskLogsHeading"><i class="bi bi-list-ul me-1" aria-hidden="true"></i>执行日志</h3>
                 <span class="small text-muted" data-log-count>{{ logs|length }} 条</span>
             </div>
-            <div class="task-log-list" id="taskLogList" aria-live="polite">
+            {% if is_config_sync_type and target_node_count > 1 %}
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <label class="small text-muted mb-0" for="taskLogHostFilter">同步主机</label>
+                <select class="form-select form-select-sm task-log-filter-select" id="taskLogHostFilter" aria-label="按同步主机筛选执行日志">
+                    <option value="">全部主机</option>
+                    {% for target in log_target_map %}<option value="{{ target.ip }}">{{ target.hostname }}</option>{% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="task-log-list{% if is_config_sync_type %} task-log-list-terminal{% endif %}" id="taskLogList" aria-live="polite">
                 {% for log in logs %}
-                <div class="task-log-row"><time>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</time><span class="task-log-message">{{ log.message }}</span></div>
+                <div class="task-log-row log-level-{{ log.level }}"><time>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</time><span class="task-log-message">{{ log.message }}</span></div>
                 {% else %}<p class="small text-muted mb-0" data-empty-logs>暂无执行日志</p>{% endfor %}
             </div>
             <button class="btn btn-outline-secondary btn-sm mt-2" type="button" id="taskLoadMoreLogs"
@@ -122,5 +131,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=2"></script>
+<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=4"></script>
 {% endblock %}

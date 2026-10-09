@@ -3,7 +3,9 @@
 import shlex
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from threading import Lock
+from time import monotonic
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import paramiko
 from sqlalchemy import select, update
@@ -159,7 +161,11 @@ def _run_discovery(
         """记录发现数量和当前路径的实际扫描进度。"""
         progress = min(90, 10 + count // 5)
         context.update_progress(progress, "已发现 {} 个文件".format(count))
-        context.append_log("发现配置 {}".format(current_path))
+        context.append_log(
+            "{} ({}) 发现配置 {}".format(
+                target["hostname"], target["ip"], current_path
+            )
+        )
 
     files, errors = discover_remote_configs(
         target,
@@ -171,7 +177,9 @@ def _run_discovery(
     context.check_cancelled()
     for error in errors:
         context.append_log(
-            "发现失败 {}：{}".format(error["path"], error["message"]),
+            "{} ({}) 发现失败 {}：{}".format(
+                target["hostname"], target["ip"], error["path"], error["message"]
+            ),
             "warning",
         )
     tree = _discovery_result_tree(target, files, errors)
@@ -486,8 +494,11 @@ def _sync_node(
     selected_paths: Sequence[str],
     main_conf_path: Optional[str],
     ssh_client: Optional[paramiko.SSHClient] = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> dict:
     """发现并同步一个节点，按模式应用远程缺失和部分选择规则。"""
+    if progress_callback:
+        progress_callback("读取节点和凭据")
     target, target_error = _load_target(
         session_factory,
         node_id,
@@ -514,6 +525,8 @@ def _sync_node(
     owns_client = ssh_client is None
     connection_error = ""
     if ssh_client is None:
+        if progress_callback:
+            progress_callback("连接 SSH")
         ssh_client, connection_error = _connect_ssh(
             target["ip"],
             target["port"],
@@ -526,6 +539,8 @@ def _sync_node(
             target.get("detect_retries", 1),
         )
     if ssh_client is None:
+        if progress_callback:
+            progress_callback("SSH 连接失败")
         errors = [{"path": target["main_conf_path"], "message": connection_error}]
         return _apply_sync_results(
             context,
@@ -542,10 +557,23 @@ def _sync_node(
             None,
         )
     try:
+        if progress_callback:
+            progress_callback(
+                "SSH 已连接，开始发现远程配置：{}".format(target["main_conf_path"])
+            )
+
+        def report_discovery_progress(count: int, current_path: str) -> None:
+            """报告当前节点发现到的配置路径。"""
+            if progress_callback:
+                progress_callback(
+                    "发现配置 {}（已发现 {} 个）".format(current_path, count)
+                )
+
         files, errors = discover_remote_configs(
             target,
             target["main_conf_path"],
             context,
+            progress_callback=(report_discovery_progress if progress_callback else None),
             max_depth=target["max_discover_depth"],
             client=ssh_client,
         )
@@ -562,6 +590,7 @@ def _sync_node(
             files,
             errors,
             ssh_client,
+            progress_callback=progress_callback,
         )
     finally:
         if owns_client:
@@ -581,6 +610,7 @@ def _apply_sync_results(
     files: List[dict],
     errors: List[dict],
     ssh_client: Optional[paramiko.SSHClient],
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> dict:
     """將遠端發現結果寫入本地綁定，並按模式處理缺失路徑。"""
     node_id = target["id"]
@@ -600,6 +630,10 @@ def _apply_sync_results(
 
     for index, item in enumerate(files):
         context.check_cancelled()
+        if progress_callback:
+            progress_callback(
+                "同步配置 {}/{}：{}".format(index + 1, len(files), item["path"])
+            )
         status = _sync_discovered_file(
             session_factory,
             node_id,
@@ -609,7 +643,9 @@ def _apply_sync_results(
         )
         result[status].append({"name": item["name"], "path": item["path"]})
         context.append_log(
-            "{}配置 {}".format(
+            "{} ({}) {}配置 {}".format(
+                target["hostname"],
+                target["ip"],
                 {"created": "新增", "updated": "更新", "skipped": "跳过"}[status],
                 item["path"],
             )
@@ -623,11 +659,15 @@ def _apply_sync_results(
 
     _mark_failed_paths(session_factory, node_id, task_id, errors)
     if mode == "full" and not errors and ssh_client is not None:
+        if progress_callback:
+            progress_callback("检查远程缺失配置")
         result["orphaned"] = _mark_missing_bindings(
             session_factory,
             node_id,
             discovered_paths,
         )
+        if progress_callback:
+            progress_callback("清理已标记删除的远程配置")
         deleted, delete_errors = _cleanup_marked_bindings(
             session_factory,
             target,
@@ -637,9 +677,13 @@ def _apply_sync_results(
         )
         result["deleted"] = deleted
         result["errors"].extend(delete_errors)
+    elif mode == "full" and errors and progress_callback:
+        progress_callback("连接或发现阶段存在错误，跳过缺失检查和远程清理")
     elif mode == "partial":
         # 与参考实现一致，部分同步也清理 marked_deleted；只在发现完整时执行。
         if not errors and ssh_client is not None:
+            if progress_callback:
+                progress_callback("清理已标记删除的远程配置")
             deleted, delete_errors = _cleanup_marked_bindings(
                 session_factory,
                 target,
@@ -650,12 +694,23 @@ def _apply_sync_results(
             result["deleted"] = deleted
             result["errors"].extend(delete_errors)
     for item in result["orphaned"]:
-        context.append_log("远程配置已缺失 {}".format(item["path"]), "warning")
+        context.append_log(
+            "{} ({}) 远程配置已缺失 {}".format(
+                target["hostname"], target["ip"], item["path"]
+            ),
+            "warning",
+        )
     for item in result["deleted"]:
-        context.append_log("已清理远程配置 {}".format(item["path"]))
+        context.append_log(
+            "{} ({}) 已清理远程配置 {}".format(
+                target["hostname"], target["ip"], item["path"]
+            )
+        )
     for error in result["errors"]:
         context.append_log(
-            "配置同步失败 {}：{}".format(error["path"], error["message"]),
+            "{} ({}) 配置同步失败 {}：{}".format(
+                target["hostname"], target["ip"], error["path"], error["message"]
+            ),
             "error",
         )
     if not any(
@@ -827,23 +882,73 @@ def create_batch_sync_task(
         """并行同步目标节点并持续写入批次结果树。"""
         results = []
         done = 0
+        progress_lock = Lock()
+        active_progress = {}
+        last_progress_at = None
+        targets_by_id = {item["id"]: item for item in targets}
+
+        def progress_detail() -> str:
+            """汇总已完成节点数和当前并发节点步骤。"""
+            active = [
+                "{}：{}".format(target["hostname"], active_progress[target["id"]])
+                for target in targets
+                if target["id"] in active_progress
+            ]
+            if not active:
+                return "已完成 {}/{} 个节点，正在汇总结果".format(
+                    done, len(target_ids)
+                )
+            visible = active[:3]
+            if len(active) > len(visible):
+                visible.append("另有 {} 个节点并发执行".format(len(active) - len(visible)))
+            return "已完成 {}/{} 个节点；{}".format(
+                done,
+                len(target_ids),
+                "；".join(visible),
+            )
+
+        def report_node_progress(node_id: int, detail: str) -> None:
+            """限频写入当前节点步骤并维持按节点计算的百分比。"""
+            nonlocal last_progress_at
+            target = targets_by_id[node_id]
+            level = "warning" if "失败" in detail or "存在错误" in detail else "info"
+            context.append_log(
+                "{} ({}) · {}".format(
+                    target["hostname"], target["ip"], detail
+                ),
+                level,
+            )
+            with progress_lock:
+                active_progress[node_id] = detail[:240]
+                now = monotonic()
+                if last_progress_at is not None and now - last_progress_at < 0.5:
+                    return
+                last_progress_at = now
+                progress = min(95, int(done * 95 / max(len(target_ids), 1)))
+                context.update_progress(progress, progress_detail())
+
+        def run_node(node_id: int) -> dict:
+            """执行单节点同步并持续上报当前步骤。"""
+            return _sync_node(
+                context,
+                session_factory,
+                encryption_key,
+                node_id,
+                trigger_user_id,
+                context.task_id,
+                "full",
+                (),
+                None,
+                progress_callback=lambda detail: report_node_progress(node_id, detail),
+            )
+
+        context.append_log("开始批量同步，共 {} 个节点".format(len(target_ids)))
         with ThreadPoolExecutor(
             max_workers=min(max_workers, len(target_ids)),
             thread_name_prefix="ngxops-config-sync",
         ) as pool:
             futures = {
-                pool.submit(
-                    _sync_node,
-                    context,
-                    session_factory,
-                    encryption_key,
-                    node_id,
-                    trigger_user_id,
-                    context.task_id,
-                    "full",
-                    (),
-                    None,
-                ): node_id
+                pool.submit(run_node, node_id): node_id
                 for node_id in target_ids
             }
             for future in as_completed(futures):
@@ -851,10 +956,11 @@ def create_batch_sync_task(
                 try:
                     result = future.result()
                 except Exception:
+                    target = targets_by_id[futures[future]]
                     result = {
                         "node_id": futures[future],
-                        "hostname": "",
-                        "ip": "",
+                        "hostname": target["hostname"],
+                        "ip": target["ip"],
                         "mode": "full",
                         "created": [],
                         "updated": [],
@@ -866,7 +972,20 @@ def create_batch_sync_task(
                 result["summary"] = _node_result_summary(result)
                 compact_result = _compact_node_result(result)
                 results.append(compact_result)
-                done += 1
+                target = targets_by_id[futures[future]]
+                context.append_log(
+                    "{} ({}) 节点同步结束：新增 {}，更新 {}，跳过 {}，远程缺失 {}，清理 {}，错误 {}".format(
+                        result["hostname"] or target["hostname"],
+                        result["ip"] or target["ip"],
+                        len(result["created"]),
+                        len(result["updated"]),
+                        len(result["skipped"]),
+                        len(result["orphaned"]),
+                        len(result["deleted"]),
+                        len(result["errors"]),
+                    ),
+                    "warning" if result["errors"] else "info",
+                )
                 success_count = sum(
                     1 for item in results if item["summary"]["failed"] == 0
                 )
@@ -879,10 +998,12 @@ def create_batch_sync_task(
                     "nodes": results,
                 }
                 context.set_result_tree(current_tree)
-                context.update_progress(
-                    min(95, int(done * 95 / max(len(target_ids), 1))),
-                    "已完成 {}/{} 个节点".format(done, len(target_ids)),
-                )
+                with progress_lock:
+                    done += 1
+                    active_progress.pop(futures[future], None)
+                    last_progress_at = monotonic()
+                    progress = min(95, int(done * 95 / max(len(target_ids), 1)))
+                    context.update_progress(progress, progress_detail())
         success_count = sum(
             1 for item in results if item["summary"]["failed"] == 0
         )

@@ -11,6 +11,7 @@
     var selectAll = document.getElementById("selectSyncNodes");
     var batchButton = document.getElementById("batchConfigSync");
     var selectionCount = document.getElementById("syncSelectionCount");
+    var syncToastStorageKey = "ngxops.configSyncToast";
 
     function requestJson(url, options) {
         var requestOptions = options || {};
@@ -43,14 +44,13 @@
         });
     }
 
-    function pollTask(taskUrl, onUpdate) {
+    function pollTask(taskUrl) {
         return requestJson(taskUrl).then(function (task) {
-            onUpdate(task);
             if (["success", "failed", "cancelled"].indexOf(task.status) >= 0) {
                 return task;
             }
             return delay(window.NGXOPS_TASK_POLL_INTERVAL || 2000).then(function () {
-                return pollTask(taskUrl, onUpdate);
+                return pollTask(taskUrl);
             });
         });
     }
@@ -76,6 +76,53 @@
         if (!element) return;
         element.textContent = message || "";
         element.className = "small " + (kind || "text-muted");
+    }
+
+    // 将同步任务状态和日志入口显示在全局提示中。
+    function showSyncTaskToast(task, fallback) {
+        if (!window.showToast) return;
+        var taskId = task && (task.id || task.task_id);
+        var status = task && task.status;
+        var type = status === "success"
+            ? "success"
+            : status === "failed" ? "danger" : status === "cancelled" ? "warning" : "info";
+        var action = taskId ? {
+            label: "查看完整日志",
+            href: "/tasks/" + encodeURIComponent(taskId) + "/",
+            target: "_blank"
+        } : undefined;
+        window.showToast((task && task.detail) || fallback || "配置同步任务已结束", type, 3000, action);
+    }
+
+    // 保存终态提示后刷新当前列表，使绑定统计和时间立即更新。
+    function refreshWithSyncToast(task, fallback) {
+        var notice = {
+            id: task.id,
+            status: task.status,
+            detail: task.detail || fallback || "配置同步任务已结束"
+        };
+        try {
+            window.sessionStorage.setItem(syncToastStorageKey, JSON.stringify(notice));
+            window.location.reload();
+        } catch (error) {
+            showSyncTaskToast(notice, fallback);
+            window.setTimeout(function () { window.location.reload(); }, 3000);
+        }
+    }
+
+    // 在刷新后的同步页恢复一次性任务提示。
+    function restoreSyncToast() {
+        var saved = null;
+        try {
+            saved = window.sessionStorage.getItem(syncToastStorageKey);
+            if (saved) window.sessionStorage.removeItem(syncToastStorageKey);
+        } catch (error) {
+            return;
+        }
+        if (!saved) return;
+        try {
+            showSyncTaskToast(JSON.parse(saved));
+        } catch (error) {}
     }
 
     function appendPathError(container, error) {
@@ -117,32 +164,6 @@
             container.appendChild(row);
         });
         partialButton.disabled = true;
-    }
-
-    function renderTaskResult(element, task, logs) {
-        var tree = task.result_tree || {};
-        var lines = ["任务 #" + task.id + " · " + task.status + " · " + task.detail];
-        (tree.nodes || []).forEach(function (node) {
-            var counts = node.counts || {};
-            ["created", "updated", "skipped", "orphaned", "deleted"].forEach(function (key) {
-                (node[key] || []).forEach(function (item) {
-                    lines.push(key + " · " + (item.path || item.name || ""));
-                });
-            });
-            if (node.omitted_detail_count) lines.push("其余操作明细 " + node.omitted_detail_count + " 项见任务日志");
-            if (node.omitted_error_count) lines.push("另有 " + node.omitted_error_count + " 项错误摘要见任务日志");
-            (node.errors || []).forEach(function (error) {
-                lines.push("失败 · " + (error.path ? error.path + "：" : "") + error.message);
-            });
-            if (Object.keys(counts).length) {
-                lines.push("完整计数 · 新增 " + (counts.created || 0) + "，更新 " + (counts.updated || 0) + "，跳过 " + (counts.skipped || 0));
-            }
-        });
-        (logs || []).forEach(function (log) {
-            lines.push(log.level + " · " + log.message);
-        });
-        element.textContent = lines.join("\n");
-        element.classList.remove("d-none");
     }
 
     function selectedNodeIds() {
@@ -191,9 +212,8 @@
             node_id: Number(modal.dataset.nodeId),
             main_conf_path: path
         }).then(function (created) {
-            return pollTask(created.task_url, function (task) {
-                setStatus(progress, task.progress + "% · " + task.detail);
-            });
+            setStatus(progress, "发现任务已创建，完成后将显示文件清单");
+            return pollTask(created.task_url);
         }).then(function (task) {
             return readAllTaskLogs("/api/tasks/" + task.id, task).then(function (logs) {
                 var result = task.result_tree && task.result_tree.nodes && task.result_tree.nodes[0] || {};
@@ -202,8 +222,11 @@
                     filesByPath.set(file.path, {path: file.path});
                 });
                 logs.forEach(function (log) {
-                    if (log.message.indexOf("发现配置 ") === 0) {
-                        var path = log.message.slice("发现配置 ".length);
+                    var marker = "发现配置 ";
+                    var markerIndex = log.message.indexOf(marker);
+                    if (markerIndex >= 0) {
+                        var path = log.message.slice(markerIndex + marker.length)
+                            .replace(/（已发现 \d+ 个）$/, "");
                         filesByPath.set(path, {path: path});
                     }
                 });
@@ -236,7 +259,6 @@
             return checkbox.value;
         });
         var status = modal.querySelector(".sync-task-status");
-        var result = modal.querySelector(".sync-task-result");
         if (mode === "partial" && selected.length === 0) {
             setStatus(status, "请至少勾选一个配置文件", "text-danger");
             return;
@@ -244,23 +266,24 @@
         modal.querySelector(".full-config-sync").disabled = true;
         modal.querySelector(".partial-config-sync").disabled = true;
         setStatus(status, "正在创建同步任务…");
-        result.classList.add("d-none");
         postJson("/api/configs/sync", {
             node_id: Number(modal.dataset.nodeId),
             main_conf_path: path,
             mode: mode,
             selected_paths: mode === "partial" ? selected : []
         }).then(function (created) {
-            return pollTask(created.task_url, function (task) {
-                setStatus(status, task.progress + "% · " + task.detail);
+            showSyncTaskToast({
+                id: created.task_id,
+                status: "pending",
+                detail: "单节点配置同步任务已创建，正在执行"
             });
+            setStatus(status, "任务 #" + created.task_id + " 已创建，执行日志可在任务详情查看");
+            return pollTask(created.task_url);
         }).then(function (task) {
-            return readAllTaskLogs("/api/tasks/" + task.id, task).then(function (logs) {
-                renderTaskResult(result, task, logs);
-                setStatus(status, "同步任务结束", task.status === "success" ? "text-success" : "text-warning");
-            });
+            refreshWithSyncToast(task, "单节点配置同步任务已结束");
         }).catch(function (error) {
             setStatus(status, error.message, "text-danger");
+            if (window.showToast) window.showToast(error.message, "danger");
         }).finally(function () {
             modal.querySelector(".full-config-sync").disabled = false;
             modal.querySelector(".partial-config-sync").disabled =
@@ -273,10 +296,12 @@
         var status = document.getElementById("batchSyncStatus");
         if (ids.length === 0) {
             setStatus(status, "请选择需要同步的节点", "text-warning");
+            if (window.showToast) window.showToast("请选择需要同步的节点", "warning");
             return;
         }
         if (ids.length > maxBatch) {
             setStatus(status, "最多选择 " + maxBatch + " 个节点", "text-danger");
+            if (window.showToast) window.showToast("最多选择 " + maxBatch + " 个节点", "warning");
             return;
         }
         window.showConfirm(
@@ -286,20 +311,18 @@
                 batchButton.disabled = true;
                 setStatus(status, "正在创建批量同步任务…");
                 postJson("/api/configs/sync/batch", {node_ids: ids}).then(function (created) {
-                    return pollTask(created.task_url, function (task) {
-                        setStatus(status, "任务 #" + task.id + " · " + task.progress + "% · " + task.detail);
+                    showSyncTaskToast({
+                        id: created.task_id,
+                        status: "pending",
+                        detail: "批量同步任务已创建，正在执行"
                     });
+                    setStatus(status, "任务 #" + created.task_id + " 已创建，执行日志可在任务详情查看");
+                    return pollTask(created.task_url);
                 }).then(function (task) {
-                    var tree = task.result_tree || {};
-                    var details = (tree.nodes || []).map(function (node) {
-                        var counts = node.counts || {};
-                        return node.hostname + "：新增 " + (counts.created || (node.created || []).length) +
-                            "，更新 " + (counts.updated || (node.updated || []).length) +
-                            "，失败 " + (node.errors || []).length;
-                    });
-                    setStatus(status, "任务 #" + task.id + " · " + task.detail + (details.length ? " · " + details.join("；") : ""), task.status === "success" ? "text-success" : "text-warning");
+                    refreshWithSyncToast(task, "批量同步任务已结束");
                 }).catch(function (error) {
                     setStatus(status, error.message, "text-danger");
+                    if (window.showToast) window.showToast(error.message, "danger");
                 }).finally(function () {
                     batchButton.disabled = selectedNodeIds().length === 0 || selectedNodeIds().length > maxBatch;
                 });
@@ -374,4 +397,5 @@
         });
     });
     updateSelection();
+    restoreSyncToast();
 })();

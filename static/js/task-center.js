@@ -254,14 +254,29 @@
         return formatted;
     }
 
+    function findLogHostIp(message) {
+        var formatted = String(message || "");
+        for (var index = 0; index < logTargetMap.length; index += 1) {
+            var target = logTargetMap[index];
+            var hostname = String(target.hostname || "").trim();
+            var ip = String(target.ip || "").trim();
+            if (hostname && ip && formatted.indexOf(hostname + " (" + ip + ")") >= 0) {
+                return ip;
+            }
+        }
+        return "";
+    }
+
     function renderLog(log) {
         var row = document.createElement("div");
-        row.className = "task-log-row";
+        row.className = "task-log-row log-level-" + (log.level || "info");
+        var formattedMessage = formatLogMessage(log.message);
+        row.dataset.logHostIp = findLogHostIp(formattedMessage);
         var time = document.createElement("time");
         time.textContent = log.created_at ? new Date(log.created_at).toLocaleString() : "";
         var message = document.createElement("span");
         message.className = "task-log-message";
-        message.textContent = formatLogMessage(log.message);
+        message.textContent = formattedMessage;
         row.append(time, message);
         return row;
     }
@@ -373,8 +388,10 @@
         var logList = document.getElementById("taskLogList");
         var logCount = document.querySelector("[data-log-count]");
         var loadMoreLogs = document.getElementById("taskLoadMoreLogs");
+        var logHostFilter = document.getElementById("taskLogHostFilter");
         var cursor = Number(detail.getAttribute("data-log-cursor")) || 0;
         var active = detail.getAttribute("data-task-active") === "true";
+        var isConfigSync = detail.getAttribute("data-is-config-sync") === "true";
         var resultElement = document.getElementById("taskResultData");
         var labelsElement = document.getElementById("taskResultLabels");
         var logTargetsElement = document.getElementById("taskLogTargets");
@@ -382,15 +399,50 @@
         try { initialResult = JSON.parse(resultElement.textContent); } catch (error) {}
         try { fieldLabels = JSON.parse(labelsElement.textContent); } catch (error) {}
         try { logTargetMap = JSON.parse(logTargetsElement.textContent); } catch (error) {}
-        logList.querySelectorAll(".task-log-message").forEach(function (message) {
+        logList.querySelectorAll(".task-log-row").forEach(function (row) {
+            var message = row.querySelector(".task-log-message");
             message.textContent = formatLogMessage(message.textContent);
+            row.dataset.logHostIp = findLogHostIp(message.textContent);
         });
+
+        function applyLogHostFilter() {
+            if (!isConfigSync || !logHostFilter) return;
+            var selectedIp = logHostFilter.value;
+            var rows = Array.prototype.slice.call(logList.querySelectorAll(".task-log-row"));
+            var visibleCount = 0;
+            rows.forEach(function (row) {
+                var visible = !selectedIp || row.dataset.logHostIp === selectedIp;
+                row.hidden = !visible;
+                if (visible) visibleCount += 1;
+            });
+            var filterEmpty = logList.querySelector("[data-filter-empty]");
+            if (!filterEmpty) {
+                filterEmpty = document.createElement("p");
+                filterEmpty.className = "small mb-0 task-log-filter-empty";
+                filterEmpty.setAttribute("data-filter-empty", "");
+                filterEmpty.textContent = "所选主机暂无执行日志";
+                logList.appendChild(filterEmpty);
+            }
+            filterEmpty.hidden = !selectedIp || rows.length === 0 || visibleCount > 0;
+            if (logCount) {
+                logCount.textContent = (selectedIp ? visibleCount : rows.length) + " 条";
+            }
+        }
+
+        if (logHostFilter) {
+            logHostFilter.addEventListener("change", function () {
+                applyLogHostFilter();
+                loadAllLogsForFilter();
+            });
+            applyLogHostFilter();
+        }
         renderTaskResult(
             resultRoot,
             initialResult,
-            detail.getAttribute("data-is-config-sync") === "true"
+            isConfigSync
         );
         renderSummary(summaryRoot, initialResult && initialResult.summary);
+        if (isConfigSync) logList.scrollTop = logList.scrollHeight;
         var busy = false;
         if (loadMoreLogs) {
             loadMoreLogs.addEventListener("click", function () { poll(true); });
@@ -426,9 +478,15 @@
                     logList.appendChild(renderLog(log));
                     cursor = Math.max(cursor, Number(log.id) || 0);
                 });
+                if (logHostFilter) applyLogHostFilter();
+                if (isConfigSync && (payload.logs || []).length) {
+                    logList.scrollTop = logList.scrollHeight;
+                }
                 cursor = Math.max(cursor, Number(payload.next_log_id) || 0);
                 detail.setAttribute("data-log-cursor", String(cursor));
-                if (logCount) logCount.textContent = logList.querySelectorAll(".task-log-row").length + " 条";
+                if (logCount && !logHostFilter) {
+                    logCount.textContent = logList.querySelectorAll(".task-log-row").length + " 条";
+                }
                 if (loadMoreLogs) {
                     loadMoreLogs.hidden = !payload.has_more_logs;
                 }
@@ -436,7 +494,7 @@
                     renderTaskResult(
                         resultRoot,
                         payload.result_tree,
-                        detail.getAttribute("data-is-config-sync") === "true"
+                        isConfigSync
                     );
                     renderSummary(summaryRoot, payload.result_tree.summary);
                 }
@@ -452,6 +510,20 @@
                 busy = false;
             }
         }
+
+        async function loadAllLogsForFilter() {
+            if (!logHostFilter || !logHostFilter.value || !loadMoreLogs) return;
+            if (busy) {
+                window.setTimeout(loadAllLogsForFilter, 100);
+                return;
+            }
+            while (!loadMoreLogs.hidden) {
+                var previousCursor = cursor;
+                await poll(true);
+                if (cursor === previousCursor) break;
+            }
+        }
+
         if (loadMoreLogs && !active) {
             loadMoreLogs.hidden = loadMoreLogs.dataset.hasMore !== "true";
         }

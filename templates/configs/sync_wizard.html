@@ -12,9 +12,45 @@
         gap: 0.5rem 1rem;
     }
     .config-discovery-status { min-width: 0; justify-self: end; text-align: right; }
-    .config-discovery-status .discovery-progress { display: block; white-space: nowrap; }
+    .config-discovery-header > h3,
+    .config-discovery-status .discovery-progress { line-height: 1.25; }
+    .config-discovery-select-all {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        min-height: 1.25rem;
+        margin: 0;
+        padding-left: 0;
+        line-height: 1.25;
+    }
+    .config-discovery-select-all .form-check-input { float: none; margin: 0; }
+    .config-discovery-status .discovery-progress { display: block; margin: 0; white-space: nowrap; }
     .config-sync-node-row { cursor: pointer; }
     .config-sync-node-row:focus-visible { outline: 2px solid #0d6efd; outline-offset: -2px; }
+    .config-sync-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        margin-bottom: 0.5rem;
+    }
+    .config-sync-selection {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+    }
+    .config-sync-select-all {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        min-height: 0;
+        margin: 0;
+        padding-left: 0;
+    }
+    .config-sync-select-all .form-check-input { float: none; margin: 0; }
+    .config-sync-selection > span { line-height: 1.25; }
     @media (max-width: 575.98px) {
         .config-discovery-header { grid-template-columns: minmax(0, 1fr) auto; }
         .config-discovery-status { grid-column: 1 / -1; }
@@ -41,13 +77,13 @@
         </form>
 
         {% if can_sync %}
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-            <div class="d-flex align-items-center flex-wrap gap-2">
-                <label class="form-check mb-0"><input class="form-check-input" type="checkbox" id="selectSyncNodes" aria-label="选择本页可同步节点"><span class="form-check-label small">全选可同步节点</span></label>
+        <div class="config-sync-toolbar">
+            <div class="config-sync-selection">
+                <label class="form-check config-sync-select-all small"><input class="form-check-input" type="checkbox" id="selectSyncNodes" aria-label="选择本页可同步节点"><span class="form-check-label">全选可同步节点</span></label>
                 <span class="small text-muted" id="syncSelectionCount">未选择节点</span>
                 <span class="small text-muted">最多选择 {{ batch_max_count }} 个节点</span>
             </div>
-            <button class="btn btn-primary btn-sm" type="button" id="batchConfigSync" disabled><i class="bi bi-cloud-download me-1" aria-hidden="true"></i>全量同步</button>
+            <button class="btn btn-primary btn-sm" type="button" id="batchConfigSync" disabled><i class="bi bi-cloud-download me-1" aria-hidden="true"></i>批量同步</button>
         </div>
         <div class="small mb-2" id="batchSyncStatus" role="status" aria-live="polite"></div>
         {% endif %}
@@ -67,7 +103,7 @@
                         <td>{% if node.nginx_available is true %}<span class="badge text-bg-success">可用</span>{% elif node.nginx_available is false %}<span class="badge text-bg-warning">未检测到</span>{% else %}<span class="badge text-bg-light border text-muted">未知</span>{% endif %}</td>
                         <td class="small text-nowrap">共 {{ row.binding_count }}<br><span class="text-success">已同步 {{ row.synced_count }}</span> / <span class="text-warning">待处理 {{ row.pending_count }}</span>{% if row.orphaned_count %} / <span class="text-muted">远程已删 {{ row.orphaned_count }}</span>{% endif %}{% if row.failed_count %} / <span class="text-danger">失败 {{ row.failed_count }}</span>{% endif %}</td>
                         <td class="font-monospace small text-break">{{ row.main_conf_path }}</td>
-                        <td class="small text-muted text-nowrap">{{ row.last_sync.strftime('%Y-%m-%d %H:%M') if row.last_sync else '未同步' }}</td>
+                        <td class="small text-muted text-nowrap">{{ row.last_sync_display }}</td>
                         <td class="text-end text-nowrap">
                             {% if can_sync and row.eligible %}<button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#syncNode{{ node.id }}" title="发现并同步配置" aria-label="发现并同步 {{ node.hostname }} 的配置"><i class="bi bi-cloud-download" aria-hidden="true"></i></button>{% elif can_sync %}<button class="btn btn-outline-secondary btn-sm" type="button" disabled title="节点需在线且确认 Nginx 可用"><i class="bi bi-cloud-download" aria-hidden="true"></i></button>{% endif %}
                         </td>
@@ -94,14 +130,13 @@
                 <div class="border-top pt-3">
                     <div class="config-discovery-header">
                         <h3 class="h6 mb-0">发现的远程文件</h3>
-                        <label class="form-check mb-0 small"><input class="form-check-input select-discovered-files" type="checkbox" disabled><span class="form-check-label">全选</span></label>
+                        <label class="form-check config-discovery-select-all small"><input class="form-check-input select-discovered-files" type="checkbox" disabled><span class="form-check-label">全选</span></label>
                         <div class="config-discovery-status"><span class="small text-muted discovery-progress" aria-live="polite"></span></div>
                     </div>
                     <div class="small text-muted discovery-errors mt-2" role="status"></div>
                     <div class="config-discovery-files mt-2" aria-live="polite"><div class="small text-muted">尚未发现配置文件</div></div>
                 </div>
                 <div class="small text-muted mt-3 sync-task-status" role="status" aria-live="polite"></div>
-                <pre class="small bg-light border rounded p-2 mt-2 sync-task-result d-none" style="max-height:180px;white-space:pre-wrap"></pre>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">关闭</button>
@@ -115,5 +150,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/config-sync.js') }}?v=4" defer></script>
+<script src="{{ request.url_for('static', path='js/config-sync.js') }}?v=6" defer></script>
 {% endblock %}

@@ -1,6 +1,7 @@
 """提供配置标签、节点绑定及版本历史的 Jinja2 页面。"""
 
 import math
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import urlencode, urlsplit
 
@@ -53,6 +54,15 @@ STATUS_LABELS = {
     "failed": "同步失败",
     "marked_deleted": "已标记删除",
 }
+_BEIJING_TZ = timezone(timedelta(hours=8), name="CST")
+
+
+def _beijing_datetime_display(value: Optional[datetime]) -> str:
+    """将数据库中的 UTC 时间格式化为北京时间。"""
+    if value is None:
+        return "未同步"
+    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return utc_value.astimezone(_BEIJING_TZ).strftime("%Y-%m-%d %H:%M")
 
 
 def _render(
@@ -613,6 +623,9 @@ def config_sync_wizard(
                 "failed_count": counts.get("failed", 0),
                 "orphaned_count": counts.get("orphaned", 0),
                 "last_sync": last_sync.get(node.id),
+                "last_sync_display": _beijing_datetime_display(
+                    last_sync.get(node.id)
+                ),
                 "eligible": (
                     node.status == "online"
                     and node.nginx_available is True

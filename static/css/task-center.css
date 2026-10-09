@@ -237,6 +237,42 @@
     white-space: pre-wrap;
 }
 
+.task-log-filter-select {
+    width: min(320px, 100%);
+}
+
+.task-log-row[hidden] {
+    display: none !important;
+}
+
+.task-log-list-terminal {
+    background: #1a1a2e;
+    color: #00ff88;
+    font-family: var(--bs-font-monospace);
+}
+
+.task-log-list-terminal .task-log-row {
+    border-bottom-color: rgba(145, 184, 166, .2);
+    font-family: inherit;
+}
+
+.task-log-list-terminal .task-log-row time,
+.task-log-list-terminal [data-empty-logs] {
+    color: #91b8a6;
+}
+
+.task-log-list-terminal .task-log-row.log-level-warning .task-log-message {
+    color: #ffd166;
+}
+
+.task-log-list-terminal .task-log-row.log-level-error .task-log-message {
+    color: #ff8a8a;
+}
+
+.task-log-list-terminal .task-log-filter-empty {
+    color: #91b8a6;
+}
+
 @media (max-width: 767.98px) {
     .task-center-table th:nth-child(5),
     .task-center-table td:nth-child(5) {
