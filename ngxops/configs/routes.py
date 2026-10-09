@@ -8,10 +8,9 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from ngxops.accounts.models import User
-from ngxops.credentials.models import Credential
 from ngxops.configs.models import (
     BindingVersion,
     Config,
@@ -26,7 +25,7 @@ from ngxops.configs.services import (
     save_binding_revision,
 )
 from ngxops.database.session import get_session
-from ngxops.nodes.models import Node, NodeGroup
+from ngxops.nodes.models import Node
 from ngxops.security.dependencies import require_permission
 from ngxops.settings.service import read_setting
 from ngxops.ui import render_page
@@ -109,28 +108,20 @@ def _pagination(
     }
 
 
-def _config_list_filters(params: dict) -> Tuple[str, str, str, str]:
-    """规范配置列表的搜索、分组、绑定状态和 Nginx 筛选值。"""
+def _config_list_filters(params: dict) -> Tuple[str, str, str]:
+    """规范配置列表的搜索、绑定状态和 Nginx 筛选值。"""
     search = str(params.get("search", "")).strip()[:200]
-    group_id = str(params.get("group_id", "")).strip()
     sync_status = str(params.get("sync_status", "")).strip()
     nginx_filter = str(params.get("nginx_available", "true")).strip()
     if nginx_filter not in ("true", "all"):
         nginx_filter = "true"
     if sync_status not in CONFIG_FILTER_STATUSES:
         sync_status = ""
-    try:
-        parsed_group_id = int(group_id)
-    except (TypeError, ValueError):
-        parsed_group_id = 0
-    if parsed_group_id < 1 or parsed_group_id > 9223372036854775807:
-        group_id = ""
-    return search, group_id, sync_status, nginx_filter
+    return search, sync_status, nginx_filter
 
 
 def _config_node_query(
     search: str,
-    group_id: str,
     sync_status: str,
     nginx_filter: str,
 ):
@@ -164,8 +155,6 @@ def _config_node_query(
                 matching_binding,
             )
         )
-    if group_id:
-        query = query.where(Node.groups.any(NodeGroup.id == int(group_id)))
     if sync_status:
         allowed_statuses = (
             ("not_synced", "modified")
@@ -208,7 +197,8 @@ def _config_node_rows(db_session: Session, nodes: List[Node]) -> List[dict]:
     if node_ids:
         bindings = db_session.scalars(
             select(ConfigBinding)
-            .options(joinedload(ConfigBinding.config))
+            .join(ConfigBinding.config)
+            .options(contains_eager(ConfigBinding.config))
             .where(ConfigBinding.node_id.in_(node_ids))
             .order_by(
                 ConfigBinding.node_id.asc(),
@@ -233,47 +223,6 @@ def _config_node_rows(db_session: Session, nodes: List[Node]) -> List[dict]:
     return rows
 
 
-def _binding_picker_data(db_session: Session, configs: List[Config]) -> dict:
-    """构造绑定弹窗的可选节点、重复绑定标记和默认内容。"""
-    nodes = _eligible_nodes(db_session)
-    node_config_ids = {node.id: [] for node in nodes}
-    node_ids = list(node_config_ids)
-    if node_ids:
-        for node_id, config_id in db_session.execute(
-            select(ConfigBinding.node_id, ConfigBinding.config_id).where(
-                ConfigBinding.node_id.in_(node_ids)
-            )
-        ):
-            node_config_ids[node_id].append(config_id)
-
-    config_ids = [config.id for config in configs]
-    latest_content = {}
-    if config_ids:
-        rows = db_session.execute(
-            select(ConfigBinding.config_id, ConfigBinding.content)
-            .where(ConfigBinding.config_id.in_(config_ids))
-            .order_by(
-                ConfigBinding.config_id.asc(),
-                ConfigBinding.updated_at.desc(),
-                ConfigBinding.id.desc(),
-            )
-        )
-        for config_id, content in rows:
-            latest_content.setdefault(config_id, content)
-    config_defaults = {
-        config.id: {
-            "path": config.default_remote_path,
-            "content": config.template_content or latest_content.get(config.id, ""),
-        }
-        for config in configs
-    }
-    return {
-        "eligible_nodes": nodes,
-        "node_config_ids": node_config_ids,
-        "config_defaults": config_defaults,
-    }
-
-
 def _config_list_context(
     request: Request,
     user: User,
@@ -282,8 +231,8 @@ def _config_list_context(
 ) -> dict:
     """按配置列表筛选条件聚合节点、绑定和未绑定标签。"""
     query_params = params or dict(request.query_params)
-    search, group_id, sync_status, nginx_filter = _config_list_filters(query_params)
-    query = _config_node_query(search, group_id, sync_status, nginx_filter)
+    search, sync_status, nginx_filter = _config_list_filters(query_params)
+    query = _config_node_query(search, sync_status, nginx_filter)
     total = db_session.scalar(select(func.count()).select_from(query.subquery())) or 0
     try:
         requested_page = max(1, int(query_params.get("page", 1)))
@@ -316,20 +265,8 @@ def _config_list_context(
     node_rows = _config_node_rows(db_session, nodes)
     status_counts = _config_status_counts(db_session)
     can_create = _can(user, request, db_session, "create")
-    configs = []
-    picker_context = {
-        "eligible_nodes": [],
-        "node_config_ids": {},
-        "config_defaults": {},
-    }
-    if can_create:
-        configs = db_session.scalars(
-            select(Config).order_by(Config.name.asc(), Config.id.asc())
-        ).all()
-        picker_context = _binding_picker_data(db_session, configs)
-
     has_status_filter = bool(sync_status)
-    show_unbound = not (search or group_id or has_status_filter)
+    show_unbound = not (search or has_status_filter)
     unbound_configs = []
     if show_unbound:
         unbound_configs = db_session.scalars(
@@ -355,7 +292,6 @@ def _config_list_context(
     total_nodes_count = db_session.scalar(
         select(func.count()).select_from(count_base.subquery())
     ) or 0
-    groups = db_session.scalars(select(NodeGroup).order_by(NodeGroup.name.asc())).all()
     current_query = urlencode(list(query_params.items()))
     list_url = "/configs/"
     if current_query:
@@ -364,22 +300,16 @@ def _config_list_context(
     return {
         "node_rows": node_rows,
         "search": search,
-        "group_id": group_id,
         "sync_status": sync_status,
         "nginx_filter": nginx_filter,
         "has_any_filter": bool(
-            search or group_id or sync_status or nginx_filter == "all"
+            search or sync_status or nginx_filter == "all"
         ),
-        "groups": groups,
         "status_counts": status_counts,
         "nginx_available_count": nginx_available_count,
         "total_nodes_count": total_nodes_count,
         "unbound_configs": unbound_configs,
         "show_unbound": show_unbound,
-        "configs": configs,
-        "eligible_nodes": picker_context["eligible_nodes"],
-        "node_config_ids": picker_context["node_config_ids"],
-        "config_defaults": picker_context["config_defaults"],
         "pagination": pagination,
         "current_list_url": list_url,
         "can_create": can_create,
@@ -462,6 +392,9 @@ def _config_form_context(
     errors: Optional[dict] = None,
     config: Optional[Config] = None,
     node: Optional[Node] = None,
+    eligible_nodes: Optional[List[Node]] = None,
+    selected_node_ids: Optional[Set[int]] = None,
+    return_to: str = "/configs/",
 ) -> dict:
     """构造配置标签新增或编辑表单的回显上下文。"""
     return {
@@ -469,6 +402,9 @@ def _config_form_context(
         "errors": errors or {},
         "config": config,
         "node": node,
+        "eligible_nodes": eligible_nodes or [],
+        "selected_node_ids": selected_node_ids or set(),
+        "return_to": return_to,
     }
 
 
@@ -516,35 +452,23 @@ def config_sync_wizard(
 ) -> Response:
     """筛选节点并显示远程配置发现和同步入口。"""
     search = request.query_params.get("search", "").strip()[:200]
-    group_search = request.query_params.get("group_search", "").strip()[:200]
-    nginx_filter = request.query_params.get("nginx_available", "true").strip()
-    if nginx_filter not in ("true", "false", "unknown", "all"):
-        nginx_filter = "true"
     query = select(Node).where(
         Node.is_deleted.is_(False),
         Node.is_locked.is_(False),
+        Node.nginx_available.is_(True),
     )
     if search:
-        query = query.where(
-            or_(Node.hostname.contains(search), Node.ip.contains(search))
-        )
-    if group_search:
-        for term in group_search.replace("，", ",").split(","):
-            clean_term = term.strip()
-            if clean_term:
-                query = query.where(
-                    or_(
-                        Node.hostname.contains(clean_term),
-                        Node.ip.contains(clean_term),
-                        Node.groups.any(NodeGroup.name.contains(clean_term)),
-                    )
+        for term in (
+            item.strip()
+            for item in search.replace("，", ",").split(",")
+            if item.strip()
+        ):
+            query = query.where(
+                or_(
+                    Node.hostname.contains(term, autoescape=True),
+                    Node.ip.contains(term, autoescape=True),
                 )
-    if nginx_filter == "true":
-        query = query.where(Node.nginx_available.is_(True))
-    elif nginx_filter == "false":
-        query = query.where(Node.nginx_available.is_(False))
-    elif nginx_filter == "unknown":
-        query = query.where(Node.nginx_available.is_(None))
+            )
     total = db_session.scalar(select(func.count()).select_from(query.subquery())) or 0
     page, size, pagination = _pagination(request, total, page, per_page)
     nodes = db_session.scalars(
@@ -609,17 +533,6 @@ def config_sync_wizard(
                 ),
             }
         )
-    active_nodes = select(Node).where(
-        Node.is_deleted.is_(False),
-        Node.is_locked.is_(False),
-        Node.status == "online",
-        Node.nginx_available.is_(True),
-    ).join(Credential, Node.credential_id == Credential.id).where(
-        Credential.is_enabled.is_(True)
-    )
-    eligible_total = db_session.scalar(
-        select(func.count()).select_from(active_nodes.subquery())
-    ) or 0
     preselect = request.query_params.get("node_id", "").strip()
     preselect_node_id = int(preselect) if preselect.isdigit() else None
     return _render(
@@ -630,9 +543,6 @@ def config_sync_wizard(
         {
             "nodes": node_rows,
             "search": search,
-            "group_search": group_search,
-            "nginx_filter": nginx_filter,
-            "eligible_total": eligible_total,
             "preselect_node_id": preselect_node_id,
             "can_sync": _can(user, request, db_session, "sync"),
             "batch_max_count": read_setting(db_session, "node.batch_max_count", 3),
@@ -649,6 +559,10 @@ def create_config_page(
 ) -> Response:
     """显示配置标签新增表单。"""
     node = None
+    errors = {}
+    selected_node_ids = set()
+    eligible_nodes = _eligible_nodes(db_session)
+    eligible_node_ids = {item.id for item in eligible_nodes}
     raw_node_id = request.query_params.get("node_id", "").strip()
     if raw_node_id:
         if not raw_node_id.isdigit():
@@ -656,6 +570,12 @@ def create_config_page(
         node = db_session.get(Node, int(raw_node_id))
         if node is None or node.is_deleted:
             raise HTTPException(status_code=404, detail="节点不存在")
+        if node.id in eligible_node_ids:
+            selected_node_ids.add(node.id)
+        else:
+            errors["nodes"] = _node_gate_message(node) or "该节点当前不满足绑定条件"
+            node = None
+    return_to = _safe_configs_return(request.query_params.get("return_to", ""))
     return _render(
         request,
         "configs/form.html",
@@ -668,7 +588,11 @@ def create_config_page(
                 "template_content": "",
                 "description": "",
             },
+            errors=errors,
             node=node,
+            eligible_nodes=eligible_nodes,
+            selected_node_ids=selected_node_ids,
+            return_to=return_to or "/configs/",
         ),
     )
 
@@ -680,10 +604,12 @@ def create_config(
     default_remote_path: str = Form(""),
     template_content: str = Form(""),
     description: str = Form(""),
+    node_ids: Optional[List[int]] = Form(None),
+    return_to: str = Form(""),
     user: User = Depends(require_permission("configs", "create")),
     db_session: Session = Depends(get_session),
 ) -> Response:
-    """创建配置标签并按可选节点参数初始化一条绑定。"""
+    """创建配置标签并为所选节点初始化绑定和版本。"""
     values = {
         "name": name.strip(),
         "default_remote_path": default_remote_path.strip(),
@@ -698,24 +624,37 @@ def create_config(
     if len(values["default_remote_path"]) > 500:
         errors["default_remote_path"] = "默认远程路径不能超过 500 个字符"
 
-    node = None
+    eligible_nodes = _eligible_nodes(db_session)
+    eligible_by_id = {item.id: item for item in eligible_nodes}
+    selected_node_ids = set(node_ids or [])
     raw_node_id = request.query_params.get("node_id", "").strip()
     if raw_node_id:
         if not raw_node_id.isdigit():
             raise HTTPException(status_code=404, detail="节点不存在")
-        node = db_session.get(Node, int(raw_node_id))
-        if node is None or node.is_deleted:
+        preselected_node = db_session.get(Node, int(raw_node_id))
+        if preselected_node is None or preselected_node.is_deleted:
             raise HTTPException(status_code=404, detail="节点不存在")
-        gate_message = _node_gate_message(node)
-        if gate_message:
-            errors["node"] = gate_message
+        if preselected_node.id in eligible_by_id:
+            selected_node_ids.add(preselected_node.id)
+        else:
+            errors["nodes"] = _node_gate_message(preselected_node) or "节点当前不可绑定配置"
+    if selected_node_ids - set(eligible_by_id):
+        errors["nodes"] = "所选节点已不满足绑定条件，请刷新后重新选择"
+    if selected_node_ids and not values["default_remote_path"]:
+        errors["default_remote_path"] = "选择目标节点时请输入远程文件路径"
     if errors:
         return _render(
             request,
             "configs/form.html",
             user,
             db_session,
-            _config_form_context(values, errors, node=node),
+            _config_form_context(
+                values,
+                errors,
+                eligible_nodes=eligible_nodes,
+                selected_node_ids=selected_node_ids,
+                return_to=_safe_configs_return(return_to) or "/configs/",
+            ),
             status_code=400,
         )
 
@@ -728,10 +667,12 @@ def create_config(
         created_by=user.id,
     )
     db_session.add(config)
-    if node is not None:
+    db_session.flush()
+    for node_id in sorted(selected_node_ids):
+        node = eligible_by_id[node_id]
         binding = ConfigBinding(
-            config=config,
-            node=node,
+            config_id=config.id,
+            node_id=node.id,
             remote_path=config.default_remote_path,
             content=config.template_content,
             current_version=1,
@@ -740,28 +681,21 @@ def create_config(
             created_by=user.id,
         )
         db_session.add(binding)
-        db_session.flush()
         db_session.add(
             BindingVersion(
-                binding_id=binding.id,
+                binding=binding,
                 version=1,
                 content=binding.content,
-                remark="手动创建绑定",
+                remark="手动创建配置并绑定",
                 created_by=user.id,
             )
         )
     db_session.commit()
-    if node is not None:
-        return _notice_redirect(
-            request,
-            "/configs/",
-            "配置标签 {} 已创建并绑定到节点 {}".format(config.name, node.hostname),
-        )
-    return _notice_redirect(
-        request,
-        "/configs/bindings/create/?config_id={}".format(config.id),
-        "配置标签 {} 创建成功，请选择目标节点创建绑定".format(config.name),
-    )
+    target = _safe_configs_return(return_to) or "/configs/"
+    message = "配置标签 {} 已创建".format(config.name)
+    if selected_node_ids:
+        message += "并绑定到 {} 个节点".format(len(selected_node_ids))
+    return _notice_redirect(request, target, message)
 
 
 @router.get("/{config_id}/edit/", response_class=Response, summary="编辑配置标签")

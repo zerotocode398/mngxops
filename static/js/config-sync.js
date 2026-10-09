@@ -293,11 +293,6 @@
                             "，失败 " + (node.errors || []).length;
                     });
                     setStatus(status, "任务 #" + task.id + " · " + task.detail + (details.length ? " · " + details.join("；") : ""), task.status === "success" ? "text-success" : "text-warning");
-                    return readAllTaskLogs("/api/tasks/" + task.id, task).then(function (logs) {
-                        document.getElementById("batchSyncResult").textContent = logs.map(function (log) {
-                            return log.level + " · " + log.message;
-                        }).join("\n");
-                    });
                 }).catch(function (error) {
                     setStatus(status, error.message, "text-danger");
                 }).finally(function () {

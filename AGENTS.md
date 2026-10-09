@@ -5,6 +5,7 @@
 ## 项目基线
 
 - 本轮完成：NX-064 单文件发行、统一 CLI 与运行日志方案。
+- NX-032 后续修正（2026-10-08）：配置管理节点列表显式 JOIN 配置标签，并通过 `contains_eager` 加载关系，修复排序引用未加入主查询的表导致 SQLite `no such column: ngxops_configs.name`。仅查询实现调整，无数据库迁移。
 
 - 目标：在本仓库重写同级 `mngxops` 中的 Nginx 多节点运维平台，将 Django 技术栈迁移为 FastAPI、Jinja2、jQuery、JSON、SQLite3。
 - 运行环境：Python 3.9；本机默认虚拟环境为 `D:\PyCharm\联动优势\works\django-labs\venv3\Scripts\activate`。
@@ -337,3 +338,16 @@ Nginx 安装/升级	执行
 79. **已完成**：凭证管理关联节点数量按钮移除跳转箭头，保留自定义弹窗提示。实现：`templates/credentials/list.html`、`docs/credentials.md`。
 80. **已完成**：关联节点弹窗加入公共查询标签、焦点恢复和条件清空行为，支持按主机名/IP/节点组搜索及 SSH/Nginx 状态筛选，关键词和筛选条件按 AND 组合；分页保留条件并支持 10/25/50/100 条。弹窗为只读列表，没有跨页勾选操作；查询逻辑位于模板内联脚本，未修改静态资源，无需递增静态版本。实现：`ngxops/credentials/routes.py`、`templates/credentials/list.html`、`docs/credentials.md`、`docs/api.md`。
 81. **已完成**：凭证关联节点弹窗移除 SSH/Nginx 状态和节点组筛选，只按主机名/IP搜索，多个关键词按 AND 匹配；查询行不显示 X 清空按钮。分页调整为凭证列表标准，显示总数、当前/总页数、首页/上一页/下一页/末页及每页 10/25/50/100 条，并保留查询条件。接口改为 `page/per_page`。实现：`ngxops/credentials/routes.py`、`templates/credentials/list.html`、`docs/credentials.md`、`docs/api.md`。未运行自动化测试或浏览器验证。
+82. **已完成**：配置标签删除沿用全局确认弹窗，删除后将一次性消息交给全局右上角 `showToast`，不再在列表顶部渲染提示条。实现：`ngxops/configs/routes.py`、`templates/configs/list.html`、`static/js/config-list.js`。验证：配置删除提示专项用例通过。
+83. **已完成**：移除配置列表的节点组筛选框和独立搜索按钮；搜索改为全局查询标签，主机名、IP、配置名、远程路径关键词按 AND 匹配，分页保留条件并恢复搜索焦点。实现：`ngxops/configs/routes.py`、`templates/configs/list.html`、`static/js/config-list.js`。验证：配置列表组合搜索用例通过。
+84. **已完成**：合并“手动添加”和列表级“创建绑定”为单一新增配置表单，可填写标签、远程路径和内容，目标节点允许 0 个或多个；节点选择按主机名/IP/节点组多词 AND 搜索，支持查询标签、10/25/50/100 分页和跨页保留选择。创建标签、绑定及 v1 快照在同一事务提交，已有标签仍可从详情页添加绑定。实现：`ngxops/configs/routes.py`、`templates/configs/form.html`、`static/js/config-create.js`。验证：零绑定/多节点绑定及版本快照用例通过；无数据库迁移。
+85. **已完成**：配置列表增加 Nginx 识别状态开关，默认只显示已识别节点，可切换全部未锁定活动节点；开关保留查询和绑定状态条件。实现：`templates/configs/list.html`、`static/js/config-list.js`、`ngxops/configs/routes.py`。验证：默认开关和筛选查询用例通过。
+86. **已完成**：提高配置列表“绑定状态”筛选栏的文字和未选中状态对比度，状态筛选在列表顶部清晰显示。实现：`templates/configs/list.html`。验证：页面渲染断言确认状态栏和各筛选项存在。
+87. **已完成**：同步列表搜索仅保留主机名/IP 全局查询标签，多个关键词按 AND 匹配并跨字段组合；移除节点组/Nginx 筛选项和筛选按钮，默认固定显示已识别 Nginx 节点，公共分页保留搜索条件。实现：`ngxops/configs/routes.py`、`templates/configs/sync_wizard.html`。验证：同步向导筛选行为和页面文案用例通过。
+88. **已完成**：移除批量任务日志面板及“可同步节点 x 个”提示，批量任务状态仍显示实际执行进度和结果摘要；单节点任务日志保留。实现：`templates/configs/sync_wizard.html`、`static/js/config-sync.js`。验证：同步页面断言确认批量日志和总数提示已移除。
+89. **已完成**：批量同步按钮改名为“全量同步”，移至节点选择状态栏右侧，与选择数量和全选操作分区对齐。实现：`templates/configs/sync_wizard.html`。验证：同步页面按钮文案断言通过。
+90. **已完成**：配置列表查询栏移除重复的每页数量选择器，保留当前 `per_page` 隐藏参数；每页数量继续由表格下方分页栏调整，搜索时保留当前页大小。实现：`templates/configs/list.html`。未运行自动化测试或浏览器验证。
+91. 配置管理新增配置，“选择节点”按钮放置看起来怪怪的，需要调整、选择节点自定义弹窗查询条件需要按 enter 键再查询且查询“每页”换行了，请将查询标签 & 查询分页 & 查询条件 & 查询 UI 按标准规范调整、同时，选择目标节点支持点击表行勾选。
+92. 配置管理配置列表，页面不要显示具体的配置明细，点击节点后在进入对应的配置明细列表，可以参考 mngxops 的功能。
+93. 配置管理配置发现，“Nginx 主配置路径” 读取的不是“节点列表里的 Nginx 主配置路径”字段”。
+94. 

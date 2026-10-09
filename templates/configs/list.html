@@ -6,6 +6,7 @@
 {% block extra_head %}
 <style>
     .config-status-label { padding: 5px 10px; border-radius: 4px; }
+    .config-status-label:not(.active) { background: #fff; border: 1px solid #ced4da; color: #495057; }
     .config-status-label.active { color: #fff; }
     .config-status-label.active.status-all { background: #6c757d; }
     .config-status-label.active.status-pending { background: #0d6efd; }
@@ -13,6 +14,7 @@
     .config-status-label.active.status-orphaned { background: #6c757d; }
     .config-status-label.active.status-failed { background: #dc3545; }
     .config-status-label.active.status-marked { background: #b02a37; }
+    .config-filter-heading { color: #495057; font-weight: 600; }
     .config-node-row:hover { background: #f5f8fa; }
     .config-node-row .node-expand-icon { transition: transform .15s ease; }
     .config-node-row [aria-expanded="true"] .node-expand-icon { transform: rotate(90deg); }
@@ -30,33 +32,31 @@
         <h2 class="h6 mb-0"><i class="bi bi-file-earmark-code me-1" aria-hidden="true"></i>配置列表</h2>
         <div class="d-flex flex-wrap gap-2">
             {% if can_create %}
-            <a class="btn btn-outline-primary btn-sm" href="/configs/create/"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>手动添加</a>
-            <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#bindingCreateModal"><i class="bi bi-link-45deg me-1" aria-hidden="true"></i>创建绑定</button>
+            <a class="btn btn-primary btn-sm" href="/configs/create/?return_to={{ current_list_url|urlencode }}"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>新增配置</a>
             {% endif %}
             {% if can_sync %}<a class="btn btn-outline-info btn-sm" href="/configs/sync/"><i class="bi bi-cloud-download me-1" aria-hidden="true"></i>配置同步</a>{% endif %}
         </div>
     </div>
-    {% if notice %}<div class="alert alert-{{ 'danger' if notice.type == 'error' else 'success' }} alert-dismissible fade show m-3 mb-0" role="status">{{ notice.message }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button></div>{% endif %}
+{% if notice %}<div class="config-notice" data-message="{{ notice.message }}" data-type="{{ notice.type|default('success') }}" hidden></div>{% endif %}
     <div class="card-body">
-        <form method="get" id="configSearchForm" class="mb-3" autocomplete="off">
+        <form method="get" id="configSearchForm" class="mb-3" autocomplete="off" data-query-submit-on-enter data-preserve-query-focus>
             <div class="row g-2 align-items-center">
-                <div class="col-lg-5"><input class="form-control form-control-sm" type="search" name="search" value="{{ search }}" placeholder="搜索主机名、IP、配置名或远程路径" aria-label="搜索主机名、IP、配置名或远程路径"></div>
-                <div class="col-sm-5 col-lg-3"><select class="form-select form-select-sm" name="group_id" aria-label="节点组" onchange="this.form.submit()"><option value="">全部节点组</option>{% for group in groups %}<option value="{{ group.id }}"{% if group_id == group.id|string %} selected{% endif %}>{{ group.name }}</option>{% endfor %}</select></div>
-                <div class="col-sm-4 col-lg-2"><select class="form-select form-select-sm" name="per_page" aria-label="每页节点数" onchange="this.form.submit()">{% for size in pagination.per_page_options %}<option value="{{ size }}"{% if pagination.per_page == size %} selected{% endif %}>{{ size }} 节点/页</option>{% endfor %}</select></div>
+                <div class="col-12 col-lg-5"><label class="visually-hidden" for="configSearch">搜索配置</label><input class="form-control form-control-sm" id="configSearch" type="search" name="search" data-query-tags value="{{ search }}" placeholder="搜索主机名、IP、配置名或远程路径" aria-label="搜索主机名、IP、配置名或远程路径"></div>
+                <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
                 {% if sync_status %}<input type="hidden" name="sync_status" value="{{ sync_status }}">{% endif %}
-                {% if nginx_filter == 'all' %}<input type="hidden" name="nginx_available" value="all">{% endif %}
-                <div class="col-sm-3 col-lg-2 d-grid"><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>搜索</button></div>
+                <input type="hidden" name="nginx_available" id="configNginxFilter" value="{{ nginx_filter }}">
+                <div class="col-6 col-lg-3">
+                    <label class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" id="nginxOnlyToggle"{% if nginx_filter == 'true' %} checked{% endif %}>
+                        <span class="form-check-label small">仅显示已识别 Nginx（{{ nginx_available_count }}/{{ total_nodes_count }}）</span>
+                    </label>
+                </div>
+                {% if has_any_filter %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/configs/?per_page={{ pagination.per_page }}" title="清空筛选"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>清空</a></div>{% endif %}
             </div>
         </form>
 
-        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-            <span class="small text-muted">Nginx：</span>
-            <a class="badge text-decoration-none config-status-label status-all{% if nginx_filter == 'true' %} active{% endif %}" href="{{ request.url.include_query_params(nginx_available='true', page=1) }}">已识别 {{ nginx_available_count }}</a>
-            <a class="badge text-decoration-none config-status-label status-all{% if nginx_filter == 'all' %} active{% endif %}" href="{{ request.url.include_query_params(nginx_available='all', page=1) }}">全部节点 {{ total_nodes_count }}</a>
-        </div>
-
-        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-            <span class="small text-muted">绑定状态：</span>
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3 binding-status-filters" aria-label="绑定状态筛选">
+            <span class="small config-filter-heading">绑定状态：</span>
             <a class="badge text-decoration-none config-status-label status-all{% if not sync_status %} active{% endif %}" href="{{ request.url.include_query_params(sync_status='', page=1) }}">全部 {{ status_counts.total }}</a>
             <a class="badge text-decoration-none config-status-label status-pending{% if sync_status == 'pending' %} active{% endif %}" href="{{ request.url.include_query_params(sync_status='pending', page=1) }}"><i class="bi bi-pencil" aria-hidden="true"></i> 待推送 {{ status_counts.pending }}</a>
             <a class="badge text-decoration-none config-status-label status-synced{% if sync_status == 'synced' %} active{% endif %}" href="{{ request.url.include_query_params(sync_status='synced', page=1) }}"><i class="bi bi-check-circle" aria-hidden="true"></i> 已同步 {{ status_counts.synced }}</a>
@@ -83,7 +83,7 @@
                         <td>{% if stats.failed %}<span class="badge text-bg-danger">{{ stats.failed }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
                         <td>{% if stats.orphaned %}<span class="badge text-bg-secondary">{{ stats.orphaned }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
                         <td>{% if stats.marked_deleted %}<span class="badge text-bg-warning">{{ stats.marked_deleted }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
-                        <td class="text-end text-nowrap">{% if can_create and node.status == 'online' and node.nginx_available is sameas true %}<button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#bindingCreateModal" data-config-node="{{ node.id }}" title="为此节点创建绑定"><i class="bi bi-link-45deg" aria-hidden="true"></i><span class="visually-hidden">创建绑定</span></button>{% endif %}{% if can_sync and node.nginx_available is sameas true %}<a class="btn btn-outline-info btn-sm" href="/configs/sync/?node_id={{ node.id }}" title="同步配置"><i class="bi bi-cloud-download" aria-hidden="true"></i><span class="visually-hidden">同步配置</span></a>{% endif %}</td>
+                        <td class="text-end text-nowrap">{% if can_create and node.status == 'online' and node.nginx_available is sameas true %}<a class="btn btn-outline-primary btn-sm" href="/configs/create/?node_id={{ node.id }}&amp;return_to={{ current_list_url|urlencode }}" title="新建配置并绑定到此节点"><i class="bi bi-plus-lg" aria-hidden="true"></i><span class="visually-hidden">新建配置并绑定</span></a>{% endif %}{% if can_sync and node.nginx_available is sameas true %}<a class="btn btn-outline-info btn-sm" href="/configs/sync/?node_id={{ node.id }}" title="同步配置"><i class="bi bi-cloud-download" aria-hidden="true"></i><span class="visually-hidden">同步配置</span></a>{% endif %}</td>
                     </tr>
                     <tr class="node-bindings-row" id="node-bindings-{{ node.id }}" hidden><td colspan="12"><div class="node-bindings-panel">
                         {% if row.bindings %}
@@ -121,7 +121,7 @@
         <div class="d-flex align-items-center justify-content-between gap-2 mb-2"><h2 class="h6 mb-0"><i class="bi bi-tags me-1" aria-hidden="true"></i>未绑定的配置标签 <span class="badge text-bg-secondary">{{ unbound_configs|length }}</span></h2></div>
         {% if unbound_configs %}
         <div class="table-responsive"><table class="table table-hover table-sm align-middle mb-0"><thead class="table-light"><tr><th>配置名称</th><th>默认远程路径</th><th>创建人</th><th>创建时间</th><th class="text-end">操作</th></tr></thead><tbody>
-            {% for config in unbound_configs %}<tr><td><a class="fw-semibold text-decoration-none" href="/configs/{{ config.id }}/">{{ config.name }}</a></td><td class="font-monospace small">{{ config.default_remote_path or '-' }}</td><td class="small">{{ config.creator.username }}</td><td class="small text-muted">{{ config.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td class="text-end text-nowrap">{% if can_create %}<button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#bindingCreateModal" data-config-id="{{ config.id }}" title="绑定节点"><i class="bi bi-link-45deg" aria-hidden="true"></i><span class="visually-hidden">绑定</span></button>{% endif %}{% if can_update %}<a class="btn btn-outline-secondary btn-sm" href="/configs/{{ config.id }}/edit/" title="编辑标签"><i class="bi bi-pencil" aria-hidden="true"></i><span class="visually-hidden">编辑</span></a>{% endif %}{% if can_delete %}<form class="d-inline" method="post" action="/configs/{{ config.id }}/delete/" data-confirm="确认删除未绑定配置标签 {{ config.name }}？删除后不可恢复。" data-confirm-title="删除配置标签">{% include "includes/csrf_field.html" %}<input type="hidden" name="return_to" value="{{ current_list_url }}"><button class="btn btn-outline-danger btn-sm" type="submit" title="删除标签"><i class="bi bi-trash3" aria-hidden="true"></i><span class="visually-hidden">删除</span></button></form>{% endif %}</td></tr>{% endfor %}
+            {% for config in unbound_configs %}<tr><td><a class="fw-semibold text-decoration-none" href="/configs/{{ config.id }}/">{{ config.name }}</a></td><td class="font-monospace small">{{ config.default_remote_path or '-' }}</td><td class="small">{{ config.creator.username }}</td><td class="small text-muted">{{ config.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td class="text-end text-nowrap">{% if can_create %}<a class="btn btn-outline-primary btn-sm" href="/configs/{{ config.id }}/" title="查看配置并添加节点绑定"><i class="bi bi-link-45deg" aria-hidden="true"></i><span class="visually-hidden">添加节点绑定</span></a>{% endif %}{% if can_update %}<a class="btn btn-outline-secondary btn-sm" href="/configs/{{ config.id }}/edit/" title="编辑标签"><i class="bi bi-pencil" aria-hidden="true"></i><span class="visually-hidden">编辑标签</span></a>{% endif %}{% if can_delete %}<form class="d-inline" method="post" action="/configs/{{ config.id }}/delete/" data-confirm="确认删除未绑定配置标签 {{ config.name }}？删除后不可恢复。" data-confirm-title="删除配置标签">{% include "includes/csrf_field.html" %}<input type="hidden" name="return_to" value="{{ current_list_url }}"><button class="btn btn-outline-danger btn-sm" type="submit" title="删除标签"><i class="bi bi-trash3" aria-hidden="true"></i><span class="visually-hidden">删除标签</span></button></form>{% endif %}</td></tr>{% endfor %}
         </tbody></table></div>
         {% else %}<div class="py-4 text-center text-muted">暂无未绑定的配置标签</div>{% endif %}
         {% endif %}
@@ -130,34 +130,9 @@
 {% endblock %}
 
 {% block modals %}
-{% if can_create %}
-<div class="modal fade" id="bindingCreateModal" tabindex="-1" aria-labelledby="bindingCreateModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
-        <form method="post" action="/configs/bindings/create/" id="bindingCreateForm">
-            {% include "includes/csrf_field.html" %}<input type="hidden" name="return_to" value="{{ current_list_url }}">
-            <div class="modal-header"><h2 class="modal-title fs-6" id="bindingCreateModalTitle"><i class="bi bi-link-45deg me-1" aria-hidden="true"></i>创建节点绑定</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
-            <div class="modal-body">
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6"><label class="form-label" for="bindingConfigPicker">配置标签 <span class="text-danger">*</span></label><select class="form-select" id="bindingConfigPicker" name="config_id" required><option value="">选择配置标签</option>{% for config in configs %}{% set defaults = config_defaults[config.id] %}<option value="{{ config.id }}" data-default-path="{{ defaults.path }}" data-default-content-id="bindingConfigDefaultContent{{ config.id }}">{{ config.name }}</option>{% endfor %}</select>{% for config in configs %}<textarea class="d-none" id="bindingConfigDefaultContent{{ config.id }}" aria-hidden="true">{{ config_defaults[config.id].content }}</textarea>{% endfor %}</div>
-                    <div class="col-md-6"><label class="form-label" for="bindingPathPicker">远程文件路径 <span class="text-danger">*</span></label><input class="form-control" id="bindingPathPicker" name="remote_path" maxlength="500" required placeholder="/etc/nginx/conf.d/site.conf"></div>
-                    <div class="col-12"><label class="form-label" for="bindingContentPicker">配置内容</label><textarea class="form-control font-monospace" id="bindingContentPicker" name="content" rows="8" spellcheck="false" wrap="off"></textarea></div>
-                </div>
-                <fieldset><legend class="form-label fs-6">目标节点 <span class="text-danger">*</span></legend>
-                    <div class="row g-2 align-items-center mb-2"><div class="col-md-8"><input class="form-control form-control-sm" id="bindingNodeSearch" type="search" placeholder="搜索主机名、IP 或节点组" aria-label="搜索主机名、IP 或节点组"></div><div class="col-md-4 text-md-end small text-muted">已选 <strong id="bindingSelectedCount">0</strong> 个节点</div></div>
-                    {% if eligible_nodes %}<div class="table-responsive border rounded binding-node-picker"><table class="table table-sm table-hover align-middle mb-0"><thead class="table-light sticky-top"><tr><th style="width:42px"><input class="form-check-input" id="bindingSelectVisible" type="checkbox" title="全选当前可选节点" aria-label="全选当前可选节点"></th><th>主机名</th><th>IP</th><th>环境</th><th>节点组</th></tr></thead><tbody id="bindingNodeRows">
-                        {% for node in eligible_nodes %}<tr data-node-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ (node.groups|map(attribute='name')|join(' ')))|lower }}"><td><input class="form-check-input binding-node-checkbox" type="checkbox" name="node_ids" value="{{ node.id }}" data-config-ids="{{ node_config_ids[node.id]|join(',') }}" aria-label="选择 {{ node.hostname }}"></td><td>{{ node.hostname }}</td><td class="font-monospace small">{{ node.ip }}</td><td>{{ {'dev': '开发', 'test': '测试', 'prod': '生产'}.get(node.environment, node.environment) }}</td><td>{% for group in node.groups %}<span class="badge text-bg-light border me-1">{{ group.name }}</span>{% else %}<span class="text-muted">-</span>{% endfor %}</td></tr>{% endfor %}<tr id="bindingNodeNoMatches" hidden><td colspan="5" class="text-center text-muted py-3">没有匹配的节点</td></tr>
-                    </tbody></table></div>{% else %}<div class="text-center text-muted py-4">没有在线、未锁定且 Nginx 可用的节点。</div>{% endif %}
-                    <div class="small text-danger mt-2" id="bindingModalError" role="alert" hidden></div>
-                </fieldset>
-            </div>
-            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">取消</button><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>创建绑定</button></div>
-        </form>
-    </div></div>
-</div>
-{% endif %}
 <div class="modal fade" id="configPreviewModal" tabindex="-1" aria-labelledby="configPreviewTitle" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><div><h2 class="modal-title fs-6" id="configPreviewTitle">配置预览</h2><code class="small" id="configPreviewPath"></code></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><pre class="config-preview-content mb-0"><code id="configPreviewContent"></code></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">关闭</button></div></div></div>
 </div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/config-list.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/config-list.js') }}?v=2"></script>{% endblock %}

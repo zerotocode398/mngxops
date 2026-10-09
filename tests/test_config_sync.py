@@ -235,7 +235,9 @@ def test_discovery_task_returns_paths_without_file_contents(config_client, monke
     assert "config-node" in page.text
     assert "/static/js/config-sync.js" in page.text
 
-    def fake_discovery(target, main_path, context, progress_callback=None):
+    def fake_discovery(
+        target, main_path, context, progress_callback=None, max_depth=3, client=None
+    ):
         """返回一份隔离测试使用的远程发现结果。"""
         if progress_callback:
             progress_callback(1, main_path)
@@ -310,8 +312,8 @@ def test_compact_batch_result_stays_within_task_result_limit():
     assert len(serialized.encode("utf-8")) <= MAX_RESULT_LENGTH
 
 
-def test_sync_wizard_combines_search_group_and_nginx_filters(config_client):
-    """节点同步向导按主机搜索、多个组关键词和 Nginx 状态共同过滤。"""
+def test_sync_wizard_uses_host_ip_search_and_default_nginx_filter(config_client):
+    """节点同步向导只按主机/IP 搜索并默认限制为已识别 Nginx。"""
     client, app, _csrf_token, node_id, user_id = config_client
     with session_scope(app.state.database.session_factory) as session:
         with session.begin():
@@ -362,14 +364,159 @@ def test_sync_wizard_combines_search_group_and_nginx_filters(config_client):
             )
 
     response = client.get(
-        "/configs/sync/?search=198.51.100&group_search=prod%2Cblue&nginx_available=true"
+        "/configs/sync/?search=edge-api%2C198.51.100&group_search=prod%2Cblue&nginx_available=all"
     )
 
     assert response.status_code == 200, response.text
     assert "edge-api-01" in response.text
-    assert "edge-api-02" not in response.text
+    assert "edge-api-02" in response.text
     assert "edge-api-03" not in response.text
     assert "edge-api-04" not in response.text
+    assert "节点组 / 标签" not in response.text
+    assert "Nginx 状态" not in response.text
+    assert "批量任务日志" not in response.text
+    assert "可同步节点 3 个" not in response.text
+    assert "全量同步" in response.text
+    assert "批量全量同步" not in response.text
+
+
+def test_config_list_search_and_filters_are_visible(config_client):
+    """配置列表使用多条件搜索、默认 Nginx 开关和清晰的绑定状态栏。"""
+    client, app, _csrf_token, node_id, user_id = config_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            second = Node(
+                hostname="other-node",
+                ip="192.0.2.81",
+                port=22,
+                credential_id=session.get(Node, node_id).credential_id,
+                environment="test",
+                status="online",
+                nginx_available=True,
+                created_by=user_id,
+            )
+            session.add(second)
+            session.flush()
+            second_node_id = second.id
+            _create_binding(
+                session,
+                node_id,
+                user_id,
+                "edge-frontend.conf",
+                "/etc/nginx/conf.d/edge-frontend.conf",
+                "server {}",
+            )
+
+    response = client.get("/configs/?search=config-node%2Cedge-frontend")
+    assert response.status_code == 200, response.text
+    assert '<span class="fw-semibold">config-node</span>' in response.text
+    assert "other-node" not in response.text
+    assert "data-query-tags" in response.text
+    assert "全部节点组" not in response.text
+    assert "绑定状态：" in response.text
+    assert 'id="nginxOnlyToggle" checked' in response.text
+    assert "/static/js/config-list.js?v=2" in response.text
+
+    non_matching = client.get("/configs/?search=config-node%2Cmissing-term")
+    assert non_matching.status_code == 200, non_matching.text
+    assert '<span class="fw-semibold">config-node</span>' not in non_matching.text
+    assert 'data-node-toggle="{}"'.format(second_node_id) not in non_matching.text
+
+
+def test_create_config_can_bind_multiple_or_zero_nodes(config_client):
+    """新增配置可一次绑定多个节点，也允许创建未绑定标签。"""
+    client, app, csrf_token, node_id, user_id = config_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            first = session.get(Node, node_id)
+            group = NodeGroup(name="config-prod", created_by=user_id)
+            second = Node(
+                hostname="config-node-2",
+                ip="192.0.2.82",
+                port=22,
+                credential_id=first.credential_id,
+                environment="prod",
+                status="online",
+                nginx_available=True,
+                groups=[group],
+                created_by=user_id,
+            )
+            session.add(second)
+            session.flush()
+            second_node_id = second.id
+
+    create_page = client.get("/configs/create/")
+    assert create_page.status_code == 200, create_page.text
+    assert "data-query-tags" in create_page.text
+    assert "configNodePageSize" in create_page.text
+    assert "config-prod" in create_page.text
+
+    headers = {"X-CSRFToken": csrf_token}
+    created = client.post(
+        "/configs/create/",
+        headers=headers,
+        data={
+            "name": "multi-node-config",
+            "default_remote_path": "/etc/nginx/conf.d/multi.conf",
+            "template_content": "server {}",
+            "description": "multi node",
+            "return_to": "/configs/?per_page=10",
+            "node_ids": [str(node_id), str(second_node_id)],
+        },
+    )
+    assert created.status_code == 303, created.text
+    assert created.headers["location"] == "/configs/?per_page=10"
+    with session_scope(app.state.database.session_factory) as session:
+        config = session.scalar(select(Config).where(Config.name == "multi-node-config"))
+        bindings = session.scalars(
+            select(ConfigBinding).where(ConfigBinding.config_id == config.id)
+        ).all()
+        assert {binding.node_id for binding in bindings} == {node_id, second_node_id}
+        assert all(binding.sync_status == "not_synced" for binding in bindings)
+        for binding in bindings:
+            assert session.scalar(
+                select(BindingVersion).where(
+                    BindingVersion.binding_id == binding.id,
+                    BindingVersion.version == 1,
+                )
+            ) is not None
+
+    unbound = client.post(
+        "/configs/create/",
+        headers=headers,
+        data={"name": "unbound-config", "return_to": "/configs/"},
+    )
+    assert unbound.status_code == 303, unbound.text
+    with session_scope(app.state.database.session_factory) as session:
+        config = session.scalar(select(Config).where(Config.name == "unbound-config"))
+        assert config is not None
+        assert session.scalar(
+            select(ConfigBinding.id).where(ConfigBinding.config_id == config.id)
+        ) is None
+
+
+def test_config_delete_notice_uses_global_toast(config_client):
+    """配置标签删除后通过全局右上角提示反馈。"""
+    client, app, csrf_token, _node_id, user_id = config_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            config = Config(name="delete-toast-config", created_by=user_id)
+            session.add(config)
+            session.flush()
+            config_id = config.id
+
+    deleted = client.post(
+        "/configs/{}/delete/".format(config_id),
+        headers={"X-CSRFToken": csrf_token},
+        data={"return_to": "/configs/"},
+    )
+    assert deleted.status_code == 303, deleted.text
+    page = client.get(deleted.headers["location"])
+    assert page.status_code == 200, page.text
+    assert "class=\"config-notice\"" in page.text
+    assert "data-message=\"配置标签 delete-toast-config 及其绑定已删除\"" in page.text
+    assert "alert-dismissible" not in page.text
+    assert "/static/js/config-list.js?v=2" in page.text
 
 
 def test_full_sync_versions_content_marks_missing_and_cleans_delete(
@@ -415,7 +562,9 @@ def test_full_sync_versions_content_marks_missing_and_cleans_delete(
                 status="marked_deleted",
             )
 
-    def fake_discovery(target, main_path, context, progress_callback=None):
+    def fake_discovery(
+        target, main_path, context, progress_callback=None, max_depth=3, client=None
+    ):
         """返回仍存在的 app 配置用于全量同步烟测。"""
         return [
             {
@@ -516,7 +665,9 @@ def test_partial_sync_only_updates_selected_discovered_paths(
                 "old other",
             )
 
-    def fake_discovery(target, main_path, context, progress_callback=None):
+    def fake_discovery(
+        target, main_path, context, progress_callback=None, max_depth=3, client=None
+    ):
         """返回两个文件以核对部分同步路径过滤。"""
         return [
             {
@@ -531,9 +682,20 @@ def test_partial_sync_only_updates_selected_discovered_paths(
             },
         ], []
 
+    class FakeSshClient:
+        """提供同步流程使用的空 SSH 客户端。"""
+
+        def close(self):
+            """关闭伪造 SSH 连接。"""
+            return None
+
     monkeypatch.setattr(
         "ngxops.configs.tasks.discover_remote_configs",
         fake_discovery,
+    )
+    monkeypatch.setattr(
+        "ngxops.configs.tasks._connect_ssh",
+        lambda *args: (FakeSshClient(), ""),
     )
     response = client.post(
         "/api/configs/sync",
@@ -566,15 +728,28 @@ def test_batch_sync_creates_persistent_task_with_default_parallel_limit(
     """批量同步接受合格节点并通过统一任务 API 返回终态。"""
     client, _app, csrf_token, node_id, _user_id = config_client
 
-    def fake_discovery(target, main_path, context, progress_callback=None):
+    def fake_discovery(
+        target, main_path, context, progress_callback=None, max_depth=3, client=None
+    ):
         """返回一个批量节点可成功读取的远程文件。"""
         return [
             {"path": main_path, "name": "nginx.conf", "content": "events {}"}
         ], []
 
+    class FakeSshClient:
+        """提供批量同步使用的空 SSH 客户端。"""
+
+        def close(self):
+            """关闭伪造 SSH 连接。"""
+            return None
+
     monkeypatch.setattr(
         "ngxops.configs.tasks.discover_remote_configs",
         fake_discovery,
+    )
+    monkeypatch.setattr(
+        "ngxops.configs.tasks._connect_ssh",
+        lambda *args: (FakeSshClient(), ""),
     )
     response = client.post(
         "/api/configs/sync/batch",

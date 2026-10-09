@@ -28,7 +28,7 @@
                     <div><label class="form-label mb-1" for="nodeSearch">目标节点</label><div class="small text-muted">每批最多 {{ batch_max_count }} 台；已有 Nginx 的节点可继续安装，但会提示路径覆盖风险。</div></div>
                     <div class="install-counter"><span id="selectedNodeCount">0</span> / {{ batch_max_count }} 已选</div>
                 </div>
-                <div class="mb-2"><input class="form-control form-control-sm" id="nodeSearch" type="search" placeholder="搜索主机名、IP 或节点组"></div>
+                <div class="mb-2"><input class="form-control form-control-sm" id="nodeSearch" type="search" placeholder="搜索主机名、IP 或节点组名称"></div>
                 <div class="install-table-wrap install-node-table-wrap">
                     <table class="table table-sm table-hover align-middle mb-0" id="installNodeTable">
                         <thead class="table-light"><tr><th class="check-cell"></th><th>目标节点</th><th>SSH 状态</th><th>Nginx</th><th>凭证用户</th></tr></thead>

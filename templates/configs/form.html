@@ -1,25 +1,85 @@
 {% extends "base.html" %}
 
-{% block title %}{% if config %}编辑配置标签{% else %}新增配置标签{% endif %} - ngxops{% endblock %}
-{% block page_title %}{% if config %}编辑配置标签{% else %}新增配置标签{% endif %}{% endblock %}
+{% block title %}{% if config %}编辑配置标签{% else %}新增配置{% endif %} - ngxops{% endblock %}
+{% block page_title %}{% if config %}编辑配置标签{% else %}新增配置{% endif %}{% endblock %}
 
 {% block content %}
 <section class="card">
-    <div class="card-header"><h2 class="h6 mb-0">标签信息</h2></div>
+    <div class="card-header"><h2 class="h6 mb-0">基本信息</h2></div>
     <div class="card-body">
         {% if notice %}<div class="alert alert-{{ 'danger' if notice.type == 'error' else 'success' }}">{{ notice.message }}</div>{% endif %}
         {% if node %}<div class="alert alert-info py-2">保存后将同时在 <strong>{{ node.hostname }}</strong> 上创建初始绑定。</div>{% endif %}
-        <form method="post" action="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+        <form method="post" action="{{ request.url.path }}{% if config and request.url.query %}?{{ request.url.query }}{% endif %}" id="configForm">
             {% include "includes/csrf_field.html" %}
+            {% if not config %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
             <div class="row g-3">
                 <div class="col-lg-6"><label class="form-label" for="configName">配置名称 <span class="text-danger">*</span></label><input class="form-control{% if errors.name %} is-invalid{% endif %}" id="configName" name="name" maxlength="255" required value="{{ values.name }}">{% if errors.name %}<div class="invalid-feedback">{{ errors.name }}</div>{% endif %}</div>
-                <div class="col-lg-6"><label class="form-label" for="configPath">默认远程路径</label><input class="form-control{% if errors.default_remote_path %} is-invalid{% endif %}" id="configPath" name="default_remote_path" maxlength="500" value="{{ values.default_remote_path }}" placeholder="/etc/nginx/conf.d/site.conf">{% if errors.default_remote_path %}<div class="invalid-feedback">{{ errors.default_remote_path }}</div>{% endif %}</div>
-                {% if errors.node %}<div class="col-12"><div class="alert alert-warning py-2 mb-0">{{ errors.node }}</div></div>{% endif %}
-                <div class="col-12"><label class="form-label" for="configTemplate">内容模板</label><textarea class="form-control font-monospace" id="configTemplate" name="template_content" rows="10" spellcheck="false">{{ values.template_content }}</textarea></div>
+                <div class="col-lg-6"><label class="form-label" for="configPath">远程文件路径</label><input class="form-control{% if errors.default_remote_path %} is-invalid{% endif %}" id="configPath" name="default_remote_path" maxlength="500" value="{{ values.default_remote_path }}" placeholder="/etc/nginx/conf.d/site.conf">{% if errors.default_remote_path %}<div class="invalid-feedback">{{ errors.default_remote_path }}</div>{% endif %}</div>
+                <div class="col-12"><label class="form-label" for="configTemplate">配置内容</label><textarea class="form-control font-monospace" id="configTemplate" name="template_content" rows="10" spellcheck="false">{{ values.template_content }}</textarea></div>
                 <div class="col-12"><label class="form-label" for="configDescription">描述</label><textarea class="form-control" id="configDescription" name="description" rows="3">{{ values.description }}</textarea></div>
-                <div class="col-12 d-flex justify-content-between pt-2"><a class="btn btn-outline-secondary" href="{% if config %}/configs/{{ config.id }}/{% else %}/configs/{% endif %}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>保存</button></div>
+                {% if not config %}
+                <div class="col-12">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="form-label mb-0">目标节点</span>
+                        <span class="small text-muted">可不选；选择后将为每个节点创建未同步绑定。</span>
+                        {% if eligible_nodes %}<button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#configNodePicker"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>选择节点</button>{% endif %}
+                        <span class="small text-muted" id="configSelectedNodeCount">已选 {{ selected_node_ids|length }} 个节点</span>
+                    </div>
+                    {% if errors.nodes %}<div class="small text-danger mt-1" role="alert">{{ errors.nodes }}</div>{% endif %}
+                    {% if eligible_nodes %}<div class="d-flex flex-wrap gap-1 mt-2" id="configSelectedNodeChips"></div>{% else %}<div class="small text-muted mt-2">暂无在线、未锁定且已识别 Nginx 的可选节点。</div>{% endif %}
+                </div>
+                {% endif %}
+                <div class="col-12 d-flex justify-content-between pt-2"><a class="btn btn-outline-secondary" href="{% if config %}/configs/{{ config.id }}/{% else %}{{ return_to }}{% endif %}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回</a><button class="btn btn-primary" type="submit"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>{% if config %}保存{% else %}创建配置{% endif %}</button></div>
             </div>
         </form>
     </div>
 </section>
+{% endblock %}
+
+{% block modals %}
+{% if not config and eligible_nodes %}
+<div class="modal fade" id="configNodePicker" tabindex="-1" aria-labelledby="configNodePickerTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title fs-6" id="configNodePickerTitle"><i class="bi bi-hdd-network me-1" aria-hidden="true"></i>选择目标节点</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+        <div class="modal-body">
+            <label class="visually-hidden" for="configNodeSearch">搜索主机名、IP 或节点组名称</label>
+            <input class="form-control form-control-sm mb-2" id="configNodeSearch" data-query-tags placeholder="搜索主机名、IP 或节点组名称" aria-label="搜索主机名、IP 或节点组名称">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                <label class="form-check mb-0"><input class="form-check-input" type="checkbox" id="configNodeSelectVisible"><span class="form-check-label small">选择本页</span></label>
+                <small class="text-muted"><span id="configNodeResultCount">{{ eligible_nodes|length }}</span> 个匹配节点 · 已选 <strong id="configNodeSelectedCount">{{ selected_node_ids|length }}</strong> 台</small>
+            </div>
+            <div class="table-responsive border rounded">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light sticky-top"><tr><th style="width:42px"><span class="visually-hidden">选择</span></th><th>主机名</th><th>IP 地址</th><th>环境</th><th>节点组</th></tr></thead>
+                    <tbody id="configNodeRows">
+                    {% for item in eligible_nodes %}
+                        <tr data-config-node-row data-search-text="{{ (item.hostname ~ ' ' ~ item.ip ~ ' ' ~ (item.groups|map(attribute='name')|join(' ')))|lower }}">
+                            <td><input class="form-check-input" type="checkbox" name="node_ids" value="{{ item.id }}" form="configForm" data-config-node-checkbox{% if item.id in selected_node_ids %} checked{% endif %} aria-label="选择 {{ item.hostname }}"></td>
+                            <td>{{ item.hostname }}</td><td class="font-monospace small">{{ item.ip }}:{{ item.port }}</td>
+                            <td>{{ {'dev': '开发', 'test': '测试', 'prod': '生产'}.get(item.environment, item.environment) }}</td>
+                            <td>{% for group in item.groups %}<span class="badge text-bg-light border me-1">{{ group.name }}</span>{% else %}<span class="text-muted">-</span>{% endfor %}</td>
+                        </tr>
+                    {% endfor %}
+                    <tr id="configNodeNoMatches" hidden><td colspan="5" class="text-center text-muted py-3">没有匹配的节点</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2">
+                <small class="text-muted" id="configNodePageLabel"></small>
+                <div class="d-flex align-items-center gap-2">
+                    <label class="small text-muted mb-0" for="configNodePageSize">每页</label>
+                    <select class="form-select form-select-sm" id="configNodePageSize" aria-label="每页节点数"><option>10</option><option>25</option><option>50</option><option>100</option></select>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" id="configNodePrev" aria-label="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" id="configNodeNext" aria-label="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary btn-sm" type="button" data-bs-dismiss="modal"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>完成选择</button></div>
+    </div></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if not config %}<script src="{{ request.url_for('static', path='js/config-create.js') }}?v=1" defer></script>{% endif %}
 {% endblock %}
