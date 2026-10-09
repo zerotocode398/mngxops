@@ -74,7 +74,7 @@
 
         if (!$rows.length) return;
 
-        $search.on("input querytags:change", function () { filterRows(true); });
+        $search.on("querytags:change", function () { filterRows(true); });
         $search.on("keydown", function (event) {
             if (event.key !== "Enter" || event.isComposing) return;
             event.preventDefault();
@@ -89,6 +89,19 @@
             updateSelection();
         });
         $rows.on("change", "[data-config-node-checkbox]", updateSelection);
+        $rows.on("click", function (event) {
+            if ($(event.target).closest("a, button, input, label, select, textarea").length) return;
+            var checkbox = this.querySelector("[data-config-node-checkbox]");
+            checkbox.checked = !checkbox.checked;
+            updateSelection();
+        });
+        $rows.on("keydown", function (event) {
+            if (event.target !== this || (event.key !== "Enter" && event.key !== " ")) return;
+            event.preventDefault();
+            var checkbox = this.querySelector("[data-config-node-checkbox]");
+            checkbox.checked = !checkbox.checked;
+            updateSelection();
+        });
         $("#configNodePicker").on("shown.bs.modal", function () {
             window.clearQueryTagValue($search[0]);
             $search.val("");

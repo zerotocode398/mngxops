@@ -72,7 +72,7 @@
 - 迁移版本 6 创建 `ngxops_nodes`、`ngxops_node_groups`、成员关联及 `ngxops_node_sync_settings`。节点 IP 在活跃与软删除记录间共用唯一约束；凭证删除时节点外键置空，节点软删除保留主键、凭证与分组历史。
 - 迁移版本 7 为 `ngxops_tasks` 增加 `subject_type/subject_id` 及索引，供业务模块稳定定位关联资源任务；该关联只保存资源类型和数据库 ID，不保存凭证材料。
 - 迁移版本 8 创建 `ngxops_configs`、`ngxops_config_bindings` 和 `ngxops_binding_versions`。配置标签名称不唯一；绑定保留 `(config_id, node_id)` 唯一约束和配置/节点删除级联；版本保留 `(binding_id, version)` 唯一约束及绑定删除级联。标签来源不增加原模型未声明的数据库 CHECK；绑定同步状态拒绝已下线的 `conflict`、`syncing` 值。
-- 迁移版本 9 创建 `ngxops_config_sync_settings`，每节点至多一条配置发现路径设置；节点删除时级联，更新人删除时置空。它与 v6 的 `ngxops_node_sync_settings`（节点表格导入/导出路径）保持独立，避免两种工作流互相覆盖。
+- 迁移版本 9 创建 `ngxops_config_sync_settings`，每节点至多一条配置发现路径历史设置；节点删除时级联，更新人删除时置空。用户页面功能测试 93 后，配置发现/同步统一读写 v6 的 `ngxops_node_sync_settings.main_conf_path`；v9 表结构保留兼容历史数据，当前运行时不再读写。
 - `password` 与 `private_key` 列只保存 Fernet 密文或空字符串。应用启动时在数据目录读取或创建 `.fernet_key`；它与 `.secret_key` 分离，必须与数据库一起备份，丢失后旧凭证无法解密。
 - 迁移版本 10 创建 `ngxops_nginx_source_packages`、`ngxops_nginx_module_packages` 和 `ngxops_nginx_upgrade_runs`。包记录保留上传人级版本唯一约束；升级记录关联统一任务，记录节点/源码包快照、configure 参数、运行阶段、备份路径及回滚时间。源码和离线模块归档存放在数据目录 `nginx_packages/`，必须与数据库共同备份。
 - 迁移版本 11 创建 `ngxops_nginx_install_runs`，每个统一任务对应一个安装快照；节点和源码包删除时外键置空，任务删除时级联清理。快照包含源码版本、节点身份、configure 参数、模块 JSON、监听端口、执行阶段、Nginx 路径和配置同步结果，不包含 SSH 凭证。迁移为 `nginx_install.read/create` 补种缺失权限项，以兼容早期 RBAC 种子。

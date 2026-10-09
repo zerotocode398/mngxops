@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Sequence, Tuple
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, selectinload, sessionmaker
 
-from ngxops.configs.models import ConfigSyncSetting
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.database.session import session_scope
 from ngxops.logging_setup import log_exception
@@ -374,9 +373,8 @@ def _write_node_install_result(
     version: str,
     nginx_path: str,
     main_conf_path: str,
-    user_id: int,
 ) -> None:
-    """回写节点探测状态及节点和配置同步主配置路径。"""
+    """回写节点探测状态及节点资产主配置路径。"""
     now = datetime.utcnow()
     with session_scope(session_factory) as session:
         with session.begin():
@@ -401,24 +399,6 @@ def _write_node_install_result(
             else:
                 node_sync.main_conf_path = main_conf_path
                 node_sync.updated_at = now
-            sync_setting = session.scalar(
-                select(ConfigSyncSetting).where(
-                    ConfigSyncSetting.node_id == node.id
-                )
-            )
-            if sync_setting is None:
-                session.add(
-                    ConfigSyncSetting(
-                        node_id=node.id,
-                        main_conf_path=main_conf_path,
-                        updated_by=user_id,
-                        updated_at=now,
-                    )
-                )
-            else:
-                sync_setting.main_conf_path = main_conf_path
-                sync_setting.updated_by = user_id
-                sync_setting.updated_at = now
             session.execute(
                 update(NginxInstallRun)
                 .where(NginxInstallRun.task_id == run["task_id"])
@@ -683,7 +663,6 @@ def _run_install(
             version,
             paths["nginx_path"],
             paths["main_conf_path"],
-            run["trigger_user_id"],
         )
 
         _phase(session_factory, task_id, context, "syncing_config", 95, "安装完成，自动同步 Nginx 配置")

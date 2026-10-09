@@ -14,13 +14,12 @@ from ngxops.configs.models import (
     BindingVersion,
     Config,
     ConfigBinding,
-    ConfigSyncSetting,
 )
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.credentials.models import Credential
 from ngxops.credentials.tasks import _connect_ssh
 from ngxops.database.session import session_scope
-from ngxops.nodes.models import Node
+from ngxops.nodes.models import Node, NodeSyncSetting
 from ngxops.tasks.executor import (
     TaskContext,
     TaskOutcome,
@@ -62,12 +61,14 @@ def _load_target(
             return None, "节点未配置 SSH 凭证"
         if not credential.is_enabled:
             return None, "关联凭证已禁用"
-        setting = session.scalar(
-            select(ConfigSyncSetting).where(ConfigSyncSetting.node_id == node.id)
-        )
+        setting = session.get(NodeSyncSetting, node.id)
         main_conf_path = (
             path_override
-            or (setting.main_conf_path if setting is not None else "")
+            or (
+                setting.main_conf_path
+                if setting is not None and setting.main_conf_path
+                else ""
+            )
             or read_setting(
                 session, "config.default_nginx_path", DEFAULT_MAIN_CONF_PATH
             )

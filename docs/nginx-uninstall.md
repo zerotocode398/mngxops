@@ -29,7 +29,7 @@
 - 发布备份目录按 `release.backup_dir/{hostname}` 生成，编译目录取 `upgrade.default_work_dir`，模块目录为其 `nginx-modules` 子目录；由页面分别选择清理。设置变更用于后续预览和新建卸载任务，任务创建时服务端重新读取并校验路径。
 - 运行中的 Nginx 先通过 systemd 或 `nginx -s quit`/`nginx -s stop` 停止，不执行 `kill -9`。系统包和 systemd 操作需要 root 或免密 sudo。
 - 源码安装在检测为 systemd 托管时禁用 unit，并只删除 `/etc/systemd/system` 中的 unit 文件；包安装只清理可能残留的平台自写 `/etc/systemd/system/nginx.service`。发行版 `/lib`、`/usr/lib` unit 不删除。
-- 执行成功后在同一事务清空节点 Nginx 路径/版本，更新 `nginx_available=False`，将未标记删除的配置绑定改为 `orphaned`，并清空配置发现设置中的主配置路径。`NodeSyncSetting` 的节点导入/导出路径与配置发现设置分离，保留原值；不删除发布历史或绑定版本。
+- 执行成功后在同一事务清空节点 Nginx 可执行路径/版本，更新 `nginx_available=False`，将未标记删除的配置绑定改为 `orphaned`。节点资产中的 Nginx 主配置路径保留，供重新安装时沿用；不删除发布历史或绑定版本。
 - 卸载主程序已成功移除、但备份或 unit 清理等后续步骤失败时，节点状态仍回写为 Nginx 不可用；任务保留 `failed` 和失败步骤，避免平台继续将已卸载节点当作可用节点。
 
 ## 持久化

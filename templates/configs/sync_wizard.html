@@ -3,6 +3,26 @@
 {% block title %}配置同步 - ngxops{% endblock %}
 {% block page_title %}配置同步{% endblock %}
 
+{% block extra_head %}
+<style>
+    .config-discovery-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 0.5rem 1rem;
+    }
+    .config-discovery-status { min-width: 0; justify-self: end; text-align: right; }
+    .config-discovery-status .discovery-progress { display: block; white-space: nowrap; }
+    .config-sync-node-row { cursor: pointer; }
+    .config-sync-node-row:focus-visible { outline: 2px solid #0d6efd; outline-offset: -2px; }
+    @media (max-width: 575.98px) {
+        .config-discovery-header { grid-template-columns: minmax(0, 1fr) auto; }
+        .config-discovery-status { grid-column: 1 / -1; }
+        .config-discovery-status .discovery-progress { white-space: normal; overflow-wrap: anywhere; }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="card" id="configSyncPage" data-can-sync="{{ 'true' if can_sync else 'false' }}" data-max-batch="{{ batch_max_count }}">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -40,7 +60,7 @@
                 </tr></thead>
                 <tbody>
                 {% for row in nodes %}{% set node = row.node %}
-                    <tr>
+                    <tr{% if can_sync and row.eligible %} class="config-sync-node-row" data-sync-selectable="true" tabindex="0" aria-label="选择节点 {{ node.hostname }}"{% endif %}>
                         {% if can_sync %}<td class="text-center"><input class="form-check-input config-sync-node" type="checkbox" value="{{ node.id }}" data-hostname="{{ node.hostname }}" data-eligible="{{ 'true' if row.eligible else 'false' }}"{% if preselect_node_id == node.id and row.eligible %} checked{% endif %}{% if not row.eligible %} disabled{% endif %} aria-label="选择 {{ node.hostname }}"></td>{% endif %}
                         <td><strong>{{ node.hostname }}</strong><br><span class="small text-muted font-monospace">{{ node.ip }}:{{ node.port }}</span>{% if node.is_locked %}<span class="badge text-bg-warning ms-1">已锁定</span>{% endif %}</td>
                         <td>{% if node.status == "online" %}<span class="badge text-bg-success">在线</span>{% elif node.status == "offline" %}<span class="badge text-bg-secondary">离线</span>{% else %}<span class="badge text-bg-light border text-muted">未知</span>{% endif %}</td>
@@ -72,7 +92,11 @@
                 <div class="input-group mb-2"><input class="form-control form-control-sm main-conf-path" id="mainConf{{ node.id }}" value="{{ row.main_conf_path }}" maxlength="500" autocomplete="off"><button class="btn btn-outline-primary btn-sm discover-configs" type="button"><i class="bi bi-search me-1" aria-hidden="true"></i>发现配置</button></div>
                 <div class="small text-muted mb-3">{{ row.binding_count }} 条现有绑定</div>
                 <div class="border-top pt-3">
-                    <div class="d-flex justify-content-between align-items-center gap-2"><h3 class="h6 mb-0">发现的远程文件</h3><span class="small text-muted discovery-progress" aria-live="polite"></span></div>
+                    <div class="config-discovery-header">
+                        <h3 class="h6 mb-0">发现的远程文件</h3>
+                        <label class="form-check mb-0 small"><input class="form-check-input select-discovered-files" type="checkbox" disabled><span class="form-check-label">全选</span></label>
+                        <div class="config-discovery-status"><span class="small text-muted discovery-progress" aria-live="polite"></span></div>
+                    </div>
                     <div class="small text-muted discovery-errors mt-2" role="status"></div>
                     <div class="config-discovery-files mt-2" aria-live="polite"><div class="small text-muted">尚未发现配置文件</div></div>
                 </div>
@@ -91,5 +115,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/config-sync.js') }}?v=2" defer></script>
+<script src="{{ request.url_for('static', path='js/config-sync.js') }}?v=4" defer></script>
 {% endblock %}

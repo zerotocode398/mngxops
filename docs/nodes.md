@@ -17,7 +17,7 @@
 - 锁定会设置 `is_locked=true` 且将 SSH 状态改为 `offline`；重复锁定会跳过，不重复写审计。解锁清除锁、将状态暂置为 `unknown`，并自动创建 SSH/Nginx 探测任务，任务完成后更新 SSH 状态、最近探测时间和 Nginx 版本。启用凭证测试只检查未锁定的活动节点。
 - SSH `status`、Nginx `nginx_available` 和 Nginx 版本分别保存。节点 SSH 探测和凭证关联节点测试中，每次实际 SSH 连接尝试（成功或失败）都会更新 `last_probe_at`；因节点锁定、未配置/不可用凭证而未尝试连接时不更新。Nginx 检测单独记录 `last_nginx_probe_at`；Nginx 命令失败只将 Nginx 标记为不可用，不覆盖 SSH 在线状态；SSH 连接失败会标记离线。
 - SSH 状态 `unknown` 表示当前没有可用的探测结论，常见于新建或恢复节点、解锁后的探测等待期间、启用凭证后重新测试期间，以及解锁探测时节点没有配置凭证；实际 SSH 连接失败会记录为 `offline`。
-- `ngxops_node_sync_settings` 保存节点 xlsx 导入/导出使用的 `Nginx主配置路径`。配置发现/同步使用 NX-031 的独立 `ngxops_config_sync_settings`，两个路径设置互不覆盖。
+- `ngxops_node_sync_settings` 保存节点资产中的 Nginx 主配置路径，节点表单、配置发现和批量同步共用该值；未配置时按 `config.default_nginx_path` 回退。迁移 v9 的 `ngxops_config_sync_settings` 仅保留历史数据，当前发现/同步不再读取或写入。
 
 ## 导入与导出
 

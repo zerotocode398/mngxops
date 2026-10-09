@@ -12,8 +12,7 @@ from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
 from ngxops.audit.service import request_client_ip
 from ngxops.database.session import get_session
-from ngxops.configs.models import ConfigSyncSetting
-from ngxops.nodes.models import Node
+from ngxops.nodes.models import Node, NodeSyncSetting
 from ngxops.security.dependencies import require_permission
 from ngxops.settings.service import read_setting
 from ngxops.configs.tasks import (
@@ -110,32 +109,27 @@ def _resolve_main_conf_path(
     session: Session,
     node: Node,
     requested_path: Optional[str],
-    updated_by: int,
     *,
     save: bool,
 ) -> str:
-    """读取节点主配置路径并按请求选择是否保存新值。"""
+    """读取或更新节点资产中的 Nginx 主配置路径。"""
     path = _validate_main_conf_path(requested_path)
-    setting = session.scalar(
-        select(ConfigSyncSetting).where(ConfigSyncSetting.node_id == node.id)
-    )
+    setting = session.get(NodeSyncSetting, node.id)
     if path is None:
         path = (
             setting.main_conf_path
             if setting is not None and setting.main_conf_path
-            else DEFAULT_MAIN_CONF_PATH
+            else read_setting(session, "config.default_nginx_path", DEFAULT_MAIN_CONF_PATH)
         )
-    if save:
+    if save and requested_path is not None:
         if setting is None:
-            setting = ConfigSyncSetting(
+            setting = NodeSyncSetting(
                 node_id=node.id,
                 main_conf_path=path,
-                updated_by=updated_by,
             )
             session.add(setting)
-        elif setting.main_conf_path != path or setting.updated_by != updated_by:
+        elif setting.main_conf_path != path:
             setting.main_conf_path = path
-            setting.updated_by = updated_by
         session.commit()
     return path
 
@@ -176,7 +170,6 @@ def discover_configs(
         session,
         node,
         payload.main_conf_path,
-        user.id,
         save=True,
     )
     task_id = create_discovery_task(
@@ -220,7 +213,6 @@ def sync_configs(
         session,
         node,
         payload.main_conf_path,
-        user.id,
         save=True,
     )
     selected_paths = [path.strip() for path in payload.selected_paths if path.strip()]

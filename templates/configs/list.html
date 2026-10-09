@@ -16,13 +16,6 @@
     .config-status-label.active.status-marked { background: #b02a37; }
     .config-filter-heading { color: #495057; font-weight: 600; }
     .config-node-row:hover { background: #f5f8fa; }
-    .config-node-row .node-expand-icon { transition: transform .15s ease; }
-    .config-node-row [aria-expanded="true"] .node-expand-icon { transform: rotate(90deg); }
-    .node-bindings-row[hidden] { display: none !important; }
-    .node-bindings-panel { padding: 12px 16px 12px 44px; background: #f8f9fa; }
-    .config-preview-content { max-height: 65vh; overflow: auto; white-space: pre; }
-    .binding-node-picker { max-height: 48vh; overflow: auto; }
-    .binding-node-picker tr[data-bound="true"] { opacity: .55; }
 </style>
 {% endblock %}
 
@@ -72,7 +65,7 @@
                 <tbody>
                     {% for row in node_rows %}{% set node = row.node %}{% set stats = row.stats %}
                     <tr class="config-node-row">
-                        <td class="text-nowrap"><button type="button" class="btn btn-link btn-sm p-0 me-1 text-body" data-node-toggle="{{ node.id }}" aria-expanded="false" aria-controls="node-bindings-{{ node.id }}" title="展开节点配置"><i class="bi bi-chevron-right node-expand-icon" aria-hidden="true"></i><span class="visually-hidden">展开节点配置</span></button><span class="fw-semibold">{{ node.hostname }}</span></td>
+                        <td class="text-nowrap"><a class="fw-semibold text-decoration-none" href="/configs/nodes/{{ node.id }}/?list_query={{ current_list_url|urlencode }}">{{ node.hostname }}</a></td>
                         <td class="font-monospace small text-nowrap">{{ node.ip }}:{{ node.port }}</td>
                         <td>{% for group in node.groups %}<span class="badge text-bg-light border me-1">{{ group.name }}</span>{% else %}<span class="text-muted">-</span>{% endfor %}</td>
                         <td><span class="badge {% if node.status == 'online' %}text-bg-success{% elif node.status == 'offline' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">{{ {'online': '在线', 'offline': '离线', 'unknown': '未知'}.get(node.status, node.status) }}</span></td>
@@ -83,31 +76,8 @@
                         <td>{% if stats.failed %}<span class="badge text-bg-danger">{{ stats.failed }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
                         <td>{% if stats.orphaned %}<span class="badge text-bg-secondary">{{ stats.orphaned }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
                         <td>{% if stats.marked_deleted %}<span class="badge text-bg-warning">{{ stats.marked_deleted }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
-                        <td class="text-end text-nowrap">{% if can_create and node.status == 'online' and node.nginx_available is sameas true %}<a class="btn btn-outline-primary btn-sm" href="/configs/create/?node_id={{ node.id }}&amp;return_to={{ current_list_url|urlencode }}" title="新建配置并绑定到此节点"><i class="bi bi-plus-lg" aria-hidden="true"></i><span class="visually-hidden">新建配置并绑定</span></a>{% endif %}{% if can_sync and node.nginx_available is sameas true %}<a class="btn btn-outline-info btn-sm" href="/configs/sync/?node_id={{ node.id }}" title="同步配置"><i class="bi bi-cloud-download" aria-hidden="true"></i><span class="visually-hidden">同步配置</span></a>{% endif %}</td>
+                        <td class="text-end text-nowrap"><a class="btn btn-outline-secondary btn-sm" href="/configs/nodes/{{ node.id }}/?list_query={{ current_list_url|urlencode }}" title="查看节点配置"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i><span class="visually-hidden">配置</span></a>{% if can_create and node.status == 'online' and node.nginx_available is sameas true %}<a class="btn btn-outline-primary btn-sm" href="/configs/create/?node_id={{ node.id }}&amp;return_to={{ current_list_url|urlencode }}" title="新建配置并绑定到此节点"><i class="bi bi-plus-lg" aria-hidden="true"></i><span class="visually-hidden">新建配置并绑定</span></a>{% endif %}{% if can_sync and node.nginx_available is sameas true %}<a class="btn btn-outline-info btn-sm" href="/configs/sync/?node_id={{ node.id }}" title="同步配置"><i class="bi bi-cloud-download" aria-hidden="true"></i><span class="visually-hidden">同步配置</span></a>{% endif %}</td>
                     </tr>
-                    <tr class="node-bindings-row" id="node-bindings-{{ node.id }}" hidden><td colspan="12"><div class="node-bindings-panel">
-                        {% if row.bindings %}
-                        <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>配置标签</th><th>远程路径</th><th>版本</th><th>同步状态</th><th>最后同步</th><th class="text-end">操作</th></tr></thead><tbody>
-                            {% for binding in row.bindings %}
-                            <tr>
-                                <td><a class="fw-semibold text-decoration-none" href="/configs/{{ binding.config_id }}/">{{ binding.config.name }}</a></td>
-                                <td class="font-monospace small">{{ binding.remote_path }}</td>
-                                <td>V{{ binding.current_version }}</td>
-                                <td><span class="badge {% if binding.sync_status == 'synced' %}text-bg-success{% elif binding.sync_status == 'modified' %}text-bg-primary{% elif binding.sync_status == 'failed' %}text-bg-danger{% elif binding.sync_status == 'marked_deleted' %}text-bg-warning{% elif binding.sync_status == 'orphaned' %}text-bg-secondary{% else %}text-bg-light border text-dark{% endif %}">{{ status_labels.get(binding.sync_status, binding.sync_status) }}</span></td>
-                                <td class="small text-muted">{{ binding.last_sync_time.strftime('%Y-%m-%d %H:%M') if binding.last_sync_time else '-' }}</td>
-                                <td class="text-end text-nowrap">
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#configPreviewModal" data-preview-title="{{ binding.config.name }} @ {{ node.hostname }}" data-preview-path="{{ binding.remote_path }}" title="预览配置"><i class="bi bi-eye" aria-hidden="true"></i><span class="visually-hidden">预览</span></button><textarea class="d-none config-preview-source" aria-hidden="true">{{ binding.content }}</textarea>
-                                    <a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/" title="绑定详情"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i><span class="visually-hidden">详情</span></a>
-                                    <a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/versions/" title="版本历史"><i class="bi bi-clock-history" aria-hidden="true"></i><span class="visually-hidden">版本</span></a>
-                                    {% if can_update and binding.sync_status == 'marked_deleted' and node.status == 'online' and node.nginx_available is sameas true %}<form class="d-inline" method="post" action="/configs/bindings/{{ binding.id }}/restore/" data-confirm="恢复 {{ binding.config.name }} @ {{ node.hostname }}？绑定将重置为未同步状态。" data-confirm-title="恢复绑定">{% include "includes/csrf_field.html" %}<input type="hidden" name="return_to" value="{{ current_list_url }}"><button class="btn btn-outline-success btn-sm" type="submit" title="恢复绑定"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><span class="visually-hidden">恢复</span></button></form>{% endif %}
-                                    {% if can_update and binding.sync_status != 'marked_deleted' and node.status == 'online' and node.nginx_available is sameas true %}<a class="btn btn-outline-primary btn-sm" href="/configs/bindings/{{ binding.id }}/edit/" title="编辑绑定"><i class="bi bi-pencil" aria-hidden="true"></i><span class="visually-hidden">编辑</span></a>{% endif %}
-                                    {% if can_delete %}{% if node.nginx_available is sameas true and binding.sync_status not in ['not_synced', 'orphaned', 'marked_deleted'] %}{% set delete_hint = '绑定将标记删除，并在下次配置同步时清理远程文件。' %}{% else %}{% set delete_hint = '绑定及其版本记录将从平台删除，不会清理远程文件。' %}{% endif %}<form class="d-inline" method="post" action="/configs/bindings/{{ binding.id }}/delete/" data-confirm="确认解除 {{ binding.config.name }} @ {{ node.hostname }}？{{ delete_hint }}" data-confirm-title="解除绑定">{% include "includes/csrf_field.html" %}<input type="hidden" name="return_to" value="{{ current_list_url }}"><button class="btn btn-outline-danger btn-sm" type="submit" title="解除绑定"><i class="bi bi-link-45deg" aria-hidden="true"></i><span class="visually-hidden">解除</span></button></form>{% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody></table></div>
-                        {% else %}<div class="small text-muted">此节点暂无配置绑定。</div>{% endif %}
-                    </div></td></tr>
                     {% else %}
                     <tr><td colspan="12"><div class="py-5 text-center"><i class="bi bi-inbox fs-3 text-muted" aria-hidden="true"></i><p class="mb-0 mt-2 text-muted">没有匹配的节点</p></div></td></tr>
                     {% endfor %}
@@ -129,10 +99,4 @@
 </section>
 {% endblock %}
 
-{% block modals %}
-<div class="modal fade" id="configPreviewModal" tabindex="-1" aria-labelledby="configPreviewTitle" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><div><h2 class="modal-title fs-6" id="configPreviewTitle">配置预览</h2><code class="small" id="configPreviewPath"></code></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div><div class="modal-body"><pre class="config-preview-content mb-0"><code id="configPreviewContent"></code></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">关闭</button></div></div></div>
-</div>
-{% endblock %}
-
-{% block scripts %}<script src="{{ request.url_for('static', path='js/config-list.js') }}?v=2"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/config-list.js') }}?v=3"></script>{% endblock %}

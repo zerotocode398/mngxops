@@ -88,7 +88,11 @@
     function renderDiscoveredFiles(modal, files) {
         var container = modal.querySelector(".config-discovery-files");
         var partialButton = modal.querySelector(".partial-config-sync");
+        var selectAllFiles = modal.querySelector(".select-discovered-files");
         container.replaceChildren();
+        selectAllFiles.checked = false;
+        selectAllFiles.indeterminate = false;
+        selectAllFiles.disabled = files.length === 0;
         if (!files.length) {
             var empty = document.createElement("div");
             empty.className = "small text-muted";
@@ -259,7 +263,8 @@
             setStatus(status, error.message, "text-danger");
         }).finally(function () {
             modal.querySelector(".full-config-sync").disabled = false;
-            modal.querySelector(".partial-config-sync").disabled = modal.querySelectorAll(".discovered-config-path").length === 0;
+            modal.querySelector(".partial-config-sync").disabled =
+                modal.querySelectorAll(".discovered-config-path:checked").length === 0;
         });
     }
 
@@ -322,6 +327,23 @@
     document.querySelectorAll(".config-sync-node").forEach(function (checkbox) {
         checkbox.addEventListener("change", updateSelection);
     });
+    document.querySelectorAll("tr[data-sync-selectable='true']").forEach(function (row) {
+        row.addEventListener("click", function (event) {
+            if (event.target.closest("a, button, input, label, select, textarea")) return;
+            var checkbox = row.querySelector(".config-sync-node");
+            if (!checkbox || checkbox.disabled) return;
+            checkbox.checked = !checkbox.checked;
+            updateSelection();
+        });
+        row.addEventListener("keydown", function (event) {
+            if (event.target !== row || (event.key !== "Enter" && event.key !== " ")) return;
+            event.preventDefault();
+            var checkbox = row.querySelector(".config-sync-node");
+            if (!checkbox || checkbox.disabled) return;
+            checkbox.checked = !checkbox.checked;
+            updateSelection();
+        });
+    });
     if (batchButton) batchButton.addEventListener("click", startBatchSync);
 
     document.querySelectorAll(".modal[data-node-id]").forEach(function (modal) {
@@ -330,9 +352,19 @@
         });
         modal.querySelector(".config-discovery-files").addEventListener("change", function (event) {
             if (event.target.classList.contains("discovered-config-path")) {
-                modal.querySelector(".partial-config-sync").disabled =
-                    modal.querySelectorAll(".discovered-config-path:checked").length === 0;
+                var allFiles = modal.querySelectorAll(".discovered-config-path");
+                var selectedFiles = modal.querySelectorAll(".discovered-config-path:checked");
+                modal.querySelector(".partial-config-sync").disabled = selectedFiles.length === 0;
+                var selectAllFiles = modal.querySelector(".select-discovered-files");
+                selectAllFiles.checked = allFiles.length > 0 && selectedFiles.length === allFiles.length;
+                selectAllFiles.indeterminate = selectedFiles.length > 0 && selectedFiles.length < allFiles.length;
             }
+        });
+        modal.querySelector(".select-discovered-files").addEventListener("change", function () {
+            modal.querySelectorAll(".discovered-config-path").forEach(function (checkbox) {
+                checkbox.checked = this.checked;
+            }, this);
+            modal.querySelector(".partial-config-sync").disabled = !this.checked;
         });
         modal.querySelector(".full-config-sync").addEventListener("click", function () {
             startSingleSync(modal, "full");

@@ -11,9 +11,9 @@ from sqlalchemy import select
 
 from ngxops.accounts.models import User
 from ngxops.accounts.passwords import make_password
+from ngxops.configs.models import ConfigSyncSetting
 from ngxops.app import create_app
 from ngxops.config import get_settings
-from ngxops.configs.models import ConfigSyncSetting
 from ngxops.credentials.crypto import encrypt_secret
 from ngxops.credentials.models import Credential
 from ngxops.database.migration_runner import upgrade_database
@@ -225,20 +225,19 @@ def test_install_batch_history_package_guard_and_path_sync(install_client, monke
         "1.26.1",
         "/opt/nginx-custom/sbin/nginx",
         "/opt/nginx-custom/conf/nginx.conf",
-        user_id,
     )
     with session_scope(app.state.database.session_factory) as session:
         assert session.get(Node, node_id).nginx_path == "/opt/nginx-custom/sbin/nginx"
         assert session.get(NodeSyncSetting, node_id).main_conf_path == "/opt/nginx-custom/conf/nginx.conf"
         assert session.scalar(
-            select(ConfigSyncSetting.main_conf_path).where(
+            select(ConfigSyncSetting.id).where(
                 ConfigSyncSetting.node_id == node_id
             )
-        ) == "/opt/nginx-custom/conf/nginx.conf"
+        ) is None
 
     captured = {}
 
-    def fake_sync_node(*args):
+    def fake_sync_node(*args, **kwargs):
         """捕获安装后配置同步收到的主配置路径。"""
         captured["main_conf_path"] = args[-1]
         return {
@@ -267,6 +266,7 @@ def test_install_batch_history_package_guard_and_path_sync(install_client, monke
         app.state.database.session_factory,
         app.state.credential_encryption_key,
         run_snapshot,
+        None,
         None,
     )
     assert sync_ok is True

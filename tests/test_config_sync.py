@@ -29,7 +29,7 @@ from ngxops.credentials.crypto import encrypt_secret
 from ngxops.credentials.models import Credential
 from ngxops.database.migration_runner import upgrade_database
 from ngxops.database.session import session_scope
-from ngxops.nodes.models import Node, NodeGroup
+from ngxops.nodes.models import Node, NodeGroup, NodeSyncSetting
 from ngxops.tasks.executor import MAX_RESULT_LENGTH, _serialize_result_tree
 from ngxops.tasks.models import Task
 
@@ -85,9 +85,9 @@ def config_client(tmp_path):
                 session.flush()
                 node_id = node.id
         login_page = client.get("/login/")
-        token = re.search(
-            r'name="csrf_token" value="([^"]+)"', login_page.text
-        ).group(1)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', login_page.text).group(
+            1
+        )
         login = client.post(
             "/login/",
             data={
@@ -230,15 +230,24 @@ def test_remote_discovery_expands_nested_and_relative_includes(monkeypatch):
 def test_discovery_task_returns_paths_without_file_contents(config_client, monkeypatch):
     """发现任务持久化路径清单、真实进度且不暴露正文或凭证明文。"""
     client, app, csrf_token, node_id, _user_id = config_client
+    main_conf_path = "/opt/nginx/conf/nginx.conf"
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            session.get(Node, node_id).sync_setting = NodeSyncSetting(
+                main_conf_path=main_conf_path
+            )
     page = client.get("/configs/sync/")
     assert page.status_code == 200, page.text
     assert "config-node" in page.text
+    assert 'value="{}"'.format(main_conf_path) in page.text
     assert "/static/js/config-sync.js" in page.text
+    seen_paths = []
 
     def fake_discovery(
         target, main_path, context, progress_callback=None, max_depth=3, client=None
     ):
         """返回一份隔离测试使用的远程发现结果。"""
+        seen_paths.append(main_path)
         if progress_callback:
             progress_callback(1, main_path)
         return [
@@ -256,25 +265,143 @@ def test_discovery_task_returns_paths_without_file_contents(config_client, monke
     response = client.post(
         "/api/configs/discover",
         headers={"X-CSRFToken": csrf_token},
-        json={"node_id": node_id, "main_conf_path": "/etc/nginx/nginx.conf"},
+        json={"node_id": node_id},
     )
     assert response.status_code == 202, response.text
     task = _wait_for_task(client, response.json()["task_id"])
     assert task["status"] == "success"
     assert task["progress"] == 100
-    assert task["result_tree"]["nodes"][0]["files"] == [
-        {"path": "/etc/nginx/nginx.conf"}
-    ]
+    assert task["result_tree"]["nodes"][0]["files"] == [{"path": main_conf_path}]
+    assert seen_paths == [main_conf_path]
     assert "private config body" not in str(task["result_tree"])
     with session_scope(app.state.database.session_factory) as session:
         stored = session.get(Task, task["id"])
         assert "not-for-task-storage" not in (stored.detail + stored.result_tree_json)
         assert session.scalar(select(Config).where(Config.name == "nginx.conf")) is None
-        sync_setting = session.scalar(
+        config_sync_setting = session.scalar(
             select(ConfigSyncSetting).where(ConfigSyncSetting.node_id == node_id)
         )
-        assert sync_setting.main_conf_path == "/etc/nginx/nginx.conf"
-        assert sync_setting.updated_by == stored.trigger_user_id
+        assert config_sync_setting is None
+        assert session.get(NodeSyncSetting, node_id).main_conf_path == main_conf_path
+
+    edited_path = "/opt/nginx/alternate.conf"
+    edited = client.post(
+        "/api/configs/discover",
+        headers={"X-CSRFToken": csrf_token},
+        json={"node_id": node_id, "main_conf_path": edited_path},
+    )
+    assert edited.status_code == 202, edited.text
+    assert _wait_for_task(client, edited.json()["task_id"])["status"] == "success"
+    assert seen_paths == [main_conf_path, edited_path]
+    with session_scope(app.state.database.session_factory) as session:
+        assert session.get(NodeSyncSetting, node_id).main_conf_path == edited_path
+
+
+def test_discovery_lists_included_files_and_syncs_one_or_many_paths(
+    config_client,
+    monkeypatch,
+):
+    """发现主配置中的子文件并支持单路径和多路径同步。"""
+    client, app, csrf_token, node_id, _user_id = config_client
+    main_conf_path = "/srv/nginx/conf/nginx.conf"
+    child_paths = [
+        "/srv/nginx/conf.d/app.conf",
+        "/srv/nginx/conf.d/api.conf",
+    ]
+    files = [
+        {
+            "path": main_conf_path,
+            "name": "nginx.conf",
+            "content": "include /srv/nginx/conf.d/*.conf;",
+        },
+        {
+            "path": child_paths[0],
+            "name": "app.conf",
+            "content": "server { listen 80; }",
+        },
+        {
+            "path": child_paths[1],
+            "name": "api.conf",
+            "content": "server { listen 8080; }",
+        },
+    ]
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            session.get(Node, node_id).sync_setting = NodeSyncSetting(
+                main_conf_path=main_conf_path
+            )
+
+    seen_paths = []
+
+    def fake_discovery(
+        target, main_path, context, progress_callback=None, max_depth=3, client=None
+    ):
+        """返回主配置和两条 include 文件路径供页面任务验证。"""
+        seen_paths.append(main_path)
+        return files, []
+
+    class FakeSshClient:
+        """提供同步任务需要的轻量 SSH 客户端替身。"""
+
+        def close(self):
+            """模拟关闭 SSH 连接。"""
+            return None
+
+    monkeypatch.setattr(
+        "ngxops.configs.tasks.discover_remote_configs",
+        fake_discovery,
+    )
+    monkeypatch.setattr(
+        "ngxops.configs.tasks._connect_ssh",
+        lambda *args: (FakeSshClient(), ""),
+    )
+
+    discovery = client.post(
+        "/api/configs/discover",
+        headers={"X-CSRFToken": csrf_token},
+        json={"node_id": node_id},
+    )
+    assert discovery.status_code == 202, discovery.text
+    discovery_task = _wait_for_task(client, discovery.json()["task_id"])
+    discovered_paths = [
+        item["path"] for item in discovery_task["result_tree"]["nodes"][0]["files"]
+    ]
+    assert discovered_paths == [main_conf_path] + child_paths
+    assert seen_paths == [main_conf_path]
+
+    single = client.post(
+        "/api/configs/sync",
+        headers={"X-CSRFToken": csrf_token},
+        json={
+            "node_id": node_id,
+            "mode": "partial",
+            "selected_paths": [child_paths[0]],
+        },
+    )
+    assert single.status_code == 202, single.text
+    single_task = _wait_for_task(client, single.json()["task_id"])
+    single_result = single_task["result_tree"]["nodes"][0]
+    assert [item["path"] for item in single_result["created"]] == [child_paths[0]]
+
+    multiple = client.post(
+        "/api/configs/sync",
+        headers={"X-CSRFToken": csrf_token},
+        json={
+            "node_id": node_id,
+            "mode": "partial",
+            "selected_paths": child_paths,
+        },
+    )
+    assert multiple.status_code == 202, multiple.text
+    multiple_task = _wait_for_task(client, multiple.json()["task_id"])
+    multiple_result = multiple_task["result_tree"]["nodes"][0]
+    processed_paths = {
+        item["path"]
+        for key in ("created", "updated", "skipped")
+        for item in multiple_result[key]
+    }
+    assert processed_paths == set(child_paths)
+    assert seen_paths == [main_conf_path, main_conf_path, main_conf_path]
 
 
 def test_compact_batch_result_stays_within_task_result_limit():
@@ -409,18 +536,24 @@ def test_config_list_search_and_filters_are_visible(config_client):
 
     response = client.get("/configs/?search=config-node%2Cedge-frontend")
     assert response.status_code == 200, response.text
-    assert '<span class="fw-semibold">config-node</span>' in response.text
+    assert "config-node" in response.text
+    assert 'href="/configs/nodes/{}/?list_query='.format(node_id) in response.text
+    assert "edge-frontend.conf" not in response.text
     assert "other-node" not in response.text
     assert "data-query-tags" in response.text
     assert "全部节点组" not in response.text
     assert "绑定状态：" in response.text
     assert 'id="nginxOnlyToggle" checked' in response.text
-    assert "/static/js/config-list.js?v=2" in response.text
+    assert "/static/js/config-list.js?v=3" in response.text
+    assert '/configs/nodes/{}/'.format(node_id) in response.text
 
     non_matching = client.get("/configs/?search=config-node%2Cmissing-term")
     assert non_matching.status_code == 200, non_matching.text
-    assert '<span class="fw-semibold">config-node</span>' not in non_matching.text
-    assert 'data-node-toggle="{}"'.format(second_node_id) not in non_matching.text
+    assert 'href="/configs/nodes/{}/'.format(node_id) not in non_matching.text
+    assert '/configs/nodes/{}/'.format(second_node_id) not in non_matching.text
+    detail = client.get("/configs/nodes/{}/?list_query=%2Fconfigs%2F".format(node_id))
+    assert detail.status_code == 200, detail.text
+    assert "edge-frontend.conf" in detail.text
 
 
 def test_create_config_can_bind_multiple_or_zero_nodes(config_client):
@@ -450,6 +583,9 @@ def test_create_config_can_bind_multiple_or_zero_nodes(config_client):
     assert "data-query-tags" in create_page.text
     assert "configNodePageSize" in create_page.text
     assert "config-prod" in create_page.text
+    assert "按 Enter 查询" in create_page.text
+    assert 'tabindex="0" aria-label="选择节点 config-node"' in create_page.text
+    assert "/static/js/config-create.js?v=2" in create_page.text
 
     headers = {"X-CSRFToken": csrf_token}
     created = client.post(
@@ -467,19 +603,24 @@ def test_create_config_can_bind_multiple_or_zero_nodes(config_client):
     assert created.status_code == 303, created.text
     assert created.headers["location"] == "/configs/?per_page=10"
     with session_scope(app.state.database.session_factory) as session:
-        config = session.scalar(select(Config).where(Config.name == "multi-node-config"))
+        config = session.scalar(
+            select(Config).where(Config.name == "multi-node-config")
+        )
         bindings = session.scalars(
             select(ConfigBinding).where(ConfigBinding.config_id == config.id)
         ).all()
         assert {binding.node_id for binding in bindings} == {node_id, second_node_id}
         assert all(binding.sync_status == "not_synced" for binding in bindings)
         for binding in bindings:
-            assert session.scalar(
-                select(BindingVersion).where(
-                    BindingVersion.binding_id == binding.id,
-                    BindingVersion.version == 1,
+            assert (
+                session.scalar(
+                    select(BindingVersion).where(
+                        BindingVersion.binding_id == binding.id,
+                        BindingVersion.version == 1,
+                    )
                 )
-            ) is not None
+                is not None
+            )
 
     unbound = client.post(
         "/configs/create/",
@@ -490,9 +631,12 @@ def test_create_config_can_bind_multiple_or_zero_nodes(config_client):
     with session_scope(app.state.database.session_factory) as session:
         config = session.scalar(select(Config).where(Config.name == "unbound-config"))
         assert config is not None
-        assert session.scalar(
-            select(ConfigBinding.id).where(ConfigBinding.config_id == config.id)
-        ) is None
+        assert (
+            session.scalar(
+                select(ConfigBinding.id).where(ConfigBinding.config_id == config.id)
+            )
+            is None
+        )
 
 
 def test_config_delete_notice_uses_global_toast(config_client):
@@ -516,7 +660,7 @@ def test_config_delete_notice_uses_global_toast(config_client):
     assert "class=\"config-notice\"" in page.text
     assert "data-message=\"配置标签 delete-toast-config 及其绑定已删除\"" in page.text
     assert "alert-dismissible" not in page.text
-    assert "/static/js/config-list.js?v=2" in page.text
+    assert "/static/js/config-list.js?v=3" in page.text
 
 
 def test_full_sync_versions_content_marks_missing_and_cleans_delete(
@@ -632,12 +776,15 @@ def test_full_sync_versions_content_marks_missing_and_cleans_delete(
         assert gone_binding.sync_status == "orphaned"
         assert modified_binding.sync_status == "modified"
         assert session.get(ConfigBinding, deleted_binding_id) is None
-        assert session.scalar(
-            select(BindingVersion).where(
-                BindingVersion.binding_id == app_binding_id,
-                BindingVersion.version == 2,
+        assert (
+            session.scalar(
+                select(BindingVersion).where(
+                    BindingVersion.binding_id == app_binding_id,
+                    BindingVersion.version == 2,
+                )
             )
-        ) is not None
+            is not None
+        )
 
 
 def test_partial_sync_only_updates_selected_discovered_paths(
@@ -716,9 +863,10 @@ def test_partial_sync_only_updates_selected_discovered_paths(
         assert selected.current_version == 2
         assert other.content == "old other"
         assert other.sync_status == "synced"
-        assert session.scalar(
-            select(Config).where(Config.name == "unselected.conf")
-        ) is None
+        assert (
+            session.scalar(select(Config).where(Config.name == "unselected.conf"))
+            is None
+        )
 
 
 def test_batch_sync_creates_persistent_task_with_default_parallel_limit(
@@ -732,9 +880,7 @@ def test_batch_sync_creates_persistent_task_with_default_parallel_limit(
         target, main_path, context, progress_callback=None, max_depth=3, client=None
     ):
         """返回一个批量节点可成功读取的远程文件。"""
-        return [
-            {"path": main_path, "name": "nginx.conf", "content": "events {}"}
-        ], []
+        return [{"path": main_path, "name": "nginx.conf", "content": "events {}"}], []
 
     class FakeSshClient:
         """提供批量同步使用的空 SSH 客户端。"""

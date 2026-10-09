@@ -15,7 +15,6 @@ from ngxops.configs.models import (
     BindingVersion,
     Config,
     ConfigBinding,
-    ConfigSyncSetting,
 )
 from ngxops.configs.services import (
     build_split_diff_rows,
@@ -24,6 +23,7 @@ from ngxops.configs.services import (
     restore_marked_binding,
     save_binding_revision,
 )
+from ngxops.configs.tasks import DEFAULT_MAIN_CONF_PATH
 from ngxops.database.session import get_session
 from ngxops.nodes.models import Node
 from ngxops.security.dependencies import require_permission
@@ -191,35 +191,33 @@ def _config_status_counts(db_session: Session) -> dict:
 
 
 def _config_node_rows(db_session: Session, nodes: List[Node]) -> List[dict]:
-    """读取当前页节点的绑定和列表状态统计。"""
+    """读取当前页节点的绑定状态汇总。"""
     node_ids = [node.id for node in nodes]
-    bindings_by_node = {node_id: [] for node_id in node_ids}
+    counts_by_node = {
+        node_id: {key: 0 for key in CONFIG_FILTER_STATUSES}
+        for node_id in node_ids
+    }
     if node_ids:
-        bindings = db_session.scalars(
-            select(ConfigBinding)
-            .join(ConfigBinding.config)
-            .options(contains_eager(ConfigBinding.config))
-            .where(ConfigBinding.node_id.in_(node_ids))
-            .order_by(
-                ConfigBinding.node_id.asc(),
-                Config.name.asc(),
-                ConfigBinding.id.asc(),
+        for node_id, status, count in db_session.execute(
+            select(
+                ConfigBinding.node_id,
+                ConfigBinding.sync_status,
+                func.count(ConfigBinding.id),
             )
-        ).all()
-        for binding in bindings:
-            bindings_by_node[binding.node_id].append(binding)
+            .where(ConfigBinding.node_id.in_(node_ids))
+            .group_by(ConfigBinding.node_id, ConfigBinding.sync_status)
+        ):
+            stats = counts_by_node[node_id]
+            if status in ("not_synced", "modified"):
+                stats["pending"] += count
+            elif status in stats:
+                stats[status] += count
 
     rows = []
     for node in nodes:
-        bindings = bindings_by_node[node.id]
-        stats = {key: 0 for key in CONFIG_FILTER_STATUSES}
-        stats["total"] = len(bindings)
-        for binding in bindings:
-            if binding.sync_status in ("not_synced", "modified"):
-                stats["pending"] += 1
-            elif binding.sync_status in stats:
-                stats[binding.sync_status] += 1
-        rows.append({"node": node, "stats": stats, "bindings": bindings})
+        stats = counts_by_node[node.id]
+        stats["total"] = sum(stats.values())
+        rows.append({"node": node, "stats": stats})
     return rows
 
 
@@ -442,6 +440,98 @@ def list_configs(
     )
 
 
+@router.get("/nodes/{node_id}/", response_class=Response, summary="节点配置明细")
+def node_configs(
+    request: Request,
+    node_id: int,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(DEFAULT_PAGE_SIZE),
+    user: User = Depends(require_permission("configs", "read")),
+    db_session: Session = Depends(get_session),
+) -> Response:
+    """分页显示指定节点的配置绑定明细。"""
+    node = db_session.scalar(
+        select(Node)
+        .options(joinedload(Node.groups))
+        .where(Node.id == node_id, Node.is_deleted.is_(False))
+    )
+    if node is None:
+        raise HTTPException(status_code=404, detail="节点不存在")
+
+    search = request.query_params.get("search", "").strip()[:200]
+    sync_status = request.query_params.get("sync_status", "").strip()
+    if sync_status not in CONFIG_FILTER_STATUSES:
+        sync_status = ""
+    query = select(ConfigBinding).join(Config).where(ConfigBinding.node_id == node.id)
+    terms = [
+        term.strip()
+        for term in search.replace("，", ",").split(",")
+        if term.strip()
+    ]
+    for term in terms:
+        query = query.where(
+            or_(
+                Config.name.contains(term, autoescape=True),
+                ConfigBinding.remote_path.contains(term, autoescape=True),
+            )
+        )
+    if sync_status:
+        statuses = (
+            ("not_synced", "modified")
+            if sync_status == "pending"
+            else (sync_status,)
+        )
+        query = query.where(ConfigBinding.sync_status.in_(statuses))
+
+    total = db_session.scalar(select(func.count()).select_from(query.subquery())) or 0
+    page, size, pagination = _pagination(request, total, page, per_page)
+    bindings = db_session.scalars(
+        query.options(contains_eager(ConfigBinding.config))
+        .order_by(Config.name.asc(), ConfigBinding.id.asc())
+        .offset((page - 1) * size)
+        .limit(size)
+    ).unique().all()
+    status_counts = {key: 0 for key in CONFIG_FILTER_STATUSES}
+    for status, count in db_session.execute(
+        select(ConfigBinding.sync_status, func.count(ConfigBinding.id))
+        .where(ConfigBinding.node_id == node.id)
+        .group_by(ConfigBinding.sync_status)
+    ):
+        if status in ("not_synced", "modified"):
+            status_counts["pending"] += count
+        elif status in status_counts:
+            status_counts[status] += count
+    status_counts["total"] = sum(status_counts.values())
+
+    list_query = (
+        _safe_configs_return(request.query_params.get("list_query", ""))
+        or "/configs/"
+    )
+    current_query = urlencode(list(request.query_params.items()))
+    current_url = request.url.path + ("?" + current_query if current_query else "")
+    return _render(
+        request,
+        "configs/node_bindings.html",
+        user,
+        db_session,
+        {
+            "node": node,
+            "bindings": bindings,
+            "search": search,
+            "sync_status": sync_status,
+            "status_counts": status_counts,
+            "status_labels": STATUS_LABELS,
+            "pagination": pagination,
+            "list_url": list_query,
+            "current_url": current_url,
+            "can_create": _can(user, request, db_session, "create"),
+            "can_update": _can(user, request, db_session, "update"),
+            "can_delete": _can(user, request, db_session, "delete"),
+            "can_sync": _can(user, request, db_session, "sync"),
+        },
+    )
+
+
 @router.get("/sync/", response_class=Response, summary="远程配置发现与同步向导")
 def config_sync_wizard(
     request: Request,
@@ -472,18 +562,12 @@ def config_sync_wizard(
     total = db_session.scalar(select(func.count()).select_from(query.subquery())) or 0
     page, size, pagination = _pagination(request, total, page, per_page)
     nodes = db_session.scalars(
-        query.options(joinedload(Node.credential))
+        query.options(joinedload(Node.credential), joinedload(Node.sync_setting))
         .order_by(Node.hostname.asc(), Node.id.asc())
         .offset((page - 1) * size)
         .limit(size)
     ).unique().all()
     node_ids = [node.id for node in nodes]
-    settings = {
-        setting.node_id: setting
-        for setting in db_session.scalars(
-            select(ConfigSyncSetting).where(ConfigSyncSetting.node_id.in_(node_ids))
-        ).all()
-    } if node_ids else {}
     binding_stats = {}
     last_sync = {}
     if node_ids:
@@ -514,9 +598,13 @@ def config_sync_wizard(
             {
                 "node": node,
                 "main_conf_path": (
-                    settings[node.id].main_conf_path
-                    if node.id in settings
-                    else "/etc/nginx/nginx.conf"
+                    node.sync_setting.main_conf_path
+                    if node.sync_setting is not None and node.sync_setting.main_conf_path
+                    else read_setting(
+                        db_session,
+                        "config.default_nginx_path",
+                        DEFAULT_MAIN_CONF_PATH,
+                    )
                 ),
                 "binding_count": sum(counts.values()),
                 "synced_count": counts.get("synced", 0),

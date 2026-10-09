@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}{{ node.hostname }} 配置明细 - ngxops{% endblock %}
+{% block page_title %}节点配置明细{% endblock %}
+
+{% block content %}
+<section class="card">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+            <h2 class="h6 mb-1"><i class="bi bi-hdd-stack me-1" aria-hidden="true"></i>{{ node.hostname }}</h2>
+            <span class="small text-muted font-monospace">{{ node.ip }}:{{ node.port }}</span>
+            {% for group in node.groups %}<span class="badge text-bg-light border ms-1">{{ group.name }}</span>{% endfor %}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            {% if can_create and node.status == 'online' and node.nginx_available is sameas true %}
+            <a class="btn btn-outline-primary btn-sm" href="/configs/create/?node_id={{ node.id }}&amp;return_to={{ current_url|urlencode }}"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>新建配置并绑定</a>
+            {% endif %}
+            {% if can_sync and node.nginx_available is sameas true %}<a class="btn btn-outline-info btn-sm" href="/configs/sync/?node_id={{ node.id }}"><i class="bi bi-cloud-download me-1" aria-hidden="true"></i>配置同步</a>{% endif %}
+            <a class="btn btn-outline-secondary btn-sm" href="{{ list_url }}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回配置列表</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3" aria-label="节点绑定状态">
+            <span class="small fw-semibold">配置绑定：</span>
+            <a class="badge text-decoration-none text-bg-secondary" href="{{ request.url.include_query_params(sync_status='', page=1) }}">全部 {{ status_counts.total }}</a>
+            <a class="badge text-decoration-none text-bg-primary" href="{{ request.url.include_query_params(sync_status='pending', page=1) }}">待推送 {{ status_counts.pending }}</a>
+            <a class="badge text-decoration-none text-bg-success" href="{{ request.url.include_query_params(sync_status='synced', page=1) }}">已同步 {{ status_counts.synced }}</a>
+            <a class="badge text-decoration-none text-bg-danger" href="{{ request.url.include_query_params(sync_status='failed', page=1) }}">失败 {{ status_counts.failed }}</a>
+            <a class="badge text-decoration-none text-bg-secondary" href="{{ request.url.include_query_params(sync_status='orphaned', page=1) }}">远程删除 {{ status_counts.orphaned }}</a>
+            <a class="badge text-decoration-none text-bg-warning" href="{{ request.url.include_query_params(sync_status='marked_deleted', page=1) }}">标记删除 {{ status_counts.marked_deleted }}</a>
+        </div>
+
+        <form method="get" class="row g-2 align-items-end mb-3" data-query-submit-on-enter data-preserve-query-focus autocomplete="off">
+            <input type="hidden" name="list_query" value="{{ list_url }}">
+            <div class="col-12 col-lg-6">
+                <label class="form-label small mb-1" for="nodeConfigSearch">查询配置</label>
+                <input class="form-control form-control-sm" id="nodeConfigSearch" name="search" data-query-tags value="{{ search }}" placeholder="配置名称或远程路径" aria-label="配置名称或远程路径">
+            </div>
+            <div class="col-8 col-sm-5 col-lg-3">
+                <label class="form-label small mb-1" for="nodeConfigStatus">同步状态</label>
+                <select class="form-select form-select-sm" name="sync_status" id="nodeConfigStatus" onchange="this.form.requestSubmit()">
+                    <option value=""{% if not sync_status %} selected{% endif %}>全部状态</option>
+                    <option value="pending"{% if sync_status == 'pending' %} selected{% endif %}>待推送</option>
+                    <option value="synced"{% if sync_status == 'synced' %} selected{% endif %}>已同步</option>
+                    <option value="failed"{% if sync_status == 'failed' %} selected{% endif %}>失败</option>
+                    <option value="orphaned"{% if sync_status == 'orphaned' %} selected{% endif %}>远程删除</option>
+                    <option value="marked_deleted"{% if sync_status == 'marked_deleted' %} selected{% endif %}>标记删除</option>
+                </select>
+            </div>
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            {% if search or sync_status %}<div class="col-4 col-sm-3 col-lg-auto"><a class="btn btn-outline-secondary btn-sm w-100" href="/configs/nodes/{{ node.id }}/?list_query={{ list_url|urlencode }}" title="清空筛选"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>清空</a></div>{% endif %}
+        </form>
+
+        {% if bindings %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th>配置名称</th><th>远程路径</th><th>版本</th><th>同步状态</th><th>最后同步</th><th class="text-end">操作</th></tr></thead>
+                <tbody>
+                    {% for binding in bindings %}
+                    <tr>
+                        <td><a class="fw-semibold text-decoration-none" href="/configs/bindings/{{ binding.id }}/">{{ binding.config.name }}</a></td>
+                        <td class="font-monospace small text-break">{{ binding.remote_path }}</td>
+                        <td>V{{ binding.current_version }}</td>
+                        <td><span class="badge {% if binding.sync_status == 'synced' %}text-bg-success{% elif binding.sync_status in ['not_synced', 'modified'] %}text-bg-primary{% elif binding.sync_status == 'failed' %}text-bg-danger{% elif binding.sync_status == 'marked_deleted' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ status_labels.get(binding.sync_status, binding.sync_status) }}</span></td>
+                        <td class="small text-muted text-nowrap">{{ binding.last_sync_time.strftime('%Y-%m-%d %H:%M') if binding.last_sync_time else '-' }}</td>
+                        <td class="text-end text-nowrap">
+                            <a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/" title="绑定详情"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i><span class="visually-hidden">绑定详情</span></a>
+                            <a class="btn btn-outline-secondary btn-sm" href="/configs/bindings/{{ binding.id }}/versions/" title="版本历史"><i class="bi bi-clock-history" aria-hidden="true"></i><span class="visually-hidden">版本历史</span></a>
+                            {% if can_update and binding.sync_status == 'marked_deleted' and node.status == 'online' and node.nginx_available is sameas true %}<form class="d-inline" method="post" action="/configs/bindings/{{ binding.id }}/restore/" data-confirm="恢复 {{ binding.config.name }}？绑定将重置为未同步状态。" data-confirm-title="恢复绑定">{% include "includes/csrf_field.html" %}<input type="hidden" name="return_to" value="{{ current_url }}"><button class="btn btn-outline-success btn-sm" type="submit" title="恢复绑定"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><span class="visually-hidden">恢复</span></button></form>{% endif %}
+                            {% if can_update and binding.sync_status != 'marked_deleted' and node.status == 'online' and node.nginx_available is sameas true %}<a class="btn btn-outline-primary btn-sm" href="/configs/bindings/{{ binding.id }}/edit/" title="编辑绑定"><i class="bi bi-pencil" aria-hidden="true"></i><span class="visually-hidden">编辑</span></a>{% endif %}
+                            {% if can_delete %}{% if node.nginx_available is sameas true and binding.sync_status not in ['not_synced', 'orphaned', 'marked_deleted'] %}{% set delete_hint = '绑定将标记删除，并在下次配置同步时清理远程文件。' %}{% else %}{% set delete_hint = '绑定及其版本记录将从平台删除，不会清理远程文件。' %}{% endif %}<form class="d-inline" method="post" action="/configs/bindings/{{ binding.id }}/delete/" data-confirm="确认解除 {{ binding.config.name }}？{{ delete_hint }}" data-confirm-title="解除绑定">{% include "includes/csrf_field.html" %}<input type="hidden" name="return_to" value="{{ current_url }}"><button class="btn btn-outline-danger btn-sm" type="submit" title="解除绑定"><i class="bi bi-link-45deg" aria-hidden="true"></i><span class="visually-hidden">解除绑定</span></button></form>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include "includes/pagination_footer.html" %}
+        {% else %}
+        <div class="py-5 text-center text-muted"><i class="bi bi-inbox fs-3" aria-hidden="true"></i><p class="mb-0 mt-2">没有匹配的配置绑定</p></div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

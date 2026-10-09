@@ -152,7 +152,7 @@ class Node(Base):
 
 
 class NodeSyncSetting(Base):
-    """保存节点导入导出的 Nginx 主配置路径。"""
+    """保存节点资产及配置发现共用的 Nginx 主配置路径。"""
 
     __tablename__ = "ngxops_node_sync_settings"
 

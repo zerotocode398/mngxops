@@ -12,7 +12,6 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, sessionmaker
 
-from ngxops.configs.models import ConfigSyncSetting
 from ngxops.configs.services import mark_node_bindings_orphaned
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.database.session import session_scope
@@ -805,10 +804,6 @@ def _apply_uninstall_state(session_factory: sessionmaker, target: dict) -> None:
             node.nginx_available = False
             node.last_nginx_probe_at = now
             node.updated_at = now
-            setting = session.get(ConfigSyncSetting, node.id)
-            if setting is not None and setting.main_conf_path:
-                setting.main_conf_path = ""
-                setting.updated_at = now
             mark_node_bindings_orphaned(session, node.id, now)
 
 

@@ -182,7 +182,7 @@ class BindingVersion(Base):
 
 
 class ConfigSyncSetting(Base):
-    """保存节点配置发现使用的主配置路径和最后更新人。"""
+    """保留 NX-031 旧版配置发现路径设置的兼容映射。"""
 
     __tablename__ = "ngxops_config_sync_settings"
 
