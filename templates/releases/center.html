@@ -30,9 +30,6 @@
     .release-bindings-table td:nth-child(2),
     .release-bindings-table td:nth-child(3) { overflow-wrap: anywhere; }
     .release-content-preview { max-height: 68vh; overflow: auto; white-space: pre; }
-    .release-progress-log { max-height: 180px; overflow: auto; white-space: pre-wrap; }
-    .release-tree-node { border-bottom: 1px solid #dee2e6; }
-    .release-tree-node:last-child { border-bottom: 0; }
     .release-binding-pagination { min-height: 36px; }
 </style>
 {% endblock %}
@@ -116,21 +113,8 @@
     </div></div>
 </div>
 
-<div class="modal fade" id="releaseProgressModal" tabindex="-1" aria-labelledby="releaseProgressTitle" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
-        <div class="modal-header"><h2 class="modal-title h6" id="releaseProgressTitle"><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>发布进度</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
-        <div class="modal-body">
-            <div class="d-flex justify-content-between gap-2 small mb-1"><span id="releaseProgressDetail">任务已创建</span><span id="releaseProgressPercent">0%</span></div>
-            <div class="progress mb-3" role="progressbar" aria-label="发布任务进度" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar progress-bar-striped progress-bar-animated" id="releaseProgressBar" style="width:0%"></div></div>
-            <div class="small fw-semibold mb-1">执行结果</div><div class="border rounded p-2 mb-3" id="releaseProgressTree" aria-live="polite"><span class="small text-muted">等待任务进度…</span></div>
-            <div class="small fw-semibold mb-1">任务日志</div><pre class="border rounded bg-light p-2 small release-progress-log mb-0" id="releaseProgressLogs" aria-live="polite"></pre>
-            <div class="small mt-2" id="releaseProgressFinal" aria-live="polite"></div>
-        </div>
-        <div class="modal-footer"><button class="btn btn-secondary btn-sm" type="button" data-bs-dismiss="modal">关闭</button></div>
-    </div></div>
-</div>
 {% endif %}
 <div id="releaseCenterState" hidden data-can-publish="{{ 'true' if can_publish else 'false' }}"></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/releases.js') }}?v=4"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/releases.js') }}?v=5"></script>{% endblock %}

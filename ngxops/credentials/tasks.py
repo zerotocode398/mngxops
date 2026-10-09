@@ -46,10 +46,17 @@ def _connect_ssh(
     context: TaskContext,
     timeout: int = 10,
     retries: int = 1,
+    detailed_logging: bool = False,
 ) -> Tuple[Optional[paramiko.SSHClient], str]:
-    """在远程主机建立单次 SSH 连接并返回安全错误摘要。"""
+    """在远程主机建立 SSH 连接并按调用方设置返回诊断日志。"""
     retry_count = min(max(int(retries), 0), 10)
     for attempt in range(retry_count + 1):
+        if detailed_logging:
+            context.append_log(
+                "SSH 连接尝试 {}/{}：{}:{}".format(
+                    attempt + 1, retry_count + 1, host, port
+                )
+            )
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         context.register_cancel_callback(client.close)
@@ -73,11 +80,23 @@ def _connect_ssh(
             if transport is not None:
                 transport.set_keepalive(30)
             return client, ""
-        except paramiko.AuthenticationException:
+        except paramiko.AuthenticationException as exc:
             client.close()
+            if detailed_logging:
+                context.append_log(
+                    "SSH 认证失败：{}".format(str(exc).strip() or "凭证认证未通过"),
+                    "error",
+                )
             return None, "SSH 认证失败"
-        except Exception:
+        except Exception as exc:
             client.close()
+            if detailed_logging:
+                context.append_log(
+                    "SSH 连接异常：{}: {}".format(
+                        type(exc).__name__, str(exc).strip() or "无异常详情"
+                    ),
+                    "error" if attempt >= retry_count else "warning",
+                )
             if attempt >= retry_count:
                 return None, "SSH 连接失败"
     return None, "SSH 连接失败"

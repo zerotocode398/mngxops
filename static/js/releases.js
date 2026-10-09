@@ -29,7 +29,6 @@
     var expandedStorageKey = "ngxops_releases_expanded_nodes";
     var pollTimer = null;
     var pollTaskId = null;
-    var afterLogId = 0;
 
     function escapeHtml(value) {
         return String(value === null || value === undefined ? "" : value)
@@ -40,9 +39,9 @@
             .replace(/'/g, "&#39;");
     }
 
-    function toast(message, kind) {
+    function toast(message, kind, duration, action) {
         if (typeof window.showToast === "function") {
-            window.showToast(message, kind || "info");
+            window.showToast(message, kind || "info", duration, action);
         } else {
             window.alert(message);
         }
@@ -578,48 +577,33 @@
             if (response.skipped && response.skipped.length) {
                 message += "；" + response.skipped.length + " 项因节点状态变化已跳过";
             }
-            toast(message, "success");
-            openProgress(response.task_id, response.batch_number);
+            var createdTask = {
+                id: response.task_id,
+                status: "pending",
+                detail: message
+            };
+            showPublishTaskToast(createdTask, "发布任务已创建，正在执行");
+            trackTask(response.task_id);
         }).fail(function (xhr) {
             var message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : "发布任务创建失败";
-            toast(message, "error");
+            toast(message, "danger");
         }).always(function () {
             $("#releaseConfirmSubmit").prop("disabled", false);
         });
     }
 
-    function appendLogs(logs) {
-        var $log = $("#releaseProgressLogs");
-        logs.forEach(function (entry) {
-            var line = (entry.created_at || "") + "  " + (entry.message || "") + "\n";
-            $log[0].appendChild(document.createTextNode(line));
-        });
-        $log.scrollTop($log[0].scrollHeight);
-    }
-
-    function renderTaskTree(tree) {
-        var $container = $("#releaseProgressTree").empty();
-        if (!tree || !tree.nodes || !tree.nodes.length) {
-            $container.append($("<span>").addClass("small text-muted").text("等待任务进度…"));
-            return;
-        }
-        tree.nodes.forEach(function (node) {
-            var $section = $("<div>").addClass("release-tree-node py-2");
-            var nodeText = node.hostname + " (" + node.ip + ") · " + node.status;
-            $section.append($("<div>").addClass("small fw-semibold mb-1").text(nodeText));
-            var $list = $("<div>").addClass("small");
-            (node.bindings || []).forEach(function (binding) {
-                var operation = binding.action === "delete" ? "远程删除" : "V" + binding.version;
-                var text = binding.config_name + " " + operation + " · " + binding.status + " · " + binding.message;
-                $list.append($("<div>").addClass("text-break").text(text));
-            });
-            $section.append($list);
-            $container.append($section);
-        });
-        if (tree.summary) {
-            var summary = "成功 " + tree.summary.success + "，失败 " + tree.summary.failed + "，共 " + tree.summary.total;
-            $container.prepend($("<div>").addClass("small text-muted border-bottom pb-2 mb-2").text(summary));
-        }
+    function showPublishTaskToast(task, fallback) {
+        var taskId = task && (task.id || task.task_id);
+        var status = task && task.status;
+        var type = status === "success"
+            ? "success"
+            : status === "failed" ? "danger" : status === "cancelled" ? "warning" : "info";
+        var action = taskId ? {
+            label: "查看完整日志",
+            href: "/tasks/" + encodeURIComponent(taskId) + "/",
+            target: "_blank"
+        } : undefined;
+        toast((task && task.detail) || fallback || "发布任务已结束", type, 3000, action);
     }
 
     function schedulePoll() {
@@ -633,50 +617,27 @@
         if (!pollTaskId) {
             return;
         }
-        $.getJSON("/api/tasks/" + encodeURIComponent(pollTaskId), {
-            after_log_id: afterLogId,
-            log_limit: 500
-        }).done(function (task) {
-            $("#releaseProgressDetail").text(task.detail || "任务执行中");
-            $("#releaseProgressPercent").text(task.progress + "%");
-            $("#releaseProgressBar").css("width", task.progress + "%").attr("aria-valuenow", task.progress);
-            if (task.status !== "pending" && task.status !== "running") {
-                $("#releaseProgressBar").removeClass("progress-bar-striped progress-bar-animated");
-            }
-            renderTaskTree(task.result_tree);
-            appendLogs(task.logs || []);
-            afterLogId = task.next_log_id || afterLogId;
+        var taskId = pollTaskId;
+        $.getJSON("/api/tasks/" + encodeURIComponent(taskId)).done(function (task) {
             if (task.status === "success" || task.status === "failed" || task.status === "cancelled") {
-                $("#releaseProgressTitle").text(task.status === "success" ? "发布完成" : (task.status === "cancelled" ? "发布已取消" : "发布失败"));
-                $("#releaseProgressFinal").text(task.detail || "");
-                $("#releaseProgressFinal").toggleClass("text-danger", task.status !== "success").toggleClass("text-success", task.status === "success");
                 pollTaskId = null;
                 if (task.status === "success") {
                     loadNodes(state.page);
                 }
+                showPublishTaskToast(task, "发布任务已结束");
                 return;
             }
             schedulePoll();
         }).fail(function () {
-            $("#releaseProgressDetail").text("任务状态暂时无法读取，正在重试");
             schedulePoll();
         });
     }
 
-    function openProgress(taskId, batchNumber) {
+    function trackTask(taskId) {
         if (pollTimer) {
             window.clearTimeout(pollTimer);
         }
         pollTaskId = taskId;
-        afterLogId = 0;
-        $("#releaseProgressTitle").text("发布进度 · " + batchNumber);
-        $("#releaseProgressDetail").text("任务已创建");
-        $("#releaseProgressPercent").text("0%");
-        $("#releaseProgressBar").css("width", "0%").addClass("progress-bar-striped progress-bar-animated");
-        $("#releaseProgressTree").empty().append($("<span>").addClass("small text-muted").text("等待任务进度…"));
-        $("#releaseProgressLogs").empty();
-        $("#releaseProgressFinal").empty().removeClass("text-danger text-success");
-        bootstrap.Modal.getOrCreateInstance(document.getElementById("releaseProgressModal")).show();
         pollTask();
     }
 

@@ -20,13 +20,14 @@ from ngxops.database.session import session_scope
 from ngxops.logging_setup import log_exception
 from ngxops.nodes.models import Node
 from ngxops.settings.service import read_setting
-from ngxops.tasks.executor import TaskContext, TaskOutcome, create_task
+from ngxops.tasks.executor import TaskCancelled, TaskContext, TaskOutcome, create_task
 
 
 logger = logging.getLogger(__name__)
 MAX_NODE_WORKERS = 3
 DEFAULT_BACKUP_DIR = "/opt/app/mascloud/ansible/mngxops"
 _NODE_LABEL_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+_ANSI_ESCAPE_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _TERMINAL_ITEM_STATUSES = frozenset(("success", "failed"))
 
 
@@ -42,7 +43,9 @@ def _remote_command(client, command: str, timeout: int = 45) -> Tuple[int, str]:
         error = stderr.read().decode("utf-8", "replace")
         status = stdout.channel.recv_exit_status()
     except Exception as exc:
-        raise RemoteCommandError("SSH 远程命令未完成") from exc
+        detail = str(exc).strip()
+        suffix = "：{}: {}".format(type(exc).__name__, detail) if detail else ""
+        raise RemoteCommandError("SSH 远程命令未完成{}".format(suffix)) from exc
     return status, "\n".join(part for part in (output, error) if part).strip()
 
 
@@ -57,6 +60,92 @@ def _node_log_label(item: dict) -> str:
     hostname = str(item.get("hostname") or "").strip()
     ip = str(item.get("ip") or "").strip()
     return "{} ({})".format(hostname, ip) if hostname and ip else hostname or ip
+
+
+def _log_release_step(
+    context: Optional[TaskContext],
+    item: Optional[dict],
+    message: str,
+    level: str = "info",
+) -> None:
+    """写入包含节点和配置标识的发布步骤日志。"""
+    if context is None:
+        return
+    prefix = ""
+    if item is not None:
+        prefix = "节点 {}".format(_node_log_label(item))
+        config_name = str(item.get("config_name") or "").strip()
+        if config_name:
+            prefix += " 配置 {}".format(config_name)
+        prefix += "："
+    context.append_log(prefix + message, level)
+
+
+def _append_remote_output(
+    context: Optional[TaskContext],
+    item: Optional[dict],
+    output: str,
+    level: str,
+    label: str = "远程错误输出",
+) -> None:
+    """将远程诊断或异常详情拆成未超过任务日志字段限制的多行。"""
+    if context is None or not output:
+        return
+    normalized = _ANSI_ESCAPE_RE.sub(
+        "", output.replace("\r\n", "\n").replace("\r", "\n")
+    )
+    normalized = "".join(
+        character if character.isprintable() or character == "\n" else " "
+        for character in normalized
+    )
+    for line in normalized.splitlines():
+        for offset in range(0, len(line), 3000):
+            _log_release_step(
+                context,
+                item,
+                "{}：{}".format(label, line[offset : offset + 3000]),
+                level,
+            )
+
+
+def _remote_step(
+    client,
+    command: str,
+    label: str,
+    timeout: int = 45,
+    context: Optional[TaskContext] = None,
+    item: Optional[dict] = None,
+    nonzero_level: str = "error",
+    log_output: bool = False,
+) -> Tuple[int, str]:
+    """记录远程步骤状态及失败诊断后返回命令结果。"""
+    _log_release_step(context, item, "开始远程步骤：{}".format(label))
+    try:
+        status, output = _remote_command(client, command, timeout=timeout)
+    except RemoteCommandError as exc:
+        _log_release_step(
+            context,
+            item,
+            "远程步骤异常：{}".format(label),
+            "error",
+        )
+        _append_remote_output(context, item, str(exc), "error", "SSH异常详情")
+        raise
+    if status == 0:
+        _log_release_step(
+            context, item, "远程步骤成功：{}（退出码 0）".format(label)
+        )
+        if log_output:
+            _append_remote_output(context, item, output, "info", "远程命令输出")
+    else:
+        _log_release_step(
+            context,
+            item,
+            "远程步骤失败：{}（退出码 {}）".format(label, status),
+            nonzero_level,
+        )
+        _append_remote_output(context, item, output, nonzero_level)
+    return status, output
 
 
 def _tree_text(value: str, byte_limit: int) -> str:
@@ -74,6 +163,8 @@ def _backup_remote_file(
     hostname: str,
     task_id: int,
     binding_id: int,
+    context: Optional[TaskContext] = None,
+    item: Optional[dict] = None,
 ) -> Tuple[Optional[str], str]:
     """备份现有远程文件并在首次发布时明确返回无备份状态。"""
     parent = "{}/{}/".format(backup_dir.rstrip("/"), _safe_node_label(hostname))
@@ -97,39 +188,77 @@ def _backup_remote_file(
         "printf '%s' '__NGXOPS_MISSING__'; else exit 3; fi"
     ).format(source=source_q, parent=parent_q, backup=backup_q)
     try:
-        status, output = _remote_command(client, command)
+        status, output = _remote_step(
+            client,
+            command,
+            "检查并备份远程目标文件",
+            context=context,
+            item=item,
+        )
     except RemoteCommandError:
-        return None, "远程备份检查失败"
+        return None, "远程备份检查失败（诊断见任务日志）"
     if status != 0:
         return None, "远程备份失败{}".format(_format_remote_detail(output))
     if output == "__NGXOPS_BACKED_UP__":
-        source_md5, source_error = _remote_md5(client, remote_path)
-        backup_md5, backup_error = _remote_md5(client, backup_path)
+        source_md5, source_error = _remote_md5(
+            client, remote_path, context, item, "源文件"
+        )
+        backup_md5, backup_error = _remote_md5(
+            client, backup_path, context, item, "备份文件"
+        )
         if source_error or backup_error:
-            return None, "远程备份校验失败"
+            detail = source_error or backup_error
+            _log_release_step(context, item, detail, "error")
+            return None, "远程备份校验失败：{}".format(detail)
         if source_md5 != backup_md5:
+            _log_release_step(context, item, "远程备份 MD5 与源文件不一致", "error")
             return None, "远程备份 MD5 与源文件不一致"
+        _log_release_step(
+            context,
+            item,
+            "已备份现有目标文件并通过 MD5 校验：{}".format(backup_path),
+        )
         return backup_path, ""
     if output == "__NGXOPS_MISSING__":
+        _log_release_step(context, item, "远程目标文件不存在，首次发布跳过备份")
         return None, ""
+    _log_release_step(
+        context, item, "远程目标文件状态无法识别：{}".format(output), "error"
+    )
     return None, "远程文件状态无法识别"
 
 
 def _format_remote_detail(output: str) -> str:
-    """隐藏可能包含配置行的远程命令输出。"""
-    return "（远程输出已省略，请检查节点 Nginx 日志）" if output else ""
+    """指向任务日志中已记录的远程命令诊断输出。"""
+    return "（远程诊断见任务日志）" if output else ""
 
 
-def _remote_md5(client, remote_path: str) -> Tuple[Optional[str], str]:
+def _remote_md5(
+    client,
+    remote_path: str,
+    context: Optional[TaskContext] = None,
+    item: Optional[dict] = None,
+    label: str = "远程文件",
+) -> Tuple[Optional[str], str]:
     """读取远程文件 MD5 并返回不含路径之外数据的错误摘要。"""
     command = "md5sum -- {} | awk '{{print $1}}'".format(shlex.quote(remote_path))
     try:
-        status, output = _remote_command(client, command)
+        status, output = _remote_step(
+            client,
+            command,
+            "校验{} MD5".format(label),
+            context=context,
+            item=item,
+        )
     except RemoteCommandError:
-        return None, "远程文件校验命令失败"
+        return None, "远程文件校验命令失败（诊断见任务日志）"
     digest = output.splitlines()[0].strip() if output else ""
     if status != 0 or not re.fullmatch(r"[0-9a-fA-F]{32}", digest):
-        return None, "无法读取远程文件 MD5{}".format(_format_remote_detail(output))
+        error = "无法读取远程文件 MD5{}".format(_format_remote_detail(output))
+        _log_release_step(context, item, error, "error")
+        if status == 0:
+            _append_remote_output(context, item, output, "error")
+        return None, error
     return digest.lower(), ""
 
 
@@ -137,6 +266,8 @@ def _restore_remote_file(
     client,
     remote_path: str,
     backup_path: Optional[str],
+    context: Optional[TaskContext] = None,
+    item: Optional[dict] = None,
 ) -> Tuple[bool, str]:
     """从备份恢复原文件或删除没有旧版本的首次发布文件。"""
     target_q = shlex.quote(remote_path)
@@ -148,11 +279,18 @@ def _restore_remote_file(
     else:
         command = "rm -f -- {}".format(target_q)
     try:
-        status, output = _remote_command(client, command)
+        status, output = _remote_step(
+            client,
+            command,
+            "恢复远程配置文件",
+            context=context,
+            item=item,
+        )
     except RemoteCommandError:
-        return False, "SSH 通道关闭，无法恢复远程文件"
+        return False, "SSH 通道关闭，无法恢复远程文件（诊断见任务日志）"
     if status != 0:
         return False, "恢复远程文件失败{}".format(_format_remote_detail(output))
+    _log_release_step(context, item, "远程配置文件已恢复")
     return True, "远程文件已恢复"
 
 
@@ -161,6 +299,7 @@ def _deploy_binding_file(
     item: dict,
     backup_dir: str,
     task_id: int,
+    context: Optional[TaskContext] = None,
 ) -> Tuple[bool, Optional[str], str, str]:
     """备份、临时上传、校验配置文件并执行单项 nginx -t。"""
     remote_path = item["remote_path"]
@@ -175,6 +314,8 @@ def _deploy_binding_file(
         item["hostname"],
         task_id,
         item["binding_id"],
+        context,
+        item,
     )
     if backup_error:
         return False, None, "", backup_error
@@ -187,65 +328,142 @@ def _deploy_binding_file(
     expected_md5 = hashlib.md5(payload).hexdigest()
     target_may_be_changed = False
     try:
+        _log_release_step(
+            context,
+            item,
+            "开始通过 SFTP 上传临时文件：{}（{} 字节）".format(
+                temporary_path, len(payload)
+            ),
+        )
         sftp = client.open_sftp()
         try:
             sftp.putfo(io.BytesIO(payload), temporary_path)
         finally:
             sftp.close()
+        _log_release_step(context, item, "SFTP 临时文件上传完成")
         size_command = "wc -c < {}".format(shlex.quote(temporary_path))
-        size_status, size_output = _remote_command(client, size_command)
+        size_status, size_output = _remote_step(
+            client,
+            size_command,
+            "检查临时文件大小",
+            context=context,
+            item=item,
+        )
         if size_status != 0 or not size_output.strip().isdigit():
+            _log_release_step(
+                context,
+                item,
+                "临时文件大小检查失败：{}".format(size_output or "未返回大小"),
+                "error",
+            )
             return False, backup_path, "", "临时文件大小检查失败"
         if int(size_output.strip()) != len(payload):
+            _log_release_step(
+                context,
+                item,
+                "临时文件大小不匹配：预期 {} 字节，实际 {} 字节".format(
+                    len(payload), size_output.strip()
+                ),
+                "error",
+            )
             return False, backup_path, "", "临时文件大小与配置正文不一致"
-        temporary_md5, error = _remote_md5(client, temporary_path)
+        _log_release_step(
+            context, item, "临时文件大小校验通过：{} 字节".format(len(payload))
+        )
+        temporary_md5, error = _remote_md5(
+            client, temporary_path, context, item, "临时文件"
+        )
         if error:
             return False, backup_path, "", error
         if temporary_md5 != expected_md5:
+            _log_release_step(context, item, "临时文件 MD5 与本地正文不一致", "error")
             return False, backup_path, "", "临时文件 MD5 校验失败"
         copy_command = "cp -- {} {}".format(
             shlex.quote(temporary_path),
             shlex.quote(remote_path),
         )
         target_may_be_changed = True
-        copy_status, copy_output = _remote_command(client, copy_command)
+        copy_status, copy_output = _remote_step(
+            client,
+            copy_command,
+            "复制临时文件到目标路径",
+            context=context,
+            item=item,
+        )
         if copy_status != 0:
             raise ValueError(
                 "复制到目标路径失败{}".format(_format_remote_detail(copy_output))
             )
-        target_md5, error = _remote_md5(client, remote_path)
+        target_md5, error = _remote_md5(
+            client, remote_path, context, item, "目标文件"
+        )
         if error:
             raise ValueError(error)
         if target_md5 != expected_md5:
+            _log_release_step(context, item, "目标文件 MD5 与本地正文不一致", "error")
             raise ValueError("目标文件 MD5 校验失败")
         nginx_test = "{} -t".format(shlex.quote(item["nginx_path"] or "/usr/sbin/nginx"))
-        test_status, test_output = _remote_command(client, nginx_test, timeout=90)
+        test_status, test_output = _remote_step(
+            client,
+            nginx_test,
+            "运行 nginx -t 配置检查",
+            timeout=90,
+            context=context,
+            item=item,
+            log_output=True,
+        )
         if test_status != 0:
             raise ValueError(
                 "nginx -t 未通过{}".format(_format_remote_detail(test_output))
             )
+        _log_release_step(context, item, "nginx -t 配置检查通过")
+        _log_release_step(context, item, "配置文件发布准备完成，等待节点统一 reload")
         return True, backup_path, target_md5, "配置上传并通过 nginx -t"
     except Exception as exc:
-        error = str(exc) if isinstance(exc, ValueError) else "上传或校验远程文件失败"
+        if isinstance(exc, ValueError):
+            error = str(exc).strip()
+        elif isinstance(exc, RemoteCommandError):
+            error = "远程命令执行失败（诊断见任务日志）"
+        else:
+            detail = str(exc).strip()
+            _log_release_step(context, item, "上传或校验异常：{}".format(type(exc).__name__), "error")
+            _append_remote_output(
+                context,
+                item,
+                detail or "无异常详情",
+                "error",
+                "SFTP异常详情",
+            )
+            error = "上传或校验远程文件失败（{}，详情见任务日志）".format(
+                type(exc).__name__
+            )
         if target_may_be_changed:
             restored, restore_message = _restore_remote_file(
                 client,
                 remote_path,
                 backup_path,
+                context,
+                item,
             )
             if not restored:
                 error = "{}；{}".format(error, restore_message)
         return False, backup_path, "", error
     finally:
         try:
-            status, output = _remote_command(
+            status, output = _remote_step(
                 client,
                 "rm -f -- {}".format(shlex.quote(temporary_path)),
+                "清理远程临时文件",
+                context=context,
+                item=item,
             )
             if status != 0:
                 logger.warning("发布临时文件清理失败 binding_id=%s", item["binding_id"])
-        except RemoteCommandError:
+        except RemoteCommandError as exc:
             logger.warning("发布临时文件清理通道失败 binding_id=%s", item["binding_id"])
+            _log_release_step(
+                context, item, "清理远程临时文件失败：{}".format(exc), "warning"
+            )
 
 
 def _delete_binding_file(
@@ -253,6 +471,7 @@ def _delete_binding_file(
     item: dict,
     backup_dir: str,
     task_id: int,
+    context: Optional[TaskContext] = None,
 ) -> Tuple[bool, Optional[str], str, str]:
     """备份后删除标记绑定的远程文件并校验 Nginx 配置。"""
     remote_path = item["remote_path"]
@@ -263,32 +482,42 @@ def _delete_binding_file(
         item["hostname"],
         task_id,
         item["binding_id"],
+        context,
+        item,
     )
     if backup_error:
         return False, None, "", backup_error
 
     def fail(message: str) -> Tuple[bool, Optional[str], str, str]:
         """恢复删除前文件并返回安全错误摘要。"""
-        restored, detail = _restore_remote_file(client, remote_path, backup_path)
+        restored, detail = _restore_remote_file(
+            client, remote_path, backup_path, context, item
+        )
         if not restored:
             message = "{}；{}".format(message, detail)
         return False, backup_path, "", message
 
     try:
-        remove_status, remove_output = _remote_command(
+        remove_status, remove_output = _remote_step(
             client,
             "rm -f -- {}".format(shlex.quote(remote_path)),
+            "删除远程配置文件",
+            context=context,
+            item=item,
         )
         if remove_status != 0:
             return fail(
                 "删除远程配置失败{}".format(_format_remote_detail(remove_output))
             )
 
-        exists_status, exists_output = _remote_command(
+        exists_status, exists_output = _remote_step(
             client,
             "if [ ! -e {path} ] && [ ! -L {path} ]; then exit 0; else exit 1; fi".format(
                 path=shlex.quote(remote_path)
             ),
+            "确认远程配置文件已删除",
+            context=context,
+            item=item,
         )
         if exists_status != 0:
             return fail(
@@ -300,7 +529,15 @@ def _delete_binding_file(
         nginx_test = "{} -t".format(
             shlex.quote(item["nginx_path"] or "/usr/sbin/nginx")
         )
-        test_status, test_output = _remote_command(client, nginx_test, timeout=90)
+        test_status, test_output = _remote_step(
+            client,
+            nginx_test,
+            "运行 nginx -t 配置检查",
+            timeout=90,
+            context=context,
+            item=item,
+            log_output=True,
+        )
         if test_status != 0:
             return fail(
                 "删除配置后 nginx -t 未通过{}".format(
@@ -308,31 +545,59 @@ def _delete_binding_file(
                 )
             )
     except RemoteCommandError:
-        return fail("远程删除或校验未完成")
+        return fail("远程删除或校验未完成（诊断见任务日志）")
+    _log_release_step(context, item, "远程配置已删除并通过 nginx -t")
     return True, backup_path, "", "远程配置已删除并通过 nginx -t"
 
 
-def _reload_nginx(client, nginx_path: str) -> Tuple[bool, str]:
+def _reload_nginx(
+    client,
+    nginx_path: str,
+    context: Optional[TaskContext] = None,
+    item: Optional[dict] = None,
+) -> Tuple[bool, str]:
     """在节点全部配置通过 nginx -t 后执行一次 reload 或启动。"""
-    systemctl_status, _systemctl_output = _remote_command(
+    command = ""
+    success_message = ""
+    systemctl_status, _systemctl_output = _remote_step(
         client,
         "command -v systemctl >/dev/null 2>&1",
+        "检查 systemd 管理能力",
+        context=context,
+        item=item,
+        nonzero_level="info",
     )
     if systemctl_status == 0:
-        active_status, active_output = _remote_command(
+        active_status, active_output = _remote_step(
             client,
             "systemctl is-active nginx 2>/dev/null || true",
+            "读取 systemd Nginx 运行状态",
+            context=context,
+            item=item,
         )
         active_state = active_output.splitlines()[-1].strip() if active_output else ""
+        _log_release_step(
+            context,
+            item,
+            "systemd Nginx 当前状态：{}".format(active_state or "未知"),
+        )
         if active_state in ("active", "activating", "reloading"):
             command = "systemctl reload nginx 2>&1"
             success_message = "systemd nginx reload 成功"
         else:
-            enabled_status, enabled_output = _remote_command(
+            enabled_status, enabled_output = _remote_step(
                 client,
                 "systemctl is-enabled nginx 2>/dev/null || true",
+                "读取 systemd Nginx 启用状态",
+                context=context,
+                item=item,
             )
             enabled_state = enabled_output.splitlines()[-1].strip() if enabled_output else ""
+            _log_release_step(
+                context,
+                item,
+                "systemd Nginx 启用状态：{}".format(enabled_state or "未知"),
+            )
             if enabled_state in ("enabled", "enabled-runtime", "static"):
                 command = "systemctl start nginx 2>&1"
                 success_message = "Nginx 未运行，systemd start 成功"
@@ -340,22 +605,50 @@ def _reload_nginx(client, nginx_path: str) -> Tuple[bool, str]:
                 command = ""
                 success_message = ""
         if command:
-            status, output = _remote_command(client, command, timeout=90)
+            status, output = _remote_step(
+                client,
+                command,
+                "执行 systemd Nginx start/reload",
+                timeout=90,
+                context=context,
+                item=item,
+                log_output=True,
+            )
             if status == 0:
+                _log_release_step(context, item, success_message)
                 return True, success_message
             return False, "{}{}".format(
                 "Nginx reload/start 失败",
                 _format_remote_detail(output),
             )
+        _log_release_step(context, item, "没有可用的 systemd Nginx unit")
     binary = shlex.quote(nginx_path or "/usr/sbin/nginx")
-    running_status, _running_output = _remote_command(
+    if systemctl_status != 0:
+        _log_release_step(context, item, "systemd 不可用，改用 Nginx 二进制操作")
+    elif not command:
+        _log_release_step(context, item, "改用 Nginx 二进制操作")
+    running_status, _running_output = _remote_step(
         client,
         "pgrep -x nginx >/dev/null 2>&1",
+        "检查 Nginx 进程",
+        context=context,
+        item=item,
+        nonzero_level="info",
     )
     command = "{} -s reload".format(binary) if running_status == 0 else binary
-    status, output = _remote_command(client, command, timeout=90)
+    status, output = _remote_step(
+        client,
+        command,
+        "执行 Nginx 二进制 reload/start",
+        timeout=90,
+        context=context,
+        item=item,
+        log_output=True,
+    )
     if status == 0:
-        return True, "nginx reload 成功" if running_status == 0 else "Nginx 未运行，已启动"
+        message = "nginx reload 成功" if running_status == 0 else "Nginx 未运行，已启动"
+        _log_release_step(context, item, message)
+        return True, message
     return False, "Nginx reload/start 失败{}".format(_format_remote_detail(output))
 
 
@@ -570,6 +863,8 @@ def _rollback_pending(
             client,
             item["remote_path"],
             item.get("backup_path"),
+            context,
+            item,
         )
         message = "{}，{}".format(reason, detail)
         context.append_log(
@@ -632,6 +927,7 @@ def _run_node_batch(
         target["password"],
         target["private_key"],
         context,
+        detailed_logging=True,
     )
     if client is None:
         for item in items:
@@ -694,7 +990,7 @@ def _run_node_batch(
                 else _deploy_binding_file
             )
             success, backup_path, content_md5, result = deploy(
-                client, item, backup_dir, task_id
+                client, item, backup_dir, task_id, context
             )
             if not success:
                 failure_message = "配置 {} {}失败：{}".format(
@@ -755,6 +1051,8 @@ def _run_node_batch(
             reload_ok, reload_message = _reload_nginx(
                 client,
                 items[0]["nginx_path"],
+                context,
+                items[0],
             )
             if reload_ok:
                 _update_bindings_success(session_factory, pending)
@@ -793,7 +1091,17 @@ def _run_node_batch(
             _set_node_status(context, tree, node_id, "failed", tree_lock)
         else:
             _set_node_status(context, tree, node_id, "failed", tree_lock)
-    except Exception:
+    except Exception as exc:
+        if not isinstance(exc, TaskCancelled):
+            context.append_log(
+                "节点 {} 发布流程出现未处理异常：{}".format(
+                    _node_log_label(items[0]), type(exc).__name__
+                ),
+                "error",
+            )
+            _append_remote_output(
+                context, items[0], str(exc) or "无异常详情", "error", "异常详情"
+            )
         if pending:
             _rollback_pending(
                 context,
