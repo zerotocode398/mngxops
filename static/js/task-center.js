@@ -264,6 +264,14 @@
                 return ip;
             }
         }
+        for (var fallbackIndex = 0; fallbackIndex < logTargetMap.length; fallbackIndex += 1) {
+            var fallbackTarget = logTargetMap[fallbackIndex];
+            var fallbackHostname = String(fallbackTarget.hostname || "").trim();
+            var fallbackIp = String(fallbackTarget.ip || "").trim();
+            if (fallbackHostname && formatted.indexOf("节点 " + fallbackHostname) >= 0) {
+                return fallbackIp;
+            }
+        }
         return "";
     }
 
@@ -392,6 +400,8 @@
         var cursor = Number(detail.getAttribute("data-log-cursor")) || 0;
         var active = detail.getAttribute("data-task-active") === "true";
         var isConfigSync = detail.getAttribute("data-is-config-sync") === "true";
+        var isReleaseTask = detail.getAttribute("data-is-release-type") === "true";
+        var isHostScopedLogTask = isConfigSync || isReleaseTask;
         var resultElement = document.getElementById("taskResultData");
         var labelsElement = document.getElementById("taskResultLabels");
         var logTargetsElement = document.getElementById("taskLogTargets");
@@ -406,7 +416,7 @@
         });
 
         function applyLogHostFilter() {
-            if (!isConfigSync || !logHostFilter) return;
+            if (!isHostScopedLogTask || !logHostFilter) return;
             var selectedIp = logHostFilter.value;
             var rows = Array.prototype.slice.call(logList.querySelectorAll(".task-log-row"));
             var visibleCount = 0;
@@ -442,7 +452,7 @@
             isConfigSync
         );
         renderSummary(summaryRoot, initialResult && initialResult.summary);
-        if (isConfigSync) logList.scrollTop = logList.scrollHeight;
+        if (isHostScopedLogTask) logList.scrollTop = logList.scrollHeight;
         var busy = false;
         if (loadMoreLogs) {
             loadMoreLogs.addEventListener("click", function () { poll(true); });
@@ -479,7 +489,7 @@
                     cursor = Math.max(cursor, Number(log.id) || 0);
                 });
                 if (logHostFilter) applyLogHostFilter();
-                if (isConfigSync && (payload.logs || []).length) {
+                if (isHostScopedLogTask && (payload.logs || []).length) {
                     logList.scrollTop = logList.scrollHeight;
                 }
                 cursor = Math.max(cursor, Number(payload.next_log_id) || 0);

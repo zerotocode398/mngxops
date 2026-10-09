@@ -11,17 +11,20 @@
     var maxBindingCount = Number(root.getAttribute("data-max-binding-count") || 500);
     var state = {
         page: 1,
-        pageSize: 20,
+        pageSize: Number(root.getAttribute("data-page-size") || 10),
         totalPages: 1,
         total: 0,
         nodes: [],
         nodeById: {},
         bindingsByNode: {},
+        bindingPageInfoByNode: {},
+        bindingPageByNode: {},
+        bindingPageSizeByNode: {},
         loadingBindings: {},
+        selectingNode: {},
         selection: {},
         expanded: {},
-        syncStatus: "",
-        groups: []
+        syncStatus: document.getElementById("releaseSyncStatus").value || ""
     };
     var expandedStorageKey = "ngxops_releases_expanded_nodes";
     var pollTimer = null;
@@ -73,6 +76,12 @@
         return Object.keys(ids);
     }
 
+    function selectedCountForNode(nodeId) {
+        return Object.keys(state.selection).filter(function (bindingId) {
+            return String(state.selection[bindingId].node_id) === String(nodeId);
+        }).length;
+    }
+
     function updateSelectionSummary() {
         var count = Object.keys(state.selection).length;
         var nodeCount = selectedNodeIds().length;
@@ -87,15 +96,16 @@
         );
         $("#releaseNodeRows [data-node-select]").each(function () {
             var nodeId = String(this.getAttribute("data-node-select"));
-            var nodeBindings = state.bindingsByNode[nodeId] || [];
-            var selectable = nodeBindings.filter(function (binding) {
-                return state.nodeById[nodeId] && state.nodeById[nodeId].can_publish && binding.versions.length;
-            });
-            var checked = selectable.filter(function (binding) {
-                return !!state.selection[String(binding.id)];
-            }).length;
-            this.checked = selectable.length > 0 && checked === selectable.length;
-            this.indeterminate = checked > 0 && checked < selectable.length;
+            var node = state.nodeById[nodeId];
+            var selectedCount = selectedCountForNode(nodeId);
+            var selectableCount = node ? node.selectable_bindings : 0;
+            this.checked = selectableCount > 0 && selectedCount === selectableCount;
+            this.indeterminate = selectedCount > 0 && selectedCount < selectableCount;
+            if (state.selectingNode[nodeId]) {
+                this.disabled = true;
+            } else {
+                this.disabled = !canPublish || !node || !node.can_publish || selectableCount === 0;
+            }
         });
     }
 
@@ -139,10 +149,10 @@
                 : (!node.can_publish
                     ? '<span class="badge text-bg-secondary">暂不可发布</span>'
                     : '<span class="badge text-bg-success">可发布</span>');
-            var checkboxDisabled = !canPublish || !node.can_publish;
+            var checkboxDisabled = !canPublish || !node.can_publish || node.selectable_bindings === 0;
             var $nodeRow = $(
                 '<tr class="release-node-row" data-node-row="' + id + '">' +
-                '<td class="text-center"><input class="form-check-input" type="checkbox" data-node-select="' + id + '" aria-label="选择节点 ' + escapeHtml(node.hostname) + '"' + (checkboxDisabled ? " disabled" : "") + '></td>' +
+                '<td class="text-center"><input class="form-check-input" type="checkbox" data-node-select="' + id + '" aria-label="选择节点 ' + escapeHtml(node.hostname) + ' 下全部可发布配置"' + (checkboxDisabled ? " disabled" : "") + '></td>' +
                 '<td class="text-nowrap"><button type="button" class="btn btn-link btn-sm p-0 me-1 text-body" data-node-toggle="' + id + '" aria-expanded="false" aria-controls="release-bindings-' + id + '" title="展开节点配置"><i class="bi bi-chevron-right node-chevron" aria-hidden="true"></i><span class="visually-hidden">展开节点配置</span></button><span class="fw-semibold">' + escapeHtml(node.hostname) + (node.is_locked ? ' <i class="bi bi-lock-fill text-muted" title="节点已锁定" aria-label="节点已锁定"></i>' : "") + '</span></td>' +
                 '<td class="font-monospace small text-nowrap">' + escapeHtml(node.ip) + ':' + escapeHtml(node.port) + '</td>' +
                 '<td>' + escapeHtml({dev: "开发", test: "测试", prod: "生产"}[node.environment] || node.environment) + '</td>' +
@@ -156,7 +166,7 @@
             );
             var expanded = !!state.expanded[id];
             var $bindingsRow = $(
-                '<tr class="release-bindings-row" id="release-bindings-' + id + '"' + (expanded ? "" : " hidden") + '><td colspan="10"><div class="release-bindings-panel"><div class="small text-muted" data-binding-state="' + id + '">展开以读取绑定和版本</div><div class="table-responsive" data-binding-table-wrap="' + id + '" hidden><table class="table table-sm table-hover align-middle mb-0 release-bindings-table"><thead><tr><th style="width:38px"></th><th>配置</th><th>远程路径</th><th>绑定状态</th><th>已同步版本</th><th style="width:126px">发布版本</th><th style="width:76px">预览</th></tr></thead><tbody data-binding-rows="' + id + '"></tbody></table></div></div></td></tr>'
+                '<tr class="release-bindings-row" id="release-bindings-' + id + '"' + (expanded ? "" : " hidden") + '><td colspan="10"><div class="release-bindings-panel"><div class="small text-muted" data-binding-state="' + id + '">展开以读取绑定和版本</div><div data-binding-content="' + id + '" hidden><div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0 release-bindings-table"><thead><tr><th style="width:38px"></th><th>配置</th><th>远程路径</th><th>绑定状态</th><th>已同步版本</th><th style="width:126px">发布版本</th><th style="width:76px">预览</th></tr></thead><tbody data-binding-rows="' + id + '"></tbody></table></div><div class="release-binding-pagination d-flex flex-wrap align-items-center justify-content-between gap-2 border-top pt-2 mt-2" data-binding-pagination="' + id + '"><span class="small text-muted" data-binding-page-summary="' + id + '"></span><div class="d-flex align-items-center gap-2"><label class="small text-muted" for="releaseBindingPageSize-' + id + '">每页</label><select class="form-select form-select-sm" id="releaseBindingPageSize-' + id + '" data-binding-page-size="' + id + '" style="width:94px"><option value="10">10 条/页</option><option value="25">25 条/页</option><option value="50">50 条/页</option><option value="100">100 条/页</option></select><div class="btn-group btn-group-sm" role="group" aria-label="节点配置分页"><button class="btn btn-outline-secondary" type="button" data-binding-page-action="first" data-node-id="' + id + '" title="首页" aria-label="首页"><i class="bi bi-chevron-double-left" aria-hidden="true"></i></button><button class="btn btn-outline-secondary" type="button" data-binding-page-action="previous" data-node-id="' + id + '" title="上一页" aria-label="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button><span class="btn btn-outline-secondary disabled" data-binding-page-count="' + id + '"></span><button class="btn btn-outline-secondary" type="button" data-binding-page-action="next" data-node-id="' + id + '" title="下一页" aria-label="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button><button class="btn btn-outline-secondary" type="button" data-binding-page-action="last" data-node-id="' + id + '" title="末页" aria-label="末页"><i class="bi bi-chevron-double-right" aria-hidden="true"></i></button></div></div></div></div></div></td></tr>'
             );
             $rows.append($nodeRow, $bindingsRow);
             if (expanded) {
@@ -168,18 +178,29 @@
     }
 
     function renderBindings(nodeId) {
-        var node = state.nodeById[nodeId];
-        var bindings = state.bindingsByNode[nodeId] || [];
-        var $rows = $("[data-binding-rows='" + nodeId + "']").empty();
-        var $state = $("[data-binding-state='" + nodeId + "']");
-        var $wrap = $("[data-binding-table-wrap='" + nodeId + "']");
+        var id = String(nodeId);
+        var node = state.nodeById[id];
+        var bindings = state.bindingsByNode[id] || [];
+        var pageInfo = state.bindingPageInfoByNode[id] || {page: 1, page_size: 10, total: 0, total_pages: 1};
+        var $rows = $("[data-binding-rows='" + id + "']").empty();
+        var $state = $("[data-binding-state='" + id + "']");
+        var $content = $("[data-binding-content='" + id + "']");
         if (!bindings.length) {
             $state.text("该节点没有可发布的绑定").prop("hidden", false);
-            $wrap.prop("hidden", true);
+            $content.prop("hidden", true);
             return;
         }
         $state.prop("hidden", true);
-        $wrap.prop("hidden", false);
+        $content.prop("hidden", false);
+        $("[data-binding-page-size='" + id + "']").val(String(pageInfo.page_size));
+        $("[data-binding-page-summary='" + id + "']").text(
+            "共 " + pageInfo.total + " 个配置 · 第 " + pageInfo.page + " / " + pageInfo.total_pages + " 页"
+        );
+        $("[data-binding-page-count='" + id + "']").text(pageInfo.page + " / " + pageInfo.total_pages);
+        $("[data-binding-page-action='first'][data-node-id='" + id + "'], [data-binding-page-action='previous'][data-node-id='" + id + "']")
+            .prop("disabled", pageInfo.page <= 1);
+        $("[data-binding-page-action='next'][data-node-id='" + id + "'], [data-binding-page-action='last'][data-node-id='" + id + "']")
+            .prop("disabled", pageInfo.page >= pageInfo.total_pages);
         bindings.forEach(function (binding) {
             var hasVersions = binding.versions.length > 0;
             var selected = state.selection[String(binding.id)];
@@ -222,16 +243,61 @@
         updateSelectionSummary();
     }
 
-    function loadNodes(page) {
+    function buildPageUrl(page) {
+        var params = new URLSearchParams();
+        var search = window.getQueryTagValue("#releaseSearch") || "";
+        if (search) params.set("search", search);
+        if (state.syncStatus) params.set("sync_status", state.syncStatus);
+        params.set("nginx_available", $("#releaseNginxFilter").val() || "true");
+        params.set("page", String(page));
+        params.set("per_page", String(state.pageSize));
+        return window.location.pathname + "?" + params.toString();
+    }
+
+    function updateAddress(page, replace) {
+        var nextUrl = buildPageUrl(page);
+        var currentUrl = window.location.pathname + window.location.search;
+        if (nextUrl !== currentUrl) {
+            window.history[replace ? "replaceState" : "pushState"]({}, "", nextUrl);
+        }
+    }
+
+    function renderNodePagination() {
+        function pageLink(label, page, title, disabled, icon) {
+            var content = icon
+                ? '<i class="bi ' + icon + '" aria-hidden="true"></i><span class="visually-hidden">' + label + '</span>'
+                : label;
+            if (disabled) {
+                return '<li class="page-item disabled"><span class="page-link" title="' + title + '">' + content + '</span></li>';
+            }
+            return '<li class="page-item"><a class="page-link" href="' + escapeHtml(buildPageUrl(page)) + '" data-release-page="' + page + '" title="' + title + '">' + content + '</a></li>';
+        }
+        var links = [
+            pageLink("首页", 1, "首页", state.page <= 1, "bi-chevron-double-left"),
+            pageLink("上一页", state.page - 1, "上一页", state.page <= 1, "bi-chevron-left"),
+            '<li class="page-item disabled"><span class="page-link page-count">' + state.page + " / " + state.totalPages + "</span></li>",
+            pageLink("下一页", state.page + 1, "下一页", state.page >= state.totalPages, "bi-chevron-right"),
+            pageLink("末页", state.totalPages, "末页", state.page >= state.totalPages, "bi-chevron-double-right")
+        ];
+        $("#releasePaginationNav").html(
+            '<ul class="pagination pagination-sm justify-content-center mb-0">' + links.join("") + "</ul>"
+        );
+        $("#releasePaginationSummary").text(
+            "共 " + state.total + " 条，第 " + state.page + " / " + state.totalPages + " 页"
+        );
+        $("#releasePaginationNav").closest(".pagination-controls").toggle(state.totalPages > 1);
+    }
+
+    function loadNodes(page, replaceAddress) {
         state.page = page || 1;
+        $("#releasePageInput").val(String(state.page));
+        $("#releasePerPageValue").val(String(state.pageSize));
+        $("#releaseSyncStatus").val(state.syncStatus);
+        updateAddress(state.page, !!replaceAddress);
         $("#releaseNodeRows").html('<tr><td colspan="10" class="text-center text-muted py-4">正在加载节点…</td></tr>');
-        var syncValue = state.syncStatus;
         var query = {
             search: window.getQueryTagValue("#releaseSearch") || "",
-            group_id: $("#releaseGroupFilter").val() || undefined,
-            environment: $("#releaseEnvironmentFilter").val() || "",
-            status: $("#releaseNodeStatusFilter").val() || "",
-            sync_status: syncValue,
+            sync_status: state.syncStatus,
             nginx_available: $("#releaseNginxFilter").val() || "true",
             page: state.page,
             page_size: state.pageSize
@@ -245,7 +311,11 @@
                 state.totalPages = response.total_pages || 1;
                 state.nodeById = {};
                 state.bindingsByNode = {};
+                state.bindingPageInfoByNode = {};
+                state.bindingPageByNode = {};
+                state.bindingPageSizeByNode = {};
                 $("#releasePageSize").val(String(state.pageSize));
+                $("#releasePerPageValue").val(String(state.pageSize));
                 Object.keys(response.status_counts || {}).forEach(function (key) {
                     $("[data-count='" + key + "']").text(response.status_counts[key]);
                 });
@@ -254,11 +324,16 @@
                 );
                 maxBindingCount = response.max_binding_count || maxBindingCount;
                 renderNodes();
-                $("#releasePaginationSummary").text(
-                    "共 " + state.total + " 个节点 · 第 " + state.page + " / " + state.totalPages + " 页 · 每页 " + state.pageSize + " 个"
+                renderNodePagination();
+                $("#releasePageInput").val(String(state.page));
+                $("#releasePerPageValue").val(String(state.pageSize));
+                $("#releasePerPageForm input[name='search']").val(query.search);
+                $("#releasePerPageForm input[name='sync_status']").val(state.syncStatus);
+                $("#releasePerPageForm input[name='nginx_available']").val(query.nginx_available);
+                $("#releaseClearFilters").prop(
+                    "disabled",
+                    !query.search && !state.syncStatus && query.nginx_available === "true"
                 );
-                $("#releasePreviousPage").prop("disabled", state.page <= 1);
-                $("#releaseNextPage").prop("disabled", state.page >= state.totalPages);
             })
             .fail(function (xhr) {
                 var message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : "节点列表加载失败";
@@ -281,19 +356,48 @@
         if (!open) {
             return;
         }
-        if (state.bindingsByNode[id]) {
+        if (
+            state.bindingsByNode[id] &&
+            state.bindingPageInfoByNode[id] &&
+            state.bindingPageInfoByNode[id].page === (state.bindingPageByNode[id] || 1)
+        ) {
             renderBindings(id);
             return;
         }
         if (state.loadingBindings[id]) {
             return;
         }
+        loadBindingsPage(id, state.bindingPageByNode[id] || 1);
+    }
+
+    function fetchBindingsPage(nodeId, page, pageSize) {
+        return $.getJSON(
+            "/api/releases/nodes/" + encodeURIComponent(nodeId) + "/bindings",
+            {page: page, page_size: pageSize}
+        );
+    }
+
+    function loadBindingsPage(nodeId, page, pageSize) {
+        var id = String(nodeId);
+        var requestedSize = pageSize || state.bindingPageSizeByNode[id] || 10;
+        if (state.loadingBindings[id]) return;
         state.loadingBindings[id] = true;
         $("[data-binding-state='" + id + "']").text("正在加载绑定和版本…").prop("hidden", false);
-        var loadNodeId = $button.closest("tr").attr("data-node-row");
-        $.getJSON("/api/releases/nodes/" + encodeURIComponent(loadNodeId) + "/bindings")
+        fetchBindingsPage(id, page, requestedSize)
             .done(function (response) {
                 state.bindingsByNode[id] = response.bindings || [];
+                state.bindingPageInfoByNode[id] = {
+                    page: response.page,
+                    page_size: response.page_size,
+                    total: response.total,
+                    total_pages: response.total_pages,
+                    selectable_total: response.selectable_total
+                };
+                if (state.nodeById[id]) {
+                    state.nodeById[id].selectable_bindings = response.selectable_total;
+                }
+                state.bindingPageByNode[id] = response.page;
+                state.bindingPageSizeByNode[id] = response.page_size;
                 renderBindings(id);
             })
             .fail(function (xhr) {
@@ -347,36 +451,76 @@
 
     function selectAllForNode(nodeId, checked) {
         var id = String(nodeId);
-        if (!state.bindingsByNode[id]) {
-            toggleNode(id, true);
-            var retry = setInterval(function () {
-                if (!state.bindingsByNode[id] && !state.loadingBindings[id]) {
-                    clearInterval(retry);
-                    return;
+        var node = state.nodeById[id];
+        if (!node) return;
+        if (!checked) {
+            Object.keys(state.selection).forEach(function (bindingId) {
+                if (String(state.selection[bindingId].node_id) === id) {
+                    delete state.selection[bindingId];
                 }
-                if (state.bindingsByNode[id]) {
-                    clearInterval(retry);
-                    selectAllForNode(id, checked);
-                }
-            }, 100);
+            });
+            if (state.bindingsByNode[id]) renderBindings(id);
+            updateSelectionSummary();
             return;
         }
-        var bindings = state.bindingsByNode[id].filter(function (binding) {
-            return binding.versions.length > 0 || binding.sync_status === "marked_deleted";
-        });
-        for (var i = 0; i < bindings.length; i += 1) {
-            if (checked && !state.selection[String(bindings[i].id)] && Object.keys(state.selection).length >= maxBindingCount) {
-                toast("单次发布最多选择 " + maxBindingCount + " 个配置", "warning");
-                break;
-            }
-            var selectedNow = selectedNodeIds().indexOf(id) !== -1;
-            if (checked && !selectedNow && selectedNodeIds().length >= maxNodeCount) {
-                toast("单次发布最多选择 " + maxNodeCount + " 个节点", "warning");
-                break;
-            }
-            setBindingSelected(bindings[i].id, id, checked);
+        if (state.selectingNode[id]) return;
+        if (!canAddNode(id)) {
+            toast("单次发布最多选择 " + maxNodeCount + " 个节点", "warning");
+            updateSelectionSummary();
+            return;
         }
-        renderBindings(id);
+        if (Object.keys(state.selection).length >= maxBindingCount) {
+            toast("单次发布最多选择 " + maxBindingCount + " 个配置", "warning");
+            updateSelectionSummary();
+            return;
+        }
+
+        state.selectingNode[id] = true;
+        toggleNode(id, true);
+        updateSelectionSummary();
+        var limitReached = false;
+
+        function collectPage(page) {
+            return fetchBindingsPage(id, page, 100).then(function (response) {
+                (response.bindings || []).some(function (binding) {
+                    if (!binding.versions.length && binding.sync_status !== "marked_deleted") {
+                        return false;
+                    }
+                    if (state.selection[String(binding.id)]) return false;
+                    if (Object.keys(state.selection).length >= maxBindingCount) {
+                        limitReached = true;
+                        return true;
+                    }
+                    state.selection[String(binding.id)] = {
+                        binding_id: binding.id,
+                        node_id: node.id,
+                        hostname: node.hostname,
+                        config_name: binding.config_name,
+                        remote_path: binding.remote_path,
+                        version: binding.current_version,
+                        action: binding.sync_status === "marked_deleted" ? "delete" : "publish"
+                    };
+                    return false;
+                });
+                if (limitReached || page >= response.total_pages) return response;
+                return collectPage(page + 1);
+            });
+        }
+
+        collectPage(1)
+            .done(function () {
+                if (limitReached) toast("单次发布最多选择 " + maxBindingCount + " 个配置", "warning");
+                if (state.bindingsByNode[id]) renderBindings(id);
+                updateSelectionSummary();
+            })
+            .fail(function (xhr) {
+                var message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : "读取节点配置失败";
+                toast(message, "danger");
+            })
+            .always(function () {
+                state.selectingNode[id] = false;
+                updateSelectionSummary();
+            });
     }
 
     function selectedItems() {
@@ -554,30 +698,47 @@
         readExpanded().forEach(function (id) {
             state.expanded[String(id)] = true;
         });
-        loadNodes(1);
+        state.page = Number($("#releasePageInput").val()) || 1;
+        loadNodes(state.page, true);
 
         $("#releaseFilterForm").on("submit", function (event) {
             event.preventDefault();
+            state.syncStatus = $("#releaseSyncStatus").val() || "";
             loadNodes(1);
         });
-        $("#releaseGroupFilter, #releaseEnvironmentFilter, #releaseNodeStatusFilter, #releaseNginxFilter").on("change", function () {
+        $("#nginxOnlyToggle").on("change", function () {
+            $("#releaseNginxFilter").val(this.checked ? "true" : "all");
             loadNodes(1);
         });
-        $("#releasePageSize").on("change", function () {
-            state.pageSize = Number(this.value) || 20;
+        $("#releaseClearFilters").on("click", function () {
+            window.clearQueryTagValue("#releaseSearch");
+            state.syncStatus = "";
+            $("#releaseSyncStatus").val("");
+            $("#releaseNginxFilter").val("true");
+            $("#nginxOnlyToggle").prop("checked", true);
+            $(".release-status-label").removeClass("active");
+            $(".release-status-label[data-status='all']").addClass("active");
             loadNodes(1);
         });
-        $("#releasePreviousPage").on("click", function () {
-            if (state.page > 1) { loadNodes(state.page - 1); }
+        $("#releasePerPageForm").on("submit", function (event) {
+            event.preventDefault();
+            state.pageSize = Number($("#releasePageSize").val()) || 10;
+            loadNodes(1);
         });
-        $("#releaseNextPage").on("click", function () {
-            if (state.page < state.totalPages) { loadNodes(state.page + 1); }
+        $(document).on("click", "[data-release-page]", function (event) {
+            event.preventDefault();
+            loadNodes(Number(this.getAttribute("data-release-page")) || 1);
         });
-        $(document).on("click", ".release-status-filter", function () {
-            $(".release-status-filter").removeClass("active");
-            $(this).addClass("active");
+        $(document).on("click", ".release-status-label", function (event) {
+            event.preventDefault();
             state.syncStatus = this.getAttribute("data-status") === "all" ? "" : this.getAttribute("data-status");
+            $("#releaseSyncStatus").val(state.syncStatus);
+            $(".release-status-label").removeClass("active");
+            $(this).addClass("active");
             loadNodes(1);
+        });
+        $(window).on("popstate", function () {
+            window.location.reload();
         });
         $(document).on("click", "[data-node-toggle]", function () {
             toggleNode(this.getAttribute("data-node-toggle"));
@@ -609,6 +770,23 @@
             var version = this.options[this.selectedIndex];
             $("[data-binding-row='" + bindingId + "'] [data-version-preview]").attr("data-version-preview", version ? version.getAttribute("data-version-id") : "");
             updateSelectionSummary();
+        });
+        $(document).on("change", "[data-binding-page-size]", function () {
+            var nodeId = this.getAttribute("data-binding-page-size");
+            state.bindingPageSizeByNode[nodeId] = Number(this.value) || 10;
+            loadBindingsPage(nodeId, 1, state.bindingPageSizeByNode[nodeId]);
+        });
+        $(document).on("click", "[data-binding-page-action]", function () {
+            var nodeId = this.getAttribute("data-node-id");
+            var pageInfo = state.bindingPageInfoByNode[nodeId];
+            if (!pageInfo || this.disabled) return;
+            var action = this.getAttribute("data-binding-page-action");
+            var page = pageInfo.page;
+            if (action === "first") page = 1;
+            if (action === "previous") page -= 1;
+            if (action === "next") page += 1;
+            if (action === "last") page = pageInfo.total_pages;
+            loadBindingsPage(nodeId, page);
         });
         $(document).on("click", "[data-version-preview]", function () {
             var bindingRow = $(this).closest("tr");

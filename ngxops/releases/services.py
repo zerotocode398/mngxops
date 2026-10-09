@@ -52,6 +52,13 @@ def _safe_node_label(hostname: str) -> str:
     return label or "unknown"
 
 
+def _node_log_label(item: dict) -> str:
+    """返回便于多节点日志筛选的主机名和 IP 标识。"""
+    hostname = str(item.get("hostname") or "").strip()
+    ip = str(item.get("ip") or "").strip()
+    return "{} ({})".format(hostname, ip) if hostname and ip else hostname or ip
+
+
 def _tree_text(value: str, byte_limit: int) -> str:
     """清理控制字符并按 UTF-8 字节限制任务结果文本。"""
     printable = "".join(
@@ -567,7 +574,7 @@ def _rollback_pending(
         message = "{}，{}".format(reason, detail)
         context.append_log(
             "节点 {} 配置 {} 回滚{}".format(
-                item["hostname"],
+                _node_log_label(item),
                 item["config_name"],
                 "成功" if restored else "失败",
             ),
@@ -608,7 +615,7 @@ def _run_node_batch(
             )
         _set_node_status(context, tree, node_id, "failed", tree_lock)
         context.append_log(
-            "节点 {} 门禁失败：{}".format(items[0]["hostname"], target_error),
+            "节点 {} 门禁失败：{}".format(_node_log_label(items[0]), target_error),
             "error",
         )
         return
@@ -638,7 +645,7 @@ def _run_node_batch(
             )
         _set_node_status(context, tree, node_id, "failed", tree_lock)
         context.append_log(
-            "节点 {} SSH 连接失败".format(items[0]["hostname"]),
+            "节点 {} SSH 连接失败".format(_node_log_label(items[0])),
             "error",
         )
         return
@@ -649,7 +656,7 @@ def _run_node_batch(
         _set_node_status(context, tree, node_id, "running", tree_lock)
         context.append_log(
             "节点 {} SSH 已连接，开始{} {} 个配置".format(
-                items[0]["hostname"], operation_label, len(items)
+                _node_log_label(items[0]), operation_label, len(items)
             )
         )
         for item in items:
@@ -674,7 +681,7 @@ def _run_node_batch(
             )
             context.append_log(
                 "节点 {} 开始{} {} v{} 至 {}".format(
-                    item["hostname"],
+                    _node_log_label(item),
                     operation_label,
                     item["config_name"],
                     item["version"],
@@ -703,7 +710,7 @@ def _run_node_batch(
                 )
                 context.append_log(
                     "节点 {} 配置 {} {}失败：{}".format(
-                        item["hostname"], item["config_name"], operation_label, result
+                        _node_log_label(item), item["config_name"], operation_label, result
                     ),
                     "error",
                 )
@@ -742,7 +749,7 @@ def _run_node_batch(
             _set_node_status(context, tree, node_id, "reloading", tree_lock)
             context.append_log(
                 "节点 {} 全部配置通过校验，执行一次 Nginx reload".format(
-                    items[0]["hostname"]
+                    _node_log_label(items[0])
                 )
             )
             reload_ok, reload_message = _reload_nginx(
@@ -763,7 +770,7 @@ def _run_node_batch(
                 _set_node_status(context, tree, node_id, "success", tree_lock)
                 context.append_log(
                     "节点 {} {}完成：{}".format(
-                        items[0]["hostname"], operation_label, reload_message
+                        _node_log_label(items[0]), operation_label, reload_message
                     )
                 )
             else:
@@ -778,7 +785,7 @@ def _run_node_batch(
                 _set_node_status(context, tree, node_id, "failed", tree_lock)
                 context.append_log(
                     "节点 {} Nginx reload 失败：{}".format(
-                        items[0]["hostname"], reload_message
+                        _node_log_label(items[0]), reload_message
                     ),
                     "error",
                 )

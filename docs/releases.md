@@ -7,7 +7,8 @@ NX-040 提供按节点选择绑定和版本、预览配置、确认批次、异�
 ## 权限与选择规则
 
 - 页面及节点/绑定/版本读取需要 `releases.read` 或 `releases.publish`；创建发布需要 `releases.publish`。
-- 默认节点筛选为活动且 Nginx 已确认可用。可组合搜索主机名、IP、配置名、远程路径和节点组，并按节点组、环境、SSH 状态、Nginx 状态及绑定状态筛选。
+- 默认节点筛选为活动节点且 Nginx 已确认可用；Nginx 开关可切换到全部活动节点。主机名、IP、配置名、远程路径使用查询标签，多个词按 AND 匹配；绑定状态、Nginx 开关和节点分页保留当前查询条件。节点列表默认 10 台/页，支持 10/25/50/100。
+- 节点行只显示绑定数量摘要，展开后按配置名称分页读取绑定，默认 10 项/页，支持 10/25/50/100；展开区显示总数和页码。节点复选框仍选择该节点全部可发布绑定，跨分页保留已选项，并受 500 项总上限约束。
 - 发布选择可包含普通绑定和 `marked_deleted` 绑定。执行前均要求节点活动、未锁定、SSH 在线且 `nginx_available=True`，并关联启用的 SSH 凭证；待删除绑定会执行远程删除、`nginx -t` 和节点统一 reload。
 - 请求最多包含 500 个绑定，涉及节点数和跨节点并发由 `node.batch_max_count` 控制，默认 3；同节点配置串行。绑定数限制用于保证统一任务 1 MiB 结果树上限。
 - 已删除、锁定、离线或 Nginx 未确认可用的绑定按参考行为跳过；若无可发布目标则返回 400。已有 `release_publish` 或 `release_rollback` 任务处于 pending/running 时，新批次返回 409。
@@ -17,12 +18,12 @@ NX-040 提供按节点选择绑定和版本、预览配置、确认批次、异�
 
 批次号格式为 `release-YYMMDD-XXXX`，保存在统一任务的 `source_batch` 中。任务类型为 `release_publish`；节点及绑定结果、进度、日志和触发人使用 NX-005 的任务记录，不另建 Django 风格的发布任务表。任务结果树不包含配置正文、密码或私钥，绑定远程路径最多保留 160 个字符以满足 1 MiB 上限；远程命令原始输出不写入任务数据，避免 `nginx -t` 输出配置行。
 
-每个节点由一条 SSH 会话完成以下流程：
+每个节点由一条 SSH 会话完成以下流程；同节点多个配置串行处理，不会为每个配置重复连接：
 
 1. 重新读取节点门禁并在连接前解密已启用凭证。
 2. 若远程目标文件存在，将其备份到 `{backup_dir}/{hostname}/文件名.时间戳.任务ID.绑定ID`；首次发布没有旧文件时跳过备份。
 3. 通过 SFTP 上传到唯一 `/tmp` 临时路径，校验临时文件大小和 MD5，再复制到目标路径并复核目标 MD5。
-4. 对每个目标执行节点配置的 Nginx 二进制 `-t`。同节点全部绑定通过后统一 reload；检测到活动 systemd `nginx` unit 时执行 `systemctl reload nginx`，已启用但未运行时执行 start，否则检查进程并使用 Nginx 二进制 reload/start。
+4. 对每个目标执行节点配置的 Nginx 二进制 `-t`。同节点全部绑定通过后只操作一次 Nginx；检测到活动 systemd `nginx` unit 时执行 `systemctl reload nginx`，已启用但未运行时执行 start，否则检查进程并使用 Nginx 二进制 reload/start。
 5. 所有步骤成功后更新绑定的 `synced_version`、`remote_content_hash`（MD5）、`sync_status` 和 `last_sync_time`。
 
 同节点任一绑定上传或 `nginx -t` 失败时，中止该节点其余绑定并恢复本批已替换文件；统一 reload 失败时也恢复本节点本批文件。首次发布失败会移除新目标文件。不同节点独立执行，某节点失败不阻止其他节点完成。
@@ -33,7 +34,7 @@ NX-040 提供按节点选择绑定和版本、预览配置、确认批次、异�
 
 ## 任务与取消
 
-发布中心按 `GET /api/tasks/{task_id}` 轮询持久化任务进度、结果树和增量日志。拥有 `releases.publish` 的用户仅能读取本人创建的发布/回滚任务；拥有 `releases.read` 的用户可按任务模块规则读取全量任务。
+发布中心按 `GET /api/tasks/{task_id}` 轮询持久化任务进度、结果树和增量日志。拥有 `releases.publish` 的用户仅能读取本人创建的发布/回滚任务；拥有 `releases.read` 的用户可按任务模块规则读取全量任务。发布和回滚详情使用终端式增量日志，多节点任务可按主机筛选并自动滚动；每条节点日志包含主机名和 IP。
 
 取消立即将通用任务置为 `cancelled` 并关闭已登记 SSH 客户端。执行器在节点/绑定检查点协作退出，并尽力恢复尚未 reload 的文件；已发出的远程命令无法强制终止，连接关闭或进程退出时远端操作可能已完成。单进程部署限制与任务协议见 [tasks.md](tasks.md)。
 
@@ -52,7 +53,7 @@ NX-040 提供按节点选择绑定和版本、预览配置、确认批次、异�
 | 方法与路径 | 行为 |
 |---|---|
 | `GET /api/releases/nodes` | 搜索、组合筛选和分页查询节点，返回绑定状态统计。 |
-| `GET /api/releases/nodes/{node_id}/bindings` | 读取节点绑定和版本号（含标记删除项），不返回正文。 |
+| `GET /api/releases/nodes/{node_id}/bindings` | 按 `page`、`page_size` 分页读取节点绑定和版本号（含标记删除项），不返回正文；每页最多 100 项。 |
 | `GET /api/releases/versions/{version_id}` | 读取有权用户所选版本的正文供预览。 |
 | `POST /api/releases/publish` | 全量校验选择后返回批次号和 `release_publish` 任务 ID（202）。 |
 | `GET /api/releases/history` | 按批次筛选、分页读取发布/回滚结果树及上一版回滚摘要。 |

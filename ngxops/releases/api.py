@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func, or_, select
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, contains_eager, joinedload, selectinload
 
 from ngxops.accounts.models import User
 from ngxops.audit.service import request_client_ip
@@ -55,6 +55,7 @@ class ReleaseNodeItem(BaseModel):
     group_names: List[str]
     total_bindings: int
     modified_bindings: int
+    selectable_bindings: int
     can_publish: bool
 
 
@@ -106,11 +107,16 @@ class ReleaseBindingItem(BaseModel):
 
 
 class ReleaseBindingsResponse(BaseModel):
-    """描述指定节点可选的发布绑定集合。"""
+    """描述指定节点当前页发布绑定及分页信息。"""
 
     success: bool = True
     node_id: int
     can_publish: bool
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+    selectable_total: int
     bindings: List[ReleaseBindingItem]
 
 
@@ -353,25 +359,40 @@ def _release_status_counts(session: Session) -> ReleaseStatusCounts:
 def _node_binding_stats(
     session: Session,
     nodes: List[Node],
-) -> Dict[int, Tuple[int, int]]:
-    """一次查询聚合当前页节点的绑定总数和本地修改数。"""
+) -> Dict[int, Tuple[int, int, int]]:
+    """一次查询聚合当前页节点的绑定、修改和可发布数量。"""
     node_ids = [node.id for node in nodes]
     if not node_ids:
         return {}
+    has_versions = select(BindingVersion.id).where(
+        BindingVersion.binding_id == ConfigBinding.id
+    ).exists()
     rows = session.execute(
         select(
             ConfigBinding.node_id,
             func.count(ConfigBinding.id),
             func.sum(case((ConfigBinding.sync_status == "modified", 1), else_=0)),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            ConfigBinding.sync_status == "marked_deleted",
+                            has_versions,
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
         ).where(ConfigBinding.node_id.in_(node_ids)).group_by(ConfigBinding.node_id)
     ).all()
     return {
-        node_id: (int(total or 0), int(modified or 0))
-        for node_id, total, modified in rows
+        node_id: (int(total or 0), int(modified or 0), int(selectable or 0))
+        for node_id, total, modified, selectable in rows
     }
 
 
-def _node_item(node: Node, binding_stats: Tuple[int, int]) -> ReleaseNodeItem:
+def _node_item(node: Node, binding_stats: Tuple[int, int, int]) -> ReleaseNodeItem:
     """构造节点发布能力、分组和绑定统计摘要。"""
     credential = node.credential
     can_publish_node = bool(
@@ -396,6 +417,7 @@ def _node_item(node: Node, binding_stats: Tuple[int, int]) -> ReleaseNodeItem:
         group_names=[group.name for group in node.groups],
         total_bindings=binding_stats[0],
         modified_bindings=binding_stats[1],
+        selectable_bindings=binding_stats[2],
         can_publish=can_publish_node,
     )
 
@@ -1172,7 +1194,7 @@ def list_release_nodes(
     sync_status: str = Query("", max_length=20),
     nginx_available: Literal["true", "false", "all"] = "true",
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(10, ge=1, le=100),
     user: User = Depends(require_release_access),
     session: Session = Depends(get_session),
 ) -> ReleaseNodeListResponse:
@@ -1204,7 +1226,7 @@ def list_release_nodes(
     binding_stats = _node_binding_stats(session, nodes)
     groups = session.scalars(select(NodeGroup).order_by(NodeGroup.name.asc())).all()
     return ReleaseNodeListResponse(
-        items=[_node_item(node, binding_stats.get(node.id, (0, 0))) for node in nodes],
+        items=[_node_item(node, binding_stats.get(node.id, (0, 0, 0))) for node in nodes],
         groups=[ReleaseGroupItem(id=group.id, name=group.name) for group in groups],
         page=page,
         page_size=page_size,
@@ -1220,15 +1242,17 @@ def list_release_nodes(
     "/nodes/{node_id}/bindings",
     response_model=ReleaseBindingsResponse,
     summary="读取节点可发布绑定",
-    description="返回节点绑定及版本号（包括标记删除项），不包含配置正文。",
+    description="分页返回节点绑定及版本号（包括标记删除项），不包含配置正文；page_size 最大 100。",
     responses=api_error_responses((401, 403, 404, 422, 500)),
 )
 def list_node_release_bindings(
     node_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     user: User = Depends(require_release_access),
     session: Session = Depends(get_session),
 ) -> ReleaseBindingsResponse:
-    """返回节点可发布绑定和版本选择项。"""
+    """分页返回节点可发布绑定和版本选择项。"""
     node = session.scalar(
         select(Node)
         .options(joinedload(Node.credential))
@@ -1243,18 +1267,52 @@ def list_node_release_bindings(
         and node.credential is not None
         and node.credential.is_enabled
     )
-    bindings = session.scalars(
+    binding_query = (
         select(ConfigBinding)
+        .join(ConfigBinding.config)
+        .where(ConfigBinding.node_id == node_id)
+    )
+    total = int(
+        session.scalar(
+            select(func.count()).select_from(binding_query.subquery())
+        )
+        or 0
+    )
+    has_versions = select(BindingVersion.id).where(
+        BindingVersion.binding_id == ConfigBinding.id
+    ).exists()
+    selectable_total = int(
+        session.scalar(
+            select(func.count(ConfigBinding.id)).where(
+                ConfigBinding.node_id == node_id,
+                or_(
+                    ConfigBinding.sync_status == "marked_deleted",
+                    has_versions,
+                ),
+            )
+        )
+        or 0
+    )
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = min(page, total_pages)
+    bindings = session.scalars(
+        binding_query
         .options(
-            joinedload(ConfigBinding.config),
+            contains_eager(ConfigBinding.config),
             selectinload(ConfigBinding.versions),
         )
-        .where(ConfigBinding.node_id == node_id)
         .order_by(Config.name.asc(), ConfigBinding.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     ).all()
     return ReleaseBindingsResponse(
         node_id=node.id,
         can_publish=can_publish_node,
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=total_pages,
+        selectable_total=selectable_total,
         bindings=[
             ReleaseBindingItem(
                 id=binding.id,
