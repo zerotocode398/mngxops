@@ -1242,13 +1242,14 @@ def list_release_nodes(
     "/nodes/{node_id}/bindings",
     response_model=ReleaseBindingsResponse,
     summary="读取节点可发布绑定",
-    description="分页返回节点绑定及版本号（包括标记删除项），不包含配置正文；page_size 最大 100。",
+    description="分页返回节点绑定及版本号（包括标记删除项），不包含配置正文；search 可匹配配置名/路径，page_size 最大 100。",
     responses=api_error_responses((401, 403, 404, 422, 500)),
 )
 def list_node_release_bindings(
     node_id: int,
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
+    search: str = Query("", max_length=200),
     user: User = Depends(require_release_access),
     session: Session = Depends(get_session),
 ) -> ReleaseBindingsResponse:
@@ -1272,6 +1273,30 @@ def list_node_release_bindings(
         .join(ConfigBinding.config)
         .where(ConfigBinding.node_id == node_id)
     )
+    search_terms = [
+        term.strip()
+        for term in search.replace("，", ",").split(",")
+        if term.strip()
+    ]
+    if search_terms:
+        search_match = or_(
+            *[
+                or_(
+                    Config.name.contains(term, autoescape=True),
+                    ConfigBinding.remote_path.contains(term, autoescape=True),
+                )
+                for term in search_terms
+            ]
+        )
+        matching_query = binding_query.where(search_match)
+        matching_total = int(
+            session.scalar(
+                select(func.count()).select_from(matching_query.subquery())
+            )
+            or 0
+        )
+        if matching_total:
+            binding_query = matching_query
     total = int(
         session.scalar(
             select(func.count()).select_from(binding_query.subquery())

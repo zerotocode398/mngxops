@@ -72,17 +72,17 @@ def release_center(
     total = int(session.scalar(select(func.count()).select_from(query.subquery())) or 0)
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, pages)
+    count_base = select(Node).where(
+        Node.is_deleted.is_(False),
+        Node.is_locked.is_(False),
+    )
     total_nodes = int(
-        session.scalar(
-            select(func.count()).select_from(Node).where(Node.is_deleted.is_(False))
-        )
-        or 0
+        session.scalar(select(func.count()).select_from(count_base.subquery())) or 0
     )
     nginx_nodes = int(
         session.scalar(
-            select(func.count()).select_from(Node).where(
-                Node.is_deleted.is_(False),
-                Node.nginx_available.is_(True),
+            select(func.count()).select_from(
+                count_base.where(Node.nginx_available.is_(True)).subquery()
             )
         )
         or 0
@@ -95,7 +95,6 @@ def release_center(
             "sync_status": sync_status,
             "nginx_filter": nginx_available,
             "status_counts": _release_status_counts(session),
-            "has_any_filter": bool(search or sync_status or nginx_available != "true"),
             "nginx_available_count": nginx_nodes,
             "total_nodes_count": total_nodes,
             "pagination": {

@@ -145,14 +145,38 @@
                     if (event.target === wrapper) input.focus();
                 });
 
-                return {
-                    input: input,
-                    commit: function () {
-                        splitTerms(input.value).forEach(addTerm);
-                        input.value = "";
-                        sync();
-                    }
+                function commit() {
+                    splitTerms(input.value).forEach(addTerm);
+                    input.value = "";
+                    sync();
+                }
+
+                function clear() {
+                    terms = [];
+                    input.value = "";
+                    wrapper.querySelectorAll(".query-tag-badge").forEach(function (badge) {
+                        badge.remove();
+                    });
+                    sync();
+                }
+
+                input.__ngxopsQueryTags = {
+                    value: function () {
+                        var values = terms.slice();
+                        splitTerms(input.value).forEach(function (term) {
+                            if (!values.some(function (item) {
+                                return item.toLocaleLowerCase() === term.toLocaleLowerCase();
+                            })) {
+                                values.push(term);
+                            }
+                        });
+                        return values.join(",");
+                    },
+                    commit: commit,
+                    clear: clear
                 };
+
+                return {input: input, commit: commit};
             });
 
             form.addEventListener("submit", function () {

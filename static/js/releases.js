@@ -330,10 +330,6 @@
                 $("#releasePerPageForm input[name='search']").val(query.search);
                 $("#releasePerPageForm input[name='sync_status']").val(state.syncStatus);
                 $("#releasePerPageForm input[name='nginx_available']").val(query.nginx_available);
-                $("#releaseClearFilters").prop(
-                    "disabled",
-                    !query.search && !state.syncStatus && query.nginx_available === "true"
-                );
             })
             .fail(function (xhr) {
                 var message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : "节点列表加载失败";
@@ -370,10 +366,12 @@
         loadBindingsPage(id, state.bindingPageByNode[id] || 1);
     }
 
-    function fetchBindingsPage(nodeId, page, pageSize) {
+    function fetchBindingsPage(nodeId, page, pageSize, search) {
+        var query = {page: page, page_size: pageSize};
+        if (search) query.search = search;
         return $.getJSON(
             "/api/releases/nodes/" + encodeURIComponent(nodeId) + "/bindings",
-            {page: page, page_size: pageSize}
+            query
         );
     }
 
@@ -383,7 +381,12 @@
         if (state.loadingBindings[id]) return;
         state.loadingBindings[id] = true;
         $("[data-binding-state='" + id + "']").text("正在加载绑定和版本…").prop("hidden", false);
-        fetchBindingsPage(id, page, requestedSize)
+        fetchBindingsPage(
+            id,
+            page,
+            requestedSize,
+            window.getQueryTagValue("#releaseSearch") || ""
+        )
             .done(function (response) {
                 state.bindingsByNode[id] = response.bindings || [];
                 state.bindingPageInfoByNode[id] = {
@@ -708,16 +711,6 @@
         });
         $("#nginxOnlyToggle").on("change", function () {
             $("#releaseNginxFilter").val(this.checked ? "true" : "all");
-            loadNodes(1);
-        });
-        $("#releaseClearFilters").on("click", function () {
-            window.clearQueryTagValue("#releaseSearch");
-            state.syncStatus = "";
-            $("#releaseSyncStatus").val("");
-            $("#releaseNginxFilter").val("true");
-            $("#nginxOnlyToggle").prop("checked", true);
-            $(".release-status-label").removeClass("active");
-            $(".release-status-label[data-status='all']").addClass("active");
             loadNodes(1);
         });
         $("#releasePerPageForm").on("submit", function (event) {

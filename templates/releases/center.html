@@ -20,7 +20,15 @@
     .release-node-row [aria-expanded="true"] .node-chevron { transform: rotate(90deg); }
     .release-bindings-row[hidden] { display: none !important; }
     .release-bindings-panel { padding: 10px 14px 10px 42px; background: #f8f9fa; }
-    .release-bindings-table { min-width: 760px; }
+    .release-bindings-table { min-width: 900px; table-layout: fixed; }
+    .release-bindings-table th:nth-child(1) { width: 38px !important; }
+    .release-bindings-table th:nth-child(2) { width: 132px; }
+    .release-bindings-table th:nth-child(4) { width: 104px; }
+    .release-bindings-table th:nth-child(5) { width: 90px; }
+    .release-bindings-table th:nth-child(6) { width: 176px !important; }
+    .release-bindings-table th:nth-child(7) { width: 64px !important; }
+    .release-bindings-table td:nth-child(2),
+    .release-bindings-table td:nth-child(3) { overflow-wrap: anywhere; }
     .release-content-preview { max-height: 68vh; overflow: auto; white-space: pre; }
     .release-progress-log { max-height: 180px; overflow: auto; white-space: pre-wrap; }
     .release-tree-node { border-bottom: 1px solid #dee2e6; }
@@ -55,7 +63,6 @@
                         <span class="form-check-label small">仅显示已识别 Nginx（{{ nginx_available_count }}/{{ total_nodes_count }}）</span>
                     </label>
                 </div>
-                <div class="col-auto"><button class="btn btn-outline-secondary btn-sm" type="button" id="releaseClearFilters" title="清空筛选"{% if not has_any_filter %} disabled{% endif %}><i class="bi bi-x-circle me-1" aria-hidden="true"></i>清空</button></div>
             </div>
         </form>
 
@@ -126,4 +133,4 @@
 <div id="releaseCenterState" hidden data-can-publish="{{ 'true' if can_publish else 'false' }}"></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/releases.js') }}?v=3"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/releases.js') }}?v=4"></script>{% endblock %}
