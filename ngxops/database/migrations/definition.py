@@ -13,4 +13,4 @@ class Migration:
     version: int
     name: str
     upgrade: Callable[[Connection], None]
-
+    requires_foreign_keys_off: bool = False

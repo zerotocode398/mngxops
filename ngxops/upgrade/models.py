@@ -30,9 +30,13 @@ class NginxSourcePackage(Base):
     __table_args__ = (
         CheckConstraint("file_size >= 0", name="ck_ngxops_source_package_size"),
         UniqueConstraint(
-            "version", "created_by", name="uq_ngxops_source_package_owner_version"
+            "name",
+            "version",
+            "created_by",
+            name="uq_ngxops_source_package_owner_name_version",
         ),
         Index("ix_ngxops_source_packages_created_at", "created_at"),
+        Index("ix_ngxops_source_packages_md5", "file_md5"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

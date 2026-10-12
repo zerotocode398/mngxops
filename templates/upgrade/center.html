@@ -2,7 +2,7 @@
 {% block title %}升级中心 - Nginx 编译升级{% endblock %}
 {% block page_title %}<i class="bi bi-rocket-takeoff" aria-hidden="true"></i> Nginx 升级中心{% endblock %}
 
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=4">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=5">{% endblock %}
 
 {% block content %}
 <div class="upgrade-toolbar mb-3">
@@ -22,9 +22,9 @@
 
 {% if can_create %}<div class="upgrade-stepper" id="upgradeStepper" aria-label="升级步骤" data-batch-max="{{ batch_max_count }}">
     <button class="upgrade-step active" type="button" data-step-target="1"><span>1</span>选择目标</button>
-    <button class="upgrade-step" type="button" data-step-target="2"><span>2</span>编译环境</button>
-    <button class="upgrade-step" type="button" data-step-target="3"><span>3</span>编译参数</button>
-    <button class="upgrade-step" type="button" data-step-target="4"><span>4</span>确认执行</button>
+    <button class="upgrade-step" type="button" data-step-target="2" disabled aria-disabled="true"><span>2</span>编译环境</button>
+    <button class="upgrade-step" type="button" data-step-target="3" disabled aria-disabled="true"><span>3</span>编译参数</button>
+    <button class="upgrade-step" type="button" data-step-target="4" disabled aria-disabled="true"><span>4</span>确认执行</button>
 </div>
 {% endif %}
 
@@ -95,7 +95,7 @@
                     </div>
                     <div class="col-12">
                         <label class="form-label upgrade-field-label mb-1" for="packageSearch"><i class="bi bi-archive me-1" aria-hidden="true"></i>源码包</label>
-                        <input class="form-control form-control-sm mb-2" id="packageSearch" data-query-tags aria-label="搜索源码包名称或版本" placeholder="搜索名称或版本">
+                        <input class="form-control form-control-sm mb-2 upgrade-package-search" id="packageSearch" data-query-tags aria-label="搜索源码包名称或版本" placeholder="搜索名称或版本">
                         <div class="table-responsive upgrade-package-table-wrap">
                             <table class="table table-sm table-hover align-middle mb-0" id="upgradePackageTable">
                                 <thead class="table-light"><tr><th></th><th>包名称</th><th>版本</th><th>大小</th><th>上传</th></tr></thead>
@@ -106,7 +106,7 @@
                                         <td>{{ package.name }}{% if package.is_official %} <span class="badge text-bg-success">官方</span>{% endif %}</td>
                                         <td><code>{{ package.version }}</code></td>
                                         <td>{{ (package.file_size / 1048576)|round(2) }} MB</td>
-                                        <td><small>{{ package.created_at.strftime("%m-%d %H:%M") if package.created_at else "-" }} · {{ package.creator.username if package.creator else "-" }}</small></td>
+                                        <td><small>{{ package.created_at_display }} · {{ package.creator.username if package.creator else "-" }}</small></td>
                                     </tr>
                                 {% else %}<tr data-selector-empty><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>暂无源码包</p></div></td></tr>{% endfor %}
                                 </tbody>
@@ -153,22 +153,39 @@
             <div class="card-body">
                 <div class="small text-muted mb-2" id="fetchStatus">进入本步后将读取所选节点的 nginx -V 编译基线。</div>
                 <div id="nodeFetchResults" class="upgrade-fetch-results"></div>
+                <div class="upgrade-reference-bar d-none" id="referenceNodeWrap">
+                    <label class="form-label mb-0" for="referenceNode">参考节点</label>
+                    <select class="form-select form-select-sm" id="referenceNode"></select>
+                    <span class="small text-muted">用于展示基线和模块增减，目标节点仍按各自参数编译。</span>
+                </div>
+                <div class="upgrade-baseline-summary" id="baselineSummary"></div>
                 <div class="mt-3">
-                    <label class="form-label mb-1" id="currentConfigLabel" for="currentConfigOutput">当前 configure 参数</label>
-                    <pre class="nginx-v-output" id="currentConfigOutput">读取完成后显示首个节点的 configure 参数。</pre>
+                    <label class="form-label mb-1" id="currentConfigLabel" for="currentConfigOutput">参考节点 configure 参数</label>
+                    <pre class="nginx-v-output" id="currentConfigOutput">读取完成后显示参考节点的 configure 参数。</pre>
                 </div>
-                <div class="alert alert-warning py-2 d-none" id="paramsMismatchNotice">各节点当前编译参数不同。模块增减会按各节点自己的参数基线计算。</div>
-                <div class="row g-3 mt-1">
-                    <div class="col-12 col-lg-6">
-                        <div class="d-flex justify-content-between align-items-center mb-2"><label class="form-label mb-0">Nginx 官方 configure 参数</label><input class="form-control form-control-sm upgrade-module-search" id="moduleSearch" placeholder="搜索参数"></div>
-                        <div class="upgrade-module-list" id="builtinModuleList"></div>
+                <div class="alert alert-warning py-2 d-none" id="paramsMismatchNotice">所选节点的编译参数存在差异。请选择参考节点，并在确认前检查每台节点的目标参数。</div>
+                <div class="upgrade-param-diff-list d-none" id="paramsMismatchDetails" aria-label="节点编译参数差异"></div>
+                <section class="upgrade-module-summary mt-3" aria-labelledby="moduleSummaryTitle">
+                    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                        <div>
+                            <h3 class="h6 mb-1" id="moduleSummaryTitle"><i class="bi bi-sliders me-1" aria-hidden="true"></i>模块调整</h3>
+                            <div class="small text-muted" id="moduleDeltaHint">尚未调整</div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="small">移除 <span class="badge text-bg-danger" id="moduleRemovedCount">0</span></span>
+                            <span class="small">新增 <span class="badge text-bg-success" id="moduleAddedCount">0</span></span>
+                            <button class="btn btn-outline-primary btn-sm" type="button" id="openModuleAdjust"><i class="bi bi-arrows-expand me-1" aria-hidden="true"></i>调整模块</button>
+                        </div>
                     </div>
-                    <div class="col-12 col-lg-6">
-                        <label class="form-label">第三方模块</label>
-                        <div id="thirdPartyRows"></div>
-                        <button class="btn btn-outline-primary btn-sm mt-2" type="button" id="addThirdParty"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>添加模块</button>
+                </section>
+                <section class="upgrade-third-party mt-3" aria-labelledby="thirdPartyTitle">
+                    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-1">
+                        <h3 class="h6 mb-0" id="thirdPartyTitle"><i class="bi bi-box me-1" aria-hidden="true"></i>第三方模块</h3>
+                        <button class="btn btn-outline-primary btn-sm" type="button" id="addThirdParty"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>添加模块</button>
                     </div>
-                </div>
+                    <div class="form-text mb-2">支持在线 Git（目标机需可出网）或离线包（先在模块包页面上传）。</div>
+                    <div id="thirdPartyRows"></div>
+                </section>
                 <div class="upgrade-panel-actions"><button class="btn btn-outline-secondary btn-sm" type="button" data-step-target="2"><i class="bi bi-chevron-left" aria-hidden="true"></i>上一步</button><button class="btn btn-primary btn-sm" type="button" id="stepThreeNext" disabled>预览并下一步 <i class="bi bi-chevron-right" aria-hidden="true"></i></button></div>
             </div>
         </section>
@@ -177,9 +194,9 @@
             <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-success me-2">4</span>确认并开始升级</h2></div>
             <div class="card-body">
                 <div id="upgradeSummary" class="upgrade-summary mb-3"></div>
-                <label class="form-label" for="finalConfigPreview">目标节点参数预览</label>
+                <label class="form-label" id="finalConfigPreviewLabel" for="finalConfigPreview">参考节点目标参数</label>
                 <pre class="nginx-v-output nginx-v-output-alt upgrade-config-output" id="finalConfigPreview">./configure 等待生成…</pre>
-                <div class="mt-3"><div class="form-label">各节点清单</div><div id="confirmNodeList" class="upgrade-confirm-list"></div></div>
+                <div class="mt-3"><div class="form-label">各节点目标参数</div><div id="confirmNodeList" class="upgrade-confirm-list"></div></div>
                 <div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="confirmUpgrade"><label class="form-check-label" for="confirmUpgrade">我确认以上节点、版本和编译参数无误，可以开始升级</label></div>
                 <div class="upgrade-panel-actions"><button class="btn btn-outline-secondary btn-sm" type="button" data-step-target="3"><i class="bi bi-chevron-left" aria-hidden="true"></i>上一步</button>{% if can_execute %}<button class="btn btn-success" type="button" id="startUpgrade" disabled><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>开始升级</button>{% else %}<span class="small text-muted">当前账号没有执行权限</span>{% endif %}</div>
             </div>
@@ -200,6 +217,37 @@
     </aside>
 </div>
 
+<div class="modal fade" id="moduleAdjustModal" tabindex="-1" aria-labelledby="moduleAdjustTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h6" id="moduleAdjustTitle"><i class="bi bi-sliders me-1" aria-hidden="true"></i>调整编译模块</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <section class="col-12 col-lg-6" aria-labelledby="moduleAddTitle">
+                        <h3 class="h6" id="moduleAddTitle"><i class="bi bi-plus-circle me-1" aria-hidden="true"></i>可选编译参数</h3>
+                        <p class="form-text">勾选添加尚未启用的官方参数，已启用项不可重复添加。</p>
+                        <input class="form-control form-control-sm mb-2" id="addModuleSearch" aria-label="搜索可选编译参数" placeholder="搜索参数">
+                        <div class="upgrade-module-options" id="addModuleOptions"></div>
+                    </section>
+                    <section class="col-12 col-lg-6" aria-labelledby="moduleRemoveTitle">
+                        <h3 class="h6" id="moduleRemoveTitle"><i class="bi bi-list-check me-1" aria-hidden="true"></i>已编译参数</h3>
+                        <p class="form-text">勾选移除当前参考节点已启用的模块参数。</p>
+                        <input class="form-control form-control-sm mb-2" id="removeModuleSearch" aria-label="搜索已编译参数" placeholder="搜索参数">
+                        <div class="upgrade-module-options" id="removeModuleOptions"></div>
+                    </section>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-primary btn-sm" type="button" id="confirmModuleAdjust"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>确认</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <template id="thirdPartyTemplate">
     <div class="upgrade-third-party-row">
         <div class="row g-2 align-items-end">
@@ -215,5 +263,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=3"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=4"></script>
 {% endblock %}

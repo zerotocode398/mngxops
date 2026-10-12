@@ -3,10 +3,10 @@
 {% set is_source = package_kind == "source" %}
 {% block title %}{{ "Nginx 源码包" if is_source else "第三方模块包" }} - ngxops{% endblock %}
 {% block page_title %}<i class="bi {{ 'bi-archive' if is_source else 'bi-puzzle' }}" aria-hidden="true"></i> {{ "Nginx 源码包" if is_source else "第三方模块包" }}{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=4">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=6">{% endblock %}
 
 {% block content %}
-{% set notice_message = request.query_params.get("error") or ("软件包上传成功" if request.query_params.get("uploaded") else ("软件包已删除" if request.query_params.get("deleted") else "")) %}
+{% set notice_message = request.query_params.get("error") or request.query_params.get("notice") or ("软件包上传成功" if request.query_params.get("uploaded") else ("软件包已删除" if request.query_params.get("deleted") else "")) %}
 {% if notice_message %}<div id="packageNotice" data-message="{{ notice_message }}" data-type="{{ 'danger' if request.query_params.get('error') else 'success' }}" hidden></div>{% endif %}
 <section class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -20,7 +20,7 @@
         <form method="get" class="row g-2 align-items-center" data-query-submit-on-enter data-preserve-query-focus>
             <div class="col">
                 <label class="visually-hidden" for="packageSearch">搜索软件包</label>
-                <input class="form-control form-control-sm" id="packageSearch" name="search" data-query-tags value="{{ search }}" placeholder="搜索名称、版本、描述或 MD5">
+                <input class="form-control form-control-sm" id="packageSearch" name="search" data-query-tags value="{{ search }}" placeholder="搜索名称或版本">
             </div>
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
             {% if search %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}?per_page={{ pagination.per_page }}" title="清空查询条件" aria-label="清空查询条件"><i class="bi bi-x-lg" aria-hidden="true"></i></a></div>{% endif %}
@@ -28,20 +28,20 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle data-table mb-0">
+            <table class="table table-sm table-hover align-middle data-table mb-0{% if not is_source %} module-package-table{% endif %}">
                 <thead class="table-light"><tr>
                     <th>{{ "包名称" if is_source else "模块名称" }}</th><th>版本</th><th>大小</th><th>MD5</th><th>描述</th><th>上传人</th><th>上传时间</th><th class="text-end">操作</th>
                 </tr></thead>
                 <tbody>
                 {% for package in packages %}
                     <tr>
-                        <td><strong>{{ package.name }}</strong>{% if is_source and package.is_official %} <span class="badge text-bg-success">官方</span>{% endif %}</td>
+                        <td>{% if is_source %}<strong>{{ package.name }}</strong>{% else %}<code class="module-package-name" title="{{ package.name }}">{{ package.name }}</code>{% endif %}{% if is_source and package.is_official %} <span class="badge text-bg-success">官方</span>{% endif %}</td>
                         <td><code>{{ package.version or "-" }}</code></td>
                         <td>{{ (package.file_size / 1048576)|round(2) }} MB</td>
                         <td><code title="{{ package.file_md5 }}">{{ package.file_md5[:12] }}…</code></td>
                         <td class="text-break">{{ package.description or "-" }}</td>
                         <td>{{ package.creator.username if package.creator else "-" }}</td>
-                        <td><small>{{ package.created_at.strftime("%Y-%m-%d %H:%M") if package.created_at else "-" }}</small></td>
+                        <td><small>{{ package.created_at_display }}</small></td>
                         <td class="text-end text-nowrap">
                             <a class="btn btn-outline-primary btn-sm" href="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}{{ package.id }}/download/" title="下载包" aria-label="下载 {{ package.name }}"><i class="bi bi-download" aria-hidden="true"></i></a>
                             {% if can_delete %}<form class="d-inline" method="post" data-confirm="确认删除这个包？正在执行的任务使用中的包不能删除。" action="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}{{ package.id }}/delete/?search={{ search|urlencode }}&page={{ pagination.page }}&per_page={{ pagination.per_page }}">
@@ -68,7 +68,7 @@
     if (!notice || !window.showToast) return;
     window.showToast(notice.dataset.message, notice.dataset.type);
     var url = new URL(window.location.href);
-    ["error", "uploaded", "deleted"].forEach(function (key) { url.searchParams.delete(key); });
+    ["error", "notice", "uploaded", "deleted"].forEach(function (key) { url.searchParams.delete(key); });
     window.history.replaceState({}, "", url.pathname + url.search + url.hash);
 })();
 </script>

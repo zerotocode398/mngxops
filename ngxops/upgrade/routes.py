@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from math import ceil
 from pathlib import Path
 from typing import List, Literal, Optional
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path as ApiPath, Query, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
@@ -169,10 +169,11 @@ class UpgradeCancelResponse(BaseModel):
 
 
 class SourcePackageCheckResponse(BaseModel):
-    """描述当前用户的源码版本冲突检查结果。"""
+    """描述当前用户的源码包名称版本冲突检查结果。"""
 
     success: bool = True
     exists: bool
+    name: str
     version: str
 
 
@@ -234,18 +235,19 @@ def _search_terms(value: str) -> List[str]:
 
 
 def _filter_package_query(query, model, search: str):
-    """按包名、版本、描述或 MD5 对包列表应用 AND 关键词筛选。"""
+    """按包名或版本对包列表应用 AND 关键词筛选。"""
     for term in _search_terms(search):
         pattern = "%{}%".format(term)
-        query = query.where(
-            or_(
-                model.name.ilike(pattern),
-                model.version.ilike(pattern),
-                model.description.ilike(pattern),
-                model.file_md5.ilike(pattern),
-            )
-        )
+        query = query.where(or_(model.name.ilike(pattern), model.version.ilike(pattern)))
     return query
+
+
+def _attach_package_datetime(packages) -> None:
+    """为软件包列表附加 UTC+8 上传时间。"""
+    for package in packages:
+        package.created_at_display = format_task_datetime(
+            package.created_at, include_seconds=False
+        )
 
 
 def _upload_response(
@@ -259,13 +261,16 @@ def _upload_response(
     duplicate: bool = False,
 ) -> Response:
     """按 AJAX 或普通表单请求格式返回上传结果。"""
+    success_redirect = "{}?{}".format(
+        redirect_to, urlencode({"uploaded": "1", "notice": message})
+    )
     if request.headers.get("x-requested-with") == "XMLHttpRequest" or "application/json" in request.headers.get("accept", ""):
         return Response(
             content=json.dumps(
                 {
                     "success": success,
                     "message": message,
-                    "redirect": redirect_to + ("?uploaded=1" if success else ""),
+                    "redirect": success_redirect if success else redirect_to,
                     "need_overwrite": need_overwrite,
                     "md5_duplicate": duplicate,
                 },
@@ -274,7 +279,11 @@ def _upload_response(
             status_code=status_code,
             media_type="application/json",
         )
-    destination = redirect_to + ("?error=" + quote(message) if not success else "?uploaded=1")
+    destination = (
+        redirect_to + "?" + urlencode({"error": message})
+        if not success
+        else success_redirect
+    )
     return RedirectResponse(destination, status_code=303)
 
 
@@ -439,6 +448,8 @@ def upgrade_center(
         select(NginxModulePackage).options(joinedload(NginxModulePackage.creator))
         .order_by(NginxModulePackage.created_at.desc(), NginxModulePackage.id.desc())
     ).all()
+    _attach_package_datetime(packages)
+    _attach_package_datetime(module_packages)
     return render_page(
         request,
         "upgrade/center.html",
@@ -475,6 +486,7 @@ def source_package_list(
     ).order_by(NginxSourcePackage.created_at.desc(), NginxSourcePackage.id.desc())
     result = _page_context(request, session, query, page, per_page)
     result["packages"] = result.pop("items")
+    _attach_package_datetime(result["packages"])
     result["package_kind"] = "source"
     result["search"] = search
     result["can_create"] = _has_upgrade_permission(request, session, user, "create")
@@ -504,7 +516,6 @@ async def upload_source_package(
     name: str = Form(""),
     version: str = Form(""),
     description: str = Form(""),
-    is_official: Optional[str] = Form(None),
     overwrite: Optional[str] = Form(None),
     package_file: UploadFile = File(...),
     user: User = Depends(require_permission("upgrade", "create")),
@@ -535,7 +546,6 @@ async def upload_source_package(
             name=name,
             version=version,
             description=description,
-            is_official=is_official in ("1", "on", "true"),
             overwrite=overwrite in ("1", "on", "true"),
         )
     except PackageConflict as exc:
@@ -577,6 +587,7 @@ def module_package_list(
     ).order_by(NginxModulePackage.created_at.desc(), NginxModulePackage.id.desc())
     result = _page_context(request, session, query, page, per_page)
     result["packages"] = result.pop("items")
+    _attach_package_datetime(result["packages"])
     result["package_kind"] = "module"
     result["search"] = search
     result["can_create"] = _has_upgrade_permission(request, session, user, "create")
@@ -746,17 +757,22 @@ def download_module_package(
     return FileResponse(path, filename=label + extension)
 
 
-@router.get("/api/upgrade/packages/check", response_model=SourcePackageCheckResponse, include_in_schema=True, summary="检查源码包版本冲突", responses=api_error_responses((401, 403, 422, 500)))
+@router.get("/api/upgrade/packages/check", response_model=SourcePackageCheckResponse, include_in_schema=True, summary="检查源码包名称版本冲突", responses=api_error_responses((401, 403, 422, 500)))
 def check_source_package(
+    name: str = Query("", max_length=100),
     version: str = Query("", max_length=50),
     user: User = Depends(require_permission("upgrade", "create")),
     session: Session = Depends(get_session),
 ) -> SourcePackageCheckResponse:
-    """检查当前用户是否已上传同版本源码包。"""
-    exists = bool(version and session.scalar(select(NginxSourcePackage.id).where(
-        NginxSourcePackage.version == version.strip(), NginxSourcePackage.created_by == user.id
-    )))
-    return SourcePackageCheckResponse(exists=exists, version=version)
+    """检查当前用户是否已上传同名同版本源码包。"""
+    query = select(NginxSourcePackage.id).where(
+        NginxSourcePackage.version == version.strip(),
+        NginxSourcePackage.created_by == user.id,
+    )
+    if name:
+        query = query.where(NginxSourcePackage.name == name.strip())
+    exists = bool(version and session.scalar(query))
+    return SourcePackageCheckResponse(exists=exists, name=name, version=version)
 
 
 @router.get("/api/upgrade/modules/check", response_model=ModulePackageCheckResponse, include_in_schema=True, summary="检查模块包名称版本冲突", responses=api_error_responses((401, 403, 422, 500)))

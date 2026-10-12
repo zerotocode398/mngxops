@@ -23,6 +23,21 @@ from ngxops.settings.models import SystemSetting
 from ngxops.settings.service import initialize_defaults
 from ngxops.tasks.models import Task
 from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage, NginxUpgradeRun
+from ngxops.upgrade.services import effective_removed_modules
+
+
+def test_module_removals_apply_only_to_nodes_that_have_the_parameter():
+    """验证批量节点只移除各自编译基线中已存在的模块参数。"""
+    requested = ["--with-http_ssl_module", "--with-http_v2_module"]
+    first_node = effective_removed_modules(
+        ["--with-http_ssl_module", "--with-threads"], requested
+    )
+    second_node = effective_removed_modules(
+        ["--with-http_v2_module", "--with-threads"], requested
+    )
+
+    assert first_node == ["--with-http_ssl_module"]
+    assert second_node == ["--with-http_v2_module"]
 
 
 @pytest.fixture
@@ -109,6 +124,9 @@ def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client
     assert source.status_code == 200, source.text
     assert source.json()["success"] is True
     assert source.json()["redirect"] == "/upgrade/packages/?uploaded=1"
+    source_conflict = client.get("/api/upgrade/packages/check?version=1.26.1")
+    assert source_conflict.status_code == 200
+    assert source_conflict.json()["exists"] is True
     upload_notice = client.get(source.json()["redirect"])
     assert upload_notice.status_code == 200
     assert 'id="packageNotice"' in upload_notice.text
@@ -131,6 +149,11 @@ def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client
         {"name": "ngx-module-test", "version": "1.0"},
     )
     assert module.status_code == 200, module.text
+    module_conflict = client.get(
+        "/api/upgrade/modules/check?name=ngx-module-test&version=1.0"
+    )
+    assert module_conflict.status_code == 200
+    assert module_conflict.json()["exists"] is True
     module_duplicate = _upload(
         client,
         csrf_token,
@@ -152,6 +175,7 @@ def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client
         assert source_rows[0].file_md5 == expected_md5
         assert module_rows[0].file_md5 == expected_md5
         assert source_rows[0].created_by == user_id
+        assert source_rows[0].is_official is False
         assert (package_dir / source_rows[0].file_name).read_bytes() == archive
         assert (package_dir / module_rows[0].file_name).read_bytes() == archive
 
@@ -177,6 +201,17 @@ def test_upload_dropzones_use_configured_limit_for_both_package_types(upgrade_cl
         assert "点击或拖拽文件到此处上传" in page.text
         assert 'data-package-limit-mb="1"' in page.text
         assert "最大 1 MB" in page.text
+        assert "标记为官方包" not in page.text
+        assert page.text.count('id="fileSummary"') == 1
+
+    source_upload_page = client.get("/upgrade/packages/upload/")
+    module_upload_page = client.get("/upgrade/modules/upload/")
+    assert 'id="packageVersion" name="version" maxlength="50" required' in source_upload_page.text
+    assert 'id="packageVersion" name="version" maxlength="50" required' not in module_upload_page.text
+    package_js = (Path.cwd() / "static/js/upgrade-packages.js").read_text(encoding="utf-8")
+    assert package_js.index("await validateArchiveSignature(file)") < package_js.index("await checkVersionConflict()")
+    assert package_js.index("await checkVersionConflict()") < package_js.index("beginTransfer(false)")
+    assert "请输入版本号或选择具有 nginx-版本号 命名的文件" in package_js
 
     too_large = b"x" * (1024 * 1024 + 1)
     for upload_path, filename, name in (
@@ -211,6 +246,7 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
                     file_md5="{:032x}".format(index + 1),
                     description="production web" if index == 0 else "archive",
                     created_by=user_id,
+                    created_at=datetime(2026, 10, 12, 3, 4, 0),
                 )
                 for index in range(11)
             ]
@@ -243,11 +279,18 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
                 )
             )
 
-    matches = client.get("/upgrade/packages/?search=production%2Cweb&per_page=10")
+    matches = client.get("/upgrade/packages/?search=nginx-stable%2C1.28&per_page=10")
     assert matches.status_code == 200
     assert "nginx-stable-prod" in matches.text
     assert "archive-1" not in matches.text
+    assert "2026-10-12 11:04" in matches.text
+    description_search = client.get("/upgrade/packages/?search=production%2Cweb")
+    assert "nginx-stable-prod" not in description_search.text
+    md5_search = client.get("/upgrade/packages/?search=000000000000")
+    assert "nginx-stable-prod" not in md5_search.text
     assert 'data-query-tags' in matches.text
+    assert 'placeholder="搜索名称或版本"' in matches.text
+    assert "描述或 MD5" not in matches.text
     assert 'value="100">100 条/页' in matches.text
 
     first_page = client.get("/upgrade/packages/?per_page=10")
@@ -277,6 +320,14 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     assert 'id="packagePageFirst"' in center.text
     assert 'id="packagePageLast"' in center.text
     assert 'id="selectedPackageSummary"' in center.text
+    assert 'data-step-target="2" disabled aria-disabled="true"' in center.text
+    assert 'data-step-target="3" disabled aria-disabled="true"' in center.text
+    assert 'data-step-target="4" disabled aria-disabled="true"' in center.text
+    assert 'id="moduleAdjustModal"' in center.text
+    assert 'id="referenceNode"' in center.text
+    assert 'id="paramsMismatchDetails"' in center.text
+    assert 'id="finalConfigPreviewLabel"' in center.text
+    assert "2026-10-12 11:04" in center.text
     assert 'data-query-tags' in center.text
     assert "回车添加条件" not in center.text
     assert "上传新包" not in center.text

@@ -54,10 +54,16 @@ def upgrade_database(
     """在单个写锁事务中应用尚未执行的数据库迁移。"""
     ordered = _validate_migrations(migrations)
     applied_now: List[Migration] = []
+    requires_foreign_keys_off = any(
+        migration.requires_foreign_keys_off for migration in ordered
+    )
 
     with engine.connect() as connection:
-        connection.exec_driver_sql("BEGIN IMMEDIATE")
         try:
+            if requires_foreign_keys_off:
+                connection.exec_driver_sql("PRAGMA foreign_keys = OFF")
+                connection.commit()
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
             table_names = _read_table_names(connection)
             has_migration_table = MIGRATION_TABLE in table_names
             if table_names and not has_migration_table:
@@ -106,9 +112,27 @@ def upgrade_database(
                 applied_versions.add(migration.version)
                 applied_now.append(migration)
 
+            if requires_foreign_keys_off and any(
+                migration.requires_foreign_keys_off for migration in applied_now
+            ):
+                violations = connection.exec_driver_sql(
+                    "PRAGMA foreign_key_check"
+                ).fetchall()
+                if violations:
+                    raise MigrationStateError(
+                        "数据库迁移后外键检查失败，共 {} 项。".format(
+                            len(violations)
+                        )
+                    )
             connection.commit()
         except Exception:
             connection.rollback()
             raise
+        finally:
+            if requires_foreign_keys_off:
+                if connection.in_transaction():
+                    connection.rollback()
+                connection.exec_driver_sql("PRAGMA foreign_keys = ON")
+                connection.commit()
 
     return tuple(applied_now)

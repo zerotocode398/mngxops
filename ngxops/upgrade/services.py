@@ -213,7 +213,6 @@ def store_package(
     """验证并持久化源码包或离线模块包，返回记录及是否覆盖。"""
     extension = validate_archive_content(content, filename, package_kind)
     safe_name = Path(filename.replace("\\", "/")).name
-    digest = _package_digest(content)
     if package_kind == "source":
         normalized_version = (version or "").strip()
         if not normalized_version:
@@ -229,18 +228,17 @@ def store_package(
         model = NginxSourcePackage
         owner_conflict = session.scalar(
             select(model).where(
+                model.name == clean_name,
                 model.version == normalized_version,
                 model.created_by == user_id,
             )
         )
-        duplicate = session.scalar(select(model).where(model.file_md5 == digest))
-        existing = owner_conflict or duplicate
         label = "源码包"
     else:
         normalized_version = (version or "").strip()
         clean_name = (name or "").strip()
         if not _MODULE_NAME.fullmatch(clean_name):
-            raise ValueError("模塊名只允许字母、数字、点、下划线、加号和连字符")
+            raise ValueError("模块名只允许字母、数字、点、下划线、加号和连字符")
         if len(normalized_version) > 50:
             raise ValueError("模块版本不能超过 50 个字符")
         model = NginxModulePackage
@@ -251,24 +249,36 @@ def store_package(
                 model.created_by == user_id,
             )
         )
-        duplicate = session.scalar(select(model).where(model.file_md5 == digest))
-        existing = owner_conflict or duplicate
         name = clean_name
         label = "模块包"
 
+    duplicate = None
+    digest = None
+    # 源码包与模块包均先按名称和版本短路，再按 MD5 检查内容重复。
+    if owner_conflict is None:
+        digest = _package_digest(content)
+        duplicate = session.scalar(select(model).where(model.file_md5 == digest))
+    existing = owner_conflict or duplicate
+
     if existing and not overwrite:
-        is_version_conflict = owner_conflict is not None
-        message = (
-            "{}已存在，是否覆盖？".format(label)
-            if is_version_conflict
-            else "上传文件内容与已有{}相同，是否覆盖？".format(label)
-        )
-        raise PackageConflict(message, "version" if is_version_conflict else "md5")
+        is_identity_conflict = owner_conflict is not None
+        if is_identity_conflict:
+            message = "已有同名同版本{}，是否覆盖？".format(label)
+        else:
+            duplicate_label = existing.name
+            if existing.version:
+                duplicate_label += "（版本 {}）".format(existing.version)
+            message = "上传文件内容与已有{}“{}”相同，是否覆盖？".format(
+                label, duplicate_label
+            )
+        raise PackageConflict(message, "version" if is_identity_conflict else "md5")
     if existing:
         active_tasks = _package_active_task_ids(session, existing.id, package_kind)
         if active_tasks:
             raise ValueError("该包正被执行中的升级任务使用，暂不能覆盖")
 
+    if digest is None:
+        digest = _package_digest(content)
     package_dir.mkdir(parents=True, exist_ok=True)
     storage_name = "{}-{}{}".format(package_kind, uuid.uuid4().hex, extension)
     stored_path = package_dir / storage_name
@@ -467,6 +477,14 @@ def compute_target_configure_opts(
             remaining.append(token)
             existing.add(token)
     return join_configure_opts(remaining)
+
+
+def effective_removed_modules(
+    current_params: Sequence[str], requested_removals: Sequence[str]
+) -> List[str]:
+    """只保留当前节点编译基线中实际存在的待移除参数。"""
+    current = set(current_params)
+    return [item for item in requested_removals if item in current]
 
 
 def fetch_node_nginx_v(session_factory, encryption_key: bytes, node_id: int) -> Dict[str, Any]:
@@ -1331,8 +1349,7 @@ def create_upgrade_batch(
                 parsed_params = tokenize_configure_args(current_opts)
                 if not parsed_params or set(parsed_params) != set(params):
                     raise ValueError("节点 {} 的编译参数基线无效，请重新读取 nginx -V".format(node.hostname))
-                if any(value not in params for value in removed_modules):
-                    raise ValueError("移除的参数不属于节点 {} 当前编译基线".format(node.hostname))
+                node_removed_modules = effective_removed_modules(params, removed_modules)
                 prefix = (item.get("prefix") or "").strip() or "/usr/local/nginx"
                 binary_path = (item.get("binary_path") or "").strip()
                 if not binary_path.startswith("/") or "\x00" in binary_path:
@@ -1342,7 +1359,7 @@ def create_upgrade_batch(
                     per_node_tokens = rewrite_configure_prefix(
                         tokenize_configure_args(
                             compute_target_configure_opts(
-                                params, added_modules, removed_modules, third_party, work_dir
+                                params, added_modules, node_removed_modules, third_party, work_dir
                             )
                         ),
                         target_prefix,
@@ -1350,7 +1367,7 @@ def create_upgrade_batch(
                     target_opts = join_configure_opts(per_node_tokens)
                 else:
                     target_opts = compute_target_configure_opts(
-                        params, added_modules, removed_modules, third_party, work_dir
+                        params, added_modules, node_removed_modules, third_party, work_dir
                     )
                 normalized_items[node_id] = {
                     "node": node,
@@ -1360,6 +1377,7 @@ def create_upgrade_batch(
                     "binary_path": binary_path[:500],
                     "target_prefix": per_node_prefix[:500],
                     "target_opts": target_opts,
+                    "removed_modules": node_removed_modules,
                 }
 
             now = datetime.utcnow()
@@ -1405,7 +1423,7 @@ def create_upgrade_batch(
                     target_configure_opts=item["target_opts"],
                     target_prefix=item["target_prefix"],
                     added_modules_json=json.dumps(added_modules, ensure_ascii=False),
-                    removed_modules_json=json.dumps(removed_modules, ensure_ascii=False),
+                    removed_modules_json=json.dumps(item["removed_modules"], ensure_ascii=False),
                     third_party_json=json.dumps(third_party, ensure_ascii=False),
                 )
                 session.add(run)

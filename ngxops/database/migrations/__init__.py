@@ -24,6 +24,9 @@ from ngxops.database.migrations.v0014_system_settings import MIGRATION as SYSTEM
 from ngxops.database.migrations.v0015_shared_nginx_install_permissions import (
     MIGRATION as SHARED_NGINX_INSTALL_PERMISSIONS,
 )
+from ngxops.database.migrations.v0016_source_package_identity import (
+    MIGRATION as SOURCE_PACKAGE_IDENTITY,
+)
 
 
 MIGRATIONS: Tuple[Migration, ...] = (
@@ -42,4 +45,5 @@ MIGRATIONS: Tuple[Migration, ...] = (
     AUDIT_LOGS,
     SYSTEM_SETTINGS,
     SHARED_NGINX_INSTALL_PERMISSIONS,
+    SOURCE_PACKAGE_IDENTITY,
 )

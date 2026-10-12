@@ -6,6 +6,16 @@
     var batchMax = center ? Number(center.dataset.batchMax) || 3 : 3;
     var token = document.querySelector("meta[name='csrf-token']");
     var csrfToken = token ? token.content : "";
+    var currentStep = 1;
+    var environmentComplete = false;
+    var previewReady = false;
+    var selectedTargetSignature = "";
+    var referenceNodeId = null;
+    var baselineRequestVersion = 0;
+    var previewRequestVersion = 0;
+    var targetConfigPreviews = {};
+    var moduleChanges = { added: [], removed: [] };
+    var moduleAdjustModal = null;
 
     function requestJson(method, url, payload) {
         return $.ajax({
@@ -28,7 +38,56 @@
         if (window.showToast) window.showToast(message, type || "info", 3000, action);
     }
 
+    function stepOneComplete() {
+        return selectedNodeIds().length > 0 && !!selectedPackage();
+    }
+
+    function normalizeAbsolutePath(value) {
+        var path = (value || "").trim();
+        if (!path.startsWith("/") || /[\x00\r\n]/.test(path)) return "";
+        var parts = [];
+        path.split("/").forEach(function (part) {
+            if (!part || part === ".") return;
+            if (part === "..") parts.pop();
+            else parts.push(part);
+        });
+        return "/" + parts.join("/");
+    }
+
+    function environmentError() {
+        var jobs = Number(document.getElementById("makeJobs").value);
+        if (!Number.isInteger(jobs) || jobs < 1 || jobs > 32) {
+            return "并行编译数必须在 1 到 32 之间";
+        }
+        if (!normalizeAbsolutePath(currentWorkDir()) || normalizeAbsolutePath(currentWorkDir()) === "/") {
+            return "远程工作目录必须是有效的非根绝对路径";
+        }
+        if (currentMode() === "switch_path") {
+            var prefix = normalizeAbsolutePath(document.getElementById("targetPrefix").value);
+            if (!prefix || prefix === "/") return "切换路径模式请填写有效的目标安装目录";
+        }
+        return "";
+    }
+
+    function refreshStepperAccess() {
+        var unlocked = 1;
+        if (stepOneComplete()) unlocked = 2;
+        if (stepOneComplete() && environmentComplete && !environmentError()) unlocked = 3;
+        if (stepOneComplete() && environmentComplete && previewReady) unlocked = 4;
+        document.querySelectorAll(".upgrade-step").forEach(function (item) {
+            var locked = Number(item.dataset.stepTarget) > unlocked;
+            item.disabled = locked;
+            item.setAttribute("aria-disabled", locked ? "true" : "false");
+        });
+    }
+
     function activateStep(step) {
+        var unlocked = 1;
+        if (stepOneComplete()) unlocked = 2;
+        if (stepOneComplete() && environmentComplete && !environmentError()) unlocked = 3;
+        if (stepOneComplete() && environmentComplete && previewReady) unlocked = 4;
+        if (step > unlocked) return false;
+        currentStep = step;
         document.querySelectorAll(".upgrade-panel").forEach(function (panel) {
             panel.classList.toggle("d-none", Number(panel.dataset.step) !== step);
         });
@@ -37,8 +96,34 @@
             item.classList.toggle("active", itemStep === step);
             item.classList.toggle("done", itemStep < step);
         });
-        if (step === 3) fetchConfigureBaselines(false);
         window.scrollTo({ top: 0, behavior: "smooth" });
+        return true;
+    }
+
+    function goToStep(step) {
+        if (step === 1) {
+            activateStep(1);
+            return;
+        }
+        if (!stepOneComplete()) {
+            notify("请先选择至少一个目标节点和源码包", "warning");
+            activateStep(1);
+            return;
+        }
+        if (step === 2) {
+            activateStep(2);
+            return;
+        }
+        if (!environmentComplete || environmentError()) {
+            notify("请先完成并确认编译环境", "warning");
+            activateStep(2);
+            return;
+        }
+        if (step === 3) {
+            if (activateStep(3)) fetchConfigureBaselines(false);
+            return;
+        }
+        if (step === 4 && previewReady) activateStep(4);
     }
 
     function selectedNodeIds() {
@@ -109,10 +194,28 @@
         document.getElementById("stepOneCount").textContent = "已选 " + selected.length + " 个节点";
         renderSelectedNodeSummary();
         var selectedPackageValue = selectedPackage();
+        var signature = selected.slice().sort(function (a, b) { return a - b; }).join(",") + ":" +
+            (selectedPackageValue ? selectedPackageValue.id : "");
+        if (signature !== selectedTargetSignature) {
+            selectedTargetSignature = signature;
+            environmentComplete = false;
+            previewReady = false;
+            targetConfigPreviews = {};
+            referenceNodeId = null;
+            moduleChanges = { added: [], removed: [] };
+            window.upgradeBaselines = {};
+            baselineRequestVersion += 1;
+            previewRequestVersion += 1;
+            document.getElementById("confirmUpgrade").checked = false;
+            var startButton = document.getElementById("startUpgrade");
+            if (startButton) startButton.disabled = true;
+            invalidateStepThreePreview();
+        }
         document.getElementById("selectedPackageSummary").textContent = selectedPackageValue
             ? "已选源码包：" + selectedPackageValue.name + " · " + selectedPackageValue.version
             : "尚未选择源码包";
         document.getElementById("stepOneNext").disabled = selected.length === 0 || !selectedPackageValue;
+        refreshStepperAccess();
     }
 
     function bindSelectorTable(inputId, rowSelector, key) {
@@ -170,13 +273,14 @@
             page = Math.max(1, Math.ceil(matchingRows().length / (Number(pageSize.value) || 10)));
             render();
         });
-        if (key === "node") {
+        if (key === "node" || key === "package") {
             rows.forEach(function (row) {
                 row.addEventListener("click", function (event) {
                     if (event.target.closest("input, button, a, label, select")) return;
-                    var checkbox = row.querySelector(".upgrade-node-check");
-                    if (!checkbox || checkbox.disabled) return;
-                    checkbox.checked = !checkbox.checked;
+                    var checkbox = row.querySelector(key === "node" ? ".upgrade-node-check" : ".upgrade-package-check");
+                    if (!checkbox || (checkbox.disabled && !checkbox.checked)) return;
+                    if (key === "node") checkbox.checked = !checkbox.checked;
+                    else checkbox.checked = true;
                     checkbox.dispatchEvent(new Event("change", { bubbles: true }));
                 });
             });
@@ -208,15 +312,21 @@
             renderFetchResults();
             return;
         }
+        var requestVersion = ++baselineRequestVersion;
         window.upgradeBaselines = {};
         var results = document.getElementById("nodeFetchResults");
         results.replaceChildren();
         document.getElementById("fetchStatus").textContent = "正在逐台读取 nginx -V，请保持页面打开…";
         document.getElementById("stepThreeNext").disabled = true;
+        if (!ids.length) {
+            renderFetchResults();
+            return;
+        }
         var queue = ids.map(function (id) {
             return requestJson("POST", "/api/upgrade/nodes/" + id + "/nginx-v", {});
         });
         $.when.apply($, queue).done(function () {
+            if (requestVersion !== baselineRequestVersion) return;
             if (queue.length === 1) {
                 saveBaseline(ids[0], arguments[0]);
             } else {
@@ -226,6 +336,7 @@
             }
             renderFetchResults();
         }).fail(function (error) {
+            if (requestVersion !== baselineRequestVersion) return;
             if (queue.length === 1) {
                 window.upgradeBaselines[ids[0]] = { ok: false, message: errorMessage(error) };
             } else {
@@ -268,70 +379,226 @@
             ? "已读取全部节点的编译参数。"
             : "读取未完成；请检查节点连接后重新读取。";
         document.getElementById("stepThreeNext").disabled = !allReady;
-        var configOutput = document.getElementById("currentConfigOutput");
+        var signatures = baselines.map(function (item) {
+            return item && item.ok ? item.data.params.slice().sort().join("\n") : "";
+        });
+        var mismatch = allReady && signatures.some(function (value) { return value !== signatures[0]; });
+        document.getElementById("paramsMismatchNotice").classList.toggle("d-none", !mismatch);
+        renderParameterMismatch(selected, mismatch);
+        var referenceWrap = document.getElementById("referenceNodeWrap");
+        referenceWrap.classList.toggle("d-none", !mismatch);
+        var referenceSelect = document.getElementById("referenceNode");
+        referenceSelect.replaceChildren();
         if (!allReady) {
-            configOutput.textContent = "读取完成后显示首个节点的 configure 参数。";
-            document.getElementById("currentConfigLabel").textContent = "当前 configure 参数";
+            document.getElementById("baselineSummary").replaceChildren();
+            document.getElementById("currentConfigOutput").textContent = "读取完成后显示参考节点的 configure 参数。";
+            document.getElementById("currentConfigLabel").textContent = "参考节点 configure 参数";
+            document.getElementById("openModuleAdjust").disabled = true;
             return;
         }
-        configOutput.textContent = baselines[0].data.configure_opts || "当前节点未返回 configure 参数。";
-        document.getElementById("currentConfigLabel").textContent =
-            "当前 configure 参数（参考节点：" + selected[0].name + "）";
-        var signatures = baselines.map(function (item) {
-            return item.data.params.slice().sort().join("\n");
+        selected.forEach(function (node) {
+            var option = document.createElement("option");
+            option.value = String(node.id);
+            option.textContent = node.name + " (" + node.ip + ")";
+            referenceSelect.appendChild(option);
         });
-        document.getElementById("paramsMismatchNotice").classList.toggle(
-            "d-none",
-            signatures.every(function (value) { return value === signatures[0]; })
-        );
-        renderBuiltinModules(baselines[0].data.params);
+        if (!selected.some(function (node) { return String(node.id) === String(referenceNodeId); })) {
+            referenceNodeId = String(selected[0].id);
+        }
+        referenceSelect.value = referenceNodeId;
+        referenceSelect.disabled = !mismatch;
+        renderReferenceBaseline();
+        document.getElementById("openModuleAdjust").disabled = false;
     }
 
-    function renderBuiltinModules(currentParams) {
-        var list = document.getElementById("builtinModuleList");
-        var selected = new Set(currentParams);
+    function renderParameterMismatch(nodes, mismatch) {
+        var list = document.getElementById("paramsMismatchDetails");
         list.replaceChildren();
-        (window.NGXOPS_BUILTIN_MODULES || []).forEach(function (flag) {
-            var label = document.createElement("label");
-            label.className = "upgrade-module-option";
-            var checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.className = "form-check-input mt-1 builtin-module-check";
-            checkbox.value = flag;
-            checkbox.checked = selected.has(flag);
-            checkbox.addEventListener("change", updateModuleCounts);
-            var text = document.createElement("code");
-            text.textContent = flag;
-            label.append(checkbox, text);
-            list.appendChild(label);
+        list.classList.toggle("d-none", !mismatch);
+        if (!mismatch) return;
+        var params = new Set();
+        nodes.forEach(function (node) {
+            var baseline = window.upgradeBaselines[node.id];
+            (baseline && baseline.ok ? baseline.data.params : []).forEach(function (param) {
+                params.add(param);
+            });
         });
-        filterModuleList();
+        Array.from(params).sort().forEach(function (param) {
+            var present = [];
+            var missing = [];
+            nodes.forEach(function (node) {
+                var baseline = window.upgradeBaselines[node.id];
+                var current = baseline && baseline.ok ? baseline.data.params : [];
+                (current.indexOf(param) >= 0 ? present : missing).push(node.name);
+            });
+            if (!present.length || !missing.length) return;
+            var item = document.createElement("div");
+            item.className = "upgrade-param-diff-item";
+            var value = document.createElement("code");
+            value.textContent = param;
+            var hosts = document.createElement("span");
+            hosts.className = "text-muted";
+            hosts.textContent = "已编译：" + present.join("、") + "；未编译：" + missing.join("、");
+            item.append(value, hosts);
+            list.appendChild(item);
+        });
+        if (!list.childElementCount) {
+            var empty = document.createElement("span");
+            empty.className = "small text-muted";
+            empty.textContent = "安装路径或版本等信息不同，具体参数项一致。";
+            list.appendChild(empty);
+        }
     }
 
-    function filterModuleList() {
-        var search = document.getElementById("moduleSearch").value.trim().toLowerCase();
-        document.querySelectorAll(".upgrade-module-option").forEach(function (row) {
-            row.classList.toggle("d-none", search && !row.textContent.toLowerCase().includes(search));
+    function referenceBaseline() {
+        var value = window.upgradeBaselines[referenceNodeId];
+        return value && value.ok ? value.data : null;
+    }
+
+    function renderReferenceBaseline() {
+        var baseline = referenceBaseline();
+        var node = selectedNodes().find(function (item) { return String(item.id) === String(referenceNodeId); });
+        if (!baseline || !node) return;
+        var summary = document.getElementById("baselineSummary");
+        summary.replaceChildren();
+        [
+            ["当前版本", baseline.version || "未知"],
+            ["安装目录", baseline.prefix || "-"],
+            ["Nginx 二进制", baseline.binary_path || "-"]
+        ].forEach(function (item) {
+            var box = document.createElement("div");
+            box.className = "upgrade-baseline-item";
+            var label = document.createElement("small");
+            label.textContent = item[0];
+            var value = document.createElement("strong");
+            value.textContent = item[1];
+            box.append(label, value);
+            summary.appendChild(box);
+        });
+        document.getElementById("currentConfigOutput").textContent = baseline.configure_opts || "当前节点未返回 configure 参数。";
+        document.getElementById("currentConfigLabel").textContent =
+            "当前 configure 参数（参考节点：" + node.name + "）";
+        reconcileModuleChanges(baseline.params || []);
+        renderModuleOptions();
+        updateModuleSummary(false);
+    }
+
+    function reconcileModuleChanges(currentParams) {
+        var current = new Set(currentParams);
+        var builtin = new Set(window.NGXOPS_BUILTIN_MODULES || []);
+        moduleChanges.added = moduleChanges.added.filter(function (item) {
+            return builtin.has(item) && !current.has(item);
+        });
+        moduleChanges.removed = moduleChanges.removed.filter(function (item) {
+            return current.has(item);
+        });
+    }
+
+    function makeModuleOption(value, className, checked, disabled) {
+        var label = document.createElement("label");
+        label.className = "upgrade-module-option" + (disabled ? " disabled" : "");
+        var checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = className;
+        checkbox.value = value;
+        checkbox.checked = checked;
+        checkbox.disabled = disabled;
+        var code = document.createElement("code");
+        code.textContent = value;
+        label.append(checkbox, code);
+        if (disabled) {
+            var badge = document.createElement("span");
+            badge.className = "badge text-bg-secondary ms-auto";
+            badge.textContent = "已编译";
+            label.appendChild(badge);
+        }
+        return label;
+    }
+
+    function renderModuleOptions() {
+        var baseline = referenceBaseline();
+        if (!baseline) return;
+        var current = new Set(baseline.params || []);
+        var builtin = window.NGXOPS_BUILTIN_MODULES || [];
+        var addList = document.getElementById("addModuleOptions");
+        var removeList = document.getElementById("removeModuleOptions");
+        addList.replaceChildren();
+        removeList.replaceChildren();
+        builtin.forEach(function (flag) {
+            var alreadyEnabled = current.has(flag);
+            addList.appendChild(makeModuleOption(
+                flag, "add-module-check", !alreadyEnabled && moduleChanges.added.indexOf(flag) >= 0, alreadyEnabled
+            ));
+        });
+        (baseline.params || []).forEach(function (param) {
+            removeList.appendChild(makeModuleOption(
+                param, "remove-module-check", moduleChanges.removed.indexOf(param) >= 0, false
+            ));
+        });
+        filterModuleOptions();
+    }
+
+    function filterModuleOptions() {
+        [
+            ["addModuleSearch", "#addModuleOptions .upgrade-module-option"],
+            ["removeModuleSearch", "#removeModuleOptions .upgrade-module-option"]
+        ].forEach(function (pair) {
+            var search = document.getElementById(pair[0]).value.trim().toLowerCase();
+            document.querySelectorAll(pair[1]).forEach(function (row) {
+                row.classList.toggle("d-none", !!search && !row.textContent.toLowerCase().includes(search));
+            });
         });
     }
 
     function collectModuleChanges() {
-        var reference = selectedNodes()[0];
-        var baseline = reference && window.upgradeBaselines[reference.id];
-        var current = new Set(baseline && baseline.ok ? baseline.data.params : []);
-        var added = [];
-        var removed = [];
-        document.querySelectorAll(".builtin-module-check").forEach(function (input) {
-            if (input.checked && !current.has(input.value)) added.push(input.value);
-            if (!input.checked && current.has(input.value)) removed.push(input.value);
-        });
-        return { added: added, removed: removed };
+        return { added: moduleChanges.added.slice(), removed: moduleChanges.removed.slice() };
     }
 
-    function updateModuleCounts() {
-        var changes = collectModuleChanges();
-        var count = document.getElementById("stepThreeNext");
-        count.title = "新增 " + changes.added.length + " 项，移除 " + changes.removed.length + " 项";
+    function updateModuleSummary(invalidatePreview) {
+        document.getElementById("moduleRemovedCount").textContent = String(moduleChanges.removed.length);
+        document.getElementById("moduleAddedCount").textContent = String(moduleChanges.added.length);
+        document.getElementById("moduleDeltaHint").textContent =
+            moduleChanges.added.length || moduleChanges.removed.length
+                ? "已确认增减，将应用到目标节点"
+                : "尚未调整";
+        document.getElementById("stepThreeNext").title =
+            "新增 " + moduleChanges.added.length + " 项，移除 " + moduleChanges.removed.length + " 项";
+        if (invalidatePreview) invalidateStepThreePreview();
+    }
+
+    function invalidateStepThreePreview() {
+        previewReady = false;
+        targetConfigPreviews = {};
+        previewRequestVersion += 1;
+        var ready = environmentComplete && !environmentError() && selectedNodeIds().length > 0 && selectedNodeIds().every(function (id) {
+            return window.upgradeBaselines[id] && window.upgradeBaselines[id].ok;
+        });
+        document.getElementById("stepThreeNext").disabled = !ready;
+        refreshStepperAccess();
+    }
+
+    function openModuleAdjust() {
+        if (!referenceBaseline()) {
+            notify("请先读取 nginx -V 编译参数", "warning");
+            return;
+        }
+        renderModuleOptions();
+        document.getElementById("addModuleSearch").value = "";
+        document.getElementById("removeModuleSearch").value = "";
+        filterModuleOptions();
+        if (!moduleAdjustModal) {
+            moduleAdjustModal = new window.bootstrap.Modal(document.getElementById("moduleAdjustModal"));
+        }
+        moduleAdjustModal.show();
+    }
+
+    function confirmModuleAdjust() {
+        moduleChanges.added = Array.from(document.querySelectorAll(".add-module-check:checked"))
+            .map(function (input) { return input.value; });
+        moduleChanges.removed = Array.from(document.querySelectorAll(".remove-module-check:checked"))
+            .map(function (input) { return input.value; });
+        updateModuleSummary(true);
+        if (moduleAdjustModal) moduleAdjustModal.hide();
     }
 
     function addThirdPartyRow() {
@@ -341,33 +608,53 @@
         var source = row.querySelector(".tp-source");
         var name = row.querySelector(".tp-name");
         var packageSelect = row.querySelector(".tp-package");
+        var selectedPackageName = "";
         source.addEventListener("change", function () {
             row.querySelector(".tp-git-fields").classList.toggle("d-none", source.value !== "git");
             row.querySelector(".tp-package-fields").classList.toggle("d-none", source.value !== "package");
         });
         packageSelect.addEventListener("change", function () {
-            if (!name.value && packageSelect.selectedOptions[0]) {
-                name.value = packageSelect.selectedOptions[0].dataset.name || "";
+            var nextName = packageSelect.selectedOptions[0]
+                ? packageSelect.selectedOptions[0].dataset.name || ""
+                : "";
+            if (!name.value || name.value === selectedPackageName) {
+                name.value = nextName;
             }
+            selectedPackageName = nextName;
         });
         row.querySelector(".tp-remove").addEventListener("click", function () { row.remove(); });
         document.getElementById("thirdPartyRows").appendChild(fragment);
+        invalidateStepThreePreview();
     }
 
     function collectThirdParty() {
         var result = [];
         var errors = [];
+        var names = new Set();
         document.querySelectorAll(".upgrade-third-party-row").forEach(function (row) {
             var source = row.querySelector(".tp-source").value;
             var name = row.querySelector(".tp-name").value.trim();
-            if (!name) return;
+            var gitUrl = row.querySelector(".tp-git").value.trim();
+            var packageId = row.querySelector(".tp-package").value;
+            if (!name && !gitUrl && !packageId) return;
+            if (!name) {
+                errors.push("请填写第三方模块名称");
+                return;
+            }
+            if (!/^[A-Za-z0-9][A-Za-z0-9_.+-]{0,99}$/.test(name)) {
+                errors.push("模块名只允许字母、数字、点、下划线、加号和连字符");
+                return;
+            }
+            if (names.has(name.toLowerCase())) {
+                errors.push("第三方模块名称不能重复：" + name);
+                return;
+            }
+            names.add(name.toLowerCase());
             if (source === "git") {
-                var gitUrl = row.querySelector(".tp-git").value.trim();
                 var branch = row.querySelector(".tp-branch").value.trim() || "master";
                 if (!gitUrl) errors.push("模块 " + name + " 缺少 Git 仓库 URL");
                 else result.push({ name: name, source: "git", git_url: gitUrl, branch: branch });
             } else {
-                var packageId = row.querySelector(".tp-package").value;
                 if (!packageId) errors.push("模块 " + name + " 需要选择离线包");
                 else result.push({ name: name, source: "package", package_id: Number(packageId) });
             }
@@ -400,32 +687,64 @@
         var pkg = selectedPackage();
         if (!selected.length || !pkg) {
             notify("请选择目标节点和源码包", "warning");
-            activateStep(1);
+            goToStep(1);
             return;
         }
-        if (currentMode() === "switch_path" && !document.getElementById("targetPrefix").value.trim()) {
-            notify("切换路径模式请填写目标安装目录", "warning");
+        var environmentProblem = environmentError();
+        if (environmentProblem) {
+            notify(environmentProblem, "warning");
+            goToStep(2);
+            return;
+        }
+        if (!environmentComplete) {
+            notify("请先完成并确认编译环境", "warning");
+            goToStep(2);
+            return;
+        }
+        var baselinesReady = selected.every(function (node) {
+            return window.upgradeBaselines[node.id] && window.upgradeBaselines[node.id].ok;
+        });
+        if (!baselinesReady) {
+            notify("请先成功读取所有目标节点的 nginx -V 参数", "warning");
             return;
         }
         var changes = collectModuleChanges();
-        var first = window.upgradeBaselines[selected[0].id].data;
-        var payload = {
-            current_params: first.params,
-            added_modules: changes.added,
-            removed_modules: changes.removed,
-            added_third_party: thirdParty.items,
-            remote_work_dir: currentWorkDir(),
-            upgrade_mode: currentMode(),
-            target_prefix: document.getElementById("targetPrefix").value.trim()
-        };
-        requestJson("POST", "/api/upgrade/compute-config", payload)
-            .done(function (data) {
-                var opts = data.target_opts;
-                document.getElementById("finalConfigPreview").textContent = "./configure \\\n    " + opts.replace(/\s+\\\n\s+/g, " \\\n    ");
-                renderConfirm(selected, pkg, thirdParty.items, changes);
-                activateStep(4);
-            })
-            .fail(function (error) { notify(errorMessage(error), "danger"); });
+        var requestVersion = ++previewRequestVersion;
+        previewReady = false;
+        targetConfigPreviews = {};
+        refreshStepperAccess();
+        var button = document.getElementById("stepThreeNext");
+        button.disabled = true;
+        var jobs = selected.map(function (node) {
+            var baseline = window.upgradeBaselines[node.id].data;
+            return requestJson("POST", "/api/upgrade/compute-config", {
+                current_params: baseline.params,
+                added_modules: changes.added,
+                removed_modules: changes.removed,
+                added_third_party: thirdParty.items,
+                remote_work_dir: currentWorkDir(),
+                upgrade_mode: currentMode(),
+                target_prefix: document.getElementById("targetPrefix").value.trim()
+            }).then(function (data) {
+                targetConfigPreviews[node.id] = data.target_opts;
+            });
+        });
+        $.when.apply($, jobs).done(function () {
+            if (requestVersion !== previewRequestVersion) return;
+            button.disabled = false;
+            previewReady = true;
+            renderConfirm(selected, pkg, thirdParty.items, changes);
+            refreshStepperAccess();
+            activateStep(4);
+        }).fail(function (error) {
+            if (requestVersion !== previewRequestVersion) return;
+            button.disabled = false;
+            notify(errorMessage(error), "danger");
+        });
+    }
+
+    function formatConfigurePreview(options) {
+        return "./configure \\\n    " + String(options || "").trim().replace(/ (?=--)/g, " \\\n    ");
     }
 
     function renderConfirm(nodes, pkg, modules, changes) {
@@ -449,28 +768,61 @@
             item.append(label, value);
             summary.appendChild(item);
         });
+        var reference = nodes.find(function (node) {
+            return String(node.id) === String(referenceNodeId);
+        }) || nodes[0];
+        document.getElementById("finalConfigPreview").textContent =
+            formatConfigurePreview(targetConfigPreviews[reference.id]);
+        document.getElementById("finalConfigPreviewLabel").textContent =
+            "参考节点目标参数（" + reference.name + "）";
         var nodeList = document.getElementById("confirmNodeList");
         nodeList.replaceChildren();
         nodes.forEach(function (node) {
             var baseline = window.upgradeBaselines[node.id].data;
             var row = document.createElement("div");
-            row.className = "upgrade-confirm-item";
+            row.className = "upgrade-confirm-item upgrade-confirm-node";
+            var heading = document.createElement("div");
+            heading.className = "d-flex justify-content-between align-items-start gap-2 w-100";
             var name = document.createElement("strong");
             name.textContent = node.name + " · " + node.ip;
             var versions = document.createElement("span");
             versions.className = "small text-muted";
-            versions.textContent = (baseline.version || "未知") + " → " + pkg.version;
-            row.append(name, versions);
+            var prefix = currentMode() === "switch_path"
+                ? document.getElementById("targetPrefix").value.trim()
+                : (baseline.prefix || "未知");
+            versions.textContent = (baseline.version || "未知") + " → " + pkg.version + " · prefix " + prefix;
+            heading.append(name, versions);
+            var details = document.createElement("details");
+            var detailLabel = document.createElement("summary");
+            detailLabel.textContent = "查看此节点目标 configure 参数";
+            var output = document.createElement("pre");
+            output.className = "upgrade-node-config-preview";
+            output.textContent = formatConfigurePreview(targetConfigPreviews[node.id]);
+            details.append(detailLabel, output);
+            row.append(heading, details);
             nodeList.appendChild(row);
         });
         document.getElementById("confirmUpgrade").checked = false;
-        document.getElementById("startUpgrade").disabled = true;
+        var startButton = document.getElementById("startUpgrade");
+        if (startButton) startButton.disabled = true;
     }
 
     function createUpgrade() {
         var pkg = selectedPackage();
+        if (!pkg || !stepOneComplete() || !environmentComplete || !previewReady) {
+            notify("请按顺序完成升级配置和参数预览", "warning");
+            return;
+        }
+        if (!document.getElementById("confirmUpgrade").checked) {
+            notify("请确认升级节点和编译参数", "warning");
+            return;
+        }
         var changes = collectModuleChanges();
         var thirdParty = collectThirdParty();
+        if (thirdParty.errors.length) {
+            notify(thirdParty.errors[0], "warning");
+            return;
+        }
         var payload = {
             node_ids: selectedNodeIds(),
             source_package: pkg.id,
@@ -608,26 +960,65 @@
             input.addEventListener("change", updateSelection);
         });
         updateSelection();
-        document.getElementById("stepOneNext").addEventListener("click", function () { activateStep(2); });
-        document.getElementById("stepTwoNext").addEventListener("click", function () {
-            var jobs = Number(document.getElementById("makeJobs").value);
-            if (!Number.isInteger(jobs) || jobs < 1 || jobs > 32) {
-                notify("并行编译数必须在 1 到 32 之间", "warning");
+        document.getElementById("stepOneNext").addEventListener("click", function () {
+            if (!stepOneComplete()) {
+                notify("请先选择至少一个目标节点和源码包", "warning");
                 return;
             }
+            activateStep(2);
+        });
+        document.getElementById("stepTwoNext").addEventListener("click", function () {
+            var problem = environmentError();
+            if (problem) {
+                notify(problem, "warning");
+                return;
+            }
+            environmentComplete = true;
+            previewReady = false;
+            refreshStepperAccess();
             if (currentMode() === "switch_path") {
                 document.getElementById("targetPrefixWrap").classList.remove("d-none");
             }
-            activateStep(3);
+            goToStep(3);
+        });
+        ["remoteWorkDir", "makeJobs", "targetPrefix"].forEach(function (id) {
+            var field = document.getElementById(id);
+            field.addEventListener("input", function () {
+                environmentComplete = false;
+                invalidateStepThreePreview();
+                refreshStepperAccess();
+            });
+            field.addEventListener("change", function () {
+                environmentComplete = false;
+                invalidateStepThreePreview();
+                refreshStepperAccess();
+            });
         });
         document.querySelectorAll("input[name='upgradeMode']").forEach(function (input) {
             input.addEventListener("change", function () {
                 document.getElementById("targetPrefixWrap").classList.toggle("d-none", currentMode() !== "switch_path");
+                environmentComplete = false;
+                invalidateStepThreePreview();
+                refreshStepperAccess();
             });
         });
-        document.getElementById("refreshNginxV").addEventListener("click", function () { fetchConfigureBaselines(true); });
-        document.getElementById("moduleSearch").addEventListener("input", filterModuleList);
+        document.getElementById("refreshNginxV").addEventListener("click", function () {
+            invalidateStepThreePreview();
+            fetchConfigureBaselines(true);
+        });
+        document.getElementById("referenceNode").addEventListener("change", function () {
+            referenceNodeId = this.value;
+            reconcileModuleChanges((referenceBaseline() || {}).params || []);
+            renderReferenceBaseline();
+            updateModuleSummary(true);
+        });
+        document.getElementById("openModuleAdjust").addEventListener("click", openModuleAdjust);
+        document.getElementById("confirmModuleAdjust").addEventListener("click", confirmModuleAdjust);
+        document.getElementById("addModuleSearch").addEventListener("input", filterModuleOptions);
+        document.getElementById("removeModuleSearch").addEventListener("input", filterModuleOptions);
         document.getElementById("addThirdParty").addEventListener("click", addThirdPartyRow);
+        document.getElementById("thirdPartyRows").addEventListener("input", invalidateStepThreePreview);
+        document.getElementById("thirdPartyRows").addEventListener("change", invalidateStepThreePreview);
         document.getElementById("stepThreeNext").addEventListener("click", previewUpgrade);
         document.getElementById("confirmUpgrade").addEventListener("change", function () {
             var startButton = document.getElementById("startUpgrade");
@@ -635,13 +1026,19 @@
         });
         var startButton = document.getElementById("startUpgrade");
         if (startButton) startButton.addEventListener("click", createUpgrade);
+        addThirdPartyRow();
         document.querySelectorAll("[data-step-target]").forEach(function (button) {
             button.addEventListener("click", function () {
                 var target = Number(button.dataset.stepTarget);
-                if (target === 3) fetchConfigureBaselines(false);
-                activateStep(target);
+                goToStep(target);
             });
         });
+        document.querySelectorAll(".upgrade-step").forEach(function (button) {
+            button.addEventListener("click", function () {
+                goToStep(Number(button.dataset.stepTarget));
+            });
+        });
+        refreshStepperAccess();
     }
 
     function appendLogs(task, log) {
