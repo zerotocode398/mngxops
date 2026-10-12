@@ -83,10 +83,12 @@
         request.onerror = function () {
             resetButton();
             showMessage("网络错误，包未能上传", "danger");
+            if (window.showToast) window.showToast("网络错误，包未能上传", "danger");
         };
         request.onabort = function () {
             resetButton();
             showMessage("上传已中止", "warning");
+            if (window.showToast) window.showToast("上传已中止", "warning");
         };
         request.send(new FormData(form));
     }

@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% block title %}升级任务详情 - {{ run.node_hostname }}{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> 升级任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=2">{% endblock %}
 
 {% block content %}
 <div class="d-flex gap-2 mb-3 flex-wrap">
     <a class="btn btn-outline-secondary btn-sm" href="/upgrade/history/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回历史</a>
     <a class="btn btn-outline-primary btn-sm" href="/upgrade/center/"><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>升级中心</a>
 </div>
-<section class="card mb-3" id="upgradeTaskDetail" data-task-id="{{ task.id }}" data-task-status="{{ task.status }}" data-phase="{{ run.phase }}" data-can-cancel="{{ '1' if can_cancel else '0' }}" data-can-rollback="{{ '1' if can_rollback else '0' }}">
+<section class="card mb-3" id="upgradeTaskDetail" data-task-id="{{ task.id }}" data-task-status="{{ task.status }}" data-phase="{{ run.phase }}" data-can-cancel="{{ '1' if can_cancel else '0' }}" data-can-rollback="{{ '1' if can_rollback else '0' }}" data-can-execute="{{ '1' if can_execute else '0' }}" data-has-backup="{{ '1' if has_backup else '0' }}" data-is-rollback="{{ '1' if is_rollback else '0' }}" data-rolled-back="{{ '1' if rolled_back else '0' }}">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div><strong>{{ run.node_hostname }}</strong><small class="text-muted ms-2">{{ run.node_ip }}</small></div>
-        <div class="d-flex align-items-center gap-2"><span class="badge text-bg-info" id="taskStatus">{{ status_label }}</span>{% if can_cancel %}<button class="btn btn-outline-danger btn-sm" type="button" id="cancelUpgrade"><i class="bi bi-stop-circle me-1" aria-hidden="true"></i>取消任务</button>{% endif %}{% if can_rollback %}<button class="btn btn-warning btn-sm" type="button" id="rollbackUpgrade"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>回滚到旧版本</button>{% endif %}</div>
+        <div class="d-flex align-items-center gap-2"><span class="badge text-bg-{{ status_class }}" id="taskStatus">{{ status_label }}</span>{% if can_cancel %}<button class="btn btn-outline-danger btn-sm" type="button" id="cancelUpgrade"><i class="bi bi-stop-circle me-1" aria-hidden="true"></i>取消任务</button>{% endif %}{% if can_rollback %}<button class="btn btn-warning btn-sm" type="button" id="rollbackUpgrade"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>回滚到旧版本</button>{% endif %}</div>
     </div>
     <div class="card-body">
         <div class="row g-2">
@@ -24,7 +24,7 @@
             <div class="col-12 col-md-6"><span class="text-muted">批次：</span><code>{{ run.batch_number }}</code></div>
             <div class="col-12 col-md-6"><span class="text-muted">备份路径：</span><code>{{ run.backup_binary_path or "-" }}</code></div>
             {% if rolled_back %}<div class="col-12 col-md-6"><span class="text-muted">回滚时间：</span>{{ run.rolled_back_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>{% endif %}
-            <div class="col-12"><div class="progress mt-2" style="height:8px"><div class="progress-bar" id="taskProgress" style="width:{{ task.progress }}%"></div></div><small id="taskProgressLabel">{{ task.progress }}% · {{ task.detail }}</small></div>
+            <div class="col-12"><div class="progress mt-2" style="height:8px"><div class="progress-bar{% if task.status == 'success' %} bg-success{% elif task.status == 'failed' %} bg-danger{% elif task.status == 'cancelled' %} bg-secondary{% endif %}" id="taskProgress" style="width:{{ task.progress }}%"></div></div><small id="taskProgressLabel">{{ task.progress }}% · {{ task.detail }}</small></div>
         </div>
     </div>
 </section>
@@ -47,4 +47,4 @@
 </section>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=2"></script>{% endblock %}

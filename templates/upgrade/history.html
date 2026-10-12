@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Nginx 升级历史 - ngxops{% endblock %}
 {% block page_title %}<i class="bi bi-clock-history" aria-hidden="true"></i> Nginx 升级历史{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=2">{% endblock %}
 
 {% block content %}
 <section class="card">
@@ -9,12 +10,11 @@
         <a class="btn btn-primary btn-sm" href="/upgrade/center/"><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>升级中心</a>
     </div>
     <div class="card-body border-bottom">
-        <form method="get" class="row g-2 align-items-end">
-            <div class="col-12 col-md-6"><label class="form-label small" for="upgradeSearch">节点、IP、版本或批次</label><input class="form-control form-control-sm" id="upgradeSearch" name="search" value="{{ search }}" placeholder="可用逗号添加多个关键词"></div>
-            <div class="col-8 col-md-3"><label class="form-label small" for="upgradeStatus">状态</label><select class="form-select form-select-sm" id="upgradeStatus" name="status"><option value="">全部状态</option>{% for value, label in status_choices %}<option value="{{ value }}"{% if status_filter == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <form method="get" class="row g-2 align-items-center" data-query-submit-on-enter data-preserve-query-focus>
+            <div class="col-12 col-md-7"><label class="visually-hidden" for="upgradeSearch">搜索节点、IP、版本或批次</label><input class="form-control form-control-sm" id="upgradeSearch" name="search" data-query-tags value="{{ search }}" placeholder="搜索节点、IP、版本或批次"></div>
+            <div class="col-8 col-md-3"><label class="visually-hidden" for="upgradeStatus">升级状态</label><select class="form-select form-select-sm" id="upgradeStatus" name="status" onchange="this.form.requestSubmit()"><option value="">全部状态</option>{% for value, label in status_choices %}<option value="{{ value }}"{% if status_filter == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-            <div class="col-auto"><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button></div>
-            {% if search or status_filter %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/upgrade/history/">清空</a></div>{% endif %}
+            {% if search or status_filter %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/upgrade/history/?per_page={{ pagination.per_page }}" title="清空查询条件" aria-label="清空查询条件"><i class="bi bi-x-lg" aria-hidden="true"></i></a></div>{% endif %}
         </form>
     </div>
     <div class="table-responsive">

@@ -2,10 +2,11 @@
 
 import json
 import re
+from datetime import datetime, timedelta
 from math import ceil
 from pathlib import Path
 from typing import List, Literal, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path as ApiPath, Query, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
@@ -23,6 +24,7 @@ from ngxops.security.dependencies import require_any_permission, require_permiss
 from ngxops.settings.service import read_setting
 from ngxops.tasks.executor import cancel_task
 from ngxops.tasks.models import Task, TaskLog
+from ngxops.tasks.presentation import format_task_datetime, format_task_datetime_iso
 from ngxops.ui import render_page
 from ngxops.upgrade.builtin_modules import BUILTIN_ADD_MODULES
 from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage, NginxUpgradeRun
@@ -44,8 +46,8 @@ from ngxops.upgrade.services import (
 
 
 router = APIRouter(tags=["upgrade"])
-_PAGE_SIZE_OPTIONS = (10, 15, 30, 50)
-_DEFAULT_PAGE_SIZE = 15
+_PAGE_SIZE_OPTIONS = (10, 25, 50, 100)
+_DEFAULT_PAGE_SIZE = 10
 _STATUS_LABELS = {
     "pending": "等待执行",
     "running": "执行中",
@@ -54,6 +56,8 @@ _STATUS_LABELS = {
     "cancelled": "已取消",
 }
 _MODE_LABELS = {"upgrade": "平滑升级（同路径）", "switch_path": "切换路径升级"}
+_UPGRADE_OPERATION_TYPES = ("nginx_upgrade", "nginx_rollback")
+_UPGRADE_ACTIVE_STATUSES = ("pending", "running")
 
 
 class ParseConfigRequest(BaseModel):
@@ -229,6 +233,21 @@ def _search_terms(value: str) -> List[str]:
     return [part.strip()[:100] for part in re.split(r"[,，]", value or "") if part.strip()]
 
 
+def _filter_package_query(query, model, search: str):
+    """按包名、版本、描述或 MD5 对包列表应用 AND 关键词筛选。"""
+    for term in _search_terms(search):
+        pattern = "%{}%".format(term)
+        query = query.where(
+            or_(
+                model.name.ilike(pattern),
+                model.version.ilike(pattern),
+                model.description.ilike(pattern),
+                model.file_md5.ilike(pattern),
+            )
+        )
+    return query
+
+
 def _upload_response(
     request: Request,
     message: str,
@@ -246,7 +265,7 @@ def _upload_response(
                 {
                     "success": success,
                     "message": message,
-                    "redirect": redirect_to,
+                    "redirect": redirect_to + ("?uploaded=1" if success else ""),
                     "need_overwrite": need_overwrite,
                     "md5_duplicate": duplicate,
                 },
@@ -257,6 +276,22 @@ def _upload_response(
         )
     destination = redirect_to + ("?error=" + quote(message) if not success else "?uploaded=1")
     return RedirectResponse(destination, status_code=303)
+
+
+def _package_list_redirect(
+    request: Request,
+    destination: str,
+    result_key: str,
+    result_value: str = "1",
+) -> RedirectResponse:
+    """删除软件包后保留列表筛选和分页位置。"""
+    params = {
+        key: request.query_params[key]
+        for key in ("search", "page", "per_page")
+        if request.query_params.get(key)
+    }
+    params[result_key] = result_value
+    return RedirectResponse("{}?{}".format(destination, urlencode(params)), status_code=303)
 
 
 def _format_size(size: int) -> str:
@@ -284,12 +319,94 @@ def _status_context(task: Task) -> dict:
 
 @router.get("/upgrade/", include_in_schema=False)
 def upgrade_home(
+    request: Request,
     user: User = Depends(
         require_any_permission(("upgrade", "read"), ("upgrade", "execute"))
     ),
+    session: Session = Depends(get_session),
 ) -> Response:
-    """将 Nginx 升级首页导向升级中心。"""
-    return RedirectResponse("/upgrade/center/", status_code=302)
+    """渲染升级概览、统计卡片和最近升级任务。"""
+    can_read = _has_upgrade_permission(request, session, user, "read")
+    visible_tasks = [] if can_read else [Task.trigger_user_id == user.id]
+    run_join = NginxUpgradeRun.task_id == Task.id
+    source_package_count = session.scalar(
+        select(func.count()).select_from(NginxSourcePackage)
+    ) or 0
+    module_package_count = session.scalar(
+        select(func.count()).select_from(NginxModulePackage)
+    ) or 0
+    running_count = session.scalar(
+        select(func.count())
+        .select_from(NginxUpgradeRun)
+        .join(Task, run_join)
+        .where(
+            Task.operation_type.in_(_UPGRADE_OPERATION_TYPES),
+            Task.status.in_(_UPGRADE_ACTIVE_STATUSES),
+            *visible_tasks,
+        )
+    ) or 0
+    failed_7d_count = session.scalar(
+        select(func.count())
+        .select_from(NginxUpgradeRun)
+        .join(Task, run_join)
+        .where(
+            Task.operation_type.in_(_UPGRADE_OPERATION_TYPES),
+            Task.status == "failed",
+            Task.created_at >= datetime.utcnow() - timedelta(days=7),
+            *visible_tasks,
+        )
+    ) or 0
+    recent_rows = session.execute(
+        select(NginxUpgradeRun, Task, User.username)
+        .join(Task, run_join)
+        .outerjoin(User, User.id == Task.trigger_user_id)
+        .options(joinedload(NginxUpgradeRun.node))
+        .where(Task.operation_type.in_(_UPGRADE_OPERATION_TYPES), *visible_tasks)
+        .order_by(Task.created_at.desc(), Task.id.desc())
+        .limit(read_setting(session, "dashboard.recent_tasks_count", 20))
+    ).all()
+    status_classes = {
+        "pending": "secondary",
+        "running": "info",
+        "success": "success",
+        "failed": "danger",
+        "cancelled": "secondary",
+    }
+    recent_tasks = []
+    for run, task, username in recent_rows:
+        recent_tasks.append(
+            {
+                "run": run,
+                "task": task,
+                "operator": username or "-",
+                "current_version": run.current_version
+                or (run.node.nginx_version if run.node else "")
+                or "未知",
+                "status_label": _STATUS_LABELS.get(task.status, task.status),
+                "status_class": status_classes.get(task.status, "secondary"),
+                "created_at_display": format_task_datetime(
+                    task.created_at, include_seconds=False
+                ),
+                "created_at_iso": format_task_datetime_iso(task.created_at),
+            }
+        )
+    return render_page(
+        request,
+        "upgrade/index.html",
+        {
+            "package_count": source_package_count,
+            "module_package_count": module_package_count,
+            "running_count": running_count,
+            "failed_7d_count": failed_7d_count,
+            "recent_tasks": recent_tasks,
+            "can_read": can_read,
+            "can_create": _has_upgrade_permission(
+                request, session, user, "create"
+            ),
+        },
+        user,
+        session,
+    )
 
 
 @router.get("/upgrade/center/", include_in_schema=False)
@@ -322,19 +439,6 @@ def upgrade_center(
         select(NginxModulePackage).options(joinedload(NginxModulePackage.creator))
         .order_by(NginxModulePackage.created_at.desc(), NginxModulePackage.id.desc())
     ).all()
-    latest_runs_query = (
-        select(NginxUpgradeRun)
-        .join(Task, Task.id == NginxUpgradeRun.task_id)
-        .options(joinedload(NginxUpgradeRun.task))
-        .order_by(NginxUpgradeRun.created_at.desc())
-    )
-    if not _has_upgrade_permission(request, session, user, "read"):
-        latest_runs_query = latest_runs_query.where(Task.trigger_user_id == user.id)
-    latest_runs = session.scalars(
-        latest_runs_query.limit(
-            read_setting(session, "dashboard.recent_tasks_count", 20)
-        )
-    ).all()
     return render_page(
         request,
         "upgrade/center.html",
@@ -342,7 +446,6 @@ def upgrade_center(
             "nodes": node_items,
             "packages": packages,
             "module_packages": module_packages,
-            "latest_runs": latest_runs,
             "default_work_dir": read_setting(session, "upgrade.default_work_dir", "/tmp/nginx-upgrade"),
             "default_make_jobs": read_setting(session, "upgrade.make_jobs_default", 4),
             "batch_max_count": read_setting(session, "node.batch_max_count", 3),
@@ -358,19 +461,22 @@ def upgrade_center(
 @router.get("/upgrade/packages/", include_in_schema=False)
 def source_package_list(
     request: Request,
+    search: str = Query("", max_length=300),
     page: int = Query(1, ge=1),
-    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=50),
+    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=100),
     user: User = Depends(require_permission("upgrade", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
     """分页显示 Nginx 源码包及上传信息。"""
-    query = select(NginxSourcePackage).options(joinedload(NginxSourcePackage.creator)).order_by(
-        NginxSourcePackage.created_at.desc(), NginxSourcePackage.id.desc()
-    )
+    query = _filter_package_query(
+        select(NginxSourcePackage).options(joinedload(NginxSourcePackage.creator)),
+        NginxSourcePackage,
+        search,
+    ).order_by(NginxSourcePackage.created_at.desc(), NginxSourcePackage.id.desc())
     result = _page_context(request, session, query, page, per_page)
     result["packages"] = result.pop("items")
     result["package_kind"] = "source"
-    result["per_page_options"] = _PAGE_SIZE_OPTIONS
+    result["search"] = search
     result["can_create"] = _has_upgrade_permission(request, session, user, "create")
     result["can_delete"] = _has_upgrade_permission(request, session, user, "delete")
     return render_page(request, "upgrade/packages.html", result, user, session)
@@ -457,18 +563,22 @@ async def upload_source_package(
 @router.get("/upgrade/modules/", include_in_schema=False)
 def module_package_list(
     request: Request,
+    search: str = Query("", max_length=300),
     page: int = Query(1, ge=1),
-    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=50),
+    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=100),
     user: User = Depends(require_permission("upgrade", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
     """分页显示第三方模块离线包。"""
-    query = select(NginxModulePackage).options(joinedload(NginxModulePackage.creator)).order_by(
-        NginxModulePackage.created_at.desc(), NginxModulePackage.id.desc()
-    )
+    query = _filter_package_query(
+        select(NginxModulePackage).options(joinedload(NginxModulePackage.creator)),
+        NginxModulePackage,
+        search,
+    ).order_by(NginxModulePackage.created_at.desc(), NginxModulePackage.id.desc())
     result = _page_context(request, session, query, page, per_page)
     result["packages"] = result.pop("items")
     result["package_kind"] = "module"
+    result["search"] = search
     result["can_create"] = _has_upgrade_permission(request, session, user, "create")
     result["can_delete"] = _has_upgrade_permission(request, session, user, "delete")
     return render_page(request, "upgrade/packages.html", result, user, session)
@@ -564,10 +674,12 @@ def delete_source_package(
             "source",
         )
     except ValueError as exc:
-        return RedirectResponse("/upgrade/packages/?error=" + quote(str(exc)), status_code=303)
+        return _package_list_redirect(
+            request, "/upgrade/packages/", "error", str(exc)
+        )
     if not deleted:
         raise HTTPException(status_code=404, detail="源码包不存在")
-    return RedirectResponse("/upgrade/packages/?deleted=1", status_code=303)
+    return _package_list_redirect(request, "/upgrade/packages/", "deleted")
 
 
 @router.post("/upgrade/modules/{package_id}/delete/", include_in_schema=False)
@@ -587,10 +699,12 @@ def delete_module_package(
             "module",
         )
     except ValueError as exc:
-        return RedirectResponse("/upgrade/modules/?error=" + quote(str(exc)), status_code=303)
+        return _package_list_redirect(
+            request, "/upgrade/modules/", "error", str(exc)
+        )
     if not deleted:
         raise HTTPException(status_code=404, detail="模块包不存在")
-    return RedirectResponse("/upgrade/modules/?deleted=1", status_code=303)
+    return _package_list_redirect(request, "/upgrade/modules/", "deleted")
 
 
 @router.get("/upgrade/packages/{package_id}/download/", include_in_schema=False)
@@ -814,7 +928,7 @@ def upgrade_history(
     search: str = Query("", max_length=300),
     status: str = Query("", max_length=20),
     page: int = Query(1, ge=1),
-    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=50),
+    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=100),
     user: User = Depends(require_permission("upgrade", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
@@ -882,6 +996,10 @@ def upgrade_task_detail(
         "param_removed": [item for item in current if item not in set(target)],
         "param_added": [item for item in target if item not in set(current)],
         "status_label": _STATUS_LABELS.get(task.status, task.status),
+        "status_class": _status_context(task)["status_class"],
+        "can_execute": _has_upgrade_permission(request, session, user, "execute"),
+        "has_backup": bool(run.backup_binary_path),
+        "is_rollback": run.upgrade_mode == "rollback",
         "mode_label": _MODE_LABELS.get(run.upgrade_mode, "二进制回滚"),
         "can_rollback": (
             _has_upgrade_permission(request, session, user, "execute")

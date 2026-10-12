@@ -1,17 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Nginx 编译升级 - ngxops{% endblock %}
-{% block page_title %}<i class="bi bi-arrow-up-circle" aria-hidden="true"></i> Nginx 编译升级{% endblock %}
+{% block title %}升级中心 - Nginx 编译升级{% endblock %}
+{% block page_title %}<i class="bi bi-rocket-takeoff" aria-hidden="true"></i> Nginx 升级中心{% endblock %}
 
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=3">{% endblock %}
 
 {% block content %}
 <div class="upgrade-toolbar mb-3">
-    <div class="btn-group btn-group-sm" role="group" aria-label="升级页面">
-        <a class="btn btn-primary" href="/upgrade/center/">升级中心</a>
-        <a class="btn btn-outline-secondary" href="/upgrade/packages/">源码包</a>
-        <a class="btn btn-outline-secondary" href="/upgrade/modules/">模块包</a>
-        <a class="btn btn-outline-secondary" href="/upgrade/history/">升级历史</a>
-    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/upgrade/">
+        <i class="bi bi-house me-1" aria-hidden="true"></i>首页
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="/upgrade/packages/">
+        <i class="bi bi-archive me-1" aria-hidden="true"></i>源码包
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="/upgrade/modules/">
+        <i class="bi bi-puzzle me-1" aria-hidden="true"></i>模块包
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="/upgrade/history/">
+        <i class="bi bi-clock-history me-1" aria-hidden="true"></i>历史
+    </a>
 </div>
 
 {% if can_create %}<div class="upgrade-stepper" id="upgradeStepper" aria-label="升级步骤" data-batch-max="{{ batch_max_count }}">
@@ -30,30 +36,66 @@
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-12">
-                        <div class="d-flex justify-content-between align-items-center gap-2"><label class="form-label mb-1" for="nodeSearch">目标节点</label><span class="small text-muted">最多 {{ batch_max_count }} 个</span></div>
-                        <input class="form-control form-control-sm mb-2" id="nodeSearch" placeholder="搜索主机名、IP、节点组" autocomplete="off">
-                        <div class="table-responsive upgrade-node-table-wrap">
-                            <table class="table table-sm table-hover align-middle mb-0" id="upgradeNodeTable">
-                                <thead class="table-light"><tr><th></th><th>主机名 / IP</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
-                                <tbody>
-                                {% for node in nodes %}
-                                    <tr class="upgrade-node-row" data-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ (node.groups|map(attribute='name')|join(' ')))|lower }}">
-                                        <td><input class="form-check-input upgrade-node-check" type="checkbox" value="{{ node.id }}" aria-label="选择 {{ node.hostname }}"></td>
-                                        <td><strong>{{ node.hostname }}</strong><small class="text-muted d-block">{{ node.ip }}:{{ node.port }}</small></td>
-                                        <td>{{ {"dev":"开发","test":"测试","prod":"生产"}.get(node.environment, node.environment) }}</td>
-                                        <td><span class="badge text-bg-success">{{ node.nginx_version or "已检测" }}</span></td>
-                                        <td><small>{{ node.groups|map(attribute='name')|join('、') or "-" }}</small></td>
-                                    </tr>
-                                {% else %}<tr><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>没有满足升级条件的节点</p></div></td></tr>{% endfor %}
-                                </tbody>
-                            </table>
+                        <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                            <label class="form-label mb-0">目标节点</label>
+                            <span class="small text-muted">最多 {{ batch_max_count }} 个</span>
                         </div>
-                        <div class="small text-muted mt-1">仅显示 SSH 在线、凭证已启用且检测到 Nginx 的未锁定节点；没有 Nginx 的节点请使用全新安装。</div>
-                        <div class="small mt-2" id="selectedNodeSummary">尚未选择节点</div>
+                        <div class="upgrade-selected-targets">
+                            <div class="upgrade-selected-summary" id="selectedNodeSummary" aria-live="polite">尚未选择节点</div>
+                            <button class="btn btn-outline-primary btn-sm flex-shrink-0" type="button" data-bs-toggle="modal" data-bs-target="#upgradeNodePickerModal">
+                                <i class="bi bi-search me-1" aria-hidden="true"></i>选择节点
+                            </button>
+                        </div>
+                        <div class="small text-muted mt-1">仅显示 SSH 在线、凭证已启用且检测到 Nginx 的未锁定节点。</div>
+                        <div class="modal fade" id="upgradeNodePickerModal" tabindex="-1" aria-labelledby="upgradeNodePickerTitle" aria-hidden="true">
+                            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h2 class="modal-title h6" id="upgradeNodePickerTitle"><i class="bi bi-server me-1" aria-hidden="true"></i>选择目标节点</h2>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <label class="visually-hidden" for="nodeSearch">搜索主机名、IP、节点组</label>
+                                        <input class="form-control form-control-sm mb-2" id="nodeSearch" data-query-tags aria-label="搜索主机名、IP、节点组" placeholder="搜索主机名、IP、节点组，回车添加条件">
+                                        <div class="upgrade-selector-controls">
+                                            <small class="text-muted" id="nodeResultCount"></small>
+                                            <div class="d-flex align-items-center gap-1">
+                                                <label class="small text-muted mb-0" for="nodePageSize">每页</label>
+                                                <select class="form-select form-select-sm" id="nodePageSize" aria-label="每页节点数"><option>10</option><option>25</option><option>50</option><option>100</option></select>
+                                                <button class="btn btn-outline-secondary btn-sm" type="button" id="nodePagePrevious" aria-label="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                                                <small id="nodePageLabel" class="text-nowrap"></small>
+                                                <button class="btn btn-outline-secondary btn-sm" type="button" id="nodePageNext" aria-label="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+                                            </div>
+                                        </div>
+                                        <div class="table-responsive upgrade-node-table-wrap">
+                                            <table class="table table-sm table-hover align-middle mb-0" id="upgradeNodeTable">
+                                                <thead class="table-light"><tr><th></th><th>主机名 / IP</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
+                                                <tbody>
+                                                {% for node in nodes %}
+                                                    <tr class="upgrade-node-row" data-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ (node.groups|map(attribute='name')|join(' ')))|lower }}">
+                                                        <td><input class="form-check-input upgrade-node-check" type="checkbox" value="{{ node.id }}" aria-label="选择 {{ node.hostname }}"></td>
+                                                        <td><strong>{{ node.hostname }}</strong><small class="text-muted d-block">{{ node.ip }}:{{ node.port }}</small></td>
+                                                        <td>{{ {"dev":"开发","test":"测试","prod":"生产"}.get(node.environment, node.environment) }}</td>
+                                                        <td><span class="badge text-bg-success">{{ node.nginx_version or "已检测" }}</span></td>
+                                                        <td><small>{{ node.groups|map(attribute='name')|join('、') or "-" }}</small></td>
+                                                    </tr>
+                                                {% else %}<tr data-selector-empty><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>没有满足升级条件的节点</p></div></td></tr>{% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <span class="small text-muted me-auto">仅可选择在线、凭证已启用且 Nginx 可用的节点</span>
+                                        <button class="btn btn-primary btn-sm" type="button" data-bs-dismiss="modal">完成选择</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="col-12">
                         <div class="d-flex justify-content-between align-items-center mb-1"><label class="form-label mb-0">源码包</label>{% if can_create %}<a class="small" href="/upgrade/packages/upload/" target="_blank" rel="noopener">上传新包</a>{% endif %}</div>
-                        <input class="form-control form-control-sm mb-2" id="packageSearch" placeholder="搜索名称或版本" autocomplete="off">
+                        <input class="form-control form-control-sm mb-2" id="packageSearch" data-query-tags aria-label="搜索源码包名称或版本" placeholder="搜索名称或版本，回车添加条件">
+                        <div class="upgrade-selector-controls"><small class="text-muted" id="packageResultCount"></small><div class="d-flex align-items-center gap-1"><label class="small text-muted mb-0" for="packagePageSize">每页</label><select class="form-select form-select-sm" id="packagePageSize" aria-label="每页源码包数"><option>10</option><option>25</option><option>50</option><option>100</option></select><button class="btn btn-outline-secondary btn-sm" type="button" id="packagePagePrevious" aria-label="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button><small id="packagePageLabel" class="text-nowrap"></small><button class="btn btn-outline-secondary btn-sm" type="button" id="packagePageNext" aria-label="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button></div></div>
                         <div class="table-responsive upgrade-package-table-wrap">
                             <table class="table table-sm table-hover align-middle mb-0" id="upgradePackageTable">
                                 <thead class="table-light"><tr><th></th><th>包名称</th><th>版本</th><th>大小</th><th>上传</th></tr></thead>
@@ -66,10 +108,11 @@
                                         <td>{{ (package.file_size / 1048576)|round(2) }} MB</td>
                                         <td><small>{{ package.created_at.strftime("%m-%d %H:%M") if package.created_at else "-" }} · {{ package.creator.username if package.creator else "-" }}</small></td>
                                     </tr>
-                                {% else %}<tr><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>暂无源码包</p></div></td></tr>{% endfor %}
+                                {% else %}<tr data-selector-empty><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>暂无源码包</p></div></td></tr>{% endfor %}
                                 </tbody>
                             </table>
                         </div>
+                        <div class="small text-muted mt-1" id="selectedPackageSummary">尚未选择源码包</div>
                     </div>
                 </div>
                 <div class="upgrade-panel-actions"><span class="small text-muted" id="stepOneCount">已选 0 个节点</span><button class="btn btn-primary btn-sm" type="button" id="stepOneNext" disabled>下一步 <i class="bi bi-chevron-right" aria-hidden="true"></i></button></div>
@@ -99,6 +142,10 @@
             <div class="card-body">
                 <div class="small text-muted mb-2" id="fetchStatus">进入本步后将读取所选节点的 nginx -V 编译基线。</div>
                 <div id="nodeFetchResults" class="upgrade-fetch-results"></div>
+                <div class="mt-3">
+                    <label class="form-label mb-1" id="currentConfigLabel" for="currentConfigOutput">当前 configure 参数</label>
+                    <pre class="nginx-v-output" id="currentConfigOutput">读取完成后显示首个节点的 configure 参数。</pre>
+                </div>
                 <div class="alert alert-warning py-2 d-none" id="paramsMismatchNotice">各节点当前编译参数不同。模块增减会按各节点自己的参数基线计算。</div>
                 <div class="row g-3 mt-1">
                     <div class="col-12 col-lg-6">
@@ -120,7 +167,7 @@
             <div class="card-body">
                 <div id="upgradeSummary" class="upgrade-summary mb-3"></div>
                 <label class="form-label" for="finalConfigPreview">目标节点参数预览</label>
-                <pre class="upgrade-config-output" id="finalConfigPreview">./configure 等待生成…</pre>
+                <pre class="nginx-v-output nginx-v-output-alt upgrade-config-output" id="finalConfigPreview">./configure 等待生成…</pre>
                 <div class="mt-3"><div class="form-label">各节点清单</div><div id="confirmNodeList" class="upgrade-confirm-list"></div></div>
                 <div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="confirmUpgrade"><label class="form-check-label" for="confirmUpgrade">我确认以上节点、版本和编译参数无误，可以开始升级</label></div>
                 <div class="upgrade-panel-actions"><button class="btn btn-outline-secondary btn-sm" type="button" data-step-target="3"><i class="bi bi-chevron-left" aria-hidden="true"></i>上一步</button>{% if can_execute %}<button class="btn btn-success" type="button" id="startUpgrade" disabled><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>开始升级</button>{% else %}<span class="small text-muted">当前账号没有执行权限</span>{% endif %}</div>
@@ -137,14 +184,6 @@
             <div class="card-body">
                 <div class="text-center text-muted py-4" id="progressPlaceholder"><i class="bi bi-hourglass fs-4" aria-hidden="true"></i><p class="mb-0 mt-2 small">任务创建后显示真实进度</p></div>
                 <div class="d-none" id="progressLive"><div class="small mb-2" id="batchNumberLabel"></div><div class="progress mb-3" style="height:8px"><div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar" style="width:0%"></div></div><div id="batchTaskRows" class="upgrade-task-rows"></div></div>
-            </div>
-        </section>
-        <section class="card mt-3">
-            <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0">最近任务</h2><a class="small" href="/upgrade/history/">全部历史</a></div>
-            <div class="list-group list-group-flush">
-                {% for run in latest_runs %}
-                    <a class="list-group-item list-group-item-action py-2" href="/upgrade/tasks/{{ run.task_id }}/"><div class="d-flex justify-content-between gap-2"><strong class="text-truncate">{{ run.node_hostname }}</strong><span class="badge text-bg-{{ 'success' if run.task.status == 'success' else ('danger' if run.task.status == 'failed' else ('info' if run.task.status == 'running' else 'secondary')) }}">{{ {"pending":"等待","running":"执行中","success":"成功","failed":"失败","cancelled":"取消"}.get(run.task.status, run.task.status) }}</span></div><small class="text-muted">{{ run.current_version or "未知" }} → {{ run.target_version }} · {{ run.batch_number }}</small></a>
-                {% else %}<div class="text-muted small p-3">暂无升级记录</div>{% endfor %}
             </div>
         </section>
     </aside>
@@ -165,5 +204,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=2"></script>
 {% endblock %}

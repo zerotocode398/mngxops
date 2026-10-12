@@ -24,8 +24,8 @@
             : "请求失败，请检查输入后重试";
     }
 
-    function notify(message, type) {
-        if (window.showToast) window.showToast(message, type || "info");
+    function notify(message, type, action) {
+        if (window.showToast) window.showToast(message, type || "info", 3000, action);
     }
 
     function activateStep(step) {
@@ -62,8 +62,42 @@
         var input = document.querySelector(".upgrade-package-check:checked");
         if (!input) return null;
         var row = input.closest(".upgrade-package-row");
-        if (!row || row.classList.contains("d-none")) return null;
+        if (!row) return null;
         return { id: Number(input.value), version: input.dataset.version, name: input.dataset.name };
+    }
+
+    /** 将已选节点显示为可移除的摘要标签。 */
+    function renderSelectedNodeSummary() {
+        var summary = document.getElementById("selectedNodeSummary");
+        var nodes = selectedNodes();
+        summary.replaceChildren();
+        if (!nodes.length) {
+            summary.textContent = "尚未选择节点";
+            return;
+        }
+        nodes.forEach(function (node) {
+            var chip = document.createElement("span");
+            chip.className = "upgrade-selected-chip";
+            var label = document.createElement("span");
+            label.textContent = node.name + " (" + node.ip + ")";
+            var remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "upgrade-chip-remove";
+            remove.title = "移除节点";
+            remove.setAttribute("aria-label", "移除节点 " + node.name);
+            remove.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
+            remove.addEventListener("click", function () {
+                var checkbox = document.querySelector(
+                    ".upgrade-node-check[value='" + node.id + "']"
+                );
+                if (checkbox) {
+                    checkbox.checked = false;
+                    updateSelection();
+                }
+            });
+            chip.append(label, remove);
+            summary.appendChild(chip);
+        });
     }
 
     function updateSelection() {
@@ -73,21 +107,57 @@
             input.disabled = !input.checked && selected.length >= batchMax;
         });
         document.getElementById("stepOneCount").textContent = "已选 " + selected.length + " 个节点";
-        document.getElementById("selectedNodeSummary").textContent = selected.length
-            ? selectedNodes().map(function (node) { return node.name + " (" + node.ip + ")"; }).join("、")
-            : "尚未选择节点";
-        document.getElementById("stepOneNext").disabled = selected.length === 0 || !selectedPackage();
+        renderSelectedNodeSummary();
+        var selectedPackageValue = selectedPackage();
+        document.getElementById("selectedPackageSummary").textContent = selectedPackageValue
+            ? "已选源码包：" + selectedPackageValue.name + " · " + selectedPackageValue.version
+            : "尚未选择源码包";
+        document.getElementById("stepOneNext").disabled = selected.length === 0 || !selectedPackageValue;
     }
 
-    function filterTable(inputId, rowSelector) {
-        var search = document.getElementById(inputId);
-        search.addEventListener("input", function () {
-            var query = search.value.trim().toLowerCase();
-            document.querySelectorAll(rowSelector).forEach(function (row) {
-                row.classList.toggle("d-none", query && !row.dataset.search.includes(query));
+    function bindSelectorTable(inputId, rowSelector, key) {
+        var input = document.getElementById(inputId);
+        var rows = Array.from(document.querySelectorAll(rowSelector));
+        var pageSize = document.getElementById(key + "PageSize");
+        var previous = document.getElementById(key + "PagePrevious");
+        var next = document.getElementById(key + "PageNext");
+        var count = document.getElementById(key + "ResultCount");
+        var pageLabel = document.getElementById(key + "PageLabel");
+        var page = 1;
+
+        function render() {
+            var terms = window.getQueryTagValue("#" + inputId)
+                .split(/[,，]/).map(function (term) { return term.trim().toLocaleLowerCase(); })
+                .filter(Boolean);
+            var matching = rows.filter(function (row) {
+                var text = (row.dataset.search || "").toLocaleLowerCase();
+                return terms.every(function (term) { return text.includes(term); });
             });
+            var size = Number(pageSize.value) || 10;
+            var pages = Math.max(1, Math.ceil(matching.length / size));
+            page = Math.min(page, pages);
+            var start = (page - 1) * size;
+            rows.forEach(function (row) { row.classList.add("d-none"); });
+            matching.slice(start, start + size).forEach(function (row) { row.classList.remove("d-none"); });
+            count.textContent = "匹配 " + matching.length + " 项";
+            pageLabel.textContent = page + " / " + pages;
+            previous.disabled = page <= 1;
+            next.disabled = page >= pages;
             updateSelection();
+        }
+
+        input.addEventListener("keydown", function (event) {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            window.commitQueryTagValue("#" + inputId);
+            page = 1;
+            render();
         });
+        $(input).on("querytags:change", function () { page = 1; render(); });
+        pageSize.addEventListener("change", function () { page = 1; render(); });
+        previous.addEventListener("click", function () { page = Math.max(1, page - 1); render(); });
+        next.addEventListener("click", function () { page += 1; render(); });
+        render();
     }
 
     function currentMode() {
@@ -174,7 +244,15 @@
             ? "已读取全部节点的编译参数。"
             : "读取未完成；请检查节点连接后重新读取。";
         document.getElementById("stepThreeNext").disabled = !allReady;
-        if (!allReady) return;
+        var configOutput = document.getElementById("currentConfigOutput");
+        if (!allReady) {
+            configOutput.textContent = "读取完成后显示首个节点的 configure 参数。";
+            document.getElementById("currentConfigLabel").textContent = "当前 configure 参数";
+            return;
+        }
+        configOutput.textContent = baselines[0].data.configure_opts || "当前节点未返回 configure 参数。";
+        document.getElementById("currentConfigLabel").textContent =
+            "当前 configure 参数（参考节点：" + selected[0].name + "）";
         var signatures = baselines.map(function (item) {
             return item.data.params.slice().sort().join("\n");
         });
@@ -385,8 +463,7 @@
         document.getElementById("startUpgrade").disabled = true;
         requestJson("POST", "/api/upgrade/tasks", payload)
             .done(function (result) {
-                notify(result.message, "success");
-                beginBatchPolling(result.task_ids, result.batch_number);
+                beginBatchPolling(result.task_ids, result.batch_number, result.message);
             })
             .fail(function (error) {
                 document.getElementById("startUpgrade").disabled = false;
@@ -394,7 +471,7 @@
             });
     }
 
-    function beginBatchPolling(taskIds, batchNumber) {
+    function beginBatchPolling(taskIds, batchNumber, message) {
         var region = document.getElementById("progressLive");
         region.classList.remove("d-none");
         document.getElementById("progressPlaceholder").classList.add("d-none");
@@ -402,6 +479,11 @@
         document.getElementById("batchNumberLabel").textContent = "批次 " + batchNumber;
         var states = {};
         taskIds.forEach(function (id) { states[id] = { after: 0, status: "pending", progress: 0, detail: "等待执行" }; });
+        notify(message || ("升级任务已创建，批次 " + batchNumber), "success", {
+            href: "/tasks/" + taskIds[0] + "/",
+            label: "查看任务详情",
+            target: "_blank"
+        });
         pollBatch(taskIds, states, batchNumber);
     }
 
@@ -419,7 +501,20 @@
         $.when.apply($, jobs).always(function () {
             renderBatchTasks(taskIds, states, batchNumber);
             var done = taskIds.every(function (id) { return ["success", "failed", "cancelled"].indexOf(states[id].status) >= 0; });
-            if (!done) window.setTimeout(function () { pollBatch(taskIds, states, batchNumber); }, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
+            if (!done) {
+                window.setTimeout(function () { pollBatch(taskIds, states, batchNumber); }, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
+            } else if (!states._completionNotified) {
+                states._completionNotified = true;
+                var counts = {success: 0, failed: 0, cancelled: 0};
+                taskIds.forEach(function (id) { counts[states[id].status] += 1; });
+                var resultType = counts.failed ? "warning" : (counts.cancelled ? "info" : "success");
+                var targetId = taskIds.find(function (id) { return states[id].status === "failed"; }) || taskIds[0];
+                notify(
+                    "批次 " + batchNumber + " 已结束：成功 " + counts.success + "，失败 " + counts.failed + "，取消 " + counts.cancelled,
+                    resultType,
+                    {href: "/tasks/" + targetId + "/", label: "查看任务详情", target: "_blank"}
+                );
+            }
         });
     }
 
@@ -483,8 +578,8 @@
 
     if (center) {
         window.upgradeBaselines = {};
-        filterTable("nodeSearch", ".upgrade-node-row");
-        filterTable("packageSearch", ".upgrade-package-row");
+        bindSelectorTable("nodeSearch", ".upgrade-node-row", "node");
+        bindSelectorTable("packageSearch", ".upgrade-package-row", "package");
         document.querySelectorAll(".upgrade-node-check, .upgrade-package-check").forEach(function (input) {
             input.addEventListener("change", updateSelection);
         });
@@ -536,6 +631,63 @@
         log.scrollTop = log.scrollHeight;
     }
 
+    function updateDetailActions(task) {
+        var canExecute = detail.dataset.canExecute === "1";
+        var isRollback = detail.dataset.isRollback === "1";
+        var canCancel = canExecute && !isRollback && (
+            task.status === "pending" ||
+            (task.status === "running" && /获取|检查 gcc|创建远程工作目录|上传 Nginx 源码包|解压 Nginx 源码包/.test(task.detail))
+        );
+        var cancelButton = document.getElementById("cancelUpgrade");
+        if (canCancel && !cancelButton) {
+            cancelButton = document.createElement("button");
+            cancelButton.className = "btn btn-outline-danger btn-sm";
+            cancelButton.type = "button";
+            cancelButton.id = "cancelUpgrade";
+            cancelButton.innerHTML = '<i class="bi bi-stop-circle me-1" aria-hidden="true"></i>取消任务';
+            document.getElementById("taskStatus").parentElement.appendChild(cancelButton);
+        } else if (!canCancel && cancelButton) {
+            cancelButton.remove();
+        }
+
+        var canRollback = canExecute && !isRollback && detail.dataset.hasBackup === "1" &&
+            detail.dataset.rolledBack !== "1" && ["success", "failed"].indexOf(task.status) >= 0;
+        var rollbackButton = document.getElementById("rollbackUpgrade");
+        if (canRollback && !rollbackButton) {
+            rollbackButton = document.createElement("button");
+            rollbackButton.className = "btn btn-warning btn-sm";
+            rollbackButton.type = "button";
+            rollbackButton.id = "rollbackUpgrade";
+            rollbackButton.innerHTML = '<i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>回滚到旧版本';
+            document.getElementById("taskStatus").parentElement.appendChild(rollbackButton);
+        } else if (!canRollback && rollbackButton) {
+            rollbackButton.remove();
+        }
+    }
+
+    function cancelCurrentUpgrade() {
+        window.showConfirm("取消升级", "确认取消当前任务？", function () {
+            requestJson("POST", "/api/upgrade/tasks/" + detail.dataset.taskId + "/cancel", {})
+                .done(function (result) { notify(result.message, "success"); window.setTimeout(pollDetail, 400); })
+                .fail(function (error) { notify(errorMessage(error), "danger"); });
+        });
+    }
+
+    function rollbackCurrentUpgrade() {
+        window.showConfirm("回滚 Nginx", "确认恢复升级前的二进制并重新加载 Nginx？", function () {
+            requestJson("POST", "/api/upgrade/tasks/" + detail.dataset.taskId + "/rollback", {})
+                .done(function (result) {
+                    notify(result.message, "success", {
+                        href: "/tasks/" + result.task_id + "/",
+                        label: "查看回滚任务",
+                        target: "_blank"
+                    });
+                    window.location.assign("/upgrade/tasks/" + result.task_id + "/");
+                })
+                .fail(function (error) { notify(errorMessage(error), "danger"); });
+        });
+    }
+
     function pollDetail() {
         var taskId = detail.dataset.taskId;
         var log = document.getElementById("upgradeLog");
@@ -547,42 +699,32 @@
                 document.getElementById("taskStatus").textContent = ({ pending: "等待执行", running: "执行中", success: "升级成功", failed: "升级失败", cancelled: "已取消" })[task.status] || task.status;
                 var statusClass = task.status === "success" ? "success" : (task.status === "failed" ? "danger" : (task.status === "running" ? "info" : "secondary"));
                 document.getElementById("taskStatus").className = "badge text-bg-" + statusClass;
-                var cancelButton = document.getElementById("cancelUpgrade");
-                var canCancelAtStep = task.status === "pending" || (task.status === "running" && /获取|检查 gcc|创建远程工作目录|上传 Nginx 源码包|解压 Nginx 源码包/.test(task.detail));
-                if (cancelButton && !canCancelAtStep) {
-                    cancelButton.remove();
+                var progressBar = document.getElementById("taskProgress");
+                progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
+                if (["success", "failed", "cancelled"].indexOf(task.status) >= 0) {
+                    progressBar.classList.add("bg-" + statusClass);
                 }
+                detail.dataset.taskStatus = task.status;
+                updateDetailActions(task);
                 if (["pending", "running"].indexOf(task.status) >= 0) {
                     window.setTimeout(pollDetail, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
                 } else {
                     document.getElementById("logLiveLabel").textContent = "已完成";
                 }
             })
-            .fail(function () { window.setTimeout(pollDetail, window.NGXOPS_TASK_POLL_INTERVAL || 2000); });
+            .fail(function () {
+                document.getElementById("logLiveLabel").textContent = "连接中断，正在重试";
+                window.setTimeout(pollDetail, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
+            });
     }
 
     if (detail && ["pending", "running"].indexOf(detail.dataset.taskStatus) >= 0) {
         pollDetail();
     }
     if (detail) {
-        var cancelButton = document.getElementById("cancelUpgrade");
-        if (cancelButton) cancelButton.addEventListener("click", function () {
-            window.showConfirm("取消升级", "确认取消当前任务？", function () {
-                requestJson("POST", "/api/upgrade/tasks/" + detail.dataset.taskId + "/cancel", {})
-                    .done(function (result) { notify(result.message, "success"); window.setTimeout(pollDetail, 400); })
-                    .fail(function (error) { notify(errorMessage(error), "danger"); });
-            });
-        });
-        var rollbackButton = document.getElementById("rollbackUpgrade");
-        if (rollbackButton) rollbackButton.addEventListener("click", function () {
-            window.showConfirm("回滚 Nginx", "确认恢复升级前的二进制并重新加载 Nginx？", function () {
-                requestJson("POST", "/api/upgrade/tasks/" + detail.dataset.taskId + "/rollback", {})
-                    .done(function (result) {
-                        notify(result.message, "success");
-                        window.location.assign("/upgrade/tasks/" + result.task_id + "/");
-                    })
-                    .fail(function (error) { notify(errorMessage(error), "danger"); });
-            });
+        detail.addEventListener("click", function (event) {
+            if (event.target.closest("#cancelUpgrade")) cancelCurrentUpgrade();
+            if (event.target.closest("#rollbackUpgrade")) rollbackCurrentUpgrade();
         });
     }
 })(window.jQuery, window, document);

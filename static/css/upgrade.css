@@ -1,10 +1,27 @@
-.upgrade-toolbar { display: flex; justify-content: flex-end; }
-.upgrade-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--gray-200); }
-.upgrade-step { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 10px; border: 0; border-bottom: 2px solid transparent; color: var(--gray-600); background: transparent; font-size: 0.875rem; }
+.upgrade-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.upgrade-overview { display: grid; gap: 12px; min-width: 0; }
+.upgrade-overview-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.upgrade-overview .upgrade-overview-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.upgrade-overview-stats .dashboard-stat-card { min-height: 82px; }
+.upgrade-overview-recent { min-width: 0; overflow: hidden; }
+.upgrade-overview-table table { min-width: 920px; }
+.upgrade-overview-progress { min-width: 76px; height: 6px; margin-bottom: 3px; }
+.upgrade-selected-targets { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 7px 9px; border: 1px solid var(--gray-300); border-radius: 4px; background: #fff; }
+.upgrade-selected-summary { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.upgrade-selected-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 6px 3px 9px; border: 1px solid var(--gray-200); border-radius: 4px; background: var(--gray-100); overflow-wrap: anywhere; }
+.upgrade-chip-remove { display: grid; flex: 0 0 22px; width: 22px; height: 22px; place-items: center; padding: 0; border: 0; border-radius: 3px; color: var(--gray-600); background: transparent; }
+.upgrade-chip-remove:hover, .upgrade-chip-remove:focus-visible { color: var(--danger); background: #fff; }
+.upgrade-selector-controls { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.upgrade-selector-controls select { width: 82px; }
+.upgrade-selector-controls button { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; }
+.upgrade-stepper { display: flex; gap: 0; margin-bottom: 16px; overflow: hidden; border: 1px solid var(--gray-200); border-radius: var(--br-md); }
+.upgrade-step { display: flex; flex: 1 1 0; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 44px; padding: 8px 10px; border: 0; border-right: 1px solid var(--gray-200); color: var(--gray-600); background: var(--gray-100); font-size: 0.875rem; }
+.upgrade-step:last-child { border-right: 0; }
 .upgrade-step span { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--gray-300); border-radius: 50%; font-size: 0.75rem; }
-.upgrade-step.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
-.upgrade-step.active span, .upgrade-step.done span { color: #fff; background: var(--primary); border-color: var(--primary); }
-.upgrade-step.done { color: var(--gray-800); }
+.upgrade-step.active { color: #fff; background: var(--primary); font-weight: 600; }
+.upgrade-step.active span { color: var(--primary); background: #fff; border-color: #fff; }
+.upgrade-step.done { color: var(--primary); background: rgba(102, 126, 234, 0.1); }
+.upgrade-step.done span { color: #fff; background: var(--primary); border-color: var(--primary); }
 .upgrade-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(290px, 0.8fr); gap: 16px; align-items: start; }
 .upgrade-main-column, .upgrade-progress-column { min-width: 0; }
 .upgrade-progress-column { position: sticky; top: 16px; }
@@ -34,7 +51,10 @@
 .upgrade-summary-item { min-width: 0; overflow-wrap: anywhere; }
 .upgrade-confirm-list, .upgrade-task-rows { display: grid; gap: 7px; }
 .upgrade-confirm-item, .upgrade-task-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--gray-200); border-radius: 4px; }
-.upgrade-config-output, .upgrade-log-output { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 4px; color: #e7edf5; background: #202832; font: 0.78rem/1.55 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+.nginx-v-output { max-height: 300px; overflow: auto; padding: 14px 18px; border-radius: 6px; color: #00ff88; background: #1a1a2e; font: 0.82rem/1.6 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+.nginx-v-output-alt { color: #e9ecef; background: #16213e; }
+.upgrade-config-output, .upgrade-log-output { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 4px; font: 0.78rem/1.55 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+.upgrade-config-output { max-height: 480px; }
 .upgrade-log-output { max-height: 520px; }
 .upgrade-log-output .log-error { color: #ff9b9b; }
 .upgrade-log-output .log-warning { color: #ffe18a; }
@@ -46,8 +66,13 @@
 }
 
 @media (max-width: 575.98px) {
+    .upgrade-overview .upgrade-overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .upgrade-step { flex-direction: column; gap: 4px; padding: 7px 3px; font-size: 0.72rem; }
     .upgrade-summary { grid-template-columns: minmax(0, 1fr); }
     .upgrade-toolbar { justify-content: stretch; }
-    .upgrade-toolbar .btn-group { display: grid; grid-template-columns: repeat(2, 1fr); width: 100%; }
+    .upgrade-toolbar .btn { flex: 1 1 calc(50% - 8px); }
+    .upgrade-overview-toolbar .btn { flex: 1 1 calc(50% - 8px); }
+    .upgrade-selector-controls { align-items: flex-start; flex-direction: column; }
+    .upgrade-selected-targets { align-items: stretch; flex-direction: column; }
+    .upgrade-selected-targets .btn { align-self: flex-start; }
 }
