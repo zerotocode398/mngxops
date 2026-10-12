@@ -54,7 +54,7 @@
             return checkbox && selected.has(Number(checkbox.value));
         }).map(function (row) {
             var checkbox = row.querySelector(".upgrade-node-check");
-            return { id: Number(checkbox.value), name: row.querySelector("strong").textContent, ip: row.querySelector("small").textContent.split(":")[0] };
+            return { id: Number(checkbox.value), name: row.querySelector("strong").textContent, ip: row.dataset.ip };
         });
     }
 
@@ -119,30 +119,38 @@
         var input = document.getElementById(inputId);
         var rows = Array.from(document.querySelectorAll(rowSelector));
         var pageSize = document.getElementById(key + "PageSize");
+        var first = document.getElementById(key + "PageFirst");
         var previous = document.getElementById(key + "PagePrevious");
         var next = document.getElementById(key + "PageNext");
+        var last = document.getElementById(key + "PageLast");
         var count = document.getElementById(key + "ResultCount");
         var pageLabel = document.getElementById(key + "PageLabel");
         var page = 1;
 
-        function render() {
+        function matchingRows() {
             var terms = window.getQueryTagValue("#" + inputId)
                 .split(/[,，]/).map(function (term) { return term.trim().toLocaleLowerCase(); })
                 .filter(Boolean);
-            var matching = rows.filter(function (row) {
+            return rows.filter(function (row) {
                 var text = (row.dataset.search || "").toLocaleLowerCase();
                 return terms.every(function (term) { return text.includes(term); });
             });
+        }
+
+        function render() {
+            var matching = matchingRows();
             var size = Number(pageSize.value) || 10;
             var pages = Math.max(1, Math.ceil(matching.length / size));
             page = Math.min(page, pages);
             var start = (page - 1) * size;
             rows.forEach(function (row) { row.classList.add("d-none"); });
             matching.slice(start, start + size).forEach(function (row) { row.classList.remove("d-none"); });
-            count.textContent = "匹配 " + matching.length + " 项";
+            count.textContent = "共 " + matching.length + " 条";
             pageLabel.textContent = page + " / " + pages;
+            first.disabled = page <= 1;
             previous.disabled = page <= 1;
             next.disabled = page >= pages;
+            last.disabled = page >= pages;
             updateSelection();
         }
 
@@ -155,8 +163,24 @@
         });
         $(input).on("querytags:change", function () { page = 1; render(); });
         pageSize.addEventListener("change", function () { page = 1; render(); });
+        first.addEventListener("click", function () { page = 1; render(); });
         previous.addEventListener("click", function () { page = Math.max(1, page - 1); render(); });
         next.addEventListener("click", function () { page += 1; render(); });
+        last.addEventListener("click", function () {
+            page = Math.max(1, Math.ceil(matchingRows().length / (Number(pageSize.value) || 10)));
+            render();
+        });
+        if (key === "node") {
+            rows.forEach(function (row) {
+                row.addEventListener("click", function (event) {
+                    if (event.target.closest("input, button, a, label, select")) return;
+                    var checkbox = row.querySelector(".upgrade-node-check");
+                    if (!checkbox || checkbox.disabled) return;
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+                });
+            });
+        }
         render();
     }
 

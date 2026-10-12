@@ -19,6 +19,8 @@ from ngxops.app import create_app
 from ngxops.config import get_settings
 from ngxops.database.migration_runner import upgrade_database
 from ngxops.database.session import session_scope
+from ngxops.settings.models import SystemSetting
+from ngxops.settings.service import initialize_defaults
 from ngxops.tasks.models import Task
 from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage, NginxUpgradeRun
 
@@ -154,6 +156,47 @@ def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client
         assert (package_dir / module_rows[0].file_name).read_bytes() == archive
 
 
+def test_upload_dropzones_use_configured_limit_for_both_package_types(upgrade_client):
+    """验证两个上传页显示系统设置上限且服务端拒绝超限归档。"""
+    client, app, csrf_token, _user_id = upgrade_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            initialize_defaults(session)
+            setting = session.scalar(
+                select(SystemSetting).where(
+                    SystemSetting.key == "upgrade.package_max_size_mb"
+                )
+            )
+            setting.value = "1"
+
+    for page_path in ("/upgrade/packages/upload/", "/upgrade/modules/upload/"):
+        page = client.get(page_path)
+        assert page.status_code == 200
+        assert 'id="packageDropzone"' in page.text
+        assert 'role="button"' in page.text
+        assert "点击或拖拽文件到此处上传" in page.text
+        assert 'data-package-limit-mb="1"' in page.text
+        assert "最大 1 MB" in page.text
+
+    too_large = b"x" * (1024 * 1024 + 1)
+    for upload_path, filename, name in (
+        ("/upgrade/packages/upload/", "nginx-1.2.3.tar.gz", "Nginx"),
+        ("/upgrade/modules/upload/", "ngx-module.tar.gz", "ngx-module"),
+    ):
+        response = client.post(
+            upload_path,
+            headers={
+                "X-CSRFToken": csrf_token,
+                "X-Requested-With": "XMLHttpRequest",
+                "Accept": "application/json",
+            },
+            data={"csrf_token": csrf_token, "name": name, "version": "1.2.3"},
+            files={"package_file": (filename, too_large, "application/gzip")},
+        )
+        assert response.status_code == 413
+        assert "不能超过 1MB" in response.json()["message"]
+
+
 def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_client):
     """验证升级包和历史列表按 AND 关键词及公共页数筛选。"""
     client, app, _csrf_token, user_id = upgrade_client
@@ -211,6 +254,9 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     second_page = client.get("/upgrade/packages/?page=2&per_page=10")
     assert "共 11 条，第 1 / 2 页" in first_page.text
     assert "共 11 条，第 2 / 2 页" in second_page.text
+    assert 'class="ms-auto d-flex flex-wrap justify-content-end gap-2"' in first_page.text
+    assert 'href="/upgrade/center/"' in first_page.text
+    assert 'href="/upgrade/modules/"' in first_page.text
 
     history = client.get(
         "/upgrade/history/?search=edge-prod%2CUG-261012&status=success&per_page=10"
@@ -225,9 +271,25 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     assert center.status_code == 200
     assert 'id="upgradeNodePickerModal"' in center.text
     assert 'id="nodePageSize"' in center.text
+    assert 'id="nodePageFirst"' in center.text
+    assert 'id="nodePageLast"' in center.text
     assert 'id="packagePageSize"' in center.text
+    assert 'id="packagePageFirst"' in center.text
+    assert 'id="packagePageLast"' in center.text
     assert 'id="selectedPackageSummary"' in center.text
     assert 'data-query-tags' in center.text
+    assert "回车添加条件" not in center.text
+    assert "上传新包" not in center.text
+    assert 'class="form-label upgrade-field-label mb-0"' in center.text
+    assert 'value="10" selected' in center.text
+    node_table_end = center.text.index(
+        "</table>", center.text.index('id="upgradeNodeTable"')
+    )
+    package_table_end = center.text.index(
+        "</table>", center.text.index('id="upgradePackageTable"')
+    )
+    assert node_table_end < center.text.index('id="nodeResultCount"')
+    assert package_table_end < center.text.index('id="packageResultCount"')
     assert "选择目标" in center.text
     assert "编译环境" in center.text
     assert "编译参数" in center.text

@@ -3,6 +3,7 @@
 
     var form = document.getElementById("packageUploadForm");
     if (!form) return;
+    var dropZone = document.getElementById("packageDropzone");
     var fileInput = document.getElementById("packageFile");
     var nameInput = document.getElementById("packageName");
     var versionInput = document.getElementById("packageVersion");
@@ -14,6 +15,7 @@
     var progressPercent = document.getElementById("uploadProgressPercent");
     var fileSummary = document.getElementById("fileSummary");
     var messageBox = document.getElementById("uploadMessage");
+    var packageLimitMb = Number(form.dataset.packageLimitMb) || 20;
     var busy = false;
 
     function allowedArchive(filename) {
@@ -33,6 +35,32 @@
         busy = false;
         button.disabled = false;
         button.innerHTML = '<i class="bi bi-upload me-1" aria-hidden="true"></i>上传并校验';
+    }
+
+    function inspectFile(file) {
+        fileSummary.classList.add("d-none");
+        fileSummary.textContent = "";
+        if (!file) return false;
+        if (!allowedArchive(file.name)) {
+            fileInput.value = "";
+            if (window.showToast) window.showToast("归档格式不支持", "danger");
+            return false;
+        }
+        if (file.size > packageLimitMb * 1024 * 1024) {
+            fileInput.value = "";
+            if (window.showToast) window.showToast("文件不能超过 " + packageLimitMb + " MB", "danger");
+            return false;
+        }
+        fileSummary.textContent = file.name + " · " + (file.size / 1048576).toFixed(2) + " MB";
+        fileSummary.classList.remove("d-none");
+        if (form.dataset.kind === "source" && !versionInput.value) {
+            var match = file.name.match(/nginx-([0-9]+(?:\.[0-9]+){1,3})/i);
+            if (match) versionInput.value = match[1];
+        }
+        if (form.dataset.kind === "module" && !nameInput.value) {
+            nameInput.value = file.name.replace(/\.(tar\.gz|tgz|zip)$/i, "").replace(/[-_](v?\d+(?:\.\d+)*)+$/i, "");
+        }
+        return true;
     }
 
     function doUpload(overwrite) {
@@ -93,32 +121,39 @@
         request.send(new FormData(form));
     }
 
+    dropZone.addEventListener("click", function (event) {
+        if (event.target !== fileInput) fileInput.click();
+    });
+    dropZone.addEventListener("keydown", function (event) {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        fileInput.click();
+    });
+    dropZone.addEventListener("dragover", function (event) {
+        event.preventDefault();
+        dropZone.classList.add("dragover");
+    });
+    dropZone.addEventListener("dragleave", function (event) {
+        event.preventDefault();
+        if (!dropZone.contains(event.relatedTarget)) dropZone.classList.remove("dragover");
+    });
+    dropZone.addEventListener("drop", function (event) {
+        event.preventDefault();
+        dropZone.classList.remove("dragover");
+        if (!event.dataTransfer.files.length) return;
+        fileInput.files = event.dataTransfer.files;
+        inspectFile(fileInput.files[0]);
+    });
     fileInput.addEventListener("change", function () {
-        var file = fileInput.files[0];
-        fileSummary.textContent = "";
-        if (!file) return;
-        if (!allowedArchive(file.name)) {
-            fileInput.value = "";
-            if (window.showToast) window.showToast("归档格式不支持", "danger");
-            return;
-        }
-        if (file.size > window.NGXOPS_PACKAGE_LIMIT_MB * 1024 * 1024) {
-            fileInput.value = "";
-            if (window.showToast) window.showToast("文件不能超过 " + window.NGXOPS_PACKAGE_LIMIT_MB + " MB", "danger");
-            return;
-        }
-        fileSummary.textContent = file.name + " · " + (file.size / 1048576).toFixed(2) + " MB";
-        if (form.dataset.kind === "source" && !versionInput.value) {
-            var match = file.name.match(/nginx-([0-9]+(?:\.[0-9]+){1,3})/i);
-            if (match) versionInput.value = match[1];
-        }
-        if (form.dataset.kind === "module" && !nameInput.value) {
-            nameInput.value = file.name.replace(/\.(tar\.gz|tgz|zip)$/i, "").replace(/[-_](v?\d+(?:\.\d+)*)+$/i, "");
-        }
+        inspectFile(fileInput.files[0]);
     });
 
     form.addEventListener("submit", function (event) {
         event.preventDefault();
+        if (!fileInput.files.length) {
+            if (window.showToast) window.showToast("请选择归档文件", "warning");
+            return;
+        }
         doUpload(false);
     });
 })(window.jQuery, window, document);

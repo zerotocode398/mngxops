@@ -2,7 +2,7 @@
 {% block title %}升级中心 - Nginx 编译升级{% endblock %}
 {% block page_title %}<i class="bi bi-rocket-takeoff" aria-hidden="true"></i> Nginx 升级中心{% endblock %}
 
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=3">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=4">{% endblock %}
 
 {% block content %}
 <div class="upgrade-toolbar mb-3">
@@ -37,7 +37,7 @@
                 <div class="row g-3">
                     <div class="col-12">
                         <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
-                            <label class="form-label mb-0">目标节点</label>
+                            <label class="form-label upgrade-field-label mb-0"><i class="bi bi-server me-1" aria-hidden="true"></i>目标节点</label>
                             <span class="small text-muted">最多 {{ batch_max_count }} 个</span>
                         </div>
                         <div class="upgrade-selected-targets">
@@ -56,32 +56,33 @@
                                     </div>
                                     <div class="modal-body">
                                         <label class="visually-hidden" for="nodeSearch">搜索主机名、IP、节点组</label>
-                                        <input class="form-control form-control-sm mb-2" id="nodeSearch" data-query-tags aria-label="搜索主机名、IP、节点组" placeholder="搜索主机名、IP、节点组，回车添加条件">
-                                        <div class="upgrade-selector-controls">
-                                            <small class="text-muted" id="nodeResultCount"></small>
-                                            <div class="d-flex align-items-center gap-1">
-                                                <label class="small text-muted mb-0" for="nodePageSize">每页</label>
-                                                <select class="form-select form-select-sm" id="nodePageSize" aria-label="每页节点数"><option>10</option><option>25</option><option>50</option><option>100</option></select>
-                                                <button class="btn btn-outline-secondary btn-sm" type="button" id="nodePagePrevious" aria-label="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
-                                                <small id="nodePageLabel" class="text-nowrap"></small>
-                                                <button class="btn btn-outline-secondary btn-sm" type="button" id="nodePageNext" aria-label="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
-                                            </div>
-                                        </div>
+                                        <input class="form-control form-control-sm mb-2" id="nodeSearch" data-query-tags aria-label="搜索主机名、IP、节点组" placeholder="搜索主机名、IP、节点组">
                                         <div class="table-responsive upgrade-node-table-wrap">
-                                            <table class="table table-sm table-hover align-middle mb-0" id="upgradeNodeTable">
+                                            <table class="table table-sm table-hover align-middle mb-0 upgrade-node-table" id="upgradeNodeTable">
                                                 <thead class="table-light"><tr><th></th><th>主机名 / IP</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
                                                 <tbody>
                                                 {% for node in nodes %}
-                                                    <tr class="upgrade-node-row" data-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ (node.groups|map(attribute='name')|join(' ')))|lower }}">
+                                                    <tr class="upgrade-node-row" data-node-id="{{ node.id }}" data-ip="{{ node.ip }}" data-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ (node.groups|map(attribute='name')|join(' ')))|lower }}">
                                                         <td><input class="form-check-input upgrade-node-check" type="checkbox" value="{{ node.id }}" aria-label="选择 {{ node.hostname }}"></td>
-                                                        <td><strong>{{ node.hostname }}</strong><small class="text-muted d-block">{{ node.ip }}:{{ node.port }}</small></td>
-                                                        <td>{{ {"dev":"开发","test":"测试","prod":"生产"}.get(node.environment, node.environment) }}</td>
-                                                        <td><span class="badge text-bg-success">{{ node.nginx_version or "已检测" }}</span></td>
-                                                        <td><small>{{ node.groups|map(attribute='name')|join('、') or "-" }}</small></td>
+                                                        <td><span class="upgrade-node-name-address" title="{{ node.hostname }} {{ node.ip }}:{{ node.port }}"><strong>{{ node.hostname }}</strong><small class="text-muted ms-2 upgrade-node-address">{{ node.ip }}:{{ node.port }}</small></span></td>
+                                                        <td class="text-nowrap">{{ {"dev":"开发","test":"测试","prod":"生产"}.get(node.environment, node.environment) }}</td>
+                                                        <td class="text-nowrap"><span class="badge text-bg-success">{{ node.nginx_version or "已检测" }}</span></td>
+                                                        <td><small class="upgrade-node-groups" title="{{ node.groups|map(attribute='name')|join('、') or '-' }}">{{ node.groups|map(attribute='name')|join('、') or "-" }}</small></td>
                                                     </tr>
                                                 {% else %}<tr data-selector-empty><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>没有满足升级条件的节点</p></div></td></tr>{% endfor %}
                                                 </tbody>
                                             </table>
+                                        </div>
+                                        <div class="upgrade-selector-footer">
+                                            <small class="text-muted" id="nodeResultCount"></small>
+                                            <nav aria-label="节点分页"><ul class="pagination pagination-sm mb-0">
+                                                <li class="page-item"><button class="page-link" type="button" id="nodePageFirst" aria-label="首页" title="首页"><i class="bi bi-chevron-double-left" aria-hidden="true"></i></button></li>
+                                                <li class="page-item"><button class="page-link" type="button" id="nodePagePrevious" aria-label="上一页" title="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button></li>
+                                                <li class="page-item disabled"><span class="page-link page-count" id="nodePageLabel"></span></li>
+                                                <li class="page-item"><button class="page-link" type="button" id="nodePageNext" aria-label="下一页" title="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button></li>
+                                                <li class="page-item"><button class="page-link" type="button" id="nodePageLast" aria-label="末页" title="末页"><i class="bi bi-chevron-double-right" aria-hidden="true"></i></button></li>
+                                            </ul></nav>
+                                            <div class="upgrade-selector-page-size"><label class="small text-muted mb-0" for="nodePageSize">每页</label><select class="form-select form-select-sm" id="nodePageSize" aria-label="每页节点数"><option value="10" selected>10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></div>
                                         </div>
                                     </div>
                                     <div class="modal-footer">
@@ -93,9 +94,8 @@
                         </div>
                     </div>
                     <div class="col-12">
-                        <div class="d-flex justify-content-between align-items-center mb-1"><label class="form-label mb-0">源码包</label>{% if can_create %}<a class="small" href="/upgrade/packages/upload/" target="_blank" rel="noopener">上传新包</a>{% endif %}</div>
-                        <input class="form-control form-control-sm mb-2" id="packageSearch" data-query-tags aria-label="搜索源码包名称或版本" placeholder="搜索名称或版本，回车添加条件">
-                        <div class="upgrade-selector-controls"><small class="text-muted" id="packageResultCount"></small><div class="d-flex align-items-center gap-1"><label class="small text-muted mb-0" for="packagePageSize">每页</label><select class="form-select form-select-sm" id="packagePageSize" aria-label="每页源码包数"><option>10</option><option>25</option><option>50</option><option>100</option></select><button class="btn btn-outline-secondary btn-sm" type="button" id="packagePagePrevious" aria-label="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button><small id="packagePageLabel" class="text-nowrap"></small><button class="btn btn-outline-secondary btn-sm" type="button" id="packagePageNext" aria-label="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button></div></div>
+                        <label class="form-label upgrade-field-label mb-1" for="packageSearch"><i class="bi bi-archive me-1" aria-hidden="true"></i>源码包</label>
+                        <input class="form-control form-control-sm mb-2" id="packageSearch" data-query-tags aria-label="搜索源码包名称或版本" placeholder="搜索名称或版本">
                         <div class="table-responsive upgrade-package-table-wrap">
                             <table class="table table-sm table-hover align-middle mb-0" id="upgradePackageTable">
                                 <thead class="table-light"><tr><th></th><th>包名称</th><th>版本</th><th>大小</th><th>上传</th></tr></thead>
@@ -111,6 +111,17 @@
                                 {% else %}<tr data-selector-empty><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>暂无源码包</p></div></td></tr>{% endfor %}
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="upgrade-selector-footer">
+                            <small class="text-muted" id="packageResultCount"></small>
+                            <nav aria-label="源码包分页"><ul class="pagination pagination-sm mb-0">
+                                <li class="page-item"><button class="page-link" type="button" id="packagePageFirst" aria-label="首页" title="首页"><i class="bi bi-chevron-double-left" aria-hidden="true"></i></button></li>
+                                <li class="page-item"><button class="page-link" type="button" id="packagePagePrevious" aria-label="上一页" title="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button></li>
+                                <li class="page-item disabled"><span class="page-link page-count" id="packagePageLabel"></span></li>
+                                <li class="page-item"><button class="page-link" type="button" id="packagePageNext" aria-label="下一页" title="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button></li>
+                                <li class="page-item"><button class="page-link" type="button" id="packagePageLast" aria-label="末页" title="末页"><i class="bi bi-chevron-double-right" aria-hidden="true"></i></button></li>
+                            </ul></nav>
+                            <div class="upgrade-selector-page-size"><label class="small text-muted mb-0" for="packagePageSize">每页</label><select class="form-select form-select-sm" id="packagePageSize" aria-label="每页源码包数"><option value="10" selected>10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></div>
                         </div>
                         <div class="small text-muted mt-1" id="selectedPackageSummary">尚未选择源码包</div>
                     </div>
@@ -204,5 +215,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=2"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=3"></script>
 {% endblock %}

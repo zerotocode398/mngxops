@@ -3,7 +3,7 @@
 {% set is_source = package_kind == "source" %}
 {% block title %}上传{{ "Nginx 源码包" if is_source else "第三方模块包" }} - ngxops{% endblock %}
 {% block page_title %}<i class="bi bi-upload" aria-hidden="true"></i> 上传{{ "Nginx 源码包" if is_source else "第三方模块包" }}{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=2">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=4">{% endblock %}
 
 {% block content %}
 <section class="card upgrade-upload-panel">
@@ -12,9 +12,16 @@
         <a class="btn btn-outline-secondary btn-sm" href="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回列表</a>
     </div>
     <div class="card-body">
-        <form id="packageUploadForm" method="post" enctype="multipart/form-data" action="{{ '/upgrade/packages/upload/' if is_source else '/upgrade/modules/upload/' }}" data-kind="{{ package_kind }}">
+        <form id="packageUploadForm" method="post" enctype="multipart/form-data" action="{{ '/upgrade/packages/upload/' if is_source else '/upgrade/modules/upload/' }}" data-kind="{{ package_kind }}" data-package-limit-mb="{{ package_limit }}">
             {% include "includes/csrf_field.html" %}
             <input type="hidden" name="overwrite" id="overwriteInput" value="">
+            <div class="upgrade-upload-dropzone mb-3" id="packageDropzone" role="button" tabindex="0" aria-controls="packageFile" aria-label="点击或拖拽文件到此处上传">
+                <i class="bi bi-cloud-upload" aria-hidden="true"></i>
+                <strong>点击或拖拽文件到此处上传</strong>
+                <span class="small text-muted">支持 {{ '.tar.gz / .tgz' if is_source else '.tar.gz / .tgz / .zip' }}，最大 {{ package_limit }} MB</span>
+                <input class="visually-hidden" id="packageFile" name="package_file" type="file" accept="{{ '.tar.gz,.tgz' if is_source else '.tar.gz,.tgz,.zip' }}" tabindex="-1">
+            </div>
+            <div class="small text-muted mb-3 d-none" id="fileSummary" aria-live="polite"></div>
             <div class="row g-3">
                 <div class="col-12 col-md-6">
                     <label class="form-label" for="packageName">{{ "包名称" if is_source else "模块名称" }}</label>
@@ -23,11 +30,6 @@
                 <div class="col-12 col-md-6">
                     <label class="form-label" for="packageVersion">{{ "版本号" if is_source else "版本/标签" }}</label>
                     <input class="form-control" id="packageVersion" name="version" maxlength="50" placeholder="{{ '可从 nginx-1.26.1.tar.gz 提取' if is_source else '如 v1.2.1，可留空' }}">
-                </div>
-                <div class="col-12">
-                    <label class="form-label" for="packageFile">归档文件</label>
-                    <input class="form-control" id="packageFile" name="package_file" type="file" accept="{{ '.tar.gz,.tgz' if is_source else '.tar.gz,.tgz,.zip' }}" required>
-                    <div class="form-text">最大 {{ package_limit }} MB；系统会校验归档结构、路径和文件大小。</div>
                 </div>
                 {% if is_source %}
                 <div class="col-12"><div class="form-check"><input class="form-check-input" id="isOfficial" name="is_official" type="checkbox" value="1"><label class="form-check-label" for="isOfficial">标记为官方包</label></div></div>
@@ -52,6 +54,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/upgrade-packages.js') }}?v=2"></script>
-<script>window.NGXOPS_PACKAGE_LIMIT_MB = {{ package_limit }};</script>
+<script src="{{ request.url_for('static', path='js/upgrade-packages.js') }}?v=3"></script>
 {% endblock %}

@@ -3,18 +3,18 @@
 {% set is_source = package_kind == "source" %}
 {% block title %}{{ "Nginx 源码包" if is_source else "第三方模块包" }} - ngxops{% endblock %}
 {% block page_title %}<i class="bi {{ 'bi-archive' if is_source else 'bi-puzzle' }}" aria-hidden="true"></i> {{ "Nginx 源码包" if is_source else "第三方模块包" }}{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=2">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=4">{% endblock %}
 
 {% block content %}
 {% set notice_message = request.query_params.get("error") or ("软件包上传成功" if request.query_params.get("uploaded") else ("软件包已删除" if request.query_params.get("deleted") else "")) %}
 {% if notice_message %}<div id="packageNotice" data-message="{{ notice_message }}" data-type="{{ 'danger' if request.query_params.get('error') else 'success' }}" hidden></div>{% endif %}
 <section class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex gap-2">
+        <div class="ms-auto d-flex flex-wrap justify-content-end gap-2">
             <a class="btn btn-outline-secondary btn-sm" href="/upgrade/center/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>升级中心</a>
             {% if is_source %}<a class="btn btn-outline-secondary btn-sm" href="/upgrade/modules/">模块包</a>{% else %}<a class="btn btn-outline-secondary btn-sm" href="/upgrade/packages/">源码包</a>{% endif %}
+            {% if can_create %}<a class="btn btn-primary btn-sm" href="{{ '/upgrade/packages/upload/' if is_source else '/upgrade/modules/upload/' }}"><i class="bi bi-upload me-1" aria-hidden="true"></i>上传包</a>{% endif %}
         </div>
-        {% if can_create %}<a class="btn btn-primary btn-sm" href="{{ '/upgrade/packages/upload/' if is_source else '/upgrade/modules/upload/' }}"><i class="bi bi-upload me-1" aria-hidden="true"></i>上传包</a>{% endif %}
     </div>
     <div class="card-body border-bottom py-2">
         <form method="get" class="row g-2 align-items-center" data-query-submit-on-enter data-preserve-query-focus>
