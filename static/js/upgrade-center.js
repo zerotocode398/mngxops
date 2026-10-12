@@ -13,10 +13,12 @@
     var referenceNodeId = null;
     var baselineRequestVersion = 0;
     var previewRequestVersion = 0;
-    var lastMismatchAlertSignature = "";
+    var currentMismatchSignature = "";
+    var acknowledgedMismatchSignature = "";
     var targetConfigPreviews = {};
     var moduleChanges = { added: [], removed: [] };
     var moduleAdjustModal = null;
+    var mismatchModal = null;
 
     function requestJson(method, url, payload) {
         return $.ajax({
@@ -205,6 +207,8 @@
             referenceNodeId = null;
             moduleChanges = { added: [], removed: [] };
             window.upgradeBaselines = {};
+            currentMismatchSignature = "";
+            acknowledgedMismatchSignature = "";
             baselineRequestVersion += 1;
             previewRequestVersion += 1;
             document.getElementById("confirmUpgrade").checked = false;
@@ -313,6 +317,11 @@
             renderFetchResults();
             return;
         }
+        if (force) {
+            currentMismatchSignature = "";
+            acknowledgedMismatchSignature = "";
+            if (mismatchModal) mismatchModal.hide();
+        }
         var requestVersion = ++baselineRequestVersion;
         window.upgradeBaselines = {};
         var results = document.getElementById("nodeFetchResults");
@@ -323,30 +332,21 @@
             renderFetchResults();
             return;
         }
-        var queue = ids.map(function (id) {
-            return requestJson("POST", "/api/upgrade/nodes/" + id + "/nginx-v", {});
+        var requests = ids.map(function (id) {
+            return Promise.resolve(requestJson("POST", "/api/upgrade/nodes/" + id + "/nginx-v", {})).then(
+                function (response) { return { id: id, response: response }; },
+                function (error) { return { id: id, error: error }; }
+            );
         });
-        $.when.apply($, queue).done(function () {
+        Promise.all(requests).then(function (results) {
             if (requestVersion !== baselineRequestVersion) return;
-            if (queue.length === 1) {
-                saveBaseline(ids[0], arguments[0]);
-            } else {
-                queue.forEach(function (_request, index) {
-                    saveBaseline(ids[index], arguments[index][0]);
-                });
-            }
-            renderFetchResults();
-        }).fail(function (error) {
-            if (requestVersion !== baselineRequestVersion) return;
-            if (queue.length === 1) {
-                window.upgradeBaselines[ids[0]] = { ok: false, message: errorMessage(error) };
-            } else {
-                queue.forEach(function (item, index) {
-                    if (item.state() === "rejected") {
-                        window.upgradeBaselines[ids[index]] = { ok: false, message: errorMessage(item) };
-                    }
-                });
-            }
+            results.forEach(function (result) {
+                if (result.error) {
+                    window.upgradeBaselines[result.id] = { ok: false, message: errorMessage(result.error) };
+                } else {
+                    saveBaseline(result.id, result.response);
+                }
+            });
             renderFetchResults();
         });
     }
@@ -376,17 +376,29 @@
         });
         var baselines = selected.map(function (node) { return window.upgradeBaselines[node.id]; });
         var allReady = baselines.length > 0 && baselines.every(function (item) { return item && item.ok; });
+        var successCount = baselines.filter(function (item) { return item && item.ok; }).length;
         document.getElementById("fetchStatus").textContent = allReady
             ? "已读取全部节点的编译参数。"
-            : "读取未完成；请检查节点连接后重新读取。";
+            : successCount
+                ? "已读取 " + successCount + " 台，失败 " + (baselines.length - successCount) + " 台；可返回移除失败节点或重新读取。"
+                : "读取未完成；请检查节点连接后重新读取。";
         document.getElementById("stepThreeNext").disabled = !allReady;
         var signatures = baselines.map(function (item) {
             return item && item.ok ? item.data.params.slice().sort().join("\n") : "";
         });
         var mismatch = allReady && signatures.some(function (value) { return value !== signatures[0]; });
+        currentMismatchSignature = mismatch
+            ? selected.map(function (node) {
+                return String(node.id) + ":" + window.upgradeBaselines[node.id].data.params.slice().sort().join("\n");
+            }).join("\n--node--\n")
+            : "";
         document.getElementById("paramsMismatchNotice").classList.toggle("d-none", !mismatch);
         renderParameterMismatch(selected, mismatch);
-        showParameterMismatchAlert(selected, mismatch);
+        if (mismatch && acknowledgedMismatchSignature !== currentMismatchSignature) {
+            showParameterMismatchModal(selected);
+        }
+        document.getElementById("stepThreeNext").disabled = !allReady ||
+            (mismatch && acknowledgedMismatchSignature !== currentMismatchSignature);
         var referenceWrap = document.getElementById("referenceNodeWrap");
         referenceWrap.classList.toggle("d-none", !mismatch);
         var referenceSelect = document.getElementById("referenceNode");
@@ -452,31 +464,95 @@
         }
     }
 
-    function showParameterMismatchAlert(nodes, mismatch) {
-        if (!mismatch) {
-            lastMismatchAlertSignature = "";
-            return;
-        }
-        var signature = nodes.map(function (node) {
-            var baseline = window.upgradeBaselines[node.id];
-            return String(node.id) + ":" + baseline.data.params.slice().sort().join("\n");
-        }).join("\n--node--\n");
-        if (signature === lastMismatchAlertSignature) return;
-        lastMismatchAlertSignature = signature;
-        if (!window.showAlert) return;
+    function showParameterMismatchModal(nodes) {
+        var body = document.getElementById("paramsMismatchNodes");
+        body.replaceChildren();
+        nodes.forEach(function (node) {
+            var baseline = window.upgradeBaselines[node.id].data;
+            var row = document.createElement("tr");
+            var nodeCell = document.createElement("td");
+            var expand = document.createElement("button");
+            expand.type = "button";
+            expand.className = "btn btn-link btn-sm p-0 text-start";
+            expand.textContent = node.name + " (" + node.ip + ")";
+            expand.setAttribute("aria-expanded", "false");
+            var detailId = "mismatchParams-" + node.id;
+            expand.setAttribute("aria-controls", detailId);
+            var detailRow = document.createElement("tr");
+            detailRow.className = "d-none";
+            detailRow.id = detailId;
+            var detailCell = document.createElement("td");
+            detailCell.colSpan = 4;
+            var output = document.createElement("pre");
+            output.className = "nginx-v-output upgrade-mismatch-output";
+            output.textContent = formatConfigurePreview(baseline.params || []);
+            detailCell.appendChild(output);
+            detailRow.appendChild(detailCell);
+            expand.addEventListener("click", function () {
+                var expanded = detailRow.classList.toggle("d-none");
+                expand.setAttribute("aria-expanded", expanded ? "true" : "false");
+            });
+            nodeCell.appendChild(expand);
+            row.appendChild(nodeCell);
+            [baseline.version || "-", baseline.prefix || "-", String((baseline.params || []).length)].forEach(function (value) {
+                var cell = document.createElement("td");
+                cell.textContent = value;
+                row.appendChild(cell);
+            });
+            body.append(row, detailRow);
+        });
 
-        var content = document.createElement("div");
-        var introduction = document.createElement("p");
-        introduction.className = "small mb-2";
-        introduction.textContent = "请检查以下差异，再选择参考节点。后续预览仍会按各节点自己的当前参数生成。";
-        content.appendChild(introduction);
-        var details = document.getElementById("paramsMismatchDetails").cloneNode(true);
-        details.removeAttribute("id");
-        details.classList.remove("d-none");
-        details.style.maxHeight = "min(55vh, 420px)";
-        details.style.marginTop = "0";
-        content.appendChild(details);
-        window.showAlert("所选节点的编译参数存在差异", content.innerHTML, true);
+        var paramSet = new Set();
+        nodes.forEach(function (node) {
+            (window.upgradeBaselines[node.id].data.params || []).forEach(function (param) {
+                paramSet.add(param);
+            });
+        });
+        var differences = document.getElementById("paramsMismatchDiffs");
+        differences.replaceChildren();
+        Array.from(paramSet).sort().forEach(function (param) {
+            var present = [];
+            var missing = [];
+            nodes.forEach(function (node) {
+                var params = window.upgradeBaselines[node.id].data.params || [];
+                (params.indexOf(param) >= 0 ? present : missing).push(node.name);
+            });
+            if (!present.length || !missing.length) return;
+            var item = document.createElement("div");
+            item.className = "upgrade-mismatch-diff-item";
+            var code = document.createElement("code");
+            code.textContent = param;
+            var hosts = document.createElement("div");
+            hosts.className = "small";
+            var hasLabel = document.createElement("span");
+            hasLabel.className = "text-muted me-1";
+            hasLabel.textContent = "已编译：";
+            hosts.appendChild(hasLabel);
+            present.forEach(function (name) {
+                var badge = document.createElement("span");
+                badge.className = "badge text-bg-success me-1";
+                badge.textContent = name;
+                hosts.appendChild(badge);
+            });
+            var missingLabel = document.createElement("span");
+            missingLabel.className = "text-muted me-1 ms-2";
+            missingLabel.textContent = "未编译：";
+            hosts.appendChild(missingLabel);
+            missing.forEach(function (name) {
+                var badge = document.createElement("span");
+                badge.className = "badge text-bg-secondary me-1";
+                badge.textContent = name;
+                hosts.appendChild(badge);
+            });
+            item.append(code, hosts);
+            differences.appendChild(item);
+        });
+        document.getElementById("paramsMismatchDiffCount").textContent =
+            differences.childElementCount ? "共 " + differences.childElementCount + " 项" : "未解析到具体差异项";
+        if (!mismatchModal) {
+            mismatchModal = new window.bootstrap.Modal(document.getElementById("paramsMismatchModal"));
+        }
+        mismatchModal.show();
     }
 
     function referenceBaseline() {
@@ -605,7 +681,9 @@
         var ready = environmentComplete && !environmentError() && selectedNodeIds().length > 0 && selectedNodeIds().every(function (id) {
             return window.upgradeBaselines[id] && window.upgradeBaselines[id].ok;
         });
-        document.getElementById("stepThreeNext").disabled = !ready;
+        var mismatchUnacknowledged = currentMismatchSignature &&
+            acknowledgedMismatchSignature !== currentMismatchSignature;
+        document.getElementById("stepThreeNext").disabled = !ready || !!mismatchUnacknowledged;
         refreshStepperAccess();
     }
 
@@ -722,6 +800,10 @@
     }
 
     function previewUpgrade() {
+        if (currentMismatchSignature && acknowledgedMismatchSignature !== currentMismatchSignature) {
+            showParameterMismatchModal(selectedNodes());
+            return;
+        }
         var thirdParty = collectThirdParty();
         if (thirdParty.errors.length) {
             notify(thirdParty.errors[0], "warning");
@@ -1067,6 +1149,15 @@
         document.getElementById("refreshNginxV").addEventListener("click", function () {
             invalidateStepThreePreview();
             fetchConfigureBaselines(true);
+        });
+        document.getElementById("paramsMismatchBack").addEventListener("click", function () {
+            if (mismatchModal) mismatchModal.hide();
+            activateStep(1);
+        });
+        document.getElementById("paramsMismatchContinue").addEventListener("click", function () {
+            acknowledgedMismatchSignature = currentMismatchSignature;
+            if (mismatchModal) mismatchModal.hide();
+            invalidateStepThreePreview();
         });
         document.getElementById("referenceNode").addEventListener("change", function () {
             referenceNodeId = this.value;

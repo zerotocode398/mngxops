@@ -2,7 +2,7 @@
 {% block title %}升级中心 - Nginx 编译升级{% endblock %}
 {% block page_title %}<i class="bi bi-rocket-takeoff" aria-hidden="true"></i> Nginx 升级中心{% endblock %}
 
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=8">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=9">{% endblock %}
 
 {% block content %}
 <div class="upgrade-toolbar mb-3">
@@ -248,14 +248,41 @@
     </div>
 </div>
 
+<div class="modal fade" id="paramsMismatchModal" tabindex="-1" aria-labelledby="paramsMismatchTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h6" id="paramsMismatchTitle"><i class="bi bi-exclamation-triangle text-warning me-1" aria-hidden="true"></i>编译参数不一致</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small mb-3">所选节点的 Nginx 编译参数存在差异。请检查节点信息和差异项，再决定是否继续。</p>
+                <div class="small text-muted mb-2">节点摘要（点击主机名可展开完整参数）</div>
+                <div class="table-responsive upgrade-mismatch-node-wrap mb-3">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light"><tr><th>主机名 / IP</th><th>版本</th><th>安装目录</th><th>参数数</th></tr></thead>
+                        <tbody id="paramsMismatchNodes"></tbody>
+                    </table>
+                </div>
+                <div class="small text-muted mb-1">差异参数 <span id="paramsMismatchDiffCount"></span></div>
+                <div class="upgrade-mismatch-diffs" id="paramsMismatchDiffs"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary btn-sm" type="button" id="paramsMismatchBack"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回改选节点</button>
+                <button class="btn btn-warning btn-sm" type="button" id="paramsMismatchContinue"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>仍要继续</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <template id="thirdPartyTemplate">
     <div class="upgrade-third-party-row">
         <div class="row g-2 align-items-end">
-            <div class="col-4"><label class="form-label small">来源</label><select class="form-select form-select-sm tp-source"><option value="git">在线 Git</option><option value="package">离线包</option></select></div>
-            <div class="col-8"><label class="form-label small">模块名</label><input class="form-control form-control-sm tp-name" maxlength="100" placeholder="模块目录名"></div>
-            <div class="col-12 tp-git-fields"><div class="row g-2"><div class="col-8"><label class="form-label small">Git 仓库 URL</label><input class="form-control form-control-sm tp-git" placeholder="https://… 或 git@…"></div><div class="col-4"><label class="form-label small">分支</label><input class="form-control form-control-sm tp-branch" value="master"></div></div></div>
-            <div class="col-10 tp-package-fields d-none"><label class="form-label small">离线模块包</label><select class="form-select form-select-sm tp-package"><option value="">选择已上传模块包</option>{% for package in module_packages %}<option value="{{ package.id }}" data-name="{{ package.name }}">{{ package.name }}{% if package.version %} ({{ package.version }}){% endif %}</option>{% endfor %}</select></div>
-            <div class="col-2 text-end"><button class="btn btn-outline-danger btn-sm tp-remove" type="button" title="移除此模块" aria-label="移除此模块"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
+            <div class="col-12 col-md-2"><select class="form-select form-select-sm tp-source" aria-label="模块来源"><option value="git">在线 Git</option><option value="package">离线包</option></select></div>
+            <div class="col-12 col-md-2"><input class="form-control form-control-sm tp-name" aria-label="模块名" maxlength="100" placeholder="模块名"></div>
+            <div class="col-12 col-md-5 tp-git-fields"><div class="row g-1"><div class="col-8"><input class="form-control form-control-sm tp-git" aria-label="Git 仓库 URL" placeholder="Git 仓库 URL"></div><div class="col-4"><input class="form-control form-control-sm tp-branch" aria-label="Git 分支" value="master" placeholder="分支"></div></div></div>
+            <div class="col-12 col-md-5 tp-package-fields d-none"><select class="form-select form-select-sm tp-package" aria-label="离线模块包"><option value="">选择已上传模块包</option>{% for package in module_packages %}<option value="{{ package.id }}" data-name="{{ package.name }}">{{ package.name }}{% if package.version %} ({{ package.version }}){% endif %}</option>{% endfor %}</select></div>
+            <div class="col-12 col-md-1 text-end"><button class="btn btn-outline-danger btn-sm tp-remove" type="button" title="移除此模块" aria-label="移除此模块"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
         </div>
     </div>
 </template>
@@ -263,5 +290,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=5"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=6"></script>
 {% endblock %}
