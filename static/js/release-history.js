@@ -579,7 +579,7 @@
         tbody.textContent = "";
         if (!response.versions.length) {
             var emptyRow = node("tr");
-            var emptyCell = node("td", "text-center text-muted py-3", "没有其他可回滚版本");
+            var emptyCell = node("td", "text-center text-muted py-3", "没有更早的可回滚版本");
             emptyCell.colSpan = 6;
             emptyRow.appendChild(emptyCell);
             tbody.appendChild(emptyRow);

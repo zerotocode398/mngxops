@@ -250,7 +250,11 @@ class RollbackSelection(BaseModel):
 
     task_id: int = Field(gt=0)
     binding_id: int = Field(gt=0)
-    version: Optional[int] = Field(default=None, gt=0)
+    version: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="指定所选历史版本之前的目标版本；仅单条回滚可传入",
+    )
 
 
 class RollbackRequest(BaseModel):
@@ -637,10 +641,7 @@ def _history_binding_item(
         str(entry.get("remote_path") or ""),
         str(entry.get("remote_path_hash") or ""),
     )
-    has_alternative = bool(
-        published_version is not None
-        and any(version != published_version for version in available_versions)
-    )
+    has_alternative = previous_version is not None
     reason = gate_reason or ("没有其他可用配置版本" if not has_alternative else "")
     can_rollback = not reason
     batch_reason = gate_reason
@@ -845,7 +846,7 @@ def list_release_history(
     "/history/{task_id}/bindings/{binding_id}/versions",
     response_model=ReleaseHistoryVersionsResponse,
     summary="分页查询历史配置的可回滚版本",
-    description="需要 releases.read 权限；正文由单独的预览接口读取。",
+    description="需要 releases.read 权限；仅返回历史发布版本之前的快照，正文由单独的预览接口读取。",
     responses=api_error_responses((401, 403, 404, 422, 500)),
 )
 def list_history_binding_versions(
@@ -856,7 +857,7 @@ def list_history_binding_versions(
     _user: User = Depends(require_permission("releases", "read")),
     session: Session = Depends(get_session),
 ) -> ReleaseHistoryVersionsResponse:
-    """分页返回指定历史配置项除本次版本外的版本元数据。"""
+    """分页返回指定历史版本之前可用于回滚的快照元数据。"""
     task = session.get(Task, task_id)
     if task is None or task.operation_type not in ("release_publish", "release_rollback"):
         raise HTTPException(status_code=404, detail="发布历史不存在")
@@ -871,12 +872,11 @@ def list_history_binding_versions(
     try:
         published_version = int(history_row["entry"].get("version"))
     except (TypeError, ValueError):
-        published_version = None
+        raise HTTPException(status_code=404, detail="历史发布版本无效")
     version_query = select(BindingVersion).where(
-        BindingVersion.binding_id == binding_id
+        BindingVersion.binding_id == binding_id,
+        BindingVersion.version < published_version,
     )
-    if published_version is not None:
-        version_query = version_query.where(BindingVersion.version != published_version)
     total = int(
         session.scalar(
             select(func.count()).select_from(version_query.subquery())
@@ -957,7 +957,7 @@ def get_history_version_content(
     description=(
         "需要 releases.publish 权限。批量请求仅接受成功状态且存在上一可用版本的配置，"
         "默认回滚到所选历史版本之前最近的可用版本；"
-        "单条请求可指定其他版本。一次回滚只能包含同一来源批次的配置。"
+        "单条请求可指定所选历史版本之前的其他版本。一次回滚只能包含同一来源批次的配置。"
         "任务执行前重新检查节点、绑定、凭证和 Nginx 状态。"
     ),
     responses=api_error_responses((400, 401, 403, 404, 409, 422, 500, 503)),
@@ -1035,38 +1035,44 @@ def rollback_release_items(
             str(entry.get("remote_path") or ""),
             str(entry.get("remote_path_hash") or ""),
         )
-        if not reason and entry.get("status") != "success":
+        if (
+            not reason
+            and candidate["choice"].version is None
+            and entry.get("status") != "success"
+        ):
             reason = "仅成功状态的配置可批量回滚"
         if not reason:
             try:
                 published_version = int(entry.get("version"))
             except (TypeError, ValueError):
                 published_version = None
-            target_version = None
-            if candidate["choice"].version is not None:
-                target_version = next(
-                    (
-                        version
-                        for version in binding.versions
-                        if version.version == candidate["choice"].version
-                        and version.version != published_version
-                    ),
-                    None,
-                )
-                if target_version is None:
-                    reason = "所选回滚版本不存在或与已发布版本相同"
-            elif published_version is not None:
-                target_version = max(
-                    (
-                        version
-                        for version in binding.versions
-                        if version.version < published_version
-                    ),
-                    key=lambda version: version.version,
-                    default=None,
-                )
-                if target_version is None:
-                    reason = "该配置没有可用的上一版"
+            if published_version is None:
+                reason = "历史发布版本无效"
+            if not reason:
+                if candidate["choice"].version is not None:
+                    target_version = next(
+                        (
+                            version
+                            for version in binding.versions
+                            if version.version == candidate["choice"].version
+                            and version.version < published_version
+                        ),
+                        None,
+                    )
+                    if target_version is None:
+                        reason = "所选回滚版本不存在或不早于历史版本"
+                else:
+                    target_version = max(
+                        (
+                            version
+                            for version in binding.versions
+                            if version.version < published_version
+                        ),
+                        key=lambda version: version.version,
+                        default=None,
+                    )
+                    if target_version is None:
+                        reason = "该配置没有可用的上一版"
         if reason:
             skipped.append(
                 SkippedPublishItem(

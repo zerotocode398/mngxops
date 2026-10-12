@@ -227,7 +227,7 @@ def test_release_history_batch_links_to_task_detail(release_client):
     script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
         encoding="utf-8"
     )
-    assert "/static/js/release-history.js?v=10" in page.text
+    assert "/static/js/release-history.js?v=11" in page.text
     assert 'batchLink.href = "/tasks/" + encodeURIComponent(batch.task_id) + "/";' in script
     assert 'batchLink.target = "_blank";' in script
     assert 'batchLink.rel = "noopener noreferrer";' in script
