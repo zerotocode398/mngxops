@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}升级任务详情 - {{ run.node_hostname }}{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> 升级任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=9">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=10">{% endblock %}
 
 {% block content %}
 <div class="d-flex gap-2 mb-3 flex-wrap">
@@ -47,4 +47,4 @@
 </section>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=6"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=7"></script>{% endblock %}

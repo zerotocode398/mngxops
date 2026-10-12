@@ -74,7 +74,9 @@ class ConfigurePayload(BaseModel):
     current_configure_opts: str = Field(..., min_length=1, max_length=20000)
     params: List[str] = Field(default_factory=list, max_items=250)
     prefix: str = Field("", max_length=500)
-    binary_path: str = Field(..., min_length=1, max_length=500)
+    binary_path: str = Field(
+        ..., min_length=1, max_length=500, description="configure 推导的二进制安装目标路径。"
+    )
 
 
 class ThirdPartyModulePayload(BaseModel):
@@ -104,12 +106,15 @@ class UpgradeBatchRequest(BaseModel):
 
 
 class NginxConfigData(BaseModel):
-    """描述节点 `nginx -V` 输出中可用的编译基线。"""
+    """描述节点 configure 编译基线和实际 Nginx 可执行文件路径。"""
 
     version: str
     configure_opts: str
     prefix: str
-    binary_path: str
+    binary_path: str = Field(..., description="configure 推导的二进制安装目标路径。")
+    runtime_binary_path: str = Field(
+        "", max_length=500, description="节点记录中用于执行 nginx -V 的实际可执行文件路径。"
+    )
     params: List[str]
     builtin_modules: List[str]
     third_party_modules: List[str]

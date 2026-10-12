@@ -324,8 +324,10 @@
         }
         var requestVersion = ++baselineRequestVersion;
         window.upgradeBaselines = {};
-        var results = document.getElementById("nodeFetchResults");
-        results.replaceChildren();
+        ids.forEach(function (id) {
+            window.upgradeBaselines[id] = { ok: false, pending: true, message: "正在读取" };
+        });
+        renderFetchResults();
         document.getElementById("fetchStatus").textContent = "正在逐台读取 nginx -V，请保持页面打开…";
         document.getElementById("stepThreeNext").disabled = true;
         if (!ids.length) {
@@ -357,31 +359,125 @@
             : { ok: false, message: "nginx -V 未返回参数" };
     }
 
+    function appendRecognitionDetail(details, label, value) {
+        var item = document.createElement("div");
+        var term = document.createElement("dt");
+        term.textContent = label;
+        var description = document.createElement("dd");
+        var code = document.createElement("code");
+        code.textContent = value || "-";
+        description.appendChild(code);
+        item.append(term, description);
+        details.appendChild(item);
+    }
+
+    function createNodeRecognitionDetailRow(node, baseline, idPrefix) {
+        var data = baseline && baseline.ok ? baseline.data : {};
+        var detailRow = document.createElement("tr");
+        detailRow.className = "upgrade-node-recognition-detail-row d-none";
+        detailRow.id = idPrefix + node.id;
+        var detailCell = document.createElement("td");
+        detailCell.colSpan = 4;
+        var details = document.createElement("dl");
+        details.className = "upgrade-node-recognition-details mb-0";
+        appendRecognitionDetail(details, "主机名 / IP", node.name + " / " + node.ip);
+        appendRecognitionDetail(details, "安装目录", data.prefix);
+        appendRecognitionDetail(details, "二进制路径", data.runtime_binary_path);
+        appendRecognitionDetail(details, "configure 安装目标", data.binary_path);
+        appendRecognitionDetail(details, "版本", data.version);
+        detailCell.appendChild(details);
+        if (baseline && baseline.ok) {
+            var output = document.createElement("pre");
+            output.className = "nginx-v-output upgrade-node-recognition-output";
+            output.textContent = formatConfigurePreview(data.params || []);
+            detailCell.appendChild(output);
+        } else {
+            var error = document.createElement("p");
+            error.className = "small " + (baseline && baseline.pending ? "text-muted" : "text-danger") + " mt-2 mb-0";
+            error.textContent = baseline ? baseline.message : "等待读取";
+            detailCell.appendChild(error);
+        }
+        detailRow.appendChild(detailCell);
+        return detailRow;
+    }
+
     function renderFetchResults() {
         var selected = selectedNodes();
         var results = document.getElementById("nodeFetchResults");
         results.replaceChildren();
+        if (!selected.length) {
+            var emptyRow = document.createElement("tr");
+            var emptyCell = document.createElement("td");
+            emptyCell.colSpan = 4;
+            emptyCell.className = "text-center text-muted py-3";
+            emptyCell.textContent = "请选择节点后读取识别信息。";
+            emptyRow.appendChild(emptyCell);
+            results.appendChild(emptyRow);
+        }
         selected.forEach(function (node) {
             var baseline = window.upgradeBaselines[node.id];
-            var row = document.createElement("div");
-            row.className = "upgrade-fetch-row" + (baseline && baseline.ok ? "" : " failed");
-            var identity = document.createElement("strong");
-            identity.textContent = node.name + " · " + node.ip;
-            var result = document.createElement("span");
-            result.textContent = baseline && baseline.ok
-                ? "Nginx " + (baseline.data.version || "版本未知")
-                : (baseline ? baseline.message : "等待读取");
-            row.append(identity, result);
-            results.appendChild(row);
+            var data = baseline && baseline.ok ? baseline.data : {};
+            var row = document.createElement("tr");
+            var hostCell = document.createElement("td");
+            var host = document.createElement("div");
+            host.className = "upgrade-node-recognition-host";
+            var identity = document.createElement("div");
+            identity.className = "upgrade-node-recognition-host-identity";
+            var hostName = document.createElement("strong");
+            hostName.className = "upgrade-node-recognition-host-name";
+            hostName.textContent = node.name;
+            hostName.title = node.name;
+            var hostAddress = document.createElement("small");
+            hostAddress.className = "text-muted upgrade-node-recognition-host-address";
+            hostAddress.textContent = node.ip;
+            hostAddress.title = node.ip;
+            identity.append(hostName, hostAddress);
+            var toggle = document.createElement("button");
+            toggle.type = "button";
+            toggle.className = "btn btn-link btn-sm p-1 flex-shrink-0";
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.title = "展开节点识别详情";
+            toggle.setAttribute("aria-label", "展开 " + node.name + " 的节点识别详情");
+            var icon = document.createElement("i");
+            icon.className = "bi bi-chevron-down";
+            icon.setAttribute("aria-hidden", "true");
+            toggle.appendChild(icon);
+            var detailId = "nodeRecognitionDetail-" + node.id;
+            toggle.setAttribute("aria-controls", detailId);
+            var detailRow = createNodeRecognitionDetailRow(node, baseline, "nodeRecognitionDetail-");
+            toggle.addEventListener("click", function () {
+                var expanded = detailRow.classList.toggle("d-none");
+                toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+                toggle.title = expanded ? "收起节点识别详情" : "展开节点识别详情";
+                toggle.setAttribute("aria-label", (expanded ? "收起 " : "展开 ") + node.name + " 的节点识别详情");
+                icon.classList.toggle("bi-chevron-down", !expanded);
+                icon.classList.toggle("bi-chevron-up", expanded);
+            });
+            host.append(identity, toggle);
+            if (!baseline || !baseline.ok) {
+                var state = document.createElement("span");
+                state.className = "badge " + (baseline && baseline.pending ? "text-bg-info" : "text-bg-danger") + " ms-1";
+                state.textContent = baseline && baseline.pending ? "读取中" : (baseline ? "读取失败" : "等待读取");
+                hostCell.append(host, state);
+            } else {
+                hostCell.appendChild(host);
+            }
+            row.appendChild(hostCell);
+            [data.prefix, data.runtime_binary_path, data.version].forEach(function (value) {
+                var cell = document.createElement("td");
+                var text = document.createElement("span");
+                text.className = "upgrade-node-recognition-value";
+                text.textContent = value || "-";
+                text.title = value || "-";
+                cell.appendChild(text);
+                row.appendChild(cell);
+            });
+            results.append(row, detailRow);
         });
         var baselines = selected.map(function (node) { return window.upgradeBaselines[node.id]; });
         var allReady = baselines.length > 0 && baselines.every(function (item) { return item && item.ok; });
         var successCount = baselines.filter(function (item) { return item && item.ok; }).length;
-        document.getElementById("fetchStatus").textContent = allReady
-            ? "已读取全部节点的编译参数。"
-            : successCount
-                ? "已读取 " + successCount + " 台，失败 " + (baselines.length - successCount) + " 台；可返回移除失败节点或重新读取。"
-                : "读取未完成；请检查节点连接后重新读取。";
+        var pendingCount = baselines.filter(function (item) { return item && item.pending; }).length;
         document.getElementById("stepThreeNext").disabled = !allReady;
         var signatures = baselines.map(function (item) {
             return item && item.ok ? item.data.params.slice().sort().join("\n") : "";
@@ -392,6 +488,15 @@
                 return String(node.id) + ":" + window.upgradeBaselines[node.id].data.params.slice().sort().join("\n");
             }).join("\n--node--\n")
             : "";
+        document.getElementById("fetchStatus").textContent = allReady
+            ? "已识别 " + selected.length + " 台节点；" + (mismatch ? "编译参数存在差异。" : "编译参数一致。")
+            : pendingCount
+                ? "正在读取 " + pendingCount + " 台节点的 nginx -V。"
+                : successCount
+                ? "已识别 " + successCount + " / " + selected.length + " 台；失败节点可重新读取或返回移除。"
+                : selected.length
+                    ? "节点识别失败；请检查节点连接后重新读取。"
+                    : "请选择节点后读取识别信息。";
         document.getElementById("paramsMismatchNotice").classList.toggle("d-none", !mismatch);
         renderParameterMismatch(selected, mismatch);
         if (mismatch && acknowledgedMismatchSignature !== currentMismatchSignature) {
@@ -404,7 +509,6 @@
         var referenceSelect = document.getElementById("referenceNode");
         referenceSelect.replaceChildren();
         if (!allReady) {
-            document.getElementById("baselineSummary").replaceChildren();
             document.getElementById("currentConfigOutput").textContent = "读取完成后显示参考节点的 configure 参数。";
             document.getElementById("currentConfigLabel").textContent = "参考节点 configure 参数";
             document.getElementById("openModuleAdjust").disabled = true;
@@ -474,29 +578,30 @@
             var expand = document.createElement("button");
             expand.type = "button";
             expand.className = "btn btn-link btn-sm p-0 text-start";
-            expand.textContent = node.name + " (" + node.ip + ")";
+            expand.textContent = node.name;
+            expand.title = node.ip;
             expand.setAttribute("aria-expanded", "false");
             var detailId = "mismatchParams-" + node.id;
             expand.setAttribute("aria-controls", detailId);
-            var detailRow = document.createElement("tr");
-            detailRow.className = "d-none";
-            detailRow.id = detailId;
-            var detailCell = document.createElement("td");
-            detailCell.colSpan = 4;
-            var output = document.createElement("pre");
-            output.className = "nginx-v-output upgrade-mismatch-output";
-            output.textContent = formatConfigurePreview(baseline.params || []);
-            detailCell.appendChild(output);
-            detailRow.appendChild(detailCell);
+            var detailRow = createNodeRecognitionDetailRow(node, { ok: true, data: baseline }, "mismatchParams-");
             expand.addEventListener("click", function () {
                 var expanded = detailRow.classList.toggle("d-none");
                 expand.setAttribute("aria-expanded", expanded ? "true" : "false");
+                expand.setAttribute("aria-label", (expanded ? "收起 " : "展开 ") + node.name + " 的完整识别信息");
             });
             nodeCell.appendChild(expand);
+            var address = document.createElement("small");
+            address.className = "d-block text-muted";
+            address.textContent = node.ip;
+            nodeCell.appendChild(address);
             row.appendChild(nodeCell);
-            [baseline.version || "-", baseline.prefix || "-", String((baseline.params || []).length)].forEach(function (value) {
+            [baseline.prefix, baseline.runtime_binary_path, baseline.version].forEach(function (value) {
                 var cell = document.createElement("td");
-                cell.textContent = value;
+                var text = document.createElement("span");
+                text.className = "upgrade-node-recognition-value";
+                text.textContent = value || "-";
+                text.title = value || "-";
+                cell.appendChild(text);
                 row.appendChild(cell);
             });
             body.append(row, detailRow);
@@ -564,22 +669,6 @@
         var baseline = referenceBaseline();
         var node = selectedNodes().find(function (item) { return String(item.id) === String(referenceNodeId); });
         if (!baseline || !node) return;
-        var summary = document.getElementById("baselineSummary");
-        summary.replaceChildren();
-        [
-            ["当前版本", baseline.version || "未知"],
-            ["安装目录", baseline.prefix || "-"],
-            ["Nginx 二进制", baseline.binary_path || "-"]
-        ].forEach(function (item) {
-            var box = document.createElement("div");
-            box.className = "upgrade-baseline-item";
-            var label = document.createElement("small");
-            label.textContent = item[0];
-            var value = document.createElement("strong");
-            value.textContent = item[1];
-            box.append(label, value);
-            summary.appendChild(box);
-        });
         document.getElementById("currentConfigOutput").textContent =
             baseline.params && baseline.params.length
                 ? formatConfigurePreview(baseline.params)
@@ -614,6 +703,7 @@
         var code = document.createElement("code");
         code.textContent = value;
         label.append(checkbox, code);
+        label.dataset.search = value.toLocaleLowerCase();
         if (disabled) {
             var badge = document.createElement("span");
             badge.className = "badge text-bg-secondary ms-auto";
@@ -647,14 +737,42 @@
     }
 
     function filterModuleOptions() {
-        [
-            ["addModuleSearch", "#addModuleOptions .upgrade-module-option"],
-            ["removeModuleSearch", "#removeModuleOptions .upgrade-module-option"]
-        ].forEach(function (pair) {
-            var search = document.getElementById(pair[0]).value.trim().toLowerCase();
-            document.querySelectorAll(pair[1]).forEach(function (row) {
-                row.classList.toggle("d-none", !!search && !row.textContent.toLowerCase().includes(search));
+        var groups = [
+            {
+                input: "addModuleSearch",
+                selector: "#addModuleOptions .upgrade-module-option",
+                hint: "addModuleSearchHint",
+                opposite: "#removeModuleOptions .upgrade-module-option",
+                message: "当前参考节点已编译该参数，可在右侧查看或移除。"
+            },
+            {
+                input: "removeModuleSearch",
+                selector: "#removeModuleOptions .upgrade-module-option",
+                hint: "removeModuleSearchHint",
+                opposite: "#addModuleOptions .upgrade-module-option",
+                message: "当前参考节点未编译该参数，可在左侧查看或新增。"
+            }
+        ];
+        groups.forEach(function (group) {
+            var terms = window.getQueryTagValue("#" + group.input)
+                .split(/[,，]/).map(function (term) { return term.trim().toLocaleLowerCase(); })
+                .filter(Boolean);
+            var rows = Array.from(document.querySelectorAll(group.selector));
+            rows.forEach(function (row) {
+                var text = row.dataset.search || "";
+                row.classList.toggle("d-none", !terms.every(function (term) { return text.includes(term); }));
             });
+            var visibleAction = rows.some(function (row) {
+                var checkbox = row.querySelector("input");
+                return !row.classList.contains("d-none") && !(checkbox && checkbox.disabled);
+            });
+            var foundOpposite = terms.length && Array.from(document.querySelectorAll(group.opposite)).some(function (row) {
+                var text = row.dataset.search || "";
+                return terms.every(function (term) { return text.includes(term); });
+            });
+            var hint = document.getElementById(group.hint);
+            hint.textContent = !visibleAction && foundOpposite ? group.message : "";
+            hint.classList.toggle("d-none", !hint.textContent);
         });
     }
 
@@ -667,11 +785,57 @@
         document.getElementById("moduleAddedCount").textContent = String(moduleChanges.added.length);
         document.getElementById("moduleDeltaHint").textContent =
             moduleChanges.added.length || moduleChanges.removed.length
-                ? "已确认增减，将应用到目标节点"
+                ? "以下变化相对参考节点；目标节点按各自参数应用"
                 : "尚未调整";
+        renderModuleDiff();
         document.getElementById("stepThreeNext").title =
             "新增 " + moduleChanges.added.length + " 项，移除 " + moduleChanges.removed.length + " 项";
         if (invalidatePreview) invalidateStepThreePreview();
+    }
+
+    function appendModuleDiffGroup(container, label, values, kind, sign) {
+        var group = document.createElement("section");
+        group.className = "upgrade-module-diff-group is-" + kind;
+        var heading = document.createElement("h4");
+        heading.className = "upgrade-module-diff-title";
+        heading.textContent = label;
+        var list = document.createElement("ul");
+        list.className = "upgrade-module-diff-list";
+        if (!values.length) {
+            var empty = document.createElement("li");
+            empty.className = "small text-muted";
+            empty.textContent = "无";
+            list.appendChild(empty);
+        }
+        values.forEach(function (value) {
+            var item = document.createElement("li");
+            item.className = "upgrade-module-diff-item is-" + kind;
+            var marker = document.createElement("span");
+            marker.setAttribute("aria-hidden", "true");
+            marker.textContent = sign;
+            var code = document.createElement("code");
+            code.textContent = value;
+            if (kind === "removed") {
+                var deleted = document.createElement("del");
+                deleted.appendChild(code);
+                item.append(marker, deleted);
+            } else {
+                item.append(marker, code);
+            }
+            list.appendChild(item);
+        });
+        group.append(heading, list);
+        container.appendChild(group);
+    }
+
+    function renderModuleDiff() {
+        var diff = document.getElementById("moduleDiffList");
+        diff.replaceChildren();
+        var hasChanges = moduleChanges.added.length || moduleChanges.removed.length;
+        diff.classList.toggle("d-none", !hasChanges);
+        if (!hasChanges) return;
+        appendModuleDiffGroup(diff, "移除", moduleChanges.removed, "removed", "-");
+        appendModuleDiffGroup(diff, "新增", moduleChanges.added, "added", "+");
     }
 
     function invalidateStepThreePreview() {
@@ -693,8 +857,8 @@
             return;
         }
         renderModuleOptions();
-        document.getElementById("addModuleSearch").value = "";
-        document.getElementById("removeModuleSearch").value = "";
+        window.clearQueryTagValue("#addModuleSearch");
+        window.clearQueryTagValue("#removeModuleSearch");
         filterModuleOptions();
         if (!moduleAdjustModal) {
             moduleAdjustModal = new window.bootstrap.Modal(document.getElementById("moduleAdjustModal"));
@@ -1167,8 +1331,17 @@
         });
         document.getElementById("openModuleAdjust").addEventListener("click", openModuleAdjust);
         document.getElementById("confirmModuleAdjust").addEventListener("click", confirmModuleAdjust);
-        document.getElementById("addModuleSearch").addEventListener("input", filterModuleOptions);
-        document.getElementById("removeModuleSearch").addEventListener("input", filterModuleOptions);
+        ["addModuleSearch", "removeModuleSearch"].forEach(function (inputId) {
+            var input = document.getElementById(inputId);
+            input.addEventListener("input", filterModuleOptions);
+            input.addEventListener("keydown", function (event) {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                window.commitQueryTagValue("#" + inputId);
+                filterModuleOptions();
+            });
+            $(input).on("querytags:change", filterModuleOptions);
+        });
         document.getElementById("addThirdParty").addEventListener("click", addThirdPartyRow);
         document.getElementById("thirdPartyRows").addEventListener("input", invalidateStepThreePreview);
         document.getElementById("thirdPartyRows").addEventListener("change", invalidateStepThreePreview);

@@ -504,6 +504,7 @@ def fetch_node_nginx_v(session_factory, encryption_key: bytes, node_id: int) -> 
     parsed = parse_nginx_v_output(output)
     if not parsed["configure_opts"]:
         raise ValueError("无法解析 nginx -V 输出")
+    parsed["runtime_binary_path"] = target["nginx_path"]
     return parsed
 
 

@@ -3,7 +3,7 @@
 {% set is_source = package_kind == "source" %}
 {% block title %}上传{{ "Nginx 源码包" if is_source else "第三方模块包" }} - ngxops{% endblock %}
 {% block page_title %}<i class="bi bi-upload" aria-hidden="true"></i> 上传{{ "Nginx 源码包" if is_source else "第三方模块包" }}{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=9">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=10">{% endblock %}
 
 {% block content %}
 <div class="container-fluid upgrade-upload-container">
