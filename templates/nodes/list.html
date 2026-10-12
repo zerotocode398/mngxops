@@ -156,6 +156,7 @@ $(function () {
     var $selectAll = $("#selectAllNodes");
     var batchMax = Number(state.batchMax) || 3;
     var nodeImportRequestId = 0;
+    window.bindModalTableRowToggle($checks.closest("tbody"), ".node-select");
     $("#nodeGroup, #nodeEnvironment, #nodeStatus").on("change", function () {
         this.form.requestSubmit();
     });

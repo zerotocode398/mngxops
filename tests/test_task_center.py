@@ -191,6 +191,32 @@ def test_dashboard_and_task_center_share_batch_code_style(task_center_client):
     assert ".task-batch-code" in stylesheet.text
 
 
+def test_recent_task_lists_display_utc_plus_eight(task_center_client):
+    """首页和任务中心的最近任务时间按 UTC+8 展示。"""
+    (
+        client,
+        app,
+        _token,
+        _admin,
+        _operator,
+        release_id,
+        _publisher,
+        _own,
+        _other,
+    ) = task_center_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task = session.get(Task, release_id)
+            task.created_at = datetime(2026, 10, 12, 0, 0, 5)
+
+    dashboard = client.get("/")
+    task_center = client.get("/tasks/")
+
+    expected_time = '<time datetime="2026-10-12T08:00:05+08:00">2026-10-12 08:00</time>'
+    assert expected_time in dashboard.text
+    assert expected_time in task_center.text
+
+
 def test_task_detail_displays_task_times_in_utc_plus_eight(task_center_client):
     """任务详情的开始、结束、创建及日志时间统一按 UTC+8 展示。"""
     (
@@ -291,7 +317,7 @@ def test_publisher_can_track_owned_release_without_release_history_read(task_cen
     detail = client.get("/tasks/{}/".format(publisher_task))
     assert detail.status_code == 200
     assert '<a href="/tasks/?search=release-owned-0001"><code>' not in detail.text
-    assert "<code>release-owned-0001</code>" in detail.text
+    assert '<code class="task-batch-code">release-owned-0001</code>' in detail.text
     assert "/releases/?search=release-owned-0001" not in detail.text
 
 

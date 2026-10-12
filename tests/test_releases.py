@@ -14,7 +14,7 @@ from ngxops.accounts.models import User
 from ngxops.accounts.passwords import make_password
 from ngxops.app import create_app
 from ngxops.config import get_settings
-from ngxops.configs.models import Config, ConfigBinding
+from ngxops.configs.models import BindingVersion, Config, ConfigBinding
 from ngxops.credentials.crypto import encrypt_secret
 from ngxops.credentials.models import Credential
 from ngxops.database.migration_runner import upgrade_database
@@ -227,7 +227,7 @@ def test_release_history_batch_links_to_task_detail(release_client):
     script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
         encoding="utf-8"
     )
-    assert "/static/js/release-history.js?v=6" in page.text
+    assert "/static/js/release-history.js?v=10" in page.text
     assert 'batchLink.href = "/tasks/" + encodeURIComponent(batch.task_id) + "/";' in script
     assert 'batchLink.target = "_blank";' in script
     assert 'batchLink.rel = "noopener noreferrer";' in script
@@ -269,7 +269,7 @@ def test_release_history_batch_and_node_rows_toggle_on_click(release_client):
 
 
 def test_release_history_rollback_selection_is_limited_to_one_batch(release_client):
-    """页面阻止跨批次选择，回滚 API 拒绝伪造的跨批次请求。"""
+    """切换勾选批次时清除旧选择，回滚 API 仍拒绝跨批次请求。"""
     client, _node_id = release_client
     page = client.get("/releases/")
     script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
@@ -277,7 +277,9 @@ def test_release_history_rollback_selection_is_limited_to_one_batch(release_clie
     )
     with session_scope(client.app.state.database.session_factory) as session:
         with session.begin():
-            user_id = session.scalar(select(User.id).where(User.username == "release-admin"))
+            user_id = session.scalar(
+                select(User.id).where(User.username == "release-admin")
+            )
             tasks = [
                 Task(
                     operation_type="release_publish",
@@ -308,9 +310,115 @@ def test_release_history_rollback_selection_is_limited_to_one_batch(release_clie
     assert page.status_code == 200
     assert 'id="historySelectPage"' not in page.text
     assert "selectionBatchKey" in script
-    assert 'toast("一次只能选择同一发布批次进行回滚"' in script
+    assert "state.selection = {};" in script
+    assert "state.selectionBatchKey = batchKey;" in script
+    assert 'claimSelectionBatch(batchKey);' in script
+    assert 'input.checked = Boolean(selected && item && selected.task_id === item.task_id);' in script
     assert response.status_code == 400, response.text
     assert "一次只能回滚同一发布批次中的配置" in response.json()["message"]
+
+
+def test_successful_history_disables_batch_without_previous_version(release_client):
+    """成功批次中无上一版本的配置不可批量回滚并提供原因。"""
+    client, node_id = release_client
+    with session_scope(client.app.state.database.session_factory) as session:
+        with session.begin():
+            node = session.get(Node, node_id)
+            bindings = list(
+                session.scalars(
+                    select(ConfigBinding)
+                    .where(ConfigBinding.node_id == node_id)
+                    .order_by(ConfigBinding.id.asc())
+                    .limit(2)
+                )
+            )
+            config_names = [binding.config.name for binding in bindings]
+            bindings[0].current_version = 2
+            user_id = session.scalar(
+                select(User.id).where(User.username == "release-admin")
+            )
+            session.add_all(
+                [
+                    BindingVersion(
+                        binding_id=bindings[0].id,
+                        version=version,
+                        content="release content v{}".format(version),
+                        created_by=user_id,
+                    )
+                    for version in (1, 2)
+                ]
+                + [
+                    BindingVersion(
+                        binding_id=bindings[1].id,
+                        version=1,
+                        content="initial release content",
+                        created_by=user_id,
+                    )
+                ]
+            )
+            tasks = []
+            for index, (binding, version) in enumerate(zip(bindings, (2, 1))):
+                tasks.append(
+                    Task(
+                        operation_type="release_publish",
+                        status="success",
+                        detail="发布完成",
+                        progress=100,
+                        source_batch="release-261012-{:04d}".format(index + 3),
+                        trigger_user_id=user_id,
+                        result_tree_json=json.dumps(
+                            {
+                                "nodes": [
+                                    {
+                                        "node_id": node.id,
+                                        "hostname": node.hostname,
+                                        "ip": node.ip,
+                                        "status": "success",
+                                        "bindings": [
+                                            {
+                                                "binding_id": binding.id,
+                                                "config_id": binding.config_id,
+                                                "config_name": binding.config.name,
+                                                "remote_path": binding.remote_path,
+                                                "version": version,
+                                                "status": "success",
+                                                "action": "publish",
+                                                "message": "发布成功",
+                                            }
+                                        ],
+                                    }
+                                ]
+                            }
+                        ),
+                    )
+                )
+            session.add_all(tasks)
+
+    history = client.get("/api/releases/history")
+    page = client.get("/releases/")
+    script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert history.status_code == 200, history.text
+    batches = {item["batch_number"]: item for item in history.json()["items"]}
+    selectable_batch = batches["release-261012-0003"]
+    disabled_batch = batches["release-261012-0004"]
+    selectable_item = selectable_batch["nodes"][0]["bindings"][0]
+    disabled_item = disabled_batch["nodes"][0]["bindings"][0]
+    assert selectable_batch["status"] == disabled_batch["status"] == "success"
+    assert selectable_item["config_name"] == config_names[0]
+    assert selectable_item["can_batch_rollback"] is True
+    assert disabled_item["config_name"] == config_names[1]
+    assert disabled_item["can_batch_rollback"] is False
+    assert disabled_item["rollback_reason"] == "没有其他可用配置版本"
+    assert page.status_code == 200
+    assert "input.disabled = selectableRows.length === 0;" in script
+    assert 'selectionScope + "没有可批量回滚的配置"' in script
+    assert "checkboxCell.firstChild.title = disabledReason;" in script
+    assert '"不可批量回滚：" + disabledReason' in script
+    assert '"无可批量回滚配置"' in script
+    assert '"部分配置不可批量回滚"' in script
 
 
 def test_release_node_select_respects_active_binding_status_filter(release_client):

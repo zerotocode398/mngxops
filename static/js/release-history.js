@@ -112,22 +112,33 @@
                 }
                 return itemRow.dataset.batchKey === key;
             });
-            rows = rows.filter(function (item) { return !item.disabled; });
-            var checkedCount = rows.filter(function (item) { return item.checked; }).length;
-            input.checked = rows.length > 0 && checkedCount === rows.length;
-            input.indeterminate = checkedCount > 0 && checkedCount < rows.length;
-            input.disabled = rows.length === 0;
+            var selectableRows = rows.filter(function (item) { return !item.disabled; });
+            var checkedCount = selectableRows.filter(function (item) { return item.checked; }).length;
+            input.checked = selectableRows.length > 0 && checkedCount === selectableRows.length;
+            input.indeterminate = checkedCount > 0 && checkedCount < selectableRows.length;
+            input.disabled = selectableRows.length === 0;
+            var selectionScope = input.hasAttribute("data-history-node-select") ? "该节点" : "该批次";
+            if (input.disabled) {
+                input.title = rows.map(function (item) { return item.title; }).filter(Boolean)[0]
+                    || selectionScope + "没有可批量回滚的配置";
+            } else if (input.hasAttribute("data-history-node-select")) {
+                input.title = "选择该节点中所有可批量回滚的配置";
+            } else {
+                input.title = "选择该批次中所有可批量回滚的配置";
+            }
+            var parentCell = input.closest("td");
+            if (parentCell) {
+                parentCell.title = input.disabled ? input.title : "";
+            }
         });
     }
 
-    // 拒绝把不同来源批次的配置加入同一回滚选择。
+    // 切换来源批次时清除旧选择并接管当前批次。
     function claimSelectionBatch(batchKey) {
         if (state.selectionBatchKey && state.selectionBatchKey !== batchKey) {
-            toast("一次只能选择同一发布批次进行回滚", "warning");
-            return false;
+            state.selection = {};
         }
         state.selectionBatchKey = batchKey;
-        return true;
     }
 
     // 清空所选配置后释放当前批次限制。
@@ -150,6 +161,43 @@
         return params;
     }
 
+    // 汇总批次、节点与配置项的批量回滚资格和可见原因。
+    function selectionEligibility(batch) {
+        var items = {};
+        var nodes = {};
+        var batchCanSelect = false;
+        var batchHasDisabledItems = false;
+        (batch.nodes || []).forEach(function (serverNode) {
+            var nodeKey = String(batch.batch_number) + ":" + String(serverNode.id);
+            var nodeCanSelect = false;
+            var nodeHasDisabledItems = false;
+            (serverNode.bindings || []).forEach(function (item) {
+                var key = itemKey(item);
+                var canSelect = Boolean(item.can_batch_rollback);
+                var reason = item.batch_rollback_reason || (
+                    !item.previous_version
+                        ? "没有其他可用配置版本"
+                        : "该配置当前不满足批量回滚条件"
+                );
+                items[key] = {can_select: canSelect, reason: canSelect ? "" : reason};
+                nodeCanSelect = nodeCanSelect || canSelect;
+                nodeHasDisabledItems = nodeHasDisabledItems || !canSelect;
+            });
+            nodes[nodeKey] = {
+                can_select: nodeCanSelect,
+                has_disabled_items: nodeHasDisabledItems
+            };
+            batchCanSelect = batchCanSelect || nodeCanSelect;
+            batchHasDisabledItems = batchHasDisabledItems || nodeHasDisabledItems;
+        });
+        return {
+            items: items,
+            nodes: nodes,
+            batch_can_select: batchCanSelect,
+            batch_has_disabled_items: batchHasDisabledItems
+        };
+    }
+
     function addPreviewButton(parent, item, version, title) {
         var button = node("button", "btn btn-link btn-sm p-0 text-decoration-none", title);
         button.type = "button";
@@ -164,8 +212,9 @@
         return String(item.task_id) + ":" + String(item.binding_id);
     }
 
-    function renderBatch(batch, latestBindings) {
+    function renderBatch(batch) {
         var fragment = document.createDocumentFragment();
+        var eligibility = selectionEligibility(batch);
         var batchRow = node("tr", "release-history-batch");
         batchRow.dataset.batchKey = batch.batch_number;
         var batchExpanded = Boolean(state.expandedBatches[batch.batch_number]);
@@ -175,7 +224,7 @@
                 "选择批次 " + batch.batch_number,
                 batch.batch_number,
                 "historyBatchSelect",
-                false,
+                !eligibility.batch_can_select,
                 false
             ));
         }
@@ -201,6 +250,16 @@
         summary.appendChild(node("span", "release-history-batch-meta", batch.operation_type === "release_rollback" ? "回滚批次" : "发布批次"));
         summary.appendChild(badge(batch.status));
         summary.appendChild(node("span", "release-history-batch-meta", batch.summary));
+        var batchEligibilityLabel = !eligibility.batch_can_select
+            ? "无可批量回滚配置"
+            : (eligibility.batch_has_disabled_items ? "部分配置不可批量回滚" : "");
+        if (canPublish && batchEligibilityLabel) {
+            summary.appendChild(node(
+                "span",
+                "badge release-history-eligibility",
+                batchEligibilityLabel
+            ));
+        }
         summary.appendChild(node("span", "release-history-batch-meta", window.formatUtc8DateTime(batch.created_at)));
         summary.appendChild(node("span", "release-history-batch-meta", batch.operator || "-"));
         summaryCell.appendChild(summary);
@@ -246,32 +305,44 @@
                 nodeCell.appendChild(node("span", "badge bg-secondary ms-2", "节点已删除"));
             }
             nodeCell.appendChild(badge(serverNode.status));
+            var nodeEligibility = eligibility.nodes[nodeKey];
+            var nodeEligibilityLabel = !nodeEligibility.can_select
+                ? "无可批量回滚配置"
+                : (nodeEligibility.has_disabled_items ? "部分配置不可批量回滚" : "");
+            if (canPublish && nodeEligibilityLabel) {
+                nodeCell.appendChild(node(
+                    "span",
+                    "badge release-history-eligibility ms-2",
+                    nodeEligibilityLabel
+                ));
+            }
             nodeRow.appendChild(nodeCell);
             fragment.appendChild(nodeRow);
 
             (serverNode.bindings || []).forEach(function (item) {
                 var key = itemKey(item);
-                var alreadyShown = latestBindings.has(String(item.binding_id));
-                var isLatest = !alreadyShown;
-                latestBindings.add(String(item.binding_id));
+                var itemEligibility = eligibility.items[key];
                 var row = node("tr", "release-history-item");
                 row.dataset.batchKey = batch.batch_number;
                 row.dataset.nodeKey = nodeKey;
                 row.dataset.itemKey = key;
                 row.hidden = !batchExpanded || !nodeExpanded;
                 var checkboxCell = node("td", "text-center");
+                var disabledReason = itemEligibility.reason;
                 if (canPublish) {
-                    var reason = alreadyShown ? "该绑定已有更新的发布历史" : item.rollback_reason;
-                    var canSelect = item.can_batch_rollback && !alreadyShown;
+                    var canSelect = itemEligibility.can_select;
                     checkboxCell.appendChild(checkBox(
                         "选择 " + item.config_name + " 回滚至上一版",
                         String(item.binding_id),
                         "historyItemSelect",
                         !canSelect,
-                        Boolean(state.selection[String(item.binding_id)])
+                        Boolean(
+                            state.selection[String(item.binding_id)]
+                            && state.selection[String(item.binding_id)].task_id === item.task_id
+                        )
                     ));
-                    if (!canSelect && reason) {
-                        checkboxCell.firstChild.title = reason;
+                    if (!canSelect && disabledReason) {
+                        checkboxCell.firstChild.title = disabledReason;
                     }
                 }
                 row.appendChild(checkboxCell);
@@ -284,6 +355,13 @@
                 configName.appendChild(node("span", "release-history-level-label", "配置"));
                 configName.appendChild(document.createTextNode(item.config_name || "未知配置"));
                 configCell.appendChild(configName);
+                if (canPublish && disabledReason) {
+                    configCell.appendChild(node(
+                        "div",
+                        "release-history-disabled-reason",
+                        "不可批量回滚：" + disabledReason
+                    ));
+                }
                 configCell.appendChild(node("code", "small text-muted release-history-path", item.remote_path || "-"));
                 row.appendChild(configCell);
                 row.appendChild(node("td", "small", (item.hostname || "-") + (item.ip ? " (" + item.ip + ")" : "")));
@@ -337,7 +415,6 @@
         var tbody = document.getElementById("historyRows");
         tbody.textContent = "";
         state.items = {};
-        var latestBindings = new Set();
         if (!response.items.length) {
             var emptyRow = node("tr");
             var emptyCell = node("td", "text-center text-muted py-4", "没有符合条件的发布历史");
@@ -346,7 +423,7 @@
             tbody.appendChild(emptyRow);
         } else {
             response.items.forEach(function (batch) {
-                tbody.appendChild(renderBatch(batch, latestBindings));
+                tbody.appendChild(renderBatch(batch));
             });
         }
         state.page = response.page;
@@ -723,9 +800,8 @@
             var row = this.closest("tr");
             if (this.checked) {
                 var item = row ? state.items[row.dataset.itemKey] : null;
-                if (!claimSelectionBatch(row.dataset.batchKey)) {
-                    this.checked = false;
-                } else if (item) {
+                if (item) {
+                    claimSelectionBatch(row.dataset.batchKey);
                     state.selection[bindingId] = {
                         task_id: item.task_id,
                         binding_id: item.binding_id,
@@ -747,10 +823,8 @@
             var row = this.closest("tr");
             var key = this.dataset.historyNodeSelect;
             var checked = this.checked;
-            if (checked && !claimSelectionBatch(row.dataset.batchKey)) {
-                this.checked = false;
-                syncSelectionUi();
-                return;
+            if (checked) {
+                claimSelectionBatch(row.dataset.batchKey);
             }
             currentPageItems().forEach(function (item) {
                 var itemRow = item.closest("tr");
@@ -763,10 +837,8 @@
         $("#historyRows").on("change", "[data-history-batch-select]", function () {
             var batchKey = this.dataset.historyBatchSelect;
             var checked = this.checked;
-            if (checked && !claimSelectionBatch(batchKey)) {
-                this.checked = false;
-                syncSelectionUi();
-                return;
+            if (checked) {
+                claimSelectionBatch(batchKey);
             }
             currentPageItems().forEach(function (item) {
                 var itemRow = item.closest("tr");

@@ -21,6 +21,8 @@ from ngxops.tasks.models import Task
 from ngxops.tasks.presentation import (
     OPERATION_LABELS,
     STATUS_LABELS,
+    format_task_datetime,
+    format_task_datetime_iso,
     format_task_summary,
 )
 from ngxops.ui import render_page
@@ -191,6 +193,10 @@ def _recent_task_rows(
                 "summary_secondary": secondary,
                 "summary_is_batch": task.operation_type in _SUMMARY_BATCH_TYPES,
                 "username": usernames.get(task.trigger_user_id, "-"),
+                "created_at_display": format_task_datetime(
+                    task.created_at, include_seconds=False
+                ),
+                "created_at_iso": format_task_datetime_iso(task.created_at),
             }
         )
     return rows

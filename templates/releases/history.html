@@ -27,6 +27,8 @@
     .release-history-details[hidden] { display: none !important; }
     .release-history-content { max-height: 68vh; overflow: auto; white-space: pre; }
     .release-history-check { width: 16px; height: 16px; }
+    .release-history-eligibility { color: #715300; background: #fff3cd; border: 1px solid #ead79d; font-size: .72rem; font-weight: 500; }
+    .release-history-disabled-reason { margin-top: .25rem; color: #795100; font-size: .78rem; }
     .release-history-table tbody tr + tr td { border-top-color: #e6eaed; }
     #historyVersionsRows tr[data-rollback-version-row] { cursor: pointer; }
     #historyVersionsRows tr[data-rollback-version-row]:hover { background: #f7f9fb; }
@@ -148,4 +150,4 @@
 
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=6"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=10"></script>{% endblock %}

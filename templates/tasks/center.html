@@ -93,7 +93,7 @@
                             <div class="small text-muted text-truncate" data-task-summary-secondary>{{ row.summary_secondary }}</div>
                         </td>
                         <td class="text-truncate" title="{{ row.username }}"><small>{{ row.username }}</small></td>
-                        <td class="text-nowrap"><small>{{ task.created_at.strftime('%Y-%m-%d %H:%M') }}</small></td>
+                        <td class="text-nowrap"><small><time datetime="{{ row.created_at_iso }}">{{ row.created_at_display }}</time></small></td>
                         <td class="text-nowrap" data-task-actions>
                             <div class="btn-group btn-group-sm" role="group" aria-label="任务操作">
                                 <a href="/tasks/{{ task.id }}/" class="btn btn-outline-info" title="详情" aria-label="详情">

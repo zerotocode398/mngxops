@@ -20,6 +20,7 @@ from ngxops.tasks.presentation import (
     STATUS_LABELS,
     format_execution_duration,
     format_task_datetime,
+    format_task_datetime_iso,
     format_task_summary,
     task_search_filters,
 )
@@ -165,6 +166,10 @@ def task_center(
                 "summary_primary": primary,
                 "summary_secondary": secondary,
                 "username": usernames.get(task.trigger_user_id, "-"),
+                "created_at_display": format_task_datetime(
+                    task.created_at, include_seconds=False
+                ),
+                "created_at_iso": format_task_datetime_iso(task.created_at),
                 "can_cancel": _can_cancel_task(
                     task,
                     upgrade_phases.get(task.id, ""),

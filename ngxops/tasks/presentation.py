@@ -12,12 +12,29 @@ from ngxops.tasks.models import Task
 _UTC_PLUS_EIGHT = timezone(timedelta(hours=8))
 
 
-def format_task_datetime(value: Optional[datetime], empty: str = "-") -> str:
+def _as_utc(value: datetime) -> datetime:
+    """将无时区任务时间按 UTC 解释并返回带时区时间。"""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+def format_task_datetime(
+    value: Optional[datetime],
+    empty: str = "-",
+    include_seconds: bool = True,
+) -> str:
     """将任务时间按 UTC+8 格式化供页面展示。"""
     if value is None:
         return empty
-    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
-    return utc_value.astimezone(_UTC_PLUS_EIGHT).strftime("%Y-%m-%d %H:%M:%S")
+    utc_value = _as_utc(value)
+    display_format = "%Y-%m-%d %H:%M:%S" if include_seconds else "%Y-%m-%d %H:%M"
+    return utc_value.astimezone(_UTC_PLUS_EIGHT).strftime(display_format)
+
+
+def format_task_datetime_iso(value: Optional[datetime], empty: str = "") -> str:
+    """将任务时间格式化为含 UTC+8 偏移的 ISO 8601 字符串。"""
+    if value is None:
+        return empty
+    return _as_utc(value).astimezone(_UTC_PLUS_EIGHT).isoformat(timespec="seconds")
 
 
 OPERATION_LABELS = {

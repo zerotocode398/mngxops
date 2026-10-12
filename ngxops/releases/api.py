@@ -194,6 +194,7 @@ class ReleaseHistoryBindingItem(BaseModel):
     can_rollback: bool
     can_batch_rollback: bool
     rollback_reason: str
+    batch_rollback_reason: str
     previous_version: Optional[int]
 
 
@@ -616,10 +617,16 @@ def _history_binding_item(
     except (TypeError, ValueError):
         published_version = None
     binding_id = int(entry.get("binding_id") or 0)
-    previous_version = (
-        published_version - 1
-        if published_version is not None and published_version > 1
-        else None
+    available_versions = (
+        {version.version for version in binding.versions} if binding is not None else set()
+    )
+    previous_version = max(
+        (
+            version
+            for version in available_versions
+            if published_version is not None and version < published_version
+        ),
+        default=None,
     )
     gate_reason = _history_rollback_reason(
         task,
@@ -631,15 +638,16 @@ def _history_binding_item(
         str(entry.get("remote_path_hash") or ""),
     )
     has_alternative = bool(
-        binding is not None
-        and published_version is not None
-        and (
-            published_version > 1
-            or binding.current_version > published_version
-        )
+        published_version is not None
+        and any(version != published_version for version in available_versions)
     )
     reason = gate_reason or ("没有其他可用配置版本" if not has_alternative else "")
     can_rollback = not reason
+    batch_reason = gate_reason
+    if not batch_reason and entry.get("status") != "success":
+        batch_reason = "仅成功状态的配置可批量回滚"
+    if not batch_reason and previous_version is None:
+        batch_reason = "没有其他可用配置版本"
     history_path = str(entry.get("remote_path") or "")
     if (
         binding is not None
@@ -662,10 +670,9 @@ def _history_binding_item(
         message=str(entry.get("message") or ""),
         is_latest=bool(row.get("is_latest")),
         can_rollback=can_rollback,
-        can_batch_rollback=bool(
-            can_rollback and previous_version is not None and row.get("is_latest")
-        ),
+        can_batch_rollback=not batch_reason,
         rollback_reason=reason,
+        batch_rollback_reason=batch_reason,
         previous_version=previous_version,
     )
 
@@ -702,6 +709,7 @@ def _history_batch_response(group: dict, session: Session) -> ReleaseHistoryBatc
         select(ConfigBinding)
         .options(
             joinedload(ConfigBinding.node).joinedload(Node.credential),
+            selectinload(ConfigBinding.versions),
         )
         .where(ConfigBinding.id.in_(binding_ids))
     ).unique().all() if binding_ids else []
@@ -770,44 +778,6 @@ def _find_history_binding(task: Task, binding_id: int) -> Optional[dict]:
                     "entry": entry,
                 }
     return None
-
-
-def _latest_history_bindings(session: Session, binding_ids: set) -> Dict[int, dict]:
-    """查找各绑定最近一次发布或回滚任务中的结果项。"""
-    if not binding_ids:
-        return {}
-    tasks = session.scalars(
-        select(Task)
-        .where(Task.operation_type.in_(("release_publish", "release_rollback")))
-        .order_by(Task.created_at.desc(), Task.id.desc())
-    ).all()
-    latest = {}
-    for task in tasks:
-        for node_data in _history_tree(task).get("nodes", []):
-            if not isinstance(node_data, dict):
-                continue
-            try:
-                node_id = int(node_data.get("node_id"))
-            except (TypeError, ValueError):
-                continue
-            for entry in node_data.get("bindings", []):
-                if not isinstance(entry, dict):
-                    continue
-                try:
-                    binding_id = int(entry.get("binding_id"))
-                except (TypeError, ValueError):
-                    continue
-                if binding_id in binding_ids and binding_id not in latest:
-                    latest[binding_id] = {
-                        "task": task,
-                        "history": {
-                            "node_id": node_id,
-                            "hostname": str(node_data.get("hostname") or ""),
-                            "ip": str(node_data.get("ip") or ""),
-                            "entry": entry,
-                        },
-                    }
-    return latest
 
 
 def _next_release_batch_number(session: Session) -> str:
@@ -985,7 +955,8 @@ def get_history_version_content(
     status_code=202,
     summary="从发布历史创建异步回滚",
     description=(
-        "需要 releases.publish 权限。批量请求默认回滚到各配置所发布版本的上一版；"
+        "需要 releases.publish 权限。批量请求仅接受成功状态且存在上一可用版本的配置，"
+        "默认回滚到所选历史版本之前最近的可用版本；"
         "单条请求可指定其他版本。一次回滚只能包含同一来源批次的配置。"
         "任务执行前重新检查节点、绑定、凭证和 Nginx 状态。"
     ),
@@ -1037,7 +1008,6 @@ def rollback_release_items(
         )
 
     binding_ids = set(latest_by_binding)
-    latest_history = _latest_history_bindings(session, binding_ids)
     bindings = session.scalars(
         select(ConfigBinding)
         .options(
@@ -1065,14 +1035,8 @@ def rollback_release_items(
             str(entry.get("remote_path") or ""),
             str(entry.get("remote_path_hash") or ""),
         )
-        newest = latest_history.get(binding_id)
-        if (
-            not reason
-            and candidate["choice"].version is None
-            and newest is not None
-            and newest["task"].id != task.id
-        ):
-            reason = "该绑定已有更新的发布历史"
+        if not reason and entry.get("status") != "success":
+            reason = "仅成功状态的配置可批量回滚"
         if not reason:
             try:
                 published_version = int(entry.get("version"))
