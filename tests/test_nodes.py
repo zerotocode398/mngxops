@@ -94,16 +94,35 @@ def test_node_crud_restore_groups_and_lock_gate(node_client):
         data={"csrf_token": csrf_token, "name": "production", "node_ids": [str(node_id)]},
     )
     assert group_create.status_code == 303, group_create.text
+    with session_scope(app.state.database.session_factory) as session:
+        group_id = session.scalar(select(NodeGroup.id).where(NodeGroup.name == "production"))
     group_list = client.get("/api/nodes/groups")
     assert group_list.status_code == 200
     assert group_list.json()["data"][0]["node_count"] == 1
     group_page = client.get("/nodes/groups/?search=production")
     assert group_page.status_code == 200
     assert '<td class="node-group-list-name">production</td>' in group_page.text
-    assert "搜索节点组" not in group_page.text
+    assert 'placeholder="搜索节点组名称"' in group_page.text
     assert ">筛选</button>" not in group_page.text
-    assert 'aria-label="按节点组名称筛选"' in group_page.text
-    assert "this.form.requestSubmit()" in group_page.text
+    assert 'aria-label="搜索节点组名称"' in group_page.text
+    assert "data-query-submit-on-enter" in group_page.text
+    assert 'class="btn btn-outline-danger btn-sm node-group-delete"' in group_page.text
+    assert 'href="/nodes/groups/{}/delete/"'.format(group_id) not in group_page.text
+    assert 'static/js/node-group-list.js?v=2' in group_page.text
+    assert client.get("/nodes/groups/{}/delete/".format(group_id)).status_code == 405
+    group_delete = client.post(
+        "/nodes/groups/{}/delete/".format(group_id),
+        data={"csrf_token": csrf_token},
+    )
+    assert group_delete.status_code == 303
+    assert group_delete.headers["location"] == "/nodes/groups/"
+    deleted_group_page = client.get("/nodes/groups/")
+    assert 'data-message="节点组「production」已删除"' in deleted_group_page.text
+    refreshed_group_page = client.get("/nodes/groups/")
+    assert 'class="node-group-notice"' not in refreshed_group_page.text
+    with session_scope(app.state.database.session_factory) as session:
+        assert session.get(NodeGroup, group_id) is None
+        assert session.get(Node, node_id) is not None
     app_css = client.get("/static/css/app.css?v=13")
     assert app_css.status_code == 200
     assert ".submenu::before" not in app_css.text

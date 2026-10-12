@@ -986,7 +986,8 @@ def get_history_version_content(
     summary="从发布历史创建异步回滚",
     description=(
         "需要 releases.publish 权限。批量请求默认回滚到各配置所发布版本的上一版；"
-        "单条请求可指定其他版本。任务执行前重新检查节点、绑定、凭证和 Nginx 状态。"
+        "单条请求可指定其他版本。一次回滚只能包含同一来源批次的配置。"
+        "任务执行前重新检查节点、绑定、凭证和 Nginx 状态。"
     ),
     responses=api_error_responses((400, 401, 403, 404, 409, 422, 500, 503)),
 )
@@ -1007,6 +1008,12 @@ def rollback_release_items(
     task_by_id = {task.id: task for task in history_tasks}
     if len(task_by_id) != len(task_ids):
         raise HTTPException(status_code=404, detail="部分发布历史不存在")
+    source_batches = {
+        task.source_batch or "task-{}".format(task.id)
+        for task in task_by_id.values()
+    }
+    if len(source_batches) > 1:
+        raise HTTPException(status_code=400, detail="一次只能回滚同一发布批次中的配置")
 
     latest_by_binding: Dict[int, dict] = {}
     for choice in payload.items:

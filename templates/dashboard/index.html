@@ -135,7 +135,7 @@
                         </td>
                         <td class="dashboard-task-summary">
                             <div class="text-truncate">
-                                {% if row.summary_is_batch %}<code>{{ row.summary_primary }}</code>{% else %}{{ row.summary_primary }}{% endif %}
+                                {% if row.summary_is_batch %}<code class="task-batch-code">{{ row.summary_primary }}</code>{% else %}{{ row.summary_primary }}{% endif %}
                             </div>
                             {% if row.summary_secondary %}
                             <div class="small text-muted text-truncate">{{ row.summary_secondary }}</div>

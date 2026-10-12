@@ -177,6 +177,20 @@ def test_task_center_search_paging_and_task_detail(task_center_client):
     assert '<a href="/releases/?search=release-261002-0001"><code>' not in detail.text
 
 
+def test_dashboard_and_task_center_share_batch_code_style(task_center_client):
+    """首页与任务中心批次号使用共享的字号和色彩样式。"""
+    client, _app, _token, _admin, _operator, _release_id, _publisher, _own, _other = task_center_client
+    dashboard = client.get("/")
+    task_center = client.get("/tasks/")
+    stylesheet = client.get("/static/css/app.css?v=16")
+
+    assert dashboard.status_code == 200
+    assert task_center.status_code == 200
+    assert '<code class="task-batch-code">' in dashboard.text
+    assert '<code class="task-batch-code">' in task_center.text
+    assert ".task-batch-code" in stylesheet.text
+
+
 def test_task_detail_displays_task_times_in_utc_plus_eight(task_center_client):
     """任务详情的开始、结束、创建及日志时间统一按 UTC+8 展示。"""
     (

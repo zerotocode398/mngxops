@@ -227,13 +227,11 @@ def test_release_history_batch_links_to_task_detail(release_client):
     script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
         encoding="utf-8"
     )
-    assert "/static/js/release-history.js?v=5" in page.text
+    assert "/static/js/release-history.js?v=6" in page.text
     assert 'batchLink.href = "/tasks/" + encodeURIComponent(batch.task_id) + "/";' in script
     assert 'batchLink.target = "_blank";' in script
     assert 'batchLink.rel = "noopener noreferrer";' in script
     assert 'window.formatUtc8DateTime(batch.created_at)' in script
-    assert 'var checked = this.checked;' in script
-    assert script.count("var checked = this.checked;") == 3
     assert '"bi bi-hdd-network me-1 text-secondary"' in script
     assert '"bi bi-file-earmark-code me-1 text-primary"' in script
 
@@ -247,10 +245,12 @@ def test_release_history_tree_and_batch_code_styles(release_client):
     assert ".release-history-node td:nth-child(2)" in page.text
     assert ".release-history-item td:nth-child(2)::before" in page.text
     assert ".release-history-batch-code" in page.text
+    assert ".release-history-batch-summary" in page.text
+    assert 'id="historySelectPage"' not in page.text
 
 
-def test_release_history_nodes_stay_collapsed_until_node_toggle(release_client):
-    """批次展开只显示节点行，节点配置由独立按钮控制。"""
+def test_release_history_batch_and_node_rows_toggle_on_click(release_client):
+    """批次号与节点行可展开层级，批次号链接继续打开任务详情。"""
     client, _node_id = release_client
     page = client.get("/releases/")
     script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
@@ -258,11 +258,59 @@ def test_release_history_nodes_stay_collapsed_until_node_toggle(release_client):
     )
 
     assert page.status_code == 200
-    assert "nodeRow.hidden = true;" in script
-    assert "row.hidden = !nodeExpanded;" in script
+    assert '"tr.release-history-batch"' in script
+    assert '"tr.release-history-node"' in script
+    assert 'a:not(.release-history-batch-link)' in script
+    assert 'toggleBatch(this.dataset.batchKey);' in script
+    assert 'toggleNode(this.dataset.nodeKey);' in script
     assert "nodeToggle.dataset.historyNodeToggle = nodeKey;" in script
-    assert 'row.classList.contains("release-history-node")' in script
+    assert "state.expandedBatches[batch.batch_number]" in script
     assert "state.expandedNodes[row.dataset.nodeKey]" in script
+
+
+def test_release_history_rollback_selection_is_limited_to_one_batch(release_client):
+    """页面阻止跨批次选择，回滚 API 拒绝伪造的跨批次请求。"""
+    client, _node_id = release_client
+    page = client.get("/releases/")
+    script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
+        encoding="utf-8"
+    )
+    with session_scope(client.app.state.database.session_factory) as session:
+        with session.begin():
+            user_id = session.scalar(select(User.id).where(User.username == "release-admin"))
+            tasks = [
+                Task(
+                    operation_type="release_publish",
+                    status="success",
+                    detail="发布完成",
+                    progress=100,
+                    source_batch=batch,
+                    result_tree_json=json.dumps({"nodes": []}),
+                    trigger_user_id=user_id,
+                )
+                for batch in ("release-261012-0001", "release-261012-0002")
+            ]
+            session.add_all(tasks)
+            session.flush()
+            task_ids = [task.id for task in tasks]
+
+    response = client.post(
+        "/api/releases/rollback",
+        headers={"X-CSRFToken": client.cookies.get("csrftoken")},
+        json={
+            "items": [
+                {"task_id": task_ids[0], "binding_id": 1},
+                {"task_id": task_ids[1], "binding_id": 2},
+            ]
+        },
+    )
+
+    assert page.status_code == 200
+    assert 'id="historySelectPage"' not in page.text
+    assert "selectionBatchKey" in script
+    assert 'toast("一次只能选择同一发布批次进行回滚"' in script
+    assert response.status_code == 400, response.text
+    assert "一次只能回滚同一发布批次中的配置" in response.json()["message"]
 
 
 def test_release_node_select_respects_active_binding_status_filter(release_client):

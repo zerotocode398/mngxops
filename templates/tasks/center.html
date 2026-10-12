@@ -87,7 +87,7 @@
                         <td class="task-summary-cell">
                             <div class="small text-truncate" data-task-summary-primary>
                                 {% if task.operation_type in ('release_publish', 'release_rollback', 'nginx_upgrade', 'nginx_rollback', 'nginx_install', 'nginx_service_control', 'nginx_uninstall') %}
-                                    <code>{{ row.summary_primary }}</code>
+                                    <code class="task-batch-code">{{ row.summary_primary }}</code>
                                 {% else %}{{ row.summary_primary }}{% endif %}
                             </div>
                             <div class="small text-muted text-truncate" data-task-summary-secondary>{{ row.summary_secondary }}</div>

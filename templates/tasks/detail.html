@@ -38,8 +38,8 @@
             <div class="col-sm-6 col-lg-3"><span class="text-muted">任务类型</span><strong>{{ operation_label }}</strong></div>
             <div class="col-sm-6 col-lg-3"><span class="text-muted">来源批次</span>
                 {% if task.source_batch %}
-                    {% if is_release_type %}<code>{{ task.source_batch }}</code>
-                    {% else %}<a href="/tasks/?search={{ task.source_batch|urlencode }}"><code>{{ task.source_batch }}</code></a>{% endif %}
+                    {% if is_release_type %}<code class="task-batch-code">{{ task.source_batch }}</code>
+                    {% else %}<a href="/tasks/?search={{ task.source_batch|urlencode }}"><code class="task-batch-code">{{ task.source_batch }}</code></a>{% endif %}
                 {% else %}<span>-</span>{% endif %}
             </div>
             <div class="col-sm-6 col-lg-3"><span class="text-muted">状态</span><span class="badge task-status-badge status-{{ task.status }}" data-task-status>{{ status_label }}</span></div>

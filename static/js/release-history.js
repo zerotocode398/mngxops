@@ -12,7 +12,9 @@
         pageSize: 10,
         totalPages: 1,
         selection: {},
+        selectionBatchKey: null,
         items: {},
+        expandedBatches: {},
         expandedNodes: {},
         versionDialog: null,
         previewReturnToVersions: false,
@@ -116,13 +118,22 @@
             input.indeterminate = checkedCount > 0 && checkedCount < rows.length;
             input.disabled = rows.length === 0;
         });
-        var pageRows = currentPageItems().filter(function (item) { return !item.disabled; });
-        var selectedRows = pageRows.filter(function (item) { return item.checked; }).length;
-        var pageInput = document.getElementById("historySelectPage");
-        if (pageInput) {
-            pageInput.checked = pageRows.length > 0 && selectedRows === pageRows.length;
-            pageInput.indeterminate = selectedRows > 0 && selectedRows < pageRows.length;
-            pageInput.disabled = pageRows.length === 0;
+    }
+
+    // 拒绝把不同来源批次的配置加入同一回滚选择。
+    function claimSelectionBatch(batchKey) {
+        if (state.selectionBatchKey && state.selectionBatchKey !== batchKey) {
+            toast("一次只能选择同一发布批次进行回滚", "warning");
+            return false;
+        }
+        state.selectionBatchKey = batchKey;
+        return true;
+    }
+
+    // 清空所选配置后释放当前批次限制。
+    function resetSelectionBatchIfEmpty() {
+        if (Object.keys(state.selection).length === 0) {
+            state.selectionBatchKey = null;
         }
     }
 
@@ -155,8 +166,9 @@
 
     function renderBatch(batch, latestBindings) {
         var fragment = document.createDocumentFragment();
-        var batchRow = node("tr", "table-light");
+        var batchRow = node("tr", "release-history-batch");
         batchRow.dataset.batchKey = batch.batch_number;
+        var batchExpanded = Boolean(state.expandedBatches[batch.batch_number]);
         var selectCell = node("td", "text-center");
         if (canPublish) {
             selectCell.appendChild(checkBox(
@@ -173,23 +185,25 @@
         var toggle = node("button", "btn btn-link btn-sm p-0 me-1 release-history-tree-toggle");
         toggle.type = "button";
         toggle.dataset.historyBatchToggle = batch.batch_number;
-        toggle.setAttribute("aria-expanded", "false");
-        toggle.setAttribute("aria-label", "展开批次明细 " + batch.batch_number);
-        toggle.title = "展开批次明细";
-        toggle.appendChild(node("i", "bi bi-chevron-right me-1"));
-        summaryCell.appendChild(toggle);
+        toggle.setAttribute("aria-expanded", batchExpanded ? "true" : "false");
+        toggle.setAttribute("aria-label", (batchExpanded ? "收起" : "展开") + "批次明细 " + batch.batch_number);
+        toggle.title = batchExpanded ? "收起批次明细" : "展开批次明细";
+        toggle.appendChild(node("i", batchExpanded ? "bi bi-chevron-down" : "bi bi-chevron-right"));
+        var summary = node("div", "release-history-batch-summary");
+        summary.appendChild(toggle);
         var batchLink = node("a", "release-history-batch-link");
         batchLink.href = "/tasks/" + encodeURIComponent(batch.task_id) + "/";
         batchLink.target = "_blank";
         batchLink.rel = "noopener noreferrer";
         batchLink.title = "查看对应任务详情";
         batchLink.appendChild(node("code", "release-history-batch-code", batch.batch_number));
-        summaryCell.appendChild(batchLink);
-        summaryCell.appendChild(node("span", "ms-2", batch.operation_type === "release_rollback" ? "回滚批次" : "发布批次"));
-        summaryCell.appendChild(badge(batch.status));
-        summaryCell.appendChild(node("span", "small text-muted ms-2", batch.summary));
-        summaryCell.appendChild(node("span", "small text-muted ms-2", window.formatUtc8DateTime(batch.created_at)));
-        summaryCell.appendChild(node("span", "small text-muted ms-2", batch.operator || "-"));
+        summary.appendChild(batchLink);
+        summary.appendChild(node("span", "release-history-batch-meta", batch.operation_type === "release_rollback" ? "回滚批次" : "发布批次"));
+        summary.appendChild(badge(batch.status));
+        summary.appendChild(node("span", "release-history-batch-meta", batch.summary));
+        summary.appendChild(node("span", "release-history-batch-meta", window.formatUtc8DateTime(batch.created_at)));
+        summary.appendChild(node("span", "release-history-batch-meta", batch.operator || "-"));
+        summaryCell.appendChild(summary);
         batchRow.appendChild(summaryCell);
         fragment.appendChild(batchRow);
 
@@ -198,7 +212,7 @@
             var nodeRow = node("tr", "release-history-node");
             nodeRow.dataset.batchKey = batch.batch_number;
             nodeRow.dataset.nodeKey = nodeKey;
-            nodeRow.hidden = true;
+            nodeRow.hidden = !batchExpanded;
             var nodeSelectCell = node("td", "text-center");
             if (canPublish) {
                 nodeSelectCell.appendChild(checkBox(
@@ -244,7 +258,7 @@
                 row.dataset.batchKey = batch.batch_number;
                 row.dataset.nodeKey = nodeKey;
                 row.dataset.itemKey = key;
-                row.hidden = !nodeExpanded;
+                row.hidden = !batchExpanded || !nodeExpanded;
                 var checkboxCell = node("td", "text-center");
                 if (canPublish) {
                     var reason = alreadyShown ? "该绑定已有更新的发布历史" : item.rollback_reason;
@@ -344,6 +358,9 @@
     }
 
     function loadHistory(page) {
+        state.selection = {};
+        state.selectionBatchKey = null;
+        syncSelectionUi();
         var loadingRow = node("tr");
         var loadingCell = node("td", "text-center text-muted py-4", "正在加载发布历史…");
         loadingCell.colSpan = 7;
@@ -366,6 +383,59 @@
         return Object.keys(state.selection).map(function (bindingId) {
             return state.selection[bindingId];
         });
+    }
+
+    // 同步更新批次行及其节点、配置子行的可见状态。
+    function setBatchExpanded(batchKey, expanded) {
+        state.expandedBatches[batchKey] = expanded;
+        Array.prototype.slice.call(document.querySelectorAll("#historyRows tr[data-batch-key]"))
+            .filter(function (row) { return row.dataset.batchKey === batchKey; })
+            .forEach(function (row) {
+                if (row.classList.contains("release-history-batch")) {
+                    var toggle = row.querySelector("[data-history-batch-toggle]");
+                    if (toggle) {
+                        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+                        toggle.setAttribute("aria-label", (expanded ? "收起" : "展开") + "批次明细 " + batchKey);
+                        toggle.title = expanded ? "收起批次明细" : "展开批次明细";
+                        toggle.querySelector("i").className = expanded ? "bi bi-chevron-down" : "bi bi-chevron-right";
+                    }
+                    return;
+                }
+                if (row.classList.contains("release-history-node")) {
+                    row.hidden = !expanded;
+                    return;
+                }
+                row.hidden = !expanded || !state.expandedNodes[row.dataset.nodeKey];
+            });
+        syncSelectionUi();
+    }
+
+    // 切换指定批次的展开状态。
+    function toggleBatch(batchKey) {
+        setBatchExpanded(batchKey, !state.expandedBatches[batchKey]);
+    }
+
+    // 切换节点配置明细的展开状态。
+    function toggleNode(nodeKey) {
+        var expanded = !state.expandedNodes[nodeKey];
+        state.expandedNodes[nodeKey] = expanded;
+        var nodeRow = Array.prototype.slice.call(
+            document.querySelectorAll("#historyRows tr[data-node-key]")
+        ).find(function (row) { return row.dataset.nodeKey === nodeKey; });
+        if (!nodeRow) {
+            return;
+        }
+        var hostname = nodeRow.querySelector("strong").textContent;
+        var toggle = nodeRow.querySelector("[data-history-node-toggle]");
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+        toggle.setAttribute("aria-label", (expanded ? "收起" : "展开") + "节点配置 " + hostname);
+        toggle.title = expanded ? "收起节点配置" : "展开节点配置";
+        toggle.querySelector("i").className = expanded ? "bi bi-chevron-down me-1" : "bi bi-chevron-right me-1";
+        Array.prototype.slice.call(document.querySelectorAll("#historyRows tr[data-item-key]"))
+            .filter(function (row) { return row.dataset.nodeKey === nodeKey; })
+            .forEach(function (row) {
+                row.hidden = !state.expandedBatches[nodeRow.dataset.batchKey] || !expanded;
+            });
     }
 
     function showConfirm(items) {
@@ -629,56 +699,33 @@
         $("#historyNextPage").on("click", function () {
             if (state.page < state.totalPages) { loadHistory(state.page + 1); }
         });
+        $("#historyRows").on("click", "tr.release-history-batch", function (event) {
+            if (event.target.closest("input, button, a:not(.release-history-batch-link)")) {
+                return;
+            }
+            toggleBatch(this.dataset.batchKey);
+        });
         $("#historyRows").on("click", "[data-history-batch-toggle]", function () {
-            var batchKey = this.dataset.historyBatchToggle;
-            var expanded = this.getAttribute("aria-expanded") === "true";
-            this.setAttribute("aria-expanded", expanded ? "false" : "true");
-            this.setAttribute("aria-label", (expanded ? "展开" : "收起") + "批次明细 " + batchKey);
-            this.title = expanded ? "展开批次明细" : "收起批次明细";
-            this.querySelector("i").className = expanded
-                ? "bi bi-chevron-right me-1"
-                : "bi bi-chevron-down me-1";
-            Array.prototype.slice.call(document.querySelectorAll("#historyRows tr[data-batch-key]")).forEach(function (row) {
-                if (row.dataset.batchKey === batchKey && row !== this.closest("tr")) {
-                    if (row.classList.contains("release-history-node")) {
-                        row.hidden = expanded;
-                    } else {
-                        row.hidden = expanded || !state.expandedNodes[row.dataset.nodeKey];
-                    }
-                }
-            }, this);
-            syncSelectionUi();
+            toggleBatch(this.dataset.historyBatchToggle);
+        });
+        $("#historyRows").on("click", "tr.release-history-node", function (event) {
+            if (event.target.closest("input, button, a")) {
+                return;
+            }
+            toggleNode(this.dataset.nodeKey);
         });
         $("#historyRows").on("click", "[data-history-node-toggle]", function (event) {
             event.stopPropagation();
-            var key = this.dataset.historyNodeToggle;
-            var expanded = this.getAttribute("aria-expanded") === "true";
-            var hostname = this.closest("tr").querySelector("strong").textContent;
-            state.expandedNodes[key] = !expanded;
-            this.setAttribute("aria-expanded", expanded ? "false" : "true");
-            this.setAttribute("aria-label", (expanded ? "展开" : "收起") + "节点配置 " + hostname);
-            this.title = expanded ? "展开节点配置" : "收起节点配置";
-            this.querySelector("i").className = expanded
-                ? "bi bi-chevron-right me-1"
-                : "bi bi-chevron-down me-1";
-            Array.prototype.slice.call(document.querySelectorAll("#historyRows tr[data-item-key]"))
-                .filter(function (row) { return row.dataset.nodeKey === key; })
-                .forEach(function (row) { row.hidden = expanded; });
+            toggleNode(this.dataset.historyNodeToggle);
         });
         $("#historyRows").on("change", "[data-history-item-select]", function () {
             var bindingId = this.dataset.historyItemSelect;
+            var row = this.closest("tr");
             if (this.checked) {
-                var selected = currentPageItems().find(function (input) {
-                    return input.dataset.historyItemSelect === bindingId && !input.disabled;
-                });
-                var item = selected ? state.items[selected.closest("tr").dataset.itemKey] : null;
-                if (!item) {
-                    var matchingKey = Object.keys(state.items).find(function (key) {
-                        return String(state.items[key].binding_id) === bindingId;
-                    });
-                    item = matchingKey ? state.items[matchingKey] : null;
-                }
-                if (item) {
+                var item = row ? state.items[row.dataset.itemKey] : null;
+                if (!claimSelectionBatch(row.dataset.batchKey)) {
+                    this.checked = false;
+                } else if (item) {
                     state.selection[bindingId] = {
                         task_id: item.task_id,
                         binding_id: item.binding_id,
@@ -693,12 +740,18 @@
             } else {
                 delete state.selection[bindingId];
             }
+            resetSelectionBatchIfEmpty();
             syncSelectionUi();
         });
         $("#historyRows").on("change", "[data-history-node-select]", function () {
             var row = this.closest("tr");
             var key = this.dataset.historyNodeSelect;
             var checked = this.checked;
+            if (checked && !claimSelectionBatch(row.dataset.batchKey)) {
+                this.checked = false;
+                syncSelectionUi();
+                return;
+            }
             currentPageItems().forEach(function (item) {
                 var itemRow = item.closest("tr");
                 if (itemRow.dataset.nodeKey === key && itemRow.dataset.batchKey === row.dataset.batchKey && !item.disabled) {
@@ -710,18 +763,14 @@
         $("#historyRows").on("change", "[data-history-batch-select]", function () {
             var batchKey = this.dataset.historyBatchSelect;
             var checked = this.checked;
+            if (checked && !claimSelectionBatch(batchKey)) {
+                this.checked = false;
+                syncSelectionUi();
+                return;
+            }
             currentPageItems().forEach(function (item) {
                 var itemRow = item.closest("tr");
                 if (itemRow.dataset.batchKey === batchKey && !item.disabled) {
-                    item.checked = checked;
-                    item.dispatchEvent(new Event("change", {bubbles: true}));
-                }
-            }, this);
-        });
-        $("#historySelectPage").on("change", function () {
-            var checked = this.checked;
-            currentPageItems().forEach(function (item) {
-                if (!item.disabled) {
                     item.checked = checked;
                     item.dispatchEvent(new Event("change", {bubbles: true}));
                 }

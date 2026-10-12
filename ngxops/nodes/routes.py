@@ -56,6 +56,7 @@ MAX_BATCH_COUNT = 3
 MAX_GROUPS_PER_NODE = 3
 MAX_NAME_LENGTH = 100
 MAX_DESCRIPTION_LENGTH = 4000
+_NODE_GROUP_NOTICE_KEY = "ngxops_node_group_notice"
 _BEIJING_TZ = timezone(timedelta(hours=8), name="CST")
 
 
@@ -700,12 +701,14 @@ def list_node_groups(
         group.id: sum(not node.is_deleted for node in group.nodes)
         for group in groups
     }
+    notice = request.session.pop(_NODE_GROUP_NOTICE_KEY, "")
     return render_page(
         request,
         "nodes/groups.html",
         {
             "groups": groups,
             "group_counts": group_counts,
+            "notice": notice,
             "search": search,
             "pagination": {"page": page, "pages": pages, "total": total, "per_page": per_page, "per_page_options": PAGE_SIZES},
             "can_create": _has_permission(request, session, user, "create"),
@@ -845,27 +848,6 @@ def update_node_group(
     return _save_group(request, session, user, group, name, description, node_ids)
 
 
-@router.get("/groups/{group_id}/delete/", include_in_schema=False)
-def delete_node_group_page(
-    request: Request,
-    group_id: int = Path(..., ge=1),
-    user: User = Depends(require_permission("nodes", "delete")),
-    session: Session = Depends(get_session),
-):
-    """显示节点组删除确认页。"""
-    group = session.get(NodeGroup, group_id)
-    if group is None:
-        raise HTTPException(status_code=404, detail="节点组不存在")
-    active_count = sum(not node.is_deleted for node in group.nodes)
-    return render_page(
-        request,
-        "nodes/group_delete.html",
-        {"group": group, "active_count": active_count},
-        user,
-        session,
-    )
-
-
 @router.post("/groups/{group_id}/delete/", include_in_schema=False)
 def delete_node_group(
     request: Request,
@@ -880,7 +862,8 @@ def delete_node_group(
     name = group.name
     session.delete(group)
     session.commit()
-    return RedirectResponse("/nodes/groups/?deleted_group={}".format(quote(name)), status_code=303)
+    request.session[_NODE_GROUP_NOTICE_KEY] = "节点组「{}」已删除".format(name)
+    return RedirectResponse("/nodes/groups/", status_code=303)
 
 
 @api_router.get(

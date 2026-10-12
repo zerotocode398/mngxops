@@ -8,19 +8,26 @@
     .release-history-table { min-width: 1080px; }
     .release-history-path { max-width: 360px; overflow-wrap: anywhere; }
     .release-history-version { white-space: nowrap; }
-    .release-history-item:hover { background: #f7f9fb; }
-    .release-history-node { background: #f4f6f8; }
-    .release-history-node td:nth-child(2) { padding-left: 1.5rem; border-left: 3px solid #adb5bd; }
-    .release-history-item td:nth-child(2) { position: relative; padding-left: 3.25rem; border-left: 3px solid #dee2e6; }
-    .release-history-item td:nth-child(2)::before { position: absolute; top: 50%; left: 1.65rem; width: 1rem; border-top: 1px solid #adb5bd; content: ""; }
+    .release-history-batch { cursor: pointer; }
+    .release-history-batch td { padding-top: .7rem; padding-bottom: .7rem; border-top: 2px solid #d8dfe4; background: #f0f3f5; }
+    .release-history-batch-summary { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: .35rem .7rem; }
+    .release-history-batch-meta { color: #66727b; font-size: .8rem; }
+    .release-history-node { cursor: pointer; }
+    .release-history-table > tbody > tr.release-history-node > td { background: #f8f9fa; }
+    .release-history-table > tbody > tr.release-history-node:hover > td { background: #f0f4f6; }
+    .release-history-node td:nth-child(2) { padding-left: 1.5rem; border-left: 3px solid #aab5bc; }
+    .release-history-table > tbody > tr.release-history-item:hover > td { background: #f7f9fb; }
+    .release-history-item td:nth-child(2) { position: relative; padding-left: 3.25rem; border-left: 3px solid #d5dde2; }
+    .release-history-item td:nth-child(2)::before { position: absolute; top: 50%; left: 1.65rem; width: 1rem; border-top: 1px solid #aab5bc; content: ""; }
     .release-history-level-label { display: inline-block; margin-right: .5rem; color: #6c757d; font-size: .75rem; }
-    .release-history-tree-toggle { width: 1.25rem; }
-    .release-history-batch-link { font-weight: 600; text-decoration: none; }
+    .release-history-tree-toggle { display: inline-grid; width: 1.5rem; height: 1.5rem; place-items: center; vertical-align: middle; }
+    .release-history-batch-link { padding: .15rem .35rem; border-radius: 3px; background: #e4eaee; color: #35434c; font-weight: 600; text-decoration: none; }
     .release-history-batch-link:hover { text-decoration: underline; }
-    .release-history-batch-code { color: inherit; font-size: .875rem; }
+    .release-history-batch-code { color: inherit; font-family: var(--font-mono); font-size: .8125rem; }
     .release-history-details[hidden] { display: none !important; }
     .release-history-content { max-height: 68vh; overflow: auto; white-space: pre; }
     .release-history-check { width: 16px; height: 16px; }
+    .release-history-table tbody tr + tr td { border-top-color: #e6eaed; }
     #historyVersionsRows tr[data-rollback-version-row] { cursor: pointer; }
     #historyVersionsRows tr[data-rollback-version-row]:hover { background: #f7f9fb; }
 </style>
@@ -68,9 +75,7 @@
             <table class="table table-sm align-middle mb-0 release-history-table" aria-label="发布批次历史">
                 <thead class="table-light">
                     <tr>
-                        <th class="text-center" style="width:38px">
-                            {% if can_publish %}<input class="form-check-input release-history-check" id="historySelectPage" type="checkbox" aria-label="选择本页可回滚配置">{% endif %}
-                        </th>
+                        <th class="text-center" style="width:38px"><span class="visually-hidden">选择配置</span></th>
                         <th>批次 / 配置</th>
                         <th>节点</th>
                         <th>版本</th>
@@ -143,4 +148,4 @@
 
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=5"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=6"></script>{% endblock %}

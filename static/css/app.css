@@ -46,6 +46,15 @@ html.sidebar-collapsed {
     --sidebar-width: var(--sidebar-width-collapsed);
 }
 
+.task-batch-code {
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    background: #f1f3f5;
+    color: #48545e;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
 body {
     margin: 0;
     background: var(--gray-100);
@@ -398,6 +407,10 @@ body {
 }
 
 .table td {
+    font-size: var(--fs-base);
+}
+
+.node-detail-open {
     font-size: var(--fs-base);
 }
 
