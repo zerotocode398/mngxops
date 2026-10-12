@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 resume.sqlite3
+nginx_packages/*
 __pycache__/
 *.py[codz]
 *$py.class

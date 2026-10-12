@@ -35,6 +35,9 @@
 .upgrade-panel-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--gray-100); }
 .upgrade-node-table-wrap { max-height: min(46vh, 420px); overflow: auto; border: 1px solid var(--gray-200); border-radius: 4px; }
 .upgrade-package-table-wrap { height: 354px; overflow: auto; border: 1px solid var(--gray-200); border-radius: 4px; }
+.upgrade-query-field { margin-bottom: 0.5rem; }
+.upgrade-query-field .query-tag-input { align-items: center; min-height: 34px; }
+.upgrade-query-field .query-tag-input-field { align-self: center; min-height: 1.5em; margin: 0; font-size: 0.875rem; line-height: 1.5; }
 .upgrade-package-table-wrap table { width: 100%; min-width: 580px; table-layout: fixed; }
 .upgrade-package-table-wrap thead tr, .upgrade-package-table-wrap tbody tr { height: 32px; }
 .upgrade-package-table-wrap tbody td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

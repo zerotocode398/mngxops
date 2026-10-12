@@ -13,6 +13,7 @@
     var referenceNodeId = null;
     var baselineRequestVersion = 0;
     var previewRequestVersion = 0;
+    var lastMismatchAlertSignature = "";
     var targetConfigPreviews = {};
     var moduleChanges = { added: [], removed: [] };
     var moduleAdjustModal = null;
@@ -385,6 +386,7 @@
         var mismatch = allReady && signatures.some(function (value) { return value !== signatures[0]; });
         document.getElementById("paramsMismatchNotice").classList.toggle("d-none", !mismatch);
         renderParameterMismatch(selected, mismatch);
+        showParameterMismatchAlert(selected, mismatch);
         var referenceWrap = document.getElementById("referenceNodeWrap");
         referenceWrap.classList.toggle("d-none", !mismatch);
         var referenceSelect = document.getElementById("referenceNode");
@@ -450,6 +452,33 @@
         }
     }
 
+    function showParameterMismatchAlert(nodes, mismatch) {
+        if (!mismatch) {
+            lastMismatchAlertSignature = "";
+            return;
+        }
+        var signature = nodes.map(function (node) {
+            var baseline = window.upgradeBaselines[node.id];
+            return String(node.id) + ":" + baseline.data.params.slice().sort().join("\n");
+        }).join("\n--node--\n");
+        if (signature === lastMismatchAlertSignature) return;
+        lastMismatchAlertSignature = signature;
+        if (!window.showAlert) return;
+
+        var content = document.createElement("div");
+        var introduction = document.createElement("p");
+        introduction.className = "small mb-2";
+        introduction.textContent = "请检查以下差异，再选择参考节点。后续预览仍会按各节点自己的当前参数生成。";
+        content.appendChild(introduction);
+        var details = document.getElementById("paramsMismatchDetails").cloneNode(true);
+        details.removeAttribute("id");
+        details.classList.remove("d-none");
+        details.style.maxHeight = "min(55vh, 420px)";
+        details.style.marginTop = "0";
+        content.appendChild(details);
+        window.showAlert("所选节点的编译参数存在差异", content.innerHTML, true);
+    }
+
     function referenceBaseline() {
         var value = window.upgradeBaselines[referenceNodeId];
         return value && value.ok ? value.data : null;
@@ -475,7 +504,10 @@
             box.append(label, value);
             summary.appendChild(box);
         });
-        document.getElementById("currentConfigOutput").textContent = baseline.configure_opts || "当前节点未返回 configure 参数。";
+        document.getElementById("currentConfigOutput").textContent =
+            baseline.params && baseline.params.length
+                ? formatConfigurePreview(baseline.params)
+                : "当前节点未返回 configure 参数。";
         document.getElementById("currentConfigLabel").textContent =
             "当前 configure 参数（参考节点：" + node.name + "）";
         reconcileModuleChanges(baseline.params || []);
@@ -602,6 +634,10 @@
     }
 
     function addThirdPartyRow() {
+        if (document.querySelectorAll(".upgrade-third-party-row").length >= 20) {
+            notify("第三方模块最多添加 20 项", "warning");
+            return;
+        }
         var template = document.getElementById("thirdPartyTemplate");
         var fragment = template.content.cloneNode(true);
         var row = fragment.querySelector(".upgrade-third-party-row");
@@ -636,7 +672,15 @@
             var name = row.querySelector(".tp-name").value.trim();
             var gitUrl = row.querySelector(".tp-git").value.trim();
             var packageId = row.querySelector(".tp-package").value;
-            if (!name && !gitUrl && !packageId) return;
+            if (source === "package") {
+                if (!name && !packageId) return;
+                if (!name && packageId) {
+                    var selectedPackage = row.querySelector(".tp-package").selectedOptions[0];
+                    name = selectedPackage ? (selectedPackage.dataset.name || "").trim() : "";
+                }
+            } else if (!name && !gitUrl) {
+                return;
+            }
             if (!name) {
                 errors.push("请填写第三方模块名称");
                 return;
@@ -744,7 +788,25 @@
     }
 
     function formatConfigurePreview(options) {
-        return "./configure \\\n    " + String(options || "").trim().replace(/ (?=--)/g, " \\\n    ");
+        var value;
+        if (Array.isArray(options)) {
+            value = options.map(formatConfigureArgument).join(" \\\n    ");
+        } else {
+            value = String(options || "").trim();
+        }
+        return value ? "./configure \\\n    " + value : "./configure";
+    }
+
+    function formatConfigureArgument(argument) {
+        var token = String(argument || "");
+        var separator = token.indexOf("=");
+        if (separator < 0) return quoteConfigureValue(token);
+        return token.slice(0, separator + 1) + quoteConfigureValue(token.slice(separator + 1));
+    }
+
+    function quoteConfigureValue(value) {
+        if (/^[A-Za-z0-9_./:+,@%-]*$/.test(value)) return value;
+        return "'" + value.replace(/'/g, "'\\''") + "'";
     }
 
     function renderConfirm(nodes, pkg, modules, changes) {

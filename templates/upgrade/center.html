@@ -2,7 +2,7 @@
 {% block title %}升级中心 - Nginx 编译升级{% endblock %}
 {% block page_title %}<i class="bi bi-rocket-takeoff" aria-hidden="true"></i> Nginx 升级中心{% endblock %}
 
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=5">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=8">{% endblock %}
 
 {% block content %}
 <div class="upgrade-toolbar mb-3">
@@ -48,7 +48,7 @@
                         </div>
                         <div class="small text-muted mt-1">仅显示 SSH 在线、凭证已启用且检测到 Nginx 的未锁定节点。</div>
                         <div class="modal fade" id="upgradeNodePickerModal" tabindex="-1" aria-labelledby="upgradeNodePickerTitle" aria-hidden="true">
-                            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
                                 <div class="modal-content">
                                     <div class="modal-header">
                                         <h2 class="modal-title h6" id="upgradeNodePickerTitle"><i class="bi bi-server me-1" aria-hidden="true"></i>选择目标节点</h2>
@@ -56,7 +56,7 @@
                                     </div>
                                     <div class="modal-body">
                                         <label class="visually-hidden" for="nodeSearch">搜索主机名、IP、节点组</label>
-                                        <input class="form-control form-control-sm mb-2" id="nodeSearch" data-query-tags aria-label="搜索主机名、IP、节点组" placeholder="搜索主机名、IP、节点组">
+                                        <div class="upgrade-query-field"><input class="form-control form-control-sm" id="nodeSearch" data-query-tags aria-label="搜索主机名、IP、节点组" placeholder="搜索主机名、IP、节点组"></div>
                                         <div class="table-responsive upgrade-node-table-wrap">
                                             <table class="table table-sm table-hover align-middle mb-0 upgrade-node-table" id="upgradeNodeTable">
                                                 <thead class="table-light"><tr><th></th><th>主机名 / IP</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
@@ -95,7 +95,7 @@
                     </div>
                     <div class="col-12">
                         <label class="form-label upgrade-field-label mb-1" for="packageSearch"><i class="bi bi-archive me-1" aria-hidden="true"></i>源码包</label>
-                        <input class="form-control form-control-sm mb-2 upgrade-package-search" id="packageSearch" data-query-tags aria-label="搜索源码包名称或版本" placeholder="搜索名称或版本">
+                        <div class="upgrade-query-field"><input class="form-control form-control-sm upgrade-package-search" id="packageSearch" data-query-tags aria-label="搜索源码包名称或版本" placeholder="搜索名称或版本"></div>
                         <div class="table-responsive upgrade-package-table-wrap">
                             <table class="table table-sm table-hover align-middle mb-0" id="upgradePackageTable">
                                 <thead class="table-light"><tr><th></th><th>包名称</th><th>版本</th><th>大小</th><th>上传</th></tr></thead>
@@ -263,5 +263,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=4"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=5"></script>
 {% endblock %}

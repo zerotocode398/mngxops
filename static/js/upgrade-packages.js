@@ -18,8 +18,17 @@
     var messageBox = document.getElementById("uploadMessage");
     var packageLimitMb = Number(form.dataset.packageLimitMb) || 20;
     var busy = false;
-    var autoSourceName = "";
-    var autoSourceVersion = "";
+    var autoPackageName = "";
+    var autoPackageVersion = "";
+    var packageNameManuallyEdited = false;
+    var packageVersionManuallyEdited = false;
+
+    nameInput.addEventListener("input", function () {
+        packageNameManuallyEdited = true;
+    });
+    versionInput.addEventListener("input", function () {
+        packageVersionManuallyEdited = true;
+    });
 
     // 从源码包归档文件名中去掉扩展名和版本号。
     function inferSourceName(filename) {
@@ -32,6 +41,27 @@
     function inferSourceVersion(filename) {
         var match = filename.match(/nginx-([0-9]+(?:\.[0-9]+){1,3})/i);
         return match ? match[1] : "";
+    }
+
+    function inferModuleName(filename) {
+        var stem = filename.replace(/\.(tar\.gz|tgz|zip)$/i, "");
+        var match = stem.match(/[-_](v?\d+(?:\.\d+){0,3}(?:[-+][A-Za-z0-9.-]+)?)$/i);
+        return (match ? stem.slice(0, match.index) : stem).trim() || stem;
+    }
+
+    function inferModuleVersion(filename) {
+        var stem = filename.replace(/\.(tar\.gz|tgz|zip)$/i, "");
+        var match = stem.match(/[-_](v?\d+(?:\.\d+){0,3}(?:[-+][A-Za-z0-9.-]+)?)$/i);
+        return match ? match[1] : "";
+    }
+
+    function updateInferredField(input, inferred, previousValue, manuallyEdited) {
+        var current = input.value.trim();
+        if (!manuallyEdited && (!current || current === previousValue)) {
+            input.value = inferred;
+            return inferred;
+        }
+        return previousValue;
     }
 
     function allowedArchive(filename) {
@@ -72,19 +102,19 @@
         fileSummaryText.textContent = file.name + " (" + (file.size / 1048576).toFixed(2) + " MB)";
         fileSummary.classList.remove("d-none");
         if (form.dataset.kind === "source") {
-            var currentName = nameInput.value.trim();
-            if (!currentName || currentName === autoSourceName) {
-                autoSourceName = inferSourceName(file.name);
-                nameInput.value = autoSourceName;
-            }
-            var currentVersion = versionInput.value.trim();
-            if (!currentVersion || currentVersion === autoSourceVersion) {
-                autoSourceVersion = inferSourceVersion(file.name);
-                versionInput.value = autoSourceVersion;
-            }
-        }
-        if (form.dataset.kind === "module" && !nameInput.value.trim()) {
-            nameInput.value = file.name.replace(/\.(tar\.gz|tgz|zip)$/i, "").replace(/[-_](v?\d+(?:\.\d+)*)+$/i, "");
+            autoPackageName = updateInferredField(
+                nameInput, inferSourceName(file.name), autoPackageName, packageNameManuallyEdited
+            );
+            autoPackageVersion = updateInferredField(
+                versionInput, inferSourceVersion(file.name), autoPackageVersion, packageVersionManuallyEdited
+            );
+        } else {
+            autoPackageName = updateInferredField(
+                nameInput, inferModuleName(file.name), autoPackageName, packageNameManuallyEdited
+            );
+            autoPackageVersion = updateInferredField(
+                versionInput, inferModuleVersion(file.name), autoPackageVersion, packageVersionManuallyEdited
+            );
         }
         return true;
     }
