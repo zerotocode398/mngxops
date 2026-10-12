@@ -485,7 +485,7 @@
         var limitReached = false;
 
         function collectPage(page) {
-            return fetchBindingsPage(id, page, 100).then(function (response) {
+            return fetchBindingsPage(id, page, 100, "", state.syncStatus).then(function (response) {
                 (response.bindings || []).some(function (binding) {
                     if (!binding.versions.length && binding.sync_status !== "marked_deleted") {
                         return false;

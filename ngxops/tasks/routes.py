@@ -19,6 +19,7 @@ from ngxops.tasks.presentation import (
     RESULT_FIELD_LABELS,
     STATUS_LABELS,
     format_execution_duration,
+    format_task_datetime,
     format_task_summary,
     task_search_filters,
 )
@@ -291,6 +292,7 @@ def task_detail(
             "result_summary": summary,
             "result_field_labels": RESULT_FIELD_LABELS,
             "logs": logs,
+            "format_task_datetime": format_task_datetime,
             "log_cursor": max((row.id for row in logs), default=0),
             "has_more_logs": has_more_logs,
             "execution_duration": format_execution_duration(

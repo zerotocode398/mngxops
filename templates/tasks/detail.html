@@ -44,9 +44,9 @@
             </div>
             <div class="col-sm-6 col-lg-3"><span class="text-muted">状态</span><span class="badge task-status-badge status-{{ task.status }}" data-task-status>{{ status_label }}</span></div>
             <div class="col-sm-6 col-lg-3"><span class="text-muted">触发人</span><span>{{ trigger_username }}</span></div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">开始时间</span><span data-task-started>{{ task.started_at.strftime('%Y-%m-%d %H:%M:%S') if task.started_at else '-' }}</span></div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">结束时间</span><span data-task-finished>{{ task.finished_at.strftime('%Y-%m-%d %H:%M:%S') if task.finished_at else '-' }}</span></div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">创建时间</span><span>{{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</span></div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">开始时间</span><span data-task-started>{{ format_task_datetime(task.started_at) }}</span></div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">结束时间</span><span data-task-finished>{{ format_task_datetime(task.finished_at) }}</span></div>
+            <div class="col-sm-6 col-lg-3"><span class="text-muted">创建时间</span><span data-task-created>{{ format_task_datetime(task.created_at) }}</span></div>
             <div class="col-sm-6 col-lg-3"><span class="text-muted">进度</span><span data-task-progress-text>{{ task.progress }}%</span></div>
         </div>
 
@@ -119,7 +119,7 @@
             {% endif %}
             <div class="task-log-list{% if is_config_sync_type or is_release_type %} task-log-list-terminal{% endif %}" id="taskLogList" aria-live="polite">
                 {% for log in logs %}
-                <div class="task-log-row log-level-{{ log.level }}"><time>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</time><span class="task-log-message">{{ log.message }}</span></div>
+                <div class="task-log-row log-level-{{ log.level }}"><time>{{ format_task_datetime(log.created_at) }}</time><span class="task-log-message">{{ log.message }}</span></div>
                 {% else %}<p class="small text-muted mb-0" data-empty-logs>暂无执行日志</p>{% endfor %}
             </div>
             <button class="btn btn-outline-secondary btn-sm mt-2" type="button" id="taskLoadMoreLogs"
@@ -132,5 +132,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=5"></script>
+<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=6"></script>
 {% endblock %}

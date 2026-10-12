@@ -13,9 +13,10 @@
         totalPages: 1,
         selection: {},
         items: {},
+        expandedNodes: {},
         versionDialog: null,
+        previewReturnToVersions: false,
         taskId: null,
-        afterLogId: 0,
         pollTimer: null,
         pendingRollback: null
     };
@@ -31,9 +32,9 @@
         return element;
     }
 
-    function toast(message, type) {
+    function toast(message, type, duration, action) {
         if (window.showToast) {
-            window.showToast(message, type || "info");
+            window.showToast(message, type || "info", duration, action);
         }
     }
 
@@ -179,13 +180,15 @@
         summaryCell.appendChild(toggle);
         var batchLink = node("a", "release-history-batch-link");
         batchLink.href = "/tasks/" + encodeURIComponent(batch.task_id) + "/";
+        batchLink.target = "_blank";
+        batchLink.rel = "noopener noreferrer";
         batchLink.title = "查看对应任务详情";
         batchLink.appendChild(node("code", "release-history-batch-code", batch.batch_number));
         summaryCell.appendChild(batchLink);
         summaryCell.appendChild(node("span", "ms-2", batch.operation_type === "release_rollback" ? "回滚批次" : "发布批次"));
         summaryCell.appendChild(badge(batch.status));
         summaryCell.appendChild(node("span", "small text-muted ms-2", batch.summary));
-        summaryCell.appendChild(node("span", "small text-muted ms-2", batch.created_at || ""));
+        summaryCell.appendChild(node("span", "small text-muted ms-2", window.formatUtc8DateTime(batch.created_at)));
         summaryCell.appendChild(node("span", "small text-muted ms-2", batch.operator || "-"));
         batchRow.appendChild(summaryCell);
         fragment.appendChild(batchRow);
@@ -209,6 +212,15 @@
             nodeRow.appendChild(nodeSelectCell);
             var nodeCell = node("td", "", "");
             nodeCell.colSpan = 6;
+            var nodeExpanded = Boolean(state.expandedNodes[nodeKey]);
+            var nodeToggle = node("button", "btn btn-link btn-sm p-0 me-1 release-history-tree-toggle");
+            nodeToggle.type = "button";
+            nodeToggle.dataset.historyNodeToggle = nodeKey;
+            nodeToggle.setAttribute("aria-expanded", nodeExpanded ? "true" : "false");
+            nodeToggle.setAttribute("aria-label", (nodeExpanded ? "收起" : "展开") + "节点配置 " + serverNode.hostname);
+            nodeToggle.title = nodeExpanded ? "收起节点配置" : "展开节点配置";
+            nodeToggle.appendChild(node("i", nodeExpanded ? "bi bi-chevron-down me-1" : "bi bi-chevron-right me-1"));
+            nodeCell.appendChild(nodeToggle);
             var nodeIcon = node("i", "bi bi-hdd-network me-1 text-secondary");
             nodeIcon.setAttribute("aria-hidden", "true");
             nodeCell.appendChild(nodeIcon);
@@ -232,7 +244,7 @@
                 row.dataset.batchKey = batch.batch_number;
                 row.dataset.nodeKey = nodeKey;
                 row.dataset.itemKey = key;
-                row.hidden = true;
+                row.hidden = !nodeExpanded;
                 var checkboxCell = node("td", "text-center");
                 if (canPublish) {
                     var reason = alreadyShown ? "该绑定已有更新的发布历史" : item.rollback_reason;
@@ -385,13 +397,23 @@
             + "/versions/" + encodeURIComponent(version);
     }
 
-    function previewHistoryVersion(item, version) {
+    function previewHistoryVersion(item, version, returnToVersions) {
         if (!item || !version) {
             return;
         }
         $("#historyPreviewTitle").text((item.config_name || "配置") + " · V" + version + " 预览");
         $("#historyPreviewContent").text("正在加载…");
-        bootstrap.Modal.getOrCreateInstance(document.getElementById("historyPreviewModal")).show();
+        var previewModal = document.getElementById("historyPreviewModal");
+        var versionModal = document.getElementById("historyVersionsModal");
+        state.previewReturnToVersions = Boolean(returnToVersions);
+        if (returnToVersions && versionModal.classList.contains("show")) {
+            versionModal.addEventListener("hidden.bs.modal", function showPreview() {
+                bootstrap.Modal.getOrCreateInstance(previewModal).show();
+            }, {once: true});
+            bootstrap.Modal.getOrCreateInstance(versionModal).hide();
+        } else {
+            bootstrap.Modal.getOrCreateInstance(previewModal).show();
+        }
         $.getJSON(historyVersionUrl(item, version))
             .done(function (response) {
                 $("#historyPreviewContent").text(response.content || "");
@@ -435,10 +457,11 @@
                 radio.setAttribute("aria-label", "选择回滚至 V" + version.version);
                 radioCell.appendChild(radio);
                 row.appendChild(radioCell);
+                row.dataset.rollbackVersionRow = String(version.version);
                 row.appendChild(node("td", "fw-semibold", "V" + version.version));
                 row.appendChild(node("td", "small text-break", version.remark || "-"));
                 row.appendChild(node("td", "small", version.created_by || "-"));
-                row.appendChild(node("td", "small text-nowrap", (version.created_at || "").replace("T", " ").slice(0, 16)));
+                row.appendChild(node("td", "small text-nowrap", window.formatUtc8DateTime(version.created_at).slice(0, 16)));
                 var previewCell = node("td", "text-end");
                 var previewButton = node("button", "btn btn-outline-secondary btn-sm", "");
                 previewButton.type = "button";
@@ -500,40 +523,18 @@
         loadRollbackVersions(1);
     }
 
-    function renderTaskTree(tree) {
-        var container = document.getElementById("historyProgressTree");
-        container.textContent = "";
-        if (!tree || !tree.nodes || !tree.nodes.length) {
-            container.appendChild(node("span", "small text-muted", "等待任务进度…"));
-            return;
-        }
-        if (tree.summary) {
-            container.appendChild(node(
-                "div",
-                "small text-muted border-bottom pb-2 mb-2",
-                "成功 " + tree.summary.success + "，失败 " + tree.summary.failed + "，共 " + tree.summary.total
-            ));
-        }
-        tree.nodes.forEach(function (taskNode) {
-            var section = node("div", "border-bottom py-2");
-            section.appendChild(node("div", "small fw-semibold mb-1", taskNode.hostname + " (" + taskNode.ip + ") · " + statusLabel(taskNode.status)));
-            (taskNode.bindings || []).forEach(function (item) {
-                section.appendChild(node(
-                    "div",
-                    "small text-break",
-                    item.config_name + " V" + item.version + " · " + statusLabel(item.status) + " · " + item.message
-                ));
-            });
-            container.appendChild(section);
-        });
-    }
-
-    function appendLogs(logs) {
-        var logElement = document.getElementById("historyProgressLogs");
-        (logs || []).forEach(function (entry) {
-            logElement.appendChild(document.createTextNode((entry.created_at || "") + "  " + (entry.message || "") + "\n"));
-        });
-        logElement.scrollTop = logElement.scrollHeight;
+    function showRollbackTaskToast(task, fallback) {
+        var taskId = task && (task.id || task.task_id);
+        var status = task && task.status;
+        var type = status === "success"
+            ? "success"
+            : status === "failed" ? "danger" : status === "cancelled" ? "warning" : "info";
+        var action = taskId ? {
+            label: "查看完整日志",
+            href: "/tasks/" + encodeURIComponent(taskId) + "/",
+            target: "_blank"
+        } : undefined;
+        toast((task && task.detail) || fallback || "回滚任务已结束", type, 3000, action);
     }
 
     function schedulePoll() {
@@ -546,45 +547,29 @@
         if (!state.taskId) {
             return;
         }
-        $.getJSON("/api/tasks/" + encodeURIComponent(state.taskId), {
-            after_log_id: state.afterLogId,
-            log_limit: 300
-        }).done(function (task) {
-            $("#historyProgressDetail").text(task.detail || "回滚任务执行中");
-            $("#historyProgressPercent").text(task.progress + "%");
-            $("#historyProgressBar").css("width", task.progress + "%").attr("aria-valuenow", task.progress);
-            if (task.status !== "pending" && task.status !== "running") {
-                $("#historyProgressBar").removeClass("progress-bar-striped progress-bar-animated");
-            }
-            renderTaskTree(task.result_tree);
-            appendLogs(task.logs || []);
-            state.afterLogId = task.next_log_id || state.afterLogId;
+        $.getJSON("/api/tasks/" + encodeURIComponent(state.taskId)).done(function (task) {
             if (["success", "failed", "cancelled"].indexOf(task.status) >= 0) {
-                $("#historyProgressTitle").text(task.status === "success" ? "回滚完成" : (task.status === "cancelled" ? "回滚已取消" : "回滚失败"));
-                $("#historyProgressFinal").text(task.detail || "").toggleClass("text-danger", task.status !== "success").toggleClass("text-success", task.status === "success");
                 state.taskId = null;
+                showRollbackTaskToast(task, "回滚任务已结束");
                 loadHistory(state.page);
                 return;
             }
             schedulePoll();
         }).fail(function () {
-            $("#historyProgressDetail").text("任务状态暂时无法读取，正在重试");
             schedulePoll();
         });
     }
 
-    function openProgress(taskId, batchNumber) {
+    function trackRollbackTask(taskId, batchNumber, detail) {
         if (state.pollTimer) {
             window.clearTimeout(state.pollTimer);
         }
         state.taskId = taskId;
-        state.afterLogId = 0;
-        $("#historyProgressTitle").text("回滚进度 · " + batchNumber);
-        $("#historyProgressDetail").text("任务已创建");
-        $("#historyProgressPercent").text("0%");
-        $("#historyProgressBar").css("width", "0%").addClass("progress-bar-striped progress-bar-animated").removeClass("bg-success bg-danger");
-        $("#historyProgressTree, #historyProgressLogs, #historyProgressFinal").empty().removeClass("text-danger text-success");
-        bootstrap.Modal.getOrCreateInstance(document.getElementById("historyProgressModal")).show();
+        showRollbackTaskToast({
+            id: taskId,
+            status: "pending",
+            detail: detail || "回滚批次 " + batchNumber + " 已创建，正在执行"
+        }, "回滚任务已创建");
         pollTask();
     }
 
@@ -615,11 +600,10 @@
             if (response.skipped && response.skipped.length) {
                 message += "；" + response.skipped.length + " 项因状态变化已跳过";
             }
-            toast(message, "success");
-            openProgress(response.task_id, response.batch_number);
+            trackRollbackTask(response.task_id, response.batch_number, message);
         }).fail(function (xhr) {
             var message = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : "回滚任务创建失败";
-            toast(message, "error");
+            toast(message, "danger");
         }).always(function () {
             $("#historyConfirmSubmit").prop("disabled", false);
         });
@@ -656,10 +640,30 @@
                 : "bi bi-chevron-down me-1";
             Array.prototype.slice.call(document.querySelectorAll("#historyRows tr[data-batch-key]")).forEach(function (row) {
                 if (row.dataset.batchKey === batchKey && row !== this.closest("tr")) {
-                    row.hidden = expanded;
+                    if (row.classList.contains("release-history-node")) {
+                        row.hidden = expanded;
+                    } else {
+                        row.hidden = expanded || !state.expandedNodes[row.dataset.nodeKey];
+                    }
                 }
             }, this);
             syncSelectionUi();
+        });
+        $("#historyRows").on("click", "[data-history-node-toggle]", function (event) {
+            event.stopPropagation();
+            var key = this.dataset.historyNodeToggle;
+            var expanded = this.getAttribute("aria-expanded") === "true";
+            var hostname = this.closest("tr").querySelector("strong").textContent;
+            state.expandedNodes[key] = !expanded;
+            this.setAttribute("aria-expanded", expanded ? "false" : "true");
+            this.setAttribute("aria-label", (expanded ? "展开" : "收起") + "节点配置 " + hostname);
+            this.title = expanded ? "展开节点配置" : "收起节点配置";
+            this.querySelector("i").className = expanded
+                ? "bi bi-chevron-right me-1"
+                : "bi bi-chevron-down me-1";
+            Array.prototype.slice.call(document.querySelectorAll("#historyRows tr[data-item-key]"))
+                .filter(function (row) { return row.dataset.nodeKey === key; })
+                .forEach(function (row) { row.hidden = expanded; });
         });
         $("#historyRows").on("change", "[data-history-item-select]", function () {
             var bindingId = this.dataset.historyItemSelect;
@@ -760,9 +764,29 @@
                 $("#historyChooseVersionSubmit").prop("disabled", false);
             }
         });
+        $("#historyVersionsRows").on("click", "tr[data-rollback-version-row]", function (event) {
+            if (event.target.closest("button, input, a")) return;
+            var radio = this.querySelector("[data-rollback-version-choice]");
+            if (radio) {
+                radio.checked = true;
+                radio.dispatchEvent(new Event("change", {bubbles: true}));
+            }
+        });
         $("#historyVersionsRows").on("click", "[data-rollback-preview-version]", function () {
             if (state.versionDialog) {
-                previewHistoryVersion(state.versionDialog.item, Number(this.dataset.rollbackPreviewVersion));
+                var version = Number(this.dataset.rollbackPreviewVersion);
+                var radio = this.closest("tr").querySelector("[data-rollback-version-choice]");
+                if (radio) {
+                    radio.checked = true;
+                    radio.dispatchEvent(new Event("change", {bubbles: true}));
+                }
+                previewHistoryVersion(state.versionDialog.item, version, true);
+            }
+        });
+        document.getElementById("historyPreviewModal").addEventListener("hidden.bs.modal", function () {
+            if (state.previewReturnToVersions && state.versionDialog) {
+                state.previewReturnToVersions = false;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById("historyVersionsModal")).show();
             }
         });
         $("#historyVersionsPreviousPage").on("click", function () {

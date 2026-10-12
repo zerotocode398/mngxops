@@ -19,9 +19,10 @@
     .release-history-batch-link:hover { text-decoration: underline; }
     .release-history-batch-code { color: inherit; font-size: .875rem; }
     .release-history-details[hidden] { display: none !important; }
-    .release-history-log { max-height: 180px; overflow: auto; white-space: pre-wrap; }
     .release-history-content { max-height: 68vh; overflow: auto; white-space: pre; }
     .release-history-check { width: 16px; height: 16px; }
+    #historyVersionsRows tr[data-rollback-version-row] { cursor: pointer; }
+    #historyVersionsRows tr[data-rollback-version-row]:hover { background: #f7f9fb; }
 </style>
 {% endblock %}
 
@@ -140,19 +141,6 @@
     </div></div>
 </div>
 
-<div class="modal fade" id="historyProgressModal" tabindex="-1" aria-labelledby="historyProgressTitle" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
-        <div class="modal-header"><h2 class="modal-title h6" id="historyProgressTitle">回滚进度</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
-        <div class="modal-body">
-            <div class="d-flex justify-content-between gap-2 small mb-1"><span id="historyProgressDetail">任务已创建</span><span id="historyProgressPercent">0%</span></div>
-            <div class="progress mb-3" role="progressbar" aria-label="回滚任务进度" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar progress-bar-striped progress-bar-animated" id="historyProgressBar" style="width:0%"></div></div>
-            <div class="small fw-semibold mb-1">执行结果</div><div class="border rounded p-2 mb-3" id="historyProgressTree" aria-live="polite"></div>
-            <div class="small fw-semibold mb-1">任务日志</div><pre class="border rounded bg-light p-2 small release-history-log mb-0" id="historyProgressLogs" aria-live="polite"></pre>
-            <div class="small mt-2" id="historyProgressFinal" aria-live="polite"></div>
-        </div>
-        <div class="modal-footer"><button class="btn btn-secondary btn-sm" type="button" data-bs-dismiss="modal">关闭</button></div>
-    </div></div>
-</div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=4"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=5"></script>{% endblock %}

@@ -1,12 +1,14 @@
 """验证统一任务中心页面、搜索、访问边界和协作取消。"""
 
 from dataclasses import replace
+from datetime import datetime
 import json
 from pathlib import Path
 import re
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from ngxops.accounts.models import User
 from ngxops.accounts.passwords import make_password
@@ -173,6 +175,43 @@ def test_task_center_search_paging_and_task_detail(task_center_client):
     assert "发布步骤完成" in detail.text
     assert "taskLoadMoreLogs" in detail.text
     assert '<a href="/releases/?search=release-261002-0001"><code>' not in detail.text
+
+
+def test_task_detail_displays_task_times_in_utc_plus_eight(task_center_client):
+    """任务详情的开始、结束、创建及日志时间统一按 UTC+8 展示。"""
+    (
+        client,
+        app,
+        _token,
+        _admin,
+        _operator,
+        release_id,
+        _publisher,
+        _own,
+        _other,
+    ) = task_center_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task = session.get(Task, release_id)
+            task.started_at = datetime(2026, 10, 12, 0, 1, 2)
+            task.finished_at = datetime(2026, 10, 12, 0, 3, 4)
+            task.created_at = datetime(2026, 10, 12, 0, 0, 5)
+            log = session.scalar(
+                select(TaskLog).where(TaskLog.task_id == release_id)
+            )
+            log.created_at = datetime(2026, 10, 12, 0, 0, 6)
+
+    detail = client.get("/tasks/{}/".format(release_id))
+
+    assert detail.status_code == 200
+    assert '<span data-task-started>2026-10-12 08:01:02</span>' in detail.text
+    assert '<span data-task-finished>2026-10-12 08:03:04</span>' in detail.text
+    assert '<span data-task-created>2026-10-12 08:00:05</span>' in detail.text
+    assert "<time>2026-10-12 08:00:06</time>" in detail.text
+    task_script = (Path(__file__).parents[1] / "static/js/task-center.js").read_text(
+        encoding="utf-8"
+    )
+    assert "window.formatUtc8DateTime(value)" in task_script
 
 
 def test_task_api_search_and_cancel(task_center_client):

@@ -281,7 +281,7 @@
         var formattedMessage = formatLogMessage(log.message);
         row.dataset.logHostIp = findLogHostIp(formattedMessage);
         var time = document.createElement("time");
-        time.textContent = log.created_at ? new Date(log.created_at).toLocaleString() : "";
+        time.textContent = log.created_at ? window.formatUtc8DateTime(log.created_at) : "";
         var message = document.createElement("span");
         message.className = "task-log-message";
         message.textContent = formattedMessage;
@@ -290,7 +290,7 @@
     }
 
     function formatTaskTime(value) {
-        return value ? new Date(value).toLocaleString() : "-";
+        return window.formatUtc8DateTime(value);
     }
 
     function formatDuration(startedAt, finishedAt) {

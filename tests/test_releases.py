@@ -227,8 +227,11 @@ def test_release_history_batch_links_to_task_detail(release_client):
     script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
         encoding="utf-8"
     )
-    assert "/static/js/release-history.js?v=4" in page.text
+    assert "/static/js/release-history.js?v=5" in page.text
     assert 'batchLink.href = "/tasks/" + encodeURIComponent(batch.task_id) + "/";' in script
+    assert 'batchLink.target = "_blank";' in script
+    assert 'batchLink.rel = "noopener noreferrer";' in script
+    assert 'window.formatUtc8DateTime(batch.created_at)' in script
     assert 'var checked = this.checked;' in script
     assert script.count("var checked = this.checked;") == 3
     assert '"bi bi-hdd-network me-1 text-secondary"' in script
@@ -246,6 +249,67 @@ def test_release_history_tree_and_batch_code_styles(release_client):
     assert ".release-history-batch-code" in page.text
 
 
+def test_release_history_nodes_stay_collapsed_until_node_toggle(release_client):
+    """批次展开只显示节点行，节点配置由独立按钮控制。"""
+    client, _node_id = release_client
+    page = client.get("/releases/")
+    script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert page.status_code == 200
+    assert "nodeRow.hidden = true;" in script
+    assert "row.hidden = !nodeExpanded;" in script
+    assert "nodeToggle.dataset.historyNodeToggle = nodeKey;" in script
+    assert 'row.classList.contains("release-history-node")' in script
+    assert "state.expandedNodes[row.dataset.nodeKey]" in script
+
+
+def test_release_node_select_respects_active_binding_status_filter(release_client):
+    """发布中心勾选节点时只选择当前状态筛选命中的配置。"""
+    client, _node_id = release_client
+    page = client.get("/releases/center/", params={"sync_status": "synced"})
+    script = (Path(__file__).parents[1] / "static/js/releases.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert page.status_code == 200
+    assert 'fetchBindingsPage(id, page, 100, "", state.syncStatus)' in script
+
+
+def test_release_history_version_preview_selects_and_opens_above_chooser(release_client):
+    """选版表行和预览按钮同步选择版本并打开前置预览弹窗。"""
+    client, _node_id = release_client
+    page = client.get("/releases/")
+    script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert page.status_code == 200
+    assert "row.dataset.rollbackVersionRow = String(version.version);" in script
+    assert '"tr[data-rollback-version-row]"' in script
+    assert 'radio.dispatchEvent(new Event("change", {bubbles: true}));' in script
+    assert "previewHistoryVersion(state.versionDialog.item, version, true);" in script
+    assert "bootstrap.Modal.getOrCreateInstance(versionModal).hide();" in script
+    assert "bootstrap.Modal.getOrCreateInstance(previewModal).show();" in script
+
+
+def test_release_history_rollback_uses_global_task_log_toast(release_client):
+    """历史回滚使用全局提示并链接到任务详情完整日志。"""
+    client, _node_id = release_client
+    page = client.get("/releases/")
+    script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert page.status_code == 200
+    assert "historyProgressModal" not in page.text
+    assert 'label: "查看完整日志"' in script
+    assert 'href: "/tasks/" + encodeURIComponent(taskId) + "/"' in script
+    assert 'target: "_blank"' in script
+    assert "showRollbackTaskToast(task" in script
+
+
 def test_release_node_rows_toggle_bindings_on_row_click(release_client):
     """验证节点行点击绑定了展开操作且复选框仍由独立事件处理。"""
     client, _node_id = release_client
@@ -255,7 +319,7 @@ def test_release_node_rows_toggle_bindings_on_row_click(release_client):
     )
 
     assert page.status_code == 200, page.text
-    assert "/static/js/releases.js?v=7" in page.text
+    assert "/static/js/releases.js?v=8" in page.text
     assert '".release-node-row"' in script
     assert 'toggleNode(this.getAttribute("data-node-row"))' in script
     assert '"[data-node-select]"' in script

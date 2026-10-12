@@ -1,11 +1,23 @@
 """提供统一任务中心使用的筛选和显示格式。"""
 
 import re
-from typing import List
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
 
 from sqlalchemy import or_
 
 from ngxops.tasks.models import Task
+
+
+_UTC_PLUS_EIGHT = timezone(timedelta(hours=8))
+
+
+def format_task_datetime(value: Optional[datetime], empty: str = "-") -> str:
+    """将任务时间按 UTC+8 格式化供页面展示。"""
+    if value is None:
+        return empty
+    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return utc_value.astimezone(_UTC_PLUS_EIGHT).strftime("%Y-%m-%d %H:%M:%S")
 
 
 OPERATION_LABELS = {

@@ -404,3 +404,15 @@ Nginx 安装/升级	执行
 任务 ID：#53
 ```
 127. **已完成**：发布历史批次号改用与任务中心一致的等宽代码字体，并保留任务详情链接样式。实现：`static/js/release-history.js`、`templates/releases/history.html`。
+128. **已完成**：任务详情开始、结束、创建和日志时间统一显示为 UTC+8；轮询更新的开始/结束时间也使用固定时区格式化。实现：`ngxops/tasks/presentation.py`、`ngxops/tasks/routes.py`、`templates/tasks/detail.html`、`static/js/app.js`、`static/js/task-center.js`。
+129. **已完成**：发布历史批次号链接在新浏览器窗口打开任务详情，并设置 `noopener noreferrer`。实现：`static/js/release-history.js`。
+130. **已完成**：发布历史批次时间和回滚版本时间统一显示为 UTC+8，数据库/API 时间仍按 UTC 保存和返回。实现：`static/js/app.js`、`static/js/release-history.js`。
+131. **已完成**：批次展开后默认只显示收缩的节点行，节点展开后才显示其配置项；节点展开状态在当前页面操作中保留。实现：`static/js/release-history.js`、`templates/releases/history.html`。
+132. **已完成**：发布中心勾选节点时，分页读取和批量选择均沿用当前绑定状态筛选，不再把筛选外标签加入发布。实现：`static/js/releases.js`、`templates/releases/center.html`。
+133. **已完成**：版本表行可选中版本；点击预览会同步选择该版本，先关闭选版弹窗再显示预览，关闭预览后返回选版弹窗。实现：`static/js/release-history.js`、`templates/releases/history.html`。
+134. **已完成**：回滚进度改用全局右上角任务提示，并提供新窗口“查看完整日志”链接；任务终态提示后刷新历史列表，详细进度和日志由任务中心详情页统一呈现。实现：`static/js/release-history.js`、`templates/releases/history.html`。
+135. 节点组删除不需要跳转连接，可以参考凭证管理删除规范标准。
+136. 首页摘要批次号与任务中心摘要批次号 UI 不一样，一个大一个小，而且看起来都比较费眼。
+137. 发布历史，点击批次号、节点表行都可以正常展开/收缩。
+138. 发布历史，全量批次总勾选框删除，每个批次保留勾选框，但回滚时只能选择某个批次部分节点部分配置（比如批次A里的 192 节点 nginx 配置，198 节点 grafana 配置）或者当前批量全量节点全量配置，而不能跨批次回滚，当选择全量批次进行回滚时，所有节点所有配置默认回退到上一个版本（比如当前是 V3，自动回退到 V2）。
+139. 

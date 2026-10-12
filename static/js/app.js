@@ -472,6 +472,18 @@
         }
     }
 
+    function formatUtc8DateTime(value) {
+        if (!value) return "-";
+        var timestamp = String(value).trim().replace(" ", "T");
+        if (!/(Z|[+-]\d{2}:?\d{2})$/i.test(timestamp)) timestamp += "Z";
+        var date = new Date(Date.parse(timestamp) + 8 * 60 * 60 * 1000);
+        if (isNaN(date.getTime())) return String(value);
+        function pad(number) { return String(number).padStart(2, "0"); }
+        return date.getUTCFullYear() + "-" + pad(date.getUTCMonth() + 1) + "-"
+            + pad(date.getUTCDate()) + " " + pad(date.getUTCHours()) + ":"
+            + pad(date.getUTCMinutes()) + ":" + pad(date.getUTCSeconds());
+    }
+
     function showAlert(title, message, asHtml) {
         $("#ngxopsAlertTitle").text(title || "提示");
         if (asHtml) {
@@ -608,6 +620,7 @@
     });
 
     window.showToast = showToast;
+    window.formatUtc8DateTime = formatUtc8DateTime;
     window.showAlert = showAlert;
     window.showConfirm = function (title, message, onConfirm, asHtml, size, confirmLabel) {
         var options = {
