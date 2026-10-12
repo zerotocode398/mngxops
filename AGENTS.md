@@ -383,10 +383,24 @@ Nginx 安装/升级	执行
 112. **已完成**：绑定明细表改用固定布局和显式列宽，缩窄绑定状态/同步版本列并为发布版本选择器保留 176px，长配置名和路径可换行。实现：`templates/releases/center.html`、`static/js/releases.js`。静态验证：Python 3.9 编译 2 个模块、Node 检查 2 个脚本、Jinja 编译 2 个模板和 `git diff --check` 通过；未启动服务、运行 pytest 或做浏览器验证。
 113. **已完成**：发布任务创建和完成时使用全局右上角 toast 提示，并提供在新标签页查看完整任务日志的入口；发布中心移除任务进度弹窗，后台继续轮询任务状态并在成功后刷新节点列表。发布任务日志逐步记录 SSH/SFTP、远程备份、文件上传/复制、大小与 MD5 校验、`nginx -t`、失败恢复及 reload/start；非零退出保留远端诊断输出，不再以“远程输出已省略”替代。实现：`ngxops/releases/services.py`、`ngxops/credentials/tasks.py`、`static/js/releases.js`、`templates/releases/center.html`、`docs/releases.md`。静态验证：Python 3.9 编译、Node 检查、Jinja 模板编译和 `git diff --check` 通过；未启动应用、运行 pytest 或进行浏览器验证。
 114. **已完成**：发布文件复制前以当前 SSH 用户执行 shell 引用保护的 `mkdir -p -- <目标父目录>`；目录创建和后续复制均记录步骤、退出码及远端诊断日志。实现：`ngxops/releases/services.py`、`docs/releases.md`。
-115. **已完成**：任务详情来源批次跳转发布历史后，页面路由读取并回填 `search` 查询标签，历史数据按该批次初始化过滤。实现：`ngxops/releases/routes.py`、`templates/releases/history.html`。
+115. **已完成（后续方向已由 125 修正）**：曾将任务详情来源批次链接到发布历史并回填 `search` 查询标签；用户测试 125 明确调整为发布历史批次号跳转对应任务详情，任务中心摘要与任务详情批次来源不链接到发布历史。当前行为以 125 为准。
 116. **已完成**：修复摘要批次号跳转触发 422 的原因；历史查询请求不再发送空 `status` 枚举，旧 `batch` API 参数仍兼容。实现：`static/js/release-history.js`。
 117. **已完成**：发布历史批次号和节点 IP 独立输入框合并为标准查询标签；多词按 AND 匹配批次、节点名称/IP、配置名称和远程路径，旧 API 参数保留兼容。实现：`ngxops/releases/routes.py`、`templates/releases/history.html`、`static/js/release-history.js`、`docs/releases.md`。
 118. **已完成**：移除发布历史“筛选”按钮；查询标签按回车提交，状态下拉变化时自动刷新。实现：`templates/releases/history.html`、`static/js/release-history.js`。
 119. **已完成**：节点绑定明细 API 增加状态筛选；`pending` 映射 `not_synced` 与 `modified`，其余支持状态按精确值过滤。分页结果只展示匹配项，节点全选仍跨筛选读取全部可发布绑定。实现：`ngxops/releases/api.py`、`static/js/releases.js`、`docs/releases.md`、`docs/api.md`。
 120. **已完成**：发布中心节点行空白区域和节点信息均可点击展开/收起绑定明细；展开按钮继续支持键盘操作，复选框等交互控件不触发行切换。实现：`static/js/releases.js`、`templates/releases/center.html`。
 121. **已完成**：绑定详情“返回标签”链接携带当前 `binding_id`；配置标签详情按该绑定的正文精确筛出相同内容的节点，正文不同的同名配置不再混显，相同正文仍可显示多个节点。直接打开标签详情时保留全部活跃绑定。详情字段标题由“内容模板”改为“配置内容”。实现：`ngxops/configs/routes.py`、`templates/configs/binding_detail.html`、`templates/configs/detail.html`、`docs/configs.md`。
+122. **已完成**：任务中心页面和 `GET /api/tasks` 搜索扩展到任务目标配置名称；查询词仍按批次/主机/IP/配置名 OR、词间 AND 处理。实现：`ngxops/tasks/presentation.py`、`ngxops/tasks/api.py`、`templates/tasks/center.html`、`docs/tasks.md`、`docs/api.md`。
+123. **已完成**：修复发布历史批次、节点和本页全选循环中读取被回算状态覆盖的问题；每次批量选择先固定勾选状态，再逐项同步选择记录，支持再次取消。实现：`static/js/release-history.js`。
+124. **已完成**：发布历史展开区明确显示“批次 → 节点 → 配置”层次，使用独立展开箭头、节点/配置图标、层级标签、缩进和连接线区分。实现：`static/js/release-history.js`、`templates/releases/history.html`。
+125. **已完成**：修正 115 的导航方向；任务中心摘要批次号和任务详情的发布批次来源显示为文本，发布历史批次号链接到该批次对应的任务中心详情。实现：`templates/tasks/center.html`、`templates/tasks/detail.html`、`static/js/release-history.js`。
+126. **已完成**：配置绑定和绑定版本审计详情包含配置标签名、节点主机名/IP及版本号，不记录配置正文。实现：`ngxops/audit/service.py`、`docs/audit.md`。
+```text
+2026-10-09 16:06:49	wangtianci	绑定版本	创建绑定版本	127.0.0.1	成功
+创建「绑定 #7 · V2」
+2026-10-09 16:03:12	wangtianci	发布管理	发布配置	127.0.0.1	成功
+创建任务：发布 2 个配置到 1 个节点；目标 1 台：dgftp (112.33.17.255)
+批次：release-261009-0006
+任务 ID：#53
+```
+127. **已完成**：发布历史批次号改用与任务中心一致的等宽代码字体，并保留任务详情链接样式。实现：`static/js/release-history.js`、`templates/releases/history.html`。

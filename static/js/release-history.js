@@ -169,13 +169,19 @@
         batchRow.appendChild(selectCell);
         var summaryCell = node("td", "", "");
         summaryCell.colSpan = 6;
-        var toggle = node("button", "btn btn-link btn-sm p-0 fw-semibold text-decoration-none");
+        var toggle = node("button", "btn btn-link btn-sm p-0 me-1 release-history-tree-toggle");
         toggle.type = "button";
         toggle.dataset.historyBatchToggle = batch.batch_number;
         toggle.setAttribute("aria-expanded", "false");
+        toggle.setAttribute("aria-label", "展开批次明细 " + batch.batch_number);
+        toggle.title = "展开批次明细";
         toggle.appendChild(node("i", "bi bi-chevron-right me-1"));
-        toggle.appendChild(node("span", "", batch.batch_number));
         summaryCell.appendChild(toggle);
+        var batchLink = node("a", "release-history-batch-link");
+        batchLink.href = "/tasks/" + encodeURIComponent(batch.task_id) + "/";
+        batchLink.title = "查看对应任务详情";
+        batchLink.appendChild(node("code", "release-history-batch-code", batch.batch_number));
+        summaryCell.appendChild(batchLink);
         summaryCell.appendChild(node("span", "ms-2", batch.operation_type === "release_rollback" ? "回滚批次" : "发布批次"));
         summaryCell.appendChild(badge(batch.status));
         summaryCell.appendChild(node("span", "small text-muted ms-2", batch.summary));
@@ -203,6 +209,10 @@
             nodeRow.appendChild(nodeSelectCell);
             var nodeCell = node("td", "", "");
             nodeCell.colSpan = 6;
+            var nodeIcon = node("i", "bi bi-hdd-network me-1 text-secondary");
+            nodeIcon.setAttribute("aria-hidden", "true");
+            nodeCell.appendChild(nodeIcon);
+            nodeCell.appendChild(node("span", "release-history-level-label", "节点"));
             nodeCell.appendChild(node("strong", "", serverNode.hostname || "未知节点"));
             nodeCell.appendChild(node("span", "small text-muted ms-2", serverNode.ip || ""));
             nodeCell.appendChild(node("span", "small text-muted ms-2", (serverNode.bindings || []).length + " 项配置"));
@@ -241,7 +251,13 @@
                 row.appendChild(checkboxCell);
 
                 var configCell = node("td", "");
-                configCell.appendChild(node("div", "fw-semibold", item.config_name || "未知配置"));
+                var configName = node("div", "fw-semibold release-history-config-name");
+                var configIcon = node("i", "bi bi-file-earmark-code me-1 text-primary");
+                configIcon.setAttribute("aria-hidden", "true");
+                configName.appendChild(configIcon);
+                configName.appendChild(node("span", "release-history-level-label", "配置"));
+                configName.appendChild(document.createTextNode(item.config_name || "未知配置"));
+                configCell.appendChild(configName);
                 configCell.appendChild(node("code", "small text-muted release-history-path", item.remote_path || "-"));
                 row.appendChild(configCell);
                 row.appendChild(node("td", "small", (item.hostname || "-") + (item.ip ? " (" + item.ip + ")" : "")));
@@ -633,6 +649,8 @@
             var batchKey = this.dataset.historyBatchToggle;
             var expanded = this.getAttribute("aria-expanded") === "true";
             this.setAttribute("aria-expanded", expanded ? "false" : "true");
+            this.setAttribute("aria-label", (expanded ? "展开" : "收起") + "批次明细 " + batchKey);
+            this.title = expanded ? "展开批次明细" : "收起批次明细";
             this.querySelector("i").className = expanded
                 ? "bi bi-chevron-right me-1"
                 : "bi bi-chevron-down me-1";
@@ -676,28 +694,31 @@
         $("#historyRows").on("change", "[data-history-node-select]", function () {
             var row = this.closest("tr");
             var key = this.dataset.historyNodeSelect;
+            var checked = this.checked;
             currentPageItems().forEach(function (item) {
                 var itemRow = item.closest("tr");
                 if (itemRow.dataset.nodeKey === key && itemRow.dataset.batchKey === row.dataset.batchKey && !item.disabled) {
-                    item.checked = this.checked;
+                    item.checked = checked;
                     item.dispatchEvent(new Event("change", {bubbles: true}));
                 }
             }, this);
         });
         $("#historyRows").on("change", "[data-history-batch-select]", function () {
             var batchKey = this.dataset.historyBatchSelect;
+            var checked = this.checked;
             currentPageItems().forEach(function (item) {
                 var itemRow = item.closest("tr");
                 if (itemRow.dataset.batchKey === batchKey && !item.disabled) {
-                    item.checked = this.checked;
+                    item.checked = checked;
                     item.dispatchEvent(new Event("change", {bubbles: true}));
                 }
             }, this);
         });
         $("#historySelectPage").on("change", function () {
+            var checked = this.checked;
             currentPageItems().forEach(function (item) {
                 if (!item.disabled) {
-                    item.checked = this.checked;
+                    item.checked = checked;
                     item.dispatchEvent(new Event("change", {bubbles: true}));
                 }
             }, this);

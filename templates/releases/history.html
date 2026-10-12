@@ -10,6 +10,14 @@
     .release-history-version { white-space: nowrap; }
     .release-history-item:hover { background: #f7f9fb; }
     .release-history-node { background: #f4f6f8; }
+    .release-history-node td:nth-child(2) { padding-left: 1.5rem; border-left: 3px solid #adb5bd; }
+    .release-history-item td:nth-child(2) { position: relative; padding-left: 3.25rem; border-left: 3px solid #dee2e6; }
+    .release-history-item td:nth-child(2)::before { position: absolute; top: 50%; left: 1.65rem; width: 1rem; border-top: 1px solid #adb5bd; content: ""; }
+    .release-history-level-label { display: inline-block; margin-right: .5rem; color: #6c757d; font-size: .75rem; }
+    .release-history-tree-toggle { width: 1.25rem; }
+    .release-history-batch-link { font-weight: 600; text-decoration: none; }
+    .release-history-batch-link:hover { text-decoration: underline; }
+    .release-history-batch-code { color: inherit; font-size: .875rem; }
     .release-history-details[hidden] { display: none !important; }
     .release-history-log { max-height: 180px; overflow: auto; white-space: pre-wrap; }
     .release-history-content { max-height: 68vh; overflow: auto; white-space: pre; }
@@ -147,4 +155,4 @@
 </div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=3"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/release-history.js') }}?v=4"></script>{% endblock %}

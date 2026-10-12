@@ -194,7 +194,7 @@ def _visible_task_query(
     summary="分页查询可见任务",
     description=(
         "releases.read 可查询全部任务；其他账号仅查询本人有对应业务权限的任务。"
-        "search 使用逗号分隔关键词，词间 AND，每个关键词在批次号、主机名和 IP 中 OR。"
+        "search 使用逗号分隔关键词，词间 AND，每个关键词在批次号、主机名、IP 和配置名中 OR。"
         "该接口用于轮询列表摘要，不返回结果树和日志正文。"
     ),
     responses=api_error_responses((401, 403, 422, 500)),

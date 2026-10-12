@@ -2,11 +2,13 @@
 
 from dataclasses import replace
 import hashlib
+import json
 from pathlib import Path
 import re
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from ngxops.accounts.models import User
 from ngxops.accounts.passwords import make_password
@@ -19,6 +21,7 @@ from ngxops.database.migration_runner import upgrade_database
 from ngxops.database.session import session_scope
 from ngxops.nodes.models import Node
 from ngxops.releases import services as release_services
+from ngxops.tasks.models import Task
 
 
 @pytest.fixture
@@ -156,6 +159,91 @@ def test_release_history_search_deep_link_and_empty_status(release_client):
     assert "data-query-submit-on-enter" in page.text
     assert history.status_code == 200
     assert empty_status.status_code == 422
+
+
+def test_release_history_batch_links_to_task_detail(release_client):
+    """发布历史批次响应提供详情任务 ID，页面脚本据此生成跳转链接。"""
+    client, node_id = release_client
+    batch_number = "release-261009-0012"
+    with session_scope(client.app.state.database.session_factory) as session:
+        with session.begin():
+            node = session.get(Node, node_id)
+            binding = session.scalar(
+                select(ConfigBinding)
+                .where(ConfigBinding.node_id == node_id)
+                .order_by(ConfigBinding.id.asc())
+            )
+            user_id = session.scalar(
+                select(User.id).where(User.username == "release-admin")
+            )
+            task = Task(
+                operation_type="release_publish",
+                status="success",
+                detail="发布完成",
+                progress=100,
+                source_batch=batch_number,
+                target_hostnames=node.hostname,
+                target_ips=node.ip,
+                target_configs="release-config-0",
+                trigger_user_id=user_id,
+                result_tree_json=json.dumps(
+                    {
+                        "nodes": [
+                            {
+                                "node_id": node.id,
+                                "hostname": node.hostname,
+                                "ip": node.ip,
+                                "status": "success",
+                                "bindings": [
+                                    {
+                                        "binding_id": binding.id,
+                                        "config_id": binding.config_id,
+                                        "config_name": "release-config-0",
+                                        "remote_path": binding.remote_path,
+                                        "version": 1,
+                                        "status": "success",
+                                        "action": "publish",
+                                        "message": "发布成功",
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                ),
+            )
+            session.add(task)
+            session.flush()
+            task_id = task.id
+
+    history = client.get("/api/releases/history")
+    assert history.status_code == 200, history.text
+    item = next(
+        row for row in history.json()["items"]
+        if row["batch_number"] == batch_number
+    )
+    assert item["task_id"] == task_id
+
+    page = client.get("/releases/")
+    script = (Path(__file__).parents[1] / "static/js/release-history.js").read_text(
+        encoding="utf-8"
+    )
+    assert "/static/js/release-history.js?v=4" in page.text
+    assert 'batchLink.href = "/tasks/" + encodeURIComponent(batch.task_id) + "/";' in script
+    assert 'var checked = this.checked;' in script
+    assert script.count("var checked = this.checked;") == 3
+    assert '"bi bi-hdd-network me-1 text-secondary"' in script
+    assert '"bi bi-file-earmark-code me-1 text-primary"' in script
+
+
+def test_release_history_tree_and_batch_code_styles(release_client):
+    """验证历史页为批次号和节点/配置层级加载对应结构样式。"""
+    client, _node_id = release_client
+    page = client.get("/releases/")
+
+    assert page.status_code == 200
+    assert ".release-history-node td:nth-child(2)" in page.text
+    assert ".release-history-item td:nth-child(2)::before" in page.text
+    assert ".release-history-batch-code" in page.text
 
 
 def test_release_node_rows_toggle_bindings_on_row_click(release_client):

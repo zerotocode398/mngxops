@@ -23,7 +23,7 @@
               data-query-submit-on-enter data-preserve-query-focus>
             <div class="col-12 col-xl-5">
                 <input type="search" class="form-control form-control-sm" name="search" data-query-tags
-                       value="{{ search }}" placeholder="搜索主机名、IP 或批次号" aria-label="搜索主机名、IP 或批次号">
+                       value="{{ search }}" placeholder="搜索主机名、IP、批次号或配置文件名" aria-label="搜索主机名、IP、批次号或配置文件名">
             </div>
             <div class="col-sm-6 col-xl-3">
                 <select name="operation_type" class="form-select form-select-sm" aria-label="任务类型"
@@ -87,9 +87,7 @@
                         <td class="task-summary-cell">
                             <div class="small text-truncate" data-task-summary-primary>
                                 {% if task.operation_type in ('release_publish', 'release_rollback', 'nginx_upgrade', 'nginx_rollback', 'nginx_install', 'nginx_service_control', 'nginx_uninstall') %}
-                                    {% if task.operation_type in ('release_publish', 'release_rollback') and task.source_batch and can_read_releases %}
-                                    <a href="/releases/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener"><code>{{ row.summary_primary }}</code></a>
-                                    {% else %}<code>{{ row.summary_primary }}</code>{% endif %}
+                                    <code>{{ row.summary_primary }}</code>
                                 {% else %}{{ row.summary_primary }}{% endif %}
                             </div>
                             <div class="small text-muted text-truncate" data-task-summary-secondary>{{ row.summary_secondary }}</div>

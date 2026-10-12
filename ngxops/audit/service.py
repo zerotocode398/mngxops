@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 import logging
-from typing import Dict, Iterator, Optional
+from typing import Dict, Iterator, Optional, Tuple
 
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
@@ -161,6 +161,32 @@ def _object_label(obj, table_name: str) -> str:
     return "#{}".format(identity[0]) if identity else "新对象"
 
 
+def _binding_audit_names(session: Session, obj, table_name: str) -> Tuple[str, str]:
+    """读取绑定审计所需的配置标签和节点名称。"""
+    from ngxops.configs.models import Config, ConfigBinding
+    from ngxops.nodes.models import Node
+
+    if table_name == "ngxops_config_bindings":
+        config_id = getattr(obj, "config_id", None)
+        node_id = getattr(obj, "node_id", None)
+    else:
+        binding = session.get(ConfigBinding, getattr(obj, "binding_id", None))
+        config_id = binding.config_id if binding is not None else None
+        node_id = binding.node_id if binding is not None else None
+
+    config = session.get(Config, config_id) if config_id else None
+    node = session.get(Node, node_id) if node_id else None
+    config_name = getattr(config, "name", None) or "配置 #{}".format(config_id or "?")
+    if node is None:
+        node_name = "节点 #{}".format(node_id or "?")
+    else:
+        node_name = "{} ({})".format(node.hostname, node.ip)
+    return (
+        config_name.replace("\r", " ").replace("\n", " ")[:180],
+        node_name.replace("\r", " ").replace("\n", " ")[:180],
+    )
+
+
 def _task_event(obj, actor_id: Optional[int], ip: str) -> Optional[Dict[str, object]]:
     """将统一任务创建转换成带任务和批次关联的审计条目。"""
     actor_id = actor_id or getattr(obj, "trigger_user_id", None)
@@ -303,15 +329,64 @@ def _capture_before_flush(session: Session, flush_context, instances) -> None:
                 object_action = "delete"
             verbs = {"create": "创建", "update": "更新", "delete": "删除"}
             label = _object_label(obj, table_name)
+            action_label = verbs[object_action] + module
+            detail = "{}「{}」".format(verbs[object_action], label)
+            if table_name in ("ngxops_config_bindings", "ngxops_binding_versions"):
+                config_name, node_name = _binding_audit_names(
+                    session, obj, table_name
+                )
+                if table_name == "ngxops_config_bindings":
+                    if object_action == "create":
+                        action_label = "创建配置绑定"
+                        detail = "配置「{}」绑定到节点「{}」".format(
+                            config_name, node_name
+                        )
+                    elif object_action == "delete":
+                        action_label = "解除配置绑定"
+                        detail = "解除配置「{}」与节点「{}」的绑定".format(
+                            config_name, node_name
+                        )
+                    elif state.attrs.sync_status.history.has_changes() and (
+                        obj.sync_status == "marked_deleted"
+                    ):
+                        action_label = "标记配置绑定待删除"
+                        detail = "配置「{}」与节点「{}」的绑定已标记待删除".format(
+                            config_name, node_name
+                        )
+                    elif state.attrs.sync_status.history.has_changes() and any(
+                        value == "marked_deleted"
+                        for value in state.attrs.sync_status.history.deleted
+                    ):
+                        action_label = "恢复配置绑定"
+                        detail = "恢复配置「{}」与节点「{}」的绑定".format(
+                            config_name, node_name
+                        )
+                    else:
+                        action_label = "更新配置绑定"
+                        detail = "更新配置「{}」在节点「{}」的绑定记录".format(
+                            config_name, node_name
+                        )
+                else:
+                    action_label = {
+                        "create": "创建绑定版本",
+                        "update": "更新绑定版本",
+                        "delete": "删除绑定版本",
+                    }[object_action]
+                    detail = "配置「{}」在节点「{}」{} V{}".format(
+                        config_name,
+                        node_name,
+                        action_label,
+                        getattr(obj, "version", "?"),
+                    )
             pending.append(
                 {
                     "user_id": actor_id,
                     "username": username,
                     "module": module,
-                    "action": verbs[object_action] + module,
+                    "action": action_label,
                     "ip": ip,
                     "result": "success",
-                    "detail": "{}「{}」".format(verbs[object_action], label),
+                    "detail": detail,
                     "task_id": None,
                     "source_batch": "",
                 }

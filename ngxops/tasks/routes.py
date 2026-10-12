@@ -191,7 +191,6 @@ def task_center(
             "operation_type_choices": type_choices,
             "status_choices": STATUS_LABELS.items(),
             "has_any_filter": bool(search or status or operation_type),
-            "can_read_releases": can_read_all,
             "can_publish": can_publish,
             "page_path": request.url.path,
             "pagination": {

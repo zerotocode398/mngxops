@@ -85,7 +85,7 @@ def split_search_terms(search: str) -> List[str]:
 
 
 def task_search_filters(search: str) -> List[object]:
-    """为每个搜索词生成批次、主机名或 IP 的 OR 条件。"""
+    """为每个搜索词生成批次、主机名、IP 或配置名的 OR 条件。"""
     filters = []
     for term in split_search_terms(search):
         pattern = "%{}%".format(term)
@@ -94,6 +94,7 @@ def task_search_filters(search: str) -> List[object]:
                 Task.source_batch.ilike(pattern),
                 Task.target_hostnames.ilike(pattern),
                 Task.target_ips.ilike(pattern),
+                Task.target_configs.ilike(pattern),
             )
         )
     return filters

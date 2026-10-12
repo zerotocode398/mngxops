@@ -55,6 +55,7 @@ def task_center_client(tmp_path):
                     batch="release-261002-0001",
                     hosts="worker-a, worker-b",
                     ips="192.0.2.10, 192.0.2.11",
+                    configs="grafana.conf, site.conf",
                     detail="发布完成：成功 2，失败 0，共 2",
                     tree={
                         "summary": {"total": 2, "success": 2, "failed": 0},
@@ -108,6 +109,7 @@ def _create_task(
     batch="",
     hosts="",
     ips="",
+    configs="",
     detail="",
     status="success",
     tree=None,
@@ -123,6 +125,7 @@ def _create_task(
         source_batch=batch,
         target_hostnames=hosts,
         target_ips=ips,
+        target_configs=configs,
         trigger_user_id=user_id,
     )
     session.add(task)
@@ -157,12 +160,19 @@ def test_task_center_search_paging_and_task_detail(task_center_client):
     unmatched = client.get("/tasks/?search=worker-a%2Crelease-missing")
     assert "#{}".format(release_id) not in unmatched.text
 
+    config_search = client.get("/tasks/?search=grafana.conf")
+    config_api_search = client.get("/api/tasks", params={"search": "site.conf"})
+    assert "#{}".format(release_id) in config_search.text
+    assert [item["id"] for item in config_api_search.json()["items"]] == [release_id]
+    assert "配置文件名" in response.text
+
     detail = client.get("/tasks/{}/".format(release_id))
     assert detail.status_code == 200
     assert "执行结果" in detail.text
     assert "worker-a" in detail.text
     assert "发布步骤完成" in detail.text
     assert "taskLoadMoreLogs" in detail.text
+    assert '<a href="/releases/?search=release-261002-0001"><code>' not in detail.text
 
 
 def test_task_api_search_and_cancel(task_center_client):
@@ -227,7 +237,8 @@ def test_publisher_can_track_owned_release_without_release_history_read(task_cen
 
     detail = client.get("/tasks/{}/".format(publisher_task))
     assert detail.status_code == 200
-    assert "/tasks/?search=release-owned-0001" in detail.text
+    assert '<a href="/tasks/?search=release-owned-0001"><code>' not in detail.text
+    assert "<code>release-owned-0001</code>" in detail.text
     assert "/releases/?search=release-owned-0001" not in detail.text
 
 
