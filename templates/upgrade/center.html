@@ -2,7 +2,7 @@
 {% block title %}升级中心 - Nginx 编译升级{% endblock %}
 {% block page_title %}<i class="bi bi-rocket-takeoff" aria-hidden="true"></i> Nginx 升级中心{% endblock %}
 
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=12">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=14">{% endblock %}
 
 {% block content %}
 <div class="upgrade-toolbar mb-3">
@@ -209,8 +209,13 @@
                 </section>
                 <section id="confirmNodeSection" class="mt-3" aria-labelledby="confirmNodeTitle">
                     <h3 class="h6 mb-1" id="confirmNodeTitle">目标节点</h3>
-                    <p class="small text-muted mb-2 d-none" id="perNodeConfigNote">节点编译基线存在差异，以下逐台展示服务端计算的参数；实际变化按各节点自身编译基线应用。</p>
-                    <div id="confirmNodeList" class="upgrade-confirm-list"></div>
+                    <p class="small text-muted mb-2 d-none" id="perNodeConfigNote">节点编译基线存在差异；可按需展开单台节点查看调整后的 configure 参数。</p>
+                    <div class="table-responsive upgrade-confirm-node-wrap">
+                        <table class="table table-sm table-hover align-middle mb-0 upgrade-confirm-node-table">
+                            <thead class="table-light"><tr><th>主机名 / IP</th><th>现有版本</th><th>目标版本</th><th id="confirmNodeConfigHeader" hidden>编译参数</th></tr></thead>
+                            <tbody id="confirmNodeList"></tbody>
+                        </table>
+                    </div>
                 </section>
                 <div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="confirmUpgrade"><label class="form-check-label" for="confirmUpgrade">我确认以上节点、版本和编译参数无误，可以开始升级</label></div>
                 <div class="upgrade-panel-actions"><button class="btn btn-outline-secondary btn-sm" type="button" data-step-target="3"><i class="bi bi-chevron-left" aria-hidden="true"></i>上一步</button>{% if can_execute %}<button class="btn btn-success" type="button" id="startUpgrade" disabled><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>开始升级</button>{% else %}<span class="small text-muted">当前账号没有执行权限</span>{% endif %}</div>
@@ -225,7 +230,7 @@
         <section class="card upgrade-progress-card">
             <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0"><i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>升级执行进度</h2><span class="badge text-bg-secondary d-none" id="batchProgressBadge">0%</span></div>
             <div class="card-body">
-                <div class="text-center text-muted py-4" id="progressPlaceholder"><i class="bi bi-hourglass fs-4" aria-hidden="true"></i><p class="mb-0 mt-2 small">任务创建后显示真实进度</p></div>
+                <div class="text-center text-muted py-4" id="progressPlaceholder"><i class="bi bi-hourglass fs-4" aria-hidden="true"></i><p class="mb-0 mt-2 small">任务执行进度</p></div>
                 <div class="d-none" id="progressLive"><div class="small mb-2" id="batchNumberLabel"></div><div class="progress mb-3" style="height:8px"><div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar" style="width:0%"></div></div><div id="batchTaskRows" class="upgrade-task-rows"></div></div>
             </div>
         </section>
@@ -307,5 +312,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=9"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=12"></script>
 {% endblock %}

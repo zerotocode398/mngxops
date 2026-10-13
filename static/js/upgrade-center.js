@@ -32,8 +32,23 @@
     }
 
     function errorMessage(error) {
-        return error && error.responseJSON && error.responseJSON.message
-            ? error.responseJSON.message
+        var response = error && error.responseJSON;
+        if (response) {
+            if (typeof response.message === "string" && response.message.trim()) {
+                return response.message;
+            }
+            if (typeof response.detail === "string" && response.detail.trim()) {
+                return response.detail;
+            }
+            if (Array.isArray(response.errors) && response.errors.length) {
+                var firstError = response.errors[0];
+                if (firstError && typeof firstError.message === "string") {
+                    return firstError.message;
+                }
+            }
+        }
+        return error && error.status
+            ? "请求失败（HTTP " + error.status + "），请检查输入后重试"
             : "请求失败，请检查输入后重试";
     }
 
@@ -1039,32 +1054,264 @@
         return "'" + value.replace(/'/g, "'\\''") + "'";
     }
 
+    function appendSummaryDetailGroup(container, title, values, kind) {
+        var group = document.createElement("section");
+        group.className = "upgrade-summary-detail-group";
+        var heading = document.createElement("h4");
+        heading.className = "upgrade-summary-detail-title";
+        heading.textContent = title;
+        var list = document.createElement("ul");
+        list.className = "upgrade-summary-detail-list";
+        if (!values.length) {
+            var empty = document.createElement("li");
+            empty.className = "small text-muted";
+            empty.textContent = "无";
+            list.appendChild(empty);
+        }
+        values.forEach(function (value) {
+            var item = document.createElement("li");
+            item.className = "upgrade-summary-detail-item is-" + kind;
+            var marker = document.createElement("span");
+            marker.setAttribute("aria-hidden", "true");
+            marker.textContent = kind === "removed" ? "−" : "+";
+            var code = document.createElement("code");
+            code.textContent = value;
+            if (kind === "removed") {
+                var deleted = document.createElement("del");
+                deleted.appendChild(code);
+                item.append(marker, deleted);
+            } else {
+                item.append(marker, code);
+            }
+            list.appendChild(item);
+        });
+        group.append(heading, list);
+        container.appendChild(group);
+    }
+
+    function createBuiltinModuleDetails(changes) {
+        var details = document.createElement("div");
+        details.className = "upgrade-summary-detail upgrade-summary-detail-groups";
+        appendSummaryDetailGroup(details, "新增内置参数", changes.added, "added");
+        appendSummaryDetailGroup(details, "移除参数", changes.removed, "removed");
+        return details;
+    }
+
+    function thirdPartyPackageLabel(packageId) {
+        var options = Array.from(document.querySelectorAll(".tp-package option"));
+        var selected = options.find(function (option) {
+            return option.value && Number(option.value) === Number(packageId);
+        });
+        return selected ? selected.textContent.trim() : "已上传离线包";
+    }
+
+    function createThirdPartyModuleDetails(modules) {
+        var details = document.createElement("div");
+        details.className = "upgrade-summary-detail";
+        var list = document.createElement("ul");
+        list.className = "upgrade-summary-detail-list";
+        modules.forEach(function (module) {
+            var item = document.createElement("li");
+            item.className = "upgrade-summary-detail-item";
+            var name = document.createElement("code");
+            name.textContent = module.name;
+            var metadata = document.createElement("span");
+            metadata.className = "upgrade-summary-detail-meta";
+            metadata.textContent = module.source === "git"
+                ? "在线 Git · 分支 " + (module.branch || "master")
+                : "离线包 · " + thirdPartyPackageLabel(module.package_id);
+            item.append(name, metadata);
+            list.appendChild(item);
+        });
+        details.appendChild(list);
+        return details;
+    }
+
+    function createPrefixDetails(groups) {
+        var details = document.createElement("div");
+        details.className = "upgrade-summary-detail";
+        var list = document.createElement("ul");
+        list.className = "upgrade-summary-detail-list";
+        groups.forEach(function (group) {
+            var item = document.createElement("li");
+            item.className = "upgrade-summary-detail-item";
+            var prefix = document.createElement("code");
+            prefix.textContent = group.prefix;
+            var nodesText = document.createElement("span");
+            nodesText.className = "upgrade-summary-detail-meta";
+            nodesText.textContent = group.nodes.map(function (node) {
+                return node.name + " (" + node.ip + ")";
+            }).join(", ");
+            item.append(prefix, nodesText);
+            list.appendChild(item);
+        });
+        details.appendChild(list);
+        return details;
+    }
+
+    function targetPrefixForNode(node) {
+        var params = targetConfigPreviews[node.id] || [];
+        for (var index = 0; index < params.length; index += 1) {
+            if (params[index] === "--prefix" && params[index + 1]) return params[index + 1];
+            if (params[index].indexOf("--prefix=") === 0) return params[index].slice(9);
+        }
+        var baseline = window.upgradeBaselines[node.id].data;
+        if (currentMode() === "switch_path") {
+            return document.getElementById("targetPrefix").value.trim() || baseline.prefix || "/usr/local/nginx";
+        }
+        return baseline.prefix || "/usr/local/nginx";
+    }
+
+    function prefixSummary(nodes) {
+        var grouped = new Map();
+        nodes.forEach(function (node) {
+            var prefix = targetPrefixForNode(node);
+            if (!grouped.has(prefix)) grouped.set(prefix, []);
+            grouped.get(prefix).push(node);
+        });
+        var groups = Array.from(grouped, function (entry) {
+            return { prefix: entry[0], nodes: entry[1] };
+        });
+        return {
+            value: groups.length === 1
+                ? groups[0].prefix
+                : groups.length + " 种路径",
+            details: groups.length > 1 ? createPrefixDetails(groups) : null
+        };
+    }
+
+    function appendSummaryItem(grid, labelText, valueText, detail, detailId) {
+        var item = document.createElement("div");
+        item.className = "upgrade-summary-item";
+        var label = document.createElement("span");
+        label.className = "upgrade-summary-label";
+        label.textContent = labelText;
+        var value = document.createElement("div");
+        value.className = "upgrade-summary-value";
+        item.appendChild(label);
+        if (!detail) {
+            value.textContent = valueText;
+            item.appendChild(value);
+            grid.appendChild(item);
+            return;
+        }
+
+        detail.id = detailId;
+        detail.hidden = true;
+        var toggle = document.createElement("button");
+        toggle.className = "upgrade-summary-toggle";
+        toggle.type = "button";
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.setAttribute("aria-controls", detailId);
+        toggle.title = "展开" + labelText + "详情";
+        var text = document.createElement("span");
+        text.textContent = valueText;
+        var icon = document.createElement("i");
+        icon.className = "bi bi-chevron-down";
+        icon.setAttribute("aria-hidden", "true");
+        toggle.append(text, icon);
+        toggle.addEventListener("click", function () {
+            var expanded = detail.hidden;
+            detail.hidden = !expanded;
+            item.classList.toggle("is-expanded", expanded);
+            toggle.setAttribute("aria-expanded", String(expanded));
+            toggle.title = (expanded ? "收起" : "展开") + labelText + "详情";
+        });
+        value.appendChild(toggle);
+        item.append(value, detail);
+        grid.appendChild(item);
+    }
+
+    function appendConfirmNodeRow(nodeList, node, pkg, sharedBaseline) {
+        var baseline = window.upgradeBaselines[node.id].data;
+        var row = document.createElement("tr");
+        var hostCell = document.createElement("td");
+        var hostName = document.createElement("span");
+        hostName.className = "upgrade-confirm-node-hostname";
+        hostName.textContent = node.name;
+        hostName.title = node.name;
+        var ip = document.createElement("small");
+        ip.className = "text-muted upgrade-confirm-node-ip";
+        ip.textContent = node.ip;
+        hostCell.append(hostName, ip);
+        row.appendChild(hostCell);
+
+        [baseline.version || "未知", pkg.version || "未知"].forEach(function (version) {
+            var cell = document.createElement("td");
+            cell.className = "upgrade-confirm-node-version";
+            cell.textContent = version;
+            row.appendChild(cell);
+        });
+
+        if (!sharedBaseline) {
+            var actionCell = document.createElement("td");
+            var detailId = "confirmNodeConfig" + node.id;
+            var detailsButton = document.createElement("button");
+            detailsButton.className = "btn btn-outline-secondary btn-sm";
+            detailsButton.type = "button";
+            detailsButton.textContent = "查看参数";
+            detailsButton.setAttribute("aria-expanded", "false");
+            detailsButton.setAttribute("aria-controls", detailId);
+            detailsButton.setAttribute("aria-label", "查看 " + node.name + " 的目标编译参数");
+            var detailRow = document.createElement("tr");
+            detailRow.className = "upgrade-confirm-node-detail-row";
+            detailRow.hidden = true;
+            detailRow.id = detailId;
+            var detailCell = document.createElement("td");
+            detailCell.colSpan = 4;
+            detailRow.appendChild(detailCell);
+            var rendered = false;
+            detailsButton.addEventListener("click", function () {
+                var expanded = detailRow.hidden;
+                detailRow.hidden = !expanded;
+                detailsButton.setAttribute("aria-expanded", String(expanded));
+                detailsButton.textContent = expanded ? "收起参数" : "查看参数";
+                if (expanded && !rendered) {
+                    var output = document.createElement("pre");
+                    output.className = "nginx-v-output nginx-v-output-alt upgrade-confirm-terminal upgrade-node-config-preview";
+                    renderAnnotatedConfigurePreview(
+                        output,
+                        baseline.params || [],
+                        targetConfigPreviews[node.id] || []
+                    );
+                    detailCell.appendChild(output);
+                    rendered = true;
+                }
+            });
+            actionCell.appendChild(detailsButton);
+            row.appendChild(actionCell);
+            nodeList.append(row, detailRow);
+            return;
+        }
+        nodeList.appendChild(row);
+    }
+
     function renderConfirm(nodes, pkg, modules, changes) {
         var summary = document.getElementById("upgradeSummary");
         summary.replaceChildren();
         var summaryGrid = document.createElement("div");
         summaryGrid.className = "upgrade-summary-grid";
-        [
-            ["节点", nodes.length + " 台"],
-            ["源码包", pkg.name + " · " + pkg.version],
-            ["升级模式", currentMode() === "upgrade" ? "平滑升级（同路径）" : "切换路径升级"],
-            ["工作目录", currentWorkDir()],
-            ["并行编译", "-j" + document.getElementById("makeJobs").value],
-            ["目标安装目录", currentMode() === "switch_path" ? (document.getElementById("targetPrefix").value.trim() || "-") : "各节点自身"],
-            ["内置模块变更", "新增 " + changes.added.length + " · 移除 " + changes.removed.length],
-            ["第三方模块", modules.length + " 项"]
-        ].forEach(function (pair) {
-            var item = document.createElement("div");
-            item.className = "upgrade-summary-item";
-            var label = document.createElement("span");
-            label.className = "upgrade-summary-label";
-            label.textContent = pair[0];
-            var value = document.createElement("span");
-            value.className = "upgrade-summary-value";
-            value.textContent = pair[1];
-            item.append(label, value);
-            summaryGrid.appendChild(item);
-        });
+        var prefix = prefixSummary(nodes);
+        appendSummaryItem(summaryGrid, "节点", nodes.length + " 台");
+        appendSummaryItem(summaryGrid, "源码包", pkg.name + " · " + pkg.version);
+        appendSummaryItem(summaryGrid, "升级模式", currentMode() === "upgrade" ? "平滑升级（同路径）" : "切换路径升级");
+        appendSummaryItem(summaryGrid, "工作目录", currentWorkDir());
+        appendSummaryItem(summaryGrid, "并行编译", document.getElementById("makeJobs").value);
+        appendSummaryItem(summaryGrid, "安装路径", prefix.value, prefix.details, "upgradePrefixDetails");
+        appendSummaryItem(
+            summaryGrid,
+            "内置模块变更",
+            "新增 " + changes.added.length + " 项 · 移除 " + changes.removed.length + " 项",
+            changes.added.length || changes.removed.length ? createBuiltinModuleDetails(changes) : null,
+            "upgradeBuiltinModuleDetails"
+        );
+        appendSummaryItem(
+            summaryGrid,
+            "第三方模块",
+            modules.length + " 项",
+            modules.length ? createThirdPartyModuleDetails(modules) : null,
+            "upgradeThirdPartyModuleDetails"
+        );
         summary.appendChild(summaryGrid);
         var baselineSignatures = nodes.map(function (node) {
             return (window.upgradeBaselines[node.id].data.params || []).slice().sort().join("\n");
@@ -1074,8 +1321,8 @@
         });
         document.getElementById("sharedConfigPreview").classList.toggle("d-none", !sharedBaseline);
         document.getElementById("perNodeConfigNote").classList.toggle("d-none", sharedBaseline);
-        document.getElementById("confirmNodeTitle").textContent =
-            sharedBaseline ? "目标节点" : "各节点目标参数";
+        document.getElementById("confirmNodeTitle").textContent = "目标节点（" + nodes.length + " 台）";
+        document.getElementById("confirmNodeConfigHeader").hidden = sharedBaseline;
         if (sharedBaseline) {
             renderAnnotatedConfigurePreview(
                 document.getElementById("finalConfigPreview"),
@@ -1086,35 +1333,7 @@
         var nodeList = document.getElementById("confirmNodeList");
         nodeList.replaceChildren();
         nodes.forEach(function (node) {
-            var baseline = window.upgradeBaselines[node.id].data;
-            var row = document.createElement("div");
-            row.className = "upgrade-confirm-item upgrade-confirm-node";
-            var heading = document.createElement("div");
-            heading.className = "upgrade-confirm-node-heading";
-            var name = document.createElement("strong");
-            name.textContent = node.name + " · " + node.ip;
-            var versions = document.createElement("span");
-            versions.className = "small text-muted upgrade-confirm-node-meta";
-            var prefix = currentMode() === "switch_path"
-                ? document.getElementById("targetPrefix").value.trim()
-                : (baseline.prefix || "未知");
-            versions.textContent = (baseline.version || "未知") + " → " + pkg.version + " · prefix " + prefix;
-            heading.append(name, versions);
-            row.appendChild(heading);
-            if (!sharedBaseline) {
-                var configHeading = document.createElement("div");
-                configHeading.className = "upgrade-confirm-node-config-title";
-                configHeading.textContent = "目标 configure 参数";
-                var output = document.createElement("pre");
-                output.className = "nginx-v-output nginx-v-output-alt upgrade-confirm-terminal upgrade-node-config-preview";
-                renderAnnotatedConfigurePreview(
-                    output,
-                    baseline.params || [],
-                    targetConfigPreviews[node.id] || []
-                );
-                row.append(configHeading, output);
-            }
-            nodeList.appendChild(row);
+            appendConfirmNodeRow(nodeList, node, pkg, sharedBaseline);
         });
         document.getElementById("confirmUpgrade").checked = false;
         var startButton = document.getElementById("startUpgrade");
@@ -1386,14 +1605,13 @@
         document.getElementById("confirmModuleAdjust").addEventListener("click", confirmModuleAdjust);
         ["addModuleSearch", "removeModuleSearch"].forEach(function (inputId) {
             var input = document.getElementById(inputId);
-            input.addEventListener("input", filterModuleOptions);
+            $(input).on("querytags:change", filterModuleOptions);
             input.addEventListener("keydown", function (event) {
-                if (event.key !== "Enter") return;
+                if (event.key !== "Enter" || event.isComposing) return;
                 event.preventDefault();
                 window.commitQueryTagValue("#" + inputId);
                 filterModuleOptions();
             });
-            $(input).on("querytags:change", filterModuleOptions);
         });
         document.getElementById("addThirdParty").addEventListener("click", addThirdPartyRow);
         document.getElementById("thirdPartyRows").addEventListener("input", invalidateStepThreePreview);

@@ -325,6 +325,28 @@ def test_upgrade_center_summary_uses_nonbold_hostname_and_confirm_label(upgrade_
     assert 'row.querySelector(".upgrade-node-hostname").textContent' in script
 
 
+def test_module_search_filters_on_enter_and_query_tag_removal():
+    """验证模块搜索只按 Enter 筛选，并在删除查询标签后重新筛选。"""
+    script = (Path.cwd() / "static/js/upgrade-center.js").read_text(encoding="utf-8")
+    start = script.index('["addModuleSearch", "removeModuleSearch"]')
+    end = script.index('document.getElementById("addThirdParty")', start)
+    handlers = script[start:end]
+
+    assert '$(input).on("querytags:change", filterModuleOptions);' in handlers
+    assert 'if (event.key !== "Enter" || event.isComposing) return;' in handlers
+    assert 'input.addEventListener("input", filterModuleOptions)' not in handlers
+
+
+def test_upgrade_summary_shows_install_path_without_prefix_flag():
+    """验证升级摘要仅显示安装路径值，不显示 configure 参数名。"""
+    script = (Path.cwd() / "static/js/upgrade-center.js").read_text(encoding="utf-8")
+
+    assert 'appendSummaryItem(summaryGrid, "安装路径", prefix.value' in script
+    assert "prefix.textContent = group.prefix;" in script
+    assert 'groups.length + " 种路径"' in script
+    assert '"--prefix=" + groups[0].prefix' not in script
+
+
 def test_upload_dropzones_use_configured_limit_for_both_package_types(upgrade_client):
     """验证两个上传页显示系统设置上限且服务端拒绝超限归档。"""
     client, app, csrf_token, _user_id = upgrade_client
