@@ -108,6 +108,48 @@ def _upload(client, csrf_token, path, filename, data):
     )
 
 
+def test_compute_config_accepts_third_party_module_models(upgrade_client):
+    """验证在线和离线第三方模块均可通过预览接口转换为 configure 参数。"""
+    client, _app, csrf_token, _user_id = upgrade_client
+    response = client.post(
+        "/api/upgrade/compute-config",
+        headers={"X-CSRFToken": csrf_token},
+        json={
+            "current_params": ["--with-http_ssl_module"],
+            "added_modules": [],
+            "removed_modules": [],
+            "added_third_party": [
+                {"name": "ngx-http-echo", "source": "package", "package_id": 12},
+                {
+                    "name": "ngx-http-headers",
+                    "source": "git",
+                    "git_url": "https://example.com/ngx-http-headers.git",
+                    "branch": "main",
+                },
+            ],
+            "remote_work_dir": "/tmp/nginx-upgrade",
+            "upgrade_mode": "upgrade",
+            "target_prefix": "",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_params"] == [
+        "--with-http_ssl_module",
+        "--add-module=/tmp/nginx-upgrade/nginx-modules/ngx-http-echo",
+        "--add-module=/tmp/nginx-upgrade/nginx-modules/ngx-http-headers",
+    ]
+    assert (
+        "--add-module=/tmp/nginx-upgrade/nginx-modules/ngx-http-echo"
+        in body["target_opts"]
+    )
+    response_schema = client.get("/openapi.json").json()["components"]["schemas"][
+        "ComputeConfigResponse"
+    ]
+    assert {"target_opts", "target_params"}.issubset(response_schema["properties"])
+
+
 def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client):
     """验证源码和模块包落在 NGXOPS_HOME 且相同 MD5 不新增记录。"""
     client, app, csrf_token, user_id = upgrade_client
@@ -347,7 +389,9 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     assert "确认执行" in center.text
     assert "升级执行进度" in center.text
     assert 'id="currentConfigOutput"' in center.text
-    assert 'class="nginx-v-output nginx-v-output-alt upgrade-config-output"' in center.text
+    assert 'id="sharedConfigPreview"' in center.text
+    assert 'id="perNodeConfigNote"' in center.text
+    assert 'class="nginx-v-output nginx-v-output-alt upgrade-config-output upgrade-confirm-terminal"' in center.text
 
     upgrade_detail = client.get("/upgrade/tasks/{}/".format(task_id))
     task_center_detail = client.get("/tasks/{}/".format(task_id))

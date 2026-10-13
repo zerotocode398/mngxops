@@ -144,6 +144,7 @@ class ComputeConfigResponse(BaseModel):
 
     success: bool = True
     target_opts: str
+    target_params: List[str]
 
 
 class UpgradeTaskCreateResponse(BaseModel):
@@ -836,11 +837,15 @@ def compute_config_api(
         if payload.upgrade_mode not in ("upgrade", "switch_path"):
             raise ValueError("升级模式无效")
         work_dir = validate_remote_work_dir(payload.remote_work_dir)
+        third_party = [
+            item.model_dump(exclude_none=True)
+            for item in payload.added_third_party
+        ]
         target = compute_target_configure_opts(
             payload.current_params,
             payload.added_modules,
             payload.removed_modules,
-            payload.added_third_party,
+            third_party,
             work_dir,
         )
         if payload.upgrade_mode == "switch_path":
@@ -850,7 +855,10 @@ def compute_config_api(
             )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return ComputeConfigResponse(target_opts=target)
+    return ComputeConfigResponse(
+        target_opts=target,
+        target_params=tokenize_configure_args(target),
+    )
 
 
 @router.post("/api/upgrade/tasks", response_model=UpgradeTaskCreateResponse, summary="创建批量 Nginx 升级任务", description="在一个数据库事务中创建每节点一条任务，再交给统一后台执行器。", responses=api_error_responses((400, 401, 403, 409, 422, 500)))

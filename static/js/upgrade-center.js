@@ -142,7 +142,12 @@
             return checkbox && selected.has(Number(checkbox.value));
         }).map(function (row) {
             var checkbox = row.querySelector(".upgrade-node-check");
-            return { id: Number(checkbox.value), name: row.querySelector("strong").textContent, ip: row.dataset.ip };
+            return {
+                id: Number(checkbox.value),
+                name: row.querySelector("strong").textContent,
+                ip: row.dataset.ip,
+                nginx_path: row.dataset.nginxPath || ""
+            };
         });
     }
 
@@ -423,7 +428,7 @@
             host.className = "upgrade-node-recognition-host";
             var identity = document.createElement("div");
             identity.className = "upgrade-node-recognition-host-identity";
-            var hostName = document.createElement("strong");
+            var hostName = document.createElement("span");
             hostName.className = "upgrade-node-recognition-host-name";
             hostName.textContent = node.name;
             hostName.title = node.name;
@@ -432,28 +437,7 @@
             hostAddress.textContent = node.ip;
             hostAddress.title = node.ip;
             identity.append(hostName, hostAddress);
-            var toggle = document.createElement("button");
-            toggle.type = "button";
-            toggle.className = "btn btn-link btn-sm p-1 flex-shrink-0";
-            toggle.setAttribute("aria-expanded", "false");
-            toggle.title = "展开节点识别详情";
-            toggle.setAttribute("aria-label", "展开 " + node.name + " 的节点识别详情");
-            var icon = document.createElement("i");
-            icon.className = "bi bi-chevron-down";
-            icon.setAttribute("aria-hidden", "true");
-            toggle.appendChild(icon);
-            var detailId = "nodeRecognitionDetail-" + node.id;
-            toggle.setAttribute("aria-controls", detailId);
-            var detailRow = createNodeRecognitionDetailRow(node, baseline, "nodeRecognitionDetail-");
-            toggle.addEventListener("click", function () {
-                var expanded = detailRow.classList.toggle("d-none");
-                toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-                toggle.title = expanded ? "收起节点识别详情" : "展开节点识别详情";
-                toggle.setAttribute("aria-label", (expanded ? "收起 " : "展开 ") + node.name + " 的节点识别详情");
-                icon.classList.toggle("bi-chevron-down", !expanded);
-                icon.classList.toggle("bi-chevron-up", expanded);
-            });
-            host.append(identity, toggle);
+            host.appendChild(identity);
             if (!baseline || !baseline.ok) {
                 var state = document.createElement("span");
                 state.className = "badge " + (baseline && baseline.pending ? "text-bg-info" : "text-bg-danger") + " ms-1";
@@ -463,7 +447,7 @@
                 hostCell.appendChild(host);
             }
             row.appendChild(hostCell);
-            [data.prefix, data.runtime_binary_path, data.version].forEach(function (value) {
+            [data.prefix, data.runtime_binary_path || node.nginx_path, data.version].forEach(function (value) {
                 var cell = document.createElement("td");
                 var text = document.createElement("span");
                 text.className = "upgrade-node-recognition-value";
@@ -472,7 +456,7 @@
                 cell.appendChild(text);
                 row.appendChild(cell);
             });
-            results.append(row, detailRow);
+            results.appendChild(row);
         });
         var baselines = selected.map(function (node) { return window.upgradeBaselines[node.id]; });
         var allReady = baselines.length > 0 && baselines.every(function (item) { return item && item.ok; });
@@ -785,7 +769,7 @@
         document.getElementById("moduleAddedCount").textContent = String(moduleChanges.added.length);
         document.getElementById("moduleDeltaHint").textContent =
             moduleChanges.added.length || moduleChanges.removed.length
-                ? "以下变化相对参考节点；目标节点按各自参数应用"
+                ? "以下变化相对参考节点；实际变化按各节点自身编译基线应用"
                 : "尚未调整";
         renderModuleDiff();
         document.getElementById("stepThreeNext").title =
@@ -1016,7 +1000,7 @@
                 upgrade_mode: currentMode(),
                 target_prefix: document.getElementById("targetPrefix").value.trim()
             }).then(function (data) {
-                targetConfigPreviews[node.id] = data.target_opts;
+                targetConfigPreviews[node.id] = data.target_params;
             });
         });
         $.when.apply($, jobs).done(function () {
@@ -1076,13 +1060,23 @@
             item.append(label, value);
             summary.appendChild(item);
         });
-        var reference = nodes.find(function (node) {
-            return String(node.id) === String(referenceNodeId);
-        }) || nodes[0];
-        document.getElementById("finalConfigPreview").textContent =
-            formatConfigurePreview(targetConfigPreviews[reference.id]);
-        document.getElementById("finalConfigPreviewLabel").textContent =
-            "参考节点目标参数（" + reference.name + "）";
+        var baselineSignatures = nodes.map(function (node) {
+            return (window.upgradeBaselines[node.id].data.params || []).slice().sort().join("\n");
+        });
+        var sharedBaseline = baselineSignatures.every(function (signature) {
+            return signature === baselineSignatures[0];
+        });
+        document.getElementById("sharedConfigPreview").classList.toggle("d-none", !sharedBaseline);
+        document.getElementById("perNodeConfigNote").classList.toggle("d-none", sharedBaseline);
+        document.getElementById("confirmNodeTitle").textContent =
+            sharedBaseline ? "目标节点" : "各节点目标参数";
+        if (sharedBaseline) {
+            renderAnnotatedConfigurePreview(
+                document.getElementById("finalConfigPreview"),
+                window.upgradeBaselines[nodes[0].id].data.params || [],
+                targetConfigPreviews[nodes[0].id] || []
+            );
+        }
         var nodeList = document.getElementById("confirmNodeList");
         nodeList.replaceChildren();
         nodes.forEach(function (node) {
@@ -1090,29 +1084,82 @@
             var row = document.createElement("div");
             row.className = "upgrade-confirm-item upgrade-confirm-node";
             var heading = document.createElement("div");
-            heading.className = "d-flex justify-content-between align-items-start gap-2 w-100";
+            heading.className = "upgrade-confirm-node-heading";
             var name = document.createElement("strong");
             name.textContent = node.name + " · " + node.ip;
             var versions = document.createElement("span");
-            versions.className = "small text-muted";
+            versions.className = "small text-muted upgrade-confirm-node-meta";
             var prefix = currentMode() === "switch_path"
                 ? document.getElementById("targetPrefix").value.trim()
                 : (baseline.prefix || "未知");
             versions.textContent = (baseline.version || "未知") + " → " + pkg.version + " · prefix " + prefix;
             heading.append(name, versions);
-            var details = document.createElement("details");
-            var detailLabel = document.createElement("summary");
-            detailLabel.textContent = "查看此节点目标 configure 参数";
-            var output = document.createElement("pre");
-            output.className = "upgrade-node-config-preview";
-            output.textContent = formatConfigurePreview(targetConfigPreviews[node.id]);
-            details.append(detailLabel, output);
-            row.append(heading, details);
+            row.appendChild(heading);
+            if (!sharedBaseline) {
+                var configHeading = document.createElement("div");
+                configHeading.className = "upgrade-confirm-node-config-title";
+                configHeading.textContent = "目标 configure 参数";
+                var output = document.createElement("pre");
+                output.className = "nginx-v-output nginx-v-output-alt upgrade-confirm-terminal upgrade-node-config-preview";
+                renderAnnotatedConfigurePreview(
+                    output,
+                    baseline.params || [],
+                    targetConfigPreviews[node.id] || []
+                );
+                row.append(configHeading, output);
+            }
             nodeList.appendChild(row);
         });
         document.getElementById("confirmUpgrade").checked = false;
         var startButton = document.getElementById("startUpgrade");
         if (startButton) startButton.disabled = true;
+    }
+
+    function renderAnnotatedConfigurePreview(container, baselineParams, targetParams) {
+        var baseline = Array.isArray(baselineParams) ? baselineParams : [];
+        var target = Array.isArray(targetParams) ? targetParams : baseline;
+        var targetSet = new Set(target);
+        var baselineSet = new Set(baseline);
+
+        container.replaceChildren();
+        var command = document.createElement("span");
+        command.className = "upgrade-confirm-terminal-line";
+        command.textContent = "./configure \\";
+        container.appendChild(command);
+        var entries = [];
+        baseline.forEach(function (parameter) {
+            entries.push({
+                parameter: parameter,
+                kind: targetSet.has(parameter) ? "same" : "removed"
+            });
+        });
+        target.forEach(function (parameter) {
+            if (!baselineSet.has(parameter)) entries.push({ parameter: parameter, kind: "added" });
+        });
+        if (!entries.length) entries.push({ parameter: "(无参数)", kind: "same" });
+        entries.forEach(function (entry, index) {
+            appendConfigurePreviewLine(
+                container,
+                entry.parameter,
+                entry.kind,
+                index < entries.length - 1
+            );
+        });
+    }
+
+    function appendConfigurePreviewLine(container, parameter, kind, continuation) {
+        var line = document.createElement("span");
+        line.className = "upgrade-confirm-terminal-line";
+        if (kind === "same") {
+            line.textContent = "    " + formatConfigureArgument(parameter);
+        } else {
+            var change = document.createElement(kind === "removed" ? "del" : "span");
+            change.className = kind === "removed" ? "upgrade-param-removed" : "upgrade-param-added";
+            change.textContent = (kind === "removed" ? "    - " : "    + ") + formatConfigureArgument(parameter);
+            line.appendChild(change);
+        }
+        if (continuation) line.appendChild(document.createTextNode(" \\"));
+        container.appendChild(line);
     }
 
     function createUpgrade() {

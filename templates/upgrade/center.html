@@ -2,7 +2,7 @@
 {% block title %}升级中心 - Nginx 编译升级{% endblock %}
 {% block page_title %}<i class="bi bi-rocket-takeoff" aria-hidden="true"></i> Nginx 升级中心{% endblock %}
 
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=10">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=11">{% endblock %}
 
 {% block content %}
 <div class="upgrade-toolbar mb-3">
@@ -62,7 +62,7 @@
                                                 <thead class="table-light"><tr><th></th><th>主机名 / IP</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
                                                 <tbody>
                                                 {% for node in nodes %}
-                                                    <tr class="upgrade-node-row" data-node-id="{{ node.id }}" data-ip="{{ node.ip }}" data-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ (node.groups|map(attribute='name')|join(' ')))|lower }}">
+                                                    <tr class="upgrade-node-row" data-node-id="{{ node.id }}" data-ip="{{ node.ip }}" data-nginx-path="{{ node.nginx_path or '/usr/sbin/nginx' }}" data-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ (node.groups|map(attribute='name')|join(' ')))|lower }}">
                                                         <td><input class="form-check-input upgrade-node-check" type="checkbox" value="{{ node.id }}" aria-label="选择 {{ node.hostname }}"></td>
                                                         <td><span class="upgrade-node-name-address" title="{{ node.hostname }} {{ node.ip }}:{{ node.port }}"><strong>{{ node.hostname }}</strong><small class="text-muted ms-2 upgrade-node-address">{{ node.ip }}:{{ node.port }}</small></span></td>
                                                         <td class="text-nowrap">{{ {"dev":"开发","test":"测试","prod":"生产"}.get(node.environment, node.environment) }}</td>
@@ -164,7 +164,7 @@
                 <div class="upgrade-reference-bar d-none" id="referenceNodeWrap">
                     <label class="form-label mb-0" for="referenceNode">参考节点</label>
                     <select class="form-select form-select-sm" id="referenceNode"></select>
-                    <span class="small text-muted">用于展示基线和模块增减，目标节点仍按各自参数编译。</span>
+                    <span class="small text-muted">用于展示基线和模块增减，实际变化按各节点自身编译基线应用。</span>
                 </div>
                 <div class="mt-3">
                     <label class="form-label mb-1" id="currentConfigLabel" for="currentConfigOutput">参考节点 configure 参数</label>
@@ -202,9 +202,16 @@
             <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-success me-2">4</span>确认并开始升级</h2></div>
             <div class="card-body">
                 <div id="upgradeSummary" class="upgrade-summary mb-3"></div>
-                <label class="form-label" id="finalConfigPreviewLabel" for="finalConfigPreview">参考节点目标参数</label>
-                <pre class="nginx-v-output nginx-v-output-alt upgrade-config-output" id="finalConfigPreview">./configure 等待生成…</pre>
-                <div class="mt-3"><div class="form-label">各节点目标参数</div><div id="confirmNodeList" class="upgrade-confirm-list"></div></div>
+                <section id="sharedConfigPreview" class="upgrade-confirm-config mb-3" aria-labelledby="finalConfigPreviewLabel">
+                    <h3 class="h6 mb-1" id="finalConfigPreviewLabel">统一目标 configure 参数</h3>
+                    <p class="small text-muted mb-2" id="sharedConfigPreviewNote">节点使用相同编译基线；下方展示一份标准预览。实际变化按各节点自身编译基线应用。</p>
+                    <pre class="nginx-v-output nginx-v-output-alt upgrade-config-output upgrade-confirm-terminal" id="finalConfigPreview">./configure 等待生成…</pre>
+                </section>
+                <section id="confirmNodeSection" class="mt-3" aria-labelledby="confirmNodeTitle">
+                    <h3 class="h6 mb-1" id="confirmNodeTitle">目标节点</h3>
+                    <p class="small text-muted mb-2 d-none" id="perNodeConfigNote">节点编译基线存在差异，以下逐台展示服务端计算的参数；实际变化按各节点自身编译基线应用。</p>
+                    <div id="confirmNodeList" class="upgrade-confirm-list"></div>
+                </section>
                 <div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="confirmUpgrade"><label class="form-check-label" for="confirmUpgrade">我确认以上节点、版本和编译参数无误，可以开始升级</label></div>
                 <div class="upgrade-panel-actions"><button class="btn btn-outline-secondary btn-sm" type="button" data-step-target="3"><i class="bi bi-chevron-left" aria-hidden="true"></i>上一步</button>{% if can_execute %}<button class="btn btn-success" type="button" id="startUpgrade" disabled><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>开始升级</button>{% else %}<span class="small text-muted">当前账号没有执行权限</span>{% endif %}</div>
             </div>
@@ -300,5 +307,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=7"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=8"></script>
 {% endblock %}
