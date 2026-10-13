@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 import re
 import tarfile
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,6 +17,7 @@ from sqlalchemy import func, select
 from ngxops.accounts.models import User
 from ngxops.accounts.passwords import make_password
 from ngxops.app import create_app
+from ngxops.audit.models import AuditLog
 from ngxops.config import get_settings
 from ngxops.credentials.crypto import encrypt_secret
 from ngxops.credentials.models import Credential
@@ -168,7 +170,9 @@ def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client
     )
     assert source.status_code == 200, source.text
     assert source.json()["success"] is True
-    assert source.json()["redirect"] == "/upgrade/packages/?uploaded=1"
+    redirect = urlsplit(source.json()["redirect"])
+    assert redirect.path == "/upgrade/packages/"
+    assert parse_qs(redirect.query)["uploaded"] == ["1"]
     source_conflict = client.get("/api/upgrade/packages/check?version=1.26.1")
     assert source_conflict.status_code == 200
     assert source_conflict.json()["exists"] is True
@@ -279,34 +283,145 @@ def test_uploaded_source_package_can_start_upgrade_batch(upgrade_client, monkeyp
         lambda task_id, function: submitted.append((task_id, function)),
     )
 
+    request_payload = {
+        "node_ids": [node_id],
+        "source_package": package_id,
+        "upgrade_mode": "upgrade",
+        "remote_work_dir": "/tmp/nginx-upgrade",
+        "make_jobs": 4,
+        "target_version": "1.28.1",
+        "added_modules": [],
+        "removed_modules": [],
+        "added_third_party": [],
+        "nodes_payload": [
+            {
+                "node_id": node_id,
+                "params": ["--prefix=/usr/local/nginx"],
+                "current_configure_opts": "--prefix=/usr/local/nginx",
+                "prefix": "/usr/local/nginx",
+                "binary_path": "/usr/local/nginx/sbin/nginx",
+            }
+        ],
+    }
+    request_headers = {"X-CSRFToken": csrf_token}
+
+    package_path.unlink()
+    missing_response = client.post(
+        "/api/upgrade/tasks", headers=request_headers, json=request_payload
+    )
+    assert missing_response.status_code == 400
+    assert missing_response.json()["message"] == "源码包文件缺失，请重新上传该源码包"
+
+    package_path.write_bytes(b"invalid archive bytes")
+    checksum_response = client.post(
+        "/api/upgrade/tasks", headers=request_headers, json=request_payload
+    )
+    assert checksum_response.status_code == 400
+    assert checksum_response.json()["message"] == "源码包校验值已变化，请重新上传该源码包"
+
+    package_path.write_bytes(_archive_bytes())
     response = client.post(
-        "/api/upgrade/tasks",
-        headers={"X-CSRFToken": csrf_token},
-        json={
-            "node_ids": [node_id],
-            "source_package": package_id,
-            "upgrade_mode": "upgrade",
-            "remote_work_dir": "/tmp/nginx-upgrade",
-            "make_jobs": 4,
-            "target_version": "1.28.1",
-            "added_modules": [],
-            "removed_modules": [],
-            "added_third_party": [],
-            "nodes_payload": [
-                {
-                    "node_id": node_id,
-                    "params": ["--prefix=/usr/local/nginx"],
-                    "current_configure_opts": "--prefix=/usr/local/nginx",
-                    "prefix": "/usr/local/nginx",
-                    "binary_path": "/usr/local/nginx/sbin/nginx",
-                }
-            ],
-        },
+        "/api/upgrade/tasks", headers=request_headers, json=request_payload
     )
 
     assert response.status_code == 200, response.text
     assert len(response.json()["task_ids"]) == 1
     assert [task_id for task_id, _function in submitted] == response.json()["task_ids"]
+
+
+def test_upgrade_center_disables_missing_source_package(upgrade_client):
+    """验证文件缺失的源码包在升级向导中不可选择并提示重新上传。"""
+    client, app, _csrf_token, user_id = upgrade_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            session.add(
+                NginxSourcePackage(
+                    name="Missing source",
+                    version="1.28.1",
+                    file_name="source-missing.tar.gz",
+                    file_size=128,
+                    file_md5="a" * 32,
+                    description="",
+                    created_by=user_id,
+                )
+            )
+
+    response = client.get("/upgrade/center/")
+
+    assert response.status_code == 200
+    assert 'data-package-available="false"' in response.text
+    assert 'disabled title="源码包文件缺失，请重新上传"' in response.text
+    assert "1 个源码包文件缺失，已禁用选择" in response.text
+    assert 'href="/upgrade/packages/"' in response.text
+
+
+def test_deleting_source_and_module_packages_writes_specific_audit(upgrade_client):
+    """验证删除源码包和模块包时记录具体对象，缺失对象不写审计。"""
+    client, app, csrf_token, user_id = upgrade_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            source = NginxSourcePackage(
+                name="nginx-stable",
+                version="1.28.1",
+                file_name="nginx-stable-1.28.1.tar.gz",
+                file_size=128,
+                file_md5="a" * 32,
+                description="",
+                created_by=user_id,
+            )
+            module = NginxModulePackage(
+                name="ngx_http_echo",
+                version="0.63",
+                file_name="ngx_http_echo-0.63.tar.gz",
+                file_size=64,
+                file_md5="b" * 32,
+                description="",
+                created_by=user_id,
+            )
+            session.add_all([source, module])
+            session.flush()
+            source_id, module_id = source.id, module.id
+
+    package_dir = app.state.settings.upgrade_package_dir
+    package_dir.mkdir(parents=True, exist_ok=True)
+    (package_dir / "nginx-stable-1.28.1.tar.gz").write_bytes(b"source")
+    (package_dir / "ngx_http_echo-0.63.tar.gz").write_bytes(b"module")
+
+    source_response = client.post(
+        "/upgrade/packages/{}/delete/".format(source_id),
+        headers={"X-CSRFToken": csrf_token},
+    )
+    module_response = client.post(
+        "/upgrade/modules/{}/delete/".format(module_id),
+        headers={"X-CSRFToken": csrf_token},
+    )
+    missing_response = client.post(
+        "/upgrade/packages/99999/delete/",
+        headers={"X-CSRFToken": csrf_token},
+    )
+
+    assert source_response.status_code == 303
+    assert module_response.status_code == 303
+    assert missing_response.status_code == 404
+    with session_scope(app.state.database.session_factory) as session:
+        audit_entries = session.scalars(
+            select(AuditLog)
+            .where(
+                AuditLog.user_id == user_id,
+                AuditLog.module == "Nginx 升级",
+                AuditLog.action.in_(("删除源码包", "删除模块包")),
+            )
+            .order_by(AuditLog.id)
+        ).all()
+        entries = [(entry.action, entry.detail) for entry in audit_entries]
+
+    assert [entry[0] for entry in entries] == ["删除源码包", "删除模块包"]
+    assert "nginx-stable" in entries[0][1]
+    assert "1.28.1" in entries[0][1]
+    assert "nginx-stable-1.28.1.tar.gz" in entries[0][1]
+    assert "ngx_http_echo" in entries[1][1]
+    assert "0.63" in entries[1][1]
+    assert "ngx_http_echo-0.63.tar.gz" in entries[1][1]
 
 
 def test_upgrade_center_summary_uses_nonbold_hostname_and_confirm_label(upgrade_client):

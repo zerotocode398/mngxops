@@ -170,7 +170,7 @@
         var input = document.querySelector(".upgrade-package-check:checked");
         if (!input) return null;
         var row = input.closest(".upgrade-package-row");
-        if (!row) return null;
+        if (!row || row.dataset.packageAvailable === "false" || input.disabled) return null;
         return { id: Number(input.value), version: input.dataset.version, name: input.dataset.name };
     }
 

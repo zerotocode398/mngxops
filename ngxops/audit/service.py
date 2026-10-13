@@ -331,6 +331,27 @@ def _capture_before_flush(session: Session, flush_context, instances) -> None:
             label = _object_label(obj, table_name)
             action_label = verbs[object_action] + module
             detail = "{}「{}」".format(verbs[object_action], label)
+            if object_action == "delete" and table_name in (
+                "ngxops_nginx_source_packages",
+                "ngxops_nginx_module_packages",
+            ):
+                package_type = (
+                    "源码包"
+                    if table_name == "ngxops_nginx_source_packages"
+                    else "模块包"
+                )
+                package_id = getattr(obj, "id", "?")
+                package_name = str(getattr(obj, "name", "") or "未命名")
+                package_version = str(getattr(obj, "version", "") or "")
+                file_name = str(getattr(obj, "file_name", "") or "")
+                action_label = "删除{}".format(package_type)
+                detail = "删除{} #{}「{}」".format(
+                    package_type, package_id, package_name
+                )
+                if package_version:
+                    detail += " 版本「{}」".format(package_version)
+                if file_name:
+                    detail += "；归档文件：{}".format(file_name)
             if table_name in ("ngxops_config_bindings", "ngxops_binding_versions"):
                 config_name, node_name = _binding_audit_names(
                     session, obj, table_name

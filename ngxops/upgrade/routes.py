@@ -450,6 +450,12 @@ def upgrade_center(
         select(NginxSourcePackage).options(joinedload(NginxSourcePackage.creator))
         .order_by(NginxSourcePackage.created_at.desc(), NginxSourcePackage.id.desc())
     ).all()
+    package_availability = {
+        package.id: (
+            request.app.state.settings.upgrade_package_dir / package.file_name
+        ).is_file()
+        for package in packages
+    }
     module_packages = session.scalars(
         select(NginxModulePackage).options(joinedload(NginxModulePackage.creator))
         .order_by(NginxModulePackage.created_at.desc(), NginxModulePackage.id.desc())
@@ -462,6 +468,10 @@ def upgrade_center(
         {
             "nodes": node_items,
             "packages": packages,
+            "package_availability": package_availability,
+            "missing_source_package_count": sum(
+                not available for available in package_availability.values()
+            ),
             "module_packages": module_packages,
             "default_work_dir": read_setting(session, "upgrade.default_work_dir", "/tmp/nginx-upgrade"),
             "default_make_jobs": read_setting(session, "upgrade.make_jobs_default", 4),
@@ -689,6 +699,9 @@ def delete_source_package(
             request.app.state.settings.upgrade_package_dir,
             package_id,
             "source",
+            audit_actor_id=user.id,
+            audit_username=user.username,
+            audit_ip=request_client_ip(request),
         )
     except ValueError as exc:
         return _package_list_redirect(
@@ -714,6 +727,9 @@ def delete_module_package(
             request.app.state.settings.upgrade_package_dir,
             package_id,
             "module",
+            audit_actor_id=user.id,
+            audit_username=user.username,
+            audit_ip=request_client_ip(request),
         )
     except ValueError as exc:
         return _package_list_redirect(

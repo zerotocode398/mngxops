@@ -101,9 +101,10 @@
                                 <thead class="table-light"><tr><th></th><th>包名称</th><th>版本</th><th>大小</th><th>上传</th></tr></thead>
                                 <tbody>
                                 {% for package in packages %}
-                                    <tr class="upgrade-package-row" data-search="{{ (package.name ~ ' ' ~ package.version)|lower }}" data-package-id="{{ package.id }}" data-version="{{ package.version }}">
-                                        <td><input class="form-check-input upgrade-package-check" type="radio" name="source_package" value="{{ package.id }}" data-version="{{ package.version }}" data-name="{{ package.name }}"></td>
-                                        <td>{{ package.name }}{% if package.is_official %} <span class="badge text-bg-success">官方</span>{% endif %}</td>
+                                    {% set package_is_available = package_availability.get(package.id, false) %}
+                                    <tr class="upgrade-package-row{% if not package_is_available %} is-unavailable{% endif %}" data-search="{{ (package.name ~ ' ' ~ package.version)|lower }}" data-package-id="{{ package.id }}" data-package-available="{{ 'true' if package_is_available else 'false' }}" data-version="{{ package.version }}">
+                                        <td><input class="form-check-input upgrade-package-check" type="radio" name="source_package" value="{{ package.id }}" data-version="{{ package.version }}" data-name="{{ package.name }}" {% if not package_is_available %}disabled title="源码包文件缺失，请重新上传"{% endif %}></td>
+                                        <td>{{ package.name }}{% if package.is_official %} <span class="badge text-bg-success">官方</span>{% endif %}{% if not package_is_available %} <span class="badge text-bg-danger">文件缺失</span>{% endif %}</td>
                                         <td><code>{{ package.version }}</code></td>
                                         <td>{{ (package.file_size / 1048576)|round(2) }} MB</td>
                                         <td><small>{{ package.created_at_display }} · {{ package.creator.username if package.creator else "-" }}</small></td>
@@ -123,6 +124,7 @@
                             </ul></nav>
                             <div class="upgrade-selector-page-size"><label class="small text-muted mb-0" for="packagePageSize">每页</label><select class="form-select form-select-sm" id="packagePageSize" aria-label="每页源码包数"><option value="10" selected>10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></div>
                         </div>
+                        {% if missing_source_package_count %}<div class="small text-danger mt-1">{{ missing_source_package_count }} 个源码包文件缺失，已禁用选择；{% if can_create %}请到 <a href="/upgrade/packages/">源码包管理</a> 重新上传。{% else %}请联系有源码包上传权限的管理员重新上传。{% endif %}</div>{% endif %}
                         <div class="small text-muted mt-1" id="selectedPackageSummary">尚未选择源码包</div>
                     </div>
                 </div>
@@ -312,5 +314,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=12"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=13"></script>
 {% endblock %}

@@ -23,6 +23,7 @@ import paramiko
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, sessionmaker
 
+from ngxops.audit.service import prepare_audit_session
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.credentials.models import Credential
 from ngxops.database.session import session_scope
@@ -337,11 +338,27 @@ def persist_uploaded_package(session_factory, package_dir: Path, **values):
             return store_package(session, package_dir, **values)
 
 
-def delete_package(session_factory, package_dir: Path, package_id: int, package_kind: str) -> bool:
+def delete_package(
+    session_factory,
+    package_dir: Path,
+    package_id: int,
+    package_kind: str,
+    *,
+    audit_actor_id: Optional[int] = None,
+    audit_username: Optional[str] = None,
+    audit_ip: Optional[str] = None,
+) -> bool:
     """串行检查活动任务并删除指定包记录和归档文件。"""
     model = NginxSourcePackage if package_kind == "source" else NginxModulePackage
     with _BATCH_LOCK:
         with session_scope(session_factory) as session:
+            if audit_actor_id is not None:
+                prepare_audit_session(
+                    session,
+                    actor_id=audit_actor_id,
+                    username=audit_username,
+                    ip=audit_ip,
+                )
             package = session.get(model, package_id)
             if package is None:
                 return False
@@ -1304,8 +1321,18 @@ def create_upgrade_batch(
             if len(target_version) > 50:
                 raise ValueError("目标版本不能超过 50 个字符")
             package_path = package_dir / package.file_name
-            if not package_path.is_file() or _file_md5(package_path) != package.file_md5:
-                raise ValueError("源码包文件缺失或校验值已变化")
+            if not package_path.is_file():
+                logger.warning(
+                    "upgrade source package unavailable package_id=%s reason=missing",
+                    package.id,
+                )
+                raise ValueError("源码包文件缺失，请重新上传该源码包")
+            if _file_md5(package_path) != package.file_md5:
+                logger.warning(
+                    "upgrade source package unavailable package_id=%s reason=checksum_mismatch",
+                    package.id,
+                )
+                raise ValueError("源码包校验值已变化，请重新上传该源码包")
 
             nodes = session.scalars(
                 select(Node)
