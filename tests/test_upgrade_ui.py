@@ -17,8 +17,11 @@ from ngxops.accounts.models import User
 from ngxops.accounts.passwords import make_password
 from ngxops.app import create_app
 from ngxops.config import get_settings
+from ngxops.credentials.crypto import encrypt_secret
+from ngxops.credentials.models import Credential
 from ngxops.database.migration_runner import upgrade_database
 from ngxops.database.session import session_scope
+from ngxops.nodes.models import Node
 from ngxops.settings.models import SystemSetting
 from ngxops.settings.service import initialize_defaults
 from ngxops.tasks.models import Task
@@ -220,6 +223,106 @@ def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client
         assert source_rows[0].is_official is False
         assert (package_dir / source_rows[0].file_name).read_bytes() == archive
         assert (package_dir / module_rows[0].file_name).read_bytes() == archive
+
+
+def test_uploaded_source_package_can_start_upgrade_batch(upgrade_client, monkeypatch):
+    """验证刚上传的源码包可通过完整提交校验并入队而不连接 SSH。"""
+    client, app, csrf_token, user_id = upgrade_client
+    uploaded = _upload(
+        client,
+        csrf_token,
+        "/upgrade/packages/upload/",
+        "nginx-1.28.1.tar.gz",
+        {"name": "Nginx stable", "version": "1.28.1"},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            package = session.scalar(
+                select(NginxSourcePackage).where(
+                    NginxSourcePackage.version == "1.28.1"
+                )
+            )
+            package_id = package.id
+            package_path = app.state.settings.upgrade_package_dir / package.file_name
+            assert package_path.is_file()
+            credential = Credential(
+                name="upgrade-start-credential",
+                username="deploy",
+                password=encrypt_secret(
+                    app.state.credential_encryption_key, "not-used-in-test"
+                ),
+                created_by=user_id,
+            )
+            session.add(credential)
+            session.flush()
+            node = Node(
+                hostname="upgrade-start-node",
+                ip="192.0.2.250",
+                port=22,
+                credential_id=credential.id,
+                environment="test",
+                nginx_version="1.26.1",
+                nginx_available=True,
+                status="online",
+                created_by=user_id,
+            )
+            session.add(node)
+            session.flush()
+            node_id = node.id
+
+    submitted = []
+    monkeypatch.setattr(
+        app.state.task_executor,
+        "submit",
+        lambda task_id, function: submitted.append((task_id, function)),
+    )
+
+    response = client.post(
+        "/api/upgrade/tasks",
+        headers={"X-CSRFToken": csrf_token},
+        json={
+            "node_ids": [node_id],
+            "source_package": package_id,
+            "upgrade_mode": "upgrade",
+            "remote_work_dir": "/tmp/nginx-upgrade",
+            "make_jobs": 4,
+            "target_version": "1.28.1",
+            "added_modules": [],
+            "removed_modules": [],
+            "added_third_party": [],
+            "nodes_payload": [
+                {
+                    "node_id": node_id,
+                    "params": ["--prefix=/usr/local/nginx"],
+                    "current_configure_opts": "--prefix=/usr/local/nginx",
+                    "prefix": "/usr/local/nginx",
+                    "binary_path": "/usr/local/nginx/sbin/nginx",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert len(response.json()["task_ids"]) == 1
+    assert [task_id for task_id, _function in submitted] == response.json()["task_ids"]
+
+
+def test_upgrade_center_summary_uses_nonbold_hostname_and_confirm_label(upgrade_client):
+    """验证升级向导使用轻字重主机名和调整后编译参数标题。"""
+    client, _app, _csrf_token, _user_id = upgrade_client
+    response = client.get("/upgrade/center/")
+    script = (Path.cwd() / "static/js/upgrade-center.js").read_text(encoding="utf-8")
+    template = (Path.cwd() / "templates/upgrade/center.html").read_text(encoding="utf-8")
+
+    assert response.status_code == 200
+    assert '<span class="upgrade-node-hostname">{{ node.hostname }}</span>' in template
+    assert "<strong>{{ node.hostname }}</strong>" not in template
+    assert "调整后编译参数" in response.text
+    assert "统一目标 configure 参数" not in response.text
+    assert 'summaryGrid.className = "upgrade-summary-grid"' in script
+    assert 'row.querySelector(".upgrade-node-hostname").textContent' in script
 
 
 def test_upload_dropzones_use_configured_limit_for_both_package_types(upgrade_client):

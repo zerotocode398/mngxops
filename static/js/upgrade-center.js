@@ -144,7 +144,7 @@
             var checkbox = row.querySelector(".upgrade-node-check");
             return {
                 id: Number(checkbox.value),
-                name: row.querySelector("strong").textContent,
+                name: row.querySelector(".upgrade-node-hostname").textContent,
                 ip: row.dataset.ip,
                 nginx_path: row.dataset.nginxPath || ""
             };
@@ -1042,24 +1042,30 @@
     function renderConfirm(nodes, pkg, modules, changes) {
         var summary = document.getElementById("upgradeSummary");
         summary.replaceChildren();
+        var summaryGrid = document.createElement("div");
+        summaryGrid.className = "upgrade-summary-grid";
         [
             ["节点", nodes.length + " 台"],
             ["源码包", pkg.name + " · " + pkg.version],
-            ["模式", currentMode() === "upgrade" ? "平滑升级（同路径）" : "切换路径升级"],
+            ["升级模式", currentMode() === "upgrade" ? "平滑升级（同路径）" : "切换路径升级"],
             ["工作目录", currentWorkDir()],
-            ["编译并行数", document.getElementById("makeJobs").value],
-            ["模块变更", "新增 " + changes.added.length + " · 移除 " + changes.removed.length + " · 第三方 " + modules.length]
+            ["并行编译", "-j" + document.getElementById("makeJobs").value],
+            ["目标安装目录", currentMode() === "switch_path" ? (document.getElementById("targetPrefix").value.trim() || "-") : "各节点自身"],
+            ["内置模块变更", "新增 " + changes.added.length + " · 移除 " + changes.removed.length],
+            ["第三方模块", modules.length + " 项"]
         ].forEach(function (pair) {
             var item = document.createElement("div");
             item.className = "upgrade-summary-item";
-            var label = document.createElement("small");
-            label.className = "text-muted d-block";
+            var label = document.createElement("span");
+            label.className = "upgrade-summary-label";
             label.textContent = pair[0];
-            var value = document.createElement("strong");
+            var value = document.createElement("span");
+            value.className = "upgrade-summary-value";
             value.textContent = pair[1];
             item.append(label, value);
-            summary.appendChild(item);
+            summaryGrid.appendChild(item);
         });
+        summary.appendChild(summaryGrid);
         var baselineSignatures = nodes.map(function (node) {
             return (window.upgradeBaselines[node.id].data.params || []).slice().sort().join("\n");
         });
