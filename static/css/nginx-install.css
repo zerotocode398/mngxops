@@ -18,41 +18,22 @@
 .install-overview-node span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .install-overview-node small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .install-overview-progress { width: 100%; min-width: 0; height: 6px; margin-bottom: 3px; }
-.install-stepper { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 16px; border-bottom: 1px solid var(--gray-200); }
-.install-step-tab { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 44px; padding: 8px; border-bottom: 2px solid transparent; color: var(--gray-600); font-size: .875rem; }
-.install-step-tab > span, .install-step-number { display: inline-grid; place-items: center; width: 22px; height: 22px; flex: 0 0 22px; border: 1px solid var(--gray-300); border-radius: 50%; color: var(--gray-700); font-size: .75rem; }
-.install-step-tab.active { border-bottom-color: var(--primary); color: var(--primary); font-weight: 600; }
-.install-step-tab.active > span, .install-step-tab.done > span, .install-step-number { border-color: var(--primary); color: #fff; background: var(--primary); }
-.install-step-tab.done { color: var(--gray-800); }
-.install-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .8fr); gap: 16px; align-items: start; }
-.install-main-column, .install-progress-column { min-width: 0; }
-.install-progress-column { position: sticky; top: 16px; }
-.install-panel .card-body { padding-bottom: 14px; }
-.install-panel-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--gray-100); }
 .install-counter { color: var(--gray-600); font-size: .8125rem; white-space: nowrap; }
 .install-table-wrap { max-height: 275px; overflow: auto; border: 1px solid var(--gray-200); border-radius: 4px; }
 .install-table-wrap thead { position: sticky; z-index: 1; top: 0; }
-.install-node-table-wrap table { min-width: 590px; }
+.install-node-table-wrap table { width: 100%; min-width: 690px; table-layout: fixed; }
 .install-node-table-wrap td, .install-node-table-wrap th { padding: 6px 9px; }
-.install-node-table-wrap .check-cell { width: 34px; }
-.install-node-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; white-space: nowrap; }
-.install-node-meta .badge { font-size: .68rem; font-weight: 500; }
+.install-node-table-wrap th:first-child, .install-node-table-wrap td:first-child { width: 36px; text-align: center; }
+.install-node-table-wrap th:nth-child(2), .install-node-table-wrap td:nth-child(2) { width: 190px; }
+.install-node-table-wrap th:nth-child(3), .install-node-table-wrap td:nth-child(3) { width: 100px; }
+.install-node-table-wrap th:nth-child(4), .install-node-table-wrap td:nth-child(4) { width: 72px; }
+.install-node-table-wrap th:nth-child(5), .install-node-table-wrap td:nth-child(5) { width: 100px; }
+.install-node-username { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .install-disabled-row { color: var(--gray-600); background: #f8f9fa; }
 .install-subsection { padding-top: 12px; border-top: 1px solid var(--gray-200); }
 .install-subheading { margin: 0; font-size: .875rem; font-weight: 600; }
 #installPackageSearch.query-tag-input-field { padding: .125rem .15rem; font-size: .875rem; line-height: 1.5; }
 .install-defaults-note { padding: 8px 10px; border-left: 3px solid var(--primary); color: var(--gray-700); background: #f4f7fb; font-size: .8rem; }
-.install-port-preview-rows { display: grid; }
-.install-port-preview-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, auto) auto; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--gray-100); }
-.install-port-preview-row:last-child { border-bottom: 0; }
-.install-port-preview-host { min-width: 0; overflow-wrap: anywhere; font-size: .8rem; }
-.install-port-preview-endpoint { color: var(--gray-700); font: .78rem/1.4 var(--font-mono, Consolas, monospace); white-space: nowrap; }
-.install-port-preview-empty { padding: 5px 0 0; color: var(--gray-600); font-size: .8rem; }
-.install-port-map-summary { padding: 7px 9px; border-left: 3px solid var(--gray-300); color: var(--gray-700); background: #f8f9fa; font-size: .78rem; }
-.install-port-map-summary.risk { border-left-color: #d69e00; color: #664d03; background: #fff3cd; }
-.install-port-map-table { min-width: 500px; }
-.install-port-map-table th, .install-port-map-table td { padding: 6px 9px; }
-.install-port-map-table td:first-child { font-weight: 550; }
 .install-module-summary { min-height: 34px; padding: 7px 9px; border: 1px solid var(--gray-200); border-radius: 4px; color: var(--gray-700); font: .78rem/1.5 var(--font-mono, Consolas, monospace); overflow-wrap: anywhere; }
 .install-module-list { max-height: 390px; overflow: auto; border: 1px solid var(--gray-200); border-radius: 4px; padding: 4px 10px; }
 .install-module-option { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--gray-100); font-size: .8125rem; overflow-wrap: anywhere; }
@@ -88,18 +69,13 @@
 .install-detail-list dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: .84rem; }
 
 @media (max-width: 991.98px) {
-    .install-layout, .install-detail-grid { grid-template-columns: minmax(0, 1fr); }
-    .install-progress-column { position: static; }
+    .install-detail-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 575.98px) {
     .install-overview-toolbar .btn { flex: 1 1 calc(50% - 8px); }
-    .install-step-tab { flex-direction: column; gap: 4px; padding: 7px 3px; font-size: .75rem; }
     .install-summary-grid, .install-detail-list { grid-template-columns: minmax(0, 1fr); }
     .install-third-party-row { grid-template-columns: minmax(0, 1fr) auto; }
     .install-third-party-extra { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); }
     .install-log-line { grid-template-columns: minmax(0, 1fr); gap: 1px; }
     .install-log-line time { font-size: .68rem; }
-    .install-port-preview-row { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
-    .install-port-preview-endpoint { grid-column: 1; white-space: normal; }
-    .install-port-preview-row .badge { grid-column: 2; grid-row: 1 / span 2; white-space: normal; text-align: center; }
 }

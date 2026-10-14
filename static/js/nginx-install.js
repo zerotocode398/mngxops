@@ -318,12 +318,10 @@
                 : "尚未选择源码包";
             updateNodeAvailability();
             renderSelectedNodeSummary();
-            renderSshPortMapping();
         }
 
         document.getElementById("listenPort").addEventListener("input", function () {
             riskConfirmed = false;
-            renderSshPortMapping();
         });
         document.getElementById("step1Next").addEventListener("click", function () {
             if (!Object.keys(selected).length || !selectedPackage().id) {
@@ -343,7 +341,6 @@
         buildThirdPartyEditor();
         renderPackagePage();
         renderNodePage();
-        renderSshPortMapping();
         document.getElementById("step2Next").addEventListener("click", goToConfirmation);
         document.getElementById("confirmInstall").addEventListener("change", function () {
             document.getElementById("startInstall").disabled =
@@ -537,85 +534,6 @@
             }).filter(Boolean);
         }
 
-        function renderSshPortMapping() {
-            var rows = document.getElementById("installPortMapRows");
-            var summary = document.getElementById("installPortRiskSummary");
-            var previewRows = document.getElementById("installPortPreviewRows");
-            var previewPort = document.getElementById("installPortPreviewPort");
-            if (!rows || !summary || !previewRows || !previewPort) return;
-            var nodes = selectedNodeObjects();
-            var port = Number(document.getElementById("listenPort").value);
-            var validPort = Number.isInteger(port) && port >= 1 && port <= 65535;
-            previewPort.textContent = validPort ? "当前监听 :" + port : "监听端口无效";
-            rows.replaceChildren();
-            previewRows.replaceChildren();
-            if (!nodes.length) {
-                var empty = document.createElement("tr");
-                var emptyCell = document.createElement("td");
-                emptyCell.colSpan = 4;
-                emptyCell.className = "text-muted";
-                emptyCell.textContent = "选择目标节点后显示映射";
-                empty.appendChild(emptyCell);
-                rows.appendChild(empty);
-                var emptyPreview = document.createElement("div");
-                emptyPreview.className = "install-port-preview-empty";
-                emptyPreview.textContent = "选择节点后显示 SSH 用户与监听端口映射。";
-                previewRows.appendChild(emptyPreview);
-                summary.classList.remove("risk");
-                summary.textContent = "选择节点后显示 SSH 操作用户与 Nginx 监听端口的对应关系。";
-                return;
-            }
-            if (!validPort) {
-                summary.classList.remove("risk");
-                summary.textContent = "请输入 1–65535 的有效监听端口。";
-            }
-            var riskCount = 0;
-            nodes.forEach(function (node) {
-                var username = node.credential_username || "未配置";
-                var restricted = validPort && isPrivilegedListenPort(port) && username !== "root";
-                if (restricted) riskCount += 1;
-                var row = document.createElement("tr");
-                [node.hostname + " (" + node.ip + ")", username, validPort ? String(port) : "无效"].forEach(function (value) {
-                    var cell = document.createElement("td");
-                    cell.textContent = value;
-                    row.appendChild(cell);
-                });
-                var stateCell = document.createElement("td");
-                var state = document.createElement("span");
-                state.className = "badge text-bg-" + (restricted ? "warning" : "secondary");
-                state.textContent = restricted ? "需要确认" : (validPort ? (port < 1024 ? "root SSH" : "无需特权权限") : "端口无效");
-                stateCell.appendChild(state);
-                row.appendChild(stateCell);
-                rows.appendChild(row);
-
-                var previewRow = document.createElement("div");
-                previewRow.className = "install-port-preview-row";
-                var host = document.createElement("strong");
-                host.className = "install-port-preview-host";
-                host.textContent = node.hostname + " (" + node.ip + ")";
-                var endpoint = document.createElement("span");
-                endpoint.className = "install-port-preview-endpoint";
-                endpoint.textContent = "SSH " + username + " -> Nginx :" + (validPort ? port : "无效");
-                var previewState = document.createElement("span");
-                previewState.className = "badge text-bg-" + (restricted ? "warning" : "secondary");
-                previewState.textContent = restricted ? "需要确认" : (validPort ? (port < 1024 ? "root 权限" : "端口可用") : "端口无效");
-                previewRow.appendChild(host);
-                previewRow.appendChild(endpoint);
-                previewRow.appendChild(previewState);
-                previewRows.appendChild(previewRow);
-            });
-            if (Number.isInteger(port) && port >= 1 && port < 1024 && riskCount) {
-                summary.classList.add("risk");
-                summary.textContent = "端口 " + port + " 低于 1024；" + riskCount + " 台节点使用非 root SSH 用户，继续时会弹窗确认。";
-            } else if (Number.isInteger(port) && port >= 1 && port < 1024) {
-                summary.classList.remove("risk");
-                summary.textContent = "端口 " + port + " 低于 1024；所选节点使用 root SSH 用户。";
-            } else if (Number.isInteger(port) && port >= 1024 && port <= 65535) {
-                summary.classList.remove("risk");
-                summary.textContent = "端口 " + port + " 不属于特权端口范围，不需要低端口权限确认。";
-            }
-        }
-
         function selectedPackage() {
             var input = packageTable.querySelector(".upgrade-package-check:checked");
             return {
@@ -662,7 +580,7 @@
                 identity.textContent = node.hostname + " (" + node.ip + ")";
                 var state = document.createElement("span");
                 state.className = node.nginx_available === true ? "badge text-bg-warning" : "badge text-bg-success";
-                state.textContent = node.nginx_available === true ? "已检测到 Nginx" : "SSH 在线";
+                state.textContent = node.nginx_available === true ? "已检测到 Nginx" : "目标可用";
                 row.appendChild(identity);
                 row.appendChild(state);
                 nodeList.appendChild(row);
@@ -905,7 +823,6 @@
                 tab.classList.toggle("active", current === step);
                 tab.classList.toggle("done", current < step);
             });
-            if (step === 2) renderSshPortMapping();
             if (step === 3) document.getElementById("installProgressLive").classList.toggle("d-none", !batchNumber);
         }
     }

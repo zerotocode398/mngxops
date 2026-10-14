@@ -3,7 +3,7 @@
 {% block page_title %}<i class="bi bi-download" aria-hidden="true"></i> Nginx 安装中心{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=226-4">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=231-1">
 {% endblock %}
 
 {% block content %}
@@ -16,16 +16,16 @@
     </div>
 </div>
 
-<div class="install-stepper" id="installStepper" aria-label="安装步骤" data-can-execute="{{ 'true' if can_execute else 'false' }}" data-batch-max="{{ batch_max_count }}">
-    <div class="install-step-tab active" data-step-tab="1"><span>1</span>选择目标</div>
-    <div class="install-step-tab" data-step-tab="2"><span>2</span>确认编译参数</div>
-    <div class="install-step-tab" data-step-tab="3"><span>3</span>确认执行</div>
+<div class="upgrade-stepper install-stepper" id="installStepper" aria-label="安装步骤" data-can-execute="{{ 'true' if can_execute else 'false' }}" data-batch-max="{{ batch_max_count }}">
+    <div class="upgrade-step install-step-tab active" data-step-tab="1"><span>1</span>选择目标</div>
+    <div class="upgrade-step install-step-tab" data-step-tab="2"><span>2</span>确认编译参数</div>
+    <div class="upgrade-step install-step-tab" data-step-tab="3"><span>3</span>确认执行</div>
 </div>
 
-<div class="install-layout">
-    <div class="install-main-column">
-        <section class="card install-panel" data-step-panel="1">
-            <div class="card-header"><h2 class="h6 mb-0"><span class="install-step-number">1</span>选择目标节点与源码包</h2></div>
+<div class="upgrade-layout install-layout">
+    <div class="upgrade-main-column install-main-column">
+        <section class="card upgrade-panel install-panel" data-step-panel="1">
+            <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-primary me-2">1</span>选择目标节点与源码包</h2></div>
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
                     <label class="form-label upgrade-field-label mb-0" for="nodeSearch"><i class="bi bi-server me-1" aria-hidden="true"></i>目标节点</label>
@@ -37,7 +37,7 @@
                         <i class="bi bi-search me-1" aria-hidden="true"></i>选择节点
                     </button>
                 </div>
-                <div class="small text-muted mt-1">仅可选择 SSH 在线、凭证已启用且未锁定的节点；已有 Nginx 的节点可继续安装，确认时提示覆盖风险。</div>
+                <div class="small text-muted mt-1">仅可选择凭证已启用且未锁定的节点；已有 Nginx 的节点可继续安装，确认时提示覆盖风险。</div>
 
                 <div class="modal fade" id="installNodePickerModal" tabindex="-1" aria-labelledby="installNodePickerTitle" aria-hidden="true">
                     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -49,20 +49,21 @@
                             <div class="modal-body">
                                 <label class="visually-hidden" for="nodeSearch">搜索主机名、IP、节点组</label>
                                 <div class="upgrade-query-field"><input class="form-control form-control-sm" id="nodeSearch" data-query-tags type="search" aria-label="搜索主机名、IP、节点组" placeholder="搜索主机名、IP、节点组"></div>
-                                <div class="table-responsive upgrade-node-table-wrap">
+                                <div class="table-responsive upgrade-node-table-wrap install-node-table-wrap">
                                     <table class="table table-sm table-hover align-middle mb-0 upgrade-node-table" id="upgradeNodeTable">
-                                        <thead class="table-light"><tr><th></th><th>主机名 / IP</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
+                                        <thead class="table-light"><tr><th></th><th>主机名 / IP</th><th>SSH 用户</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
                                         <tbody>
                                         {% for node in nodes %}
                                             <tr class="upgrade-node-row install-node-row{% if not node.can_select %} install-disabled-row{% endif %}" data-node-id="{{ node.id }}" data-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ node.groups ~ ' ' ~ node.credential_username)|lower }}">
                                                 <td><input class="form-check-input upgrade-node-check" type="checkbox" value="{{ node.id }}" data-selectable="{{ 'true' if node.can_select else 'false' }}" {% if not node.can_select %}disabled{% endif %} aria-label="选择 {{ node.hostname or node.ip }}"></td>
-                                                <td><span class="upgrade-node-name-address" title="{{ node.hostname or node.ip }} {{ node.ip }}:{{ node.port }}"><span class="upgrade-node-hostname">{{ node.hostname or node.ip }}</span><small class="text-muted ms-2 upgrade-node-address">{{ node.ip }}:{{ node.port }}</small></span><small class="install-node-meta"><span class="badge text-bg-{{ 'success' if node.status == 'online' else ('danger' if node.status == 'offline' else 'secondary') }}">SSH {{ {"online":"在线","offline":"离线","unknown":"未知"}.get(node.status, node.status) }}</span><span class="text-muted">用户 {{ node.credential_username or "-" }}</span></small>{% if not node.can_select %}<small class="text-danger d-block">{{ node.disabled_reason }}</small>{% endif %}</td>
+                                                <td><span class="upgrade-node-name-address" title="{{ node.hostname or node.ip }} {{ node.ip }}:{{ node.port }}"><span class="upgrade-node-hostname">{{ node.hostname or node.ip }}</span><small class="text-muted ms-2 upgrade-node-address">{{ node.ip }}</small></span>{% if node.disabled_reason %}<small class="text-danger d-block">{{ node.disabled_reason }}</small>{% endif %}</td>
+                                                <td><span class="install-node-username" title="{{ node.credential_username or '无可用凭证' }}">{{ node.credential_username or "-" }}</span></td>
                                                 <td class="text-nowrap">{{ {"dev":"开发","test":"测试","prod":"生产"}.get(node.environment, node.environment) }}</td>
-                                                <td class="text-nowrap">{% if node.nginx_available is sameas true %}<span class="badge text-bg-warning">已检测到{% if node.nginx_version %} {{ node.nginx_version }}{% endif %}</span>{% elif node.nginx_available is sameas false %}<span class="badge text-bg-secondary">未检测到</span>{% else %}<span class="badge text-bg-light">未探测</span>{% endif %}</td>
+                                                <td class="text-nowrap">{% if node.nginx_available is sameas true %}<code>{{ node.nginx_version or "-" }}</code>{% elif node.nginx_available is sameas false %}<span class="text-muted">未检测到</span>{% else %}<span class="text-muted">未探测</span>{% endif %}</td>
                                                 <td><small class="upgrade-node-groups" title="{{ node.groups or '-' }}">{{ node.groups or "-" }}</small></td>
                                             </tr>
                                         {% endfor %}
-                                        <tr id="installNodeEmptyRow" class="{% if nodes %}d-none{% endif %}"><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p id="installNodeEmptyMessage">{% if nodes %}没有匹配的目标节点{% else %}暂无可用于安装的节点{% endif %}</p></div></td></tr>
+                                        <tr id="installNodeEmptyRow" class="{% if nodes %}d-none{% endif %}"><td colspan="6"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p id="installNodeEmptyMessage">{% if nodes %}没有匹配的目标节点{% else %}暂无符合条件的节点{% endif %}</p></div></td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -79,19 +80,10 @@
                                 </div>
                             </div>
                             <div class="modal-footer">
-                                <span class="small text-muted me-auto">仅可选择在线、凭证已启用且未锁定的节点；已有 Nginx 的节点仍可安装</span>
+                                <span class="small text-muted me-auto">凭证已启用且未锁定的节点可安装；已有 Nginx 的节点仍可继续安装</span>
                                 <button class="btn btn-primary btn-sm" type="button" data-bs-dismiss="modal">完成选择</button>
                             </div>
                         </div>
-                    </div>
-                </div>
-                <div class="install-port-preview install-subsection mt-3" aria-labelledby="installPortPreviewTitle">
-                    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-                        <h3 class="install-subheading" id="installPortPreviewTitle">SSH 用户与监听端口</h3>
-                        <span class="badge text-bg-light" id="installPortPreviewPort">当前监听 :{{ default_listen_port }}</span>
-                    </div>
-                    <div class="install-port-preview-rows mt-1" id="installPortPreviewRows" aria-live="polite">
-                        <div class="install-port-preview-empty">选择节点后显示 SSH 用户与监听端口映射。</div>
                     </div>
                 </div>
                 <section class="install-package-selector install-subsection mt-3" aria-labelledby="installPackageTitle">
@@ -128,18 +120,17 @@
                         <div class="upgrade-selector-page-size"><label class="small text-muted mb-0" for="installPackagePageSize">每页</label><select class="form-select form-select-sm" id="installPackagePageSize" aria-label="每页源码包数"><option value="10" selected>10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></div>
                     </div>
                     {% if missing_source_package_count %}<div class="small text-danger mt-1">{{ missing_source_package_count }} 个源码包文件缺失，已禁用选择；请到 <a href="/upgrade/packages/?nav=nginx_install" target="_blank" rel="noopener">源码包管理</a> 重新上传。</div>{% endif %}
-                    <small class="text-muted d-block mt-1">选择平台已校验的源码归档。<a href="/upgrade/packages/?nav=nginx_install" target="_blank" rel="noopener">打开源码包管理</a></small>
                     <div class="small text-muted mt-1" id="selectedPackageSummary">尚未选择源码包</div>
                 </section>
-                <div class="install-panel-actions">
+                <div class="upgrade-panel-actions install-panel-actions">
                     <span class="text-muted small">已选 <span id="stepOneCount">0</span> 台目标节点</span>
                     <button type="button" class="btn btn-primary btn-sm" id="step1Next" {% if not available_source_package_count %}disabled{% endif %}>下一步 <i class="bi bi-chevron-right ms-1" aria-hidden="true"></i></button>
                 </div>
             </div>
         </section>
 
-        <section class="card install-panel d-none" data-step-panel="2">
-            <div class="card-header"><h2 class="h6 mb-0"><span class="install-step-number">2</span>确认编译参数</h2></div>
+        <section class="card upgrade-panel install-panel d-none" data-step-panel="2">
+            <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-primary me-2">2</span>确认编译参数</h2></div>
             <div class="card-body">
                 <div class="install-defaults-note mb-3"><span class="badge text-bg-light me-1">系统设置默认值</span>安装路径、运行用户、用户组和监听端口已预填，可按本批安装调整。</div>
                 <div class="row g-2">
@@ -149,24 +140,6 @@
                     <div class="col-6 col-md-3"><label class="form-label" for="listenPort">监听端口</label><input class="form-control form-control-sm" type="number" id="listenPort" value="{{ default_listen_port }}" min="1" max="65535"></div>
                     <div class="col-12 col-md-6"><label class="form-label" for="remoteWorkDir">远程工作目录</label><input class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}" maxlength="500"></div>
                     <div class="col-6 col-md-3"><label class="form-label" for="makeJobs">并行编译 (-j)</label><input class="form-control form-control-sm" type="number" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32"></div>
-                </div>
-
-                <div class="install-subsection mt-3">
-                    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-                        <h3 class="install-subheading">SSH 操作用户与监听端口</h3>
-                        <span class="small text-muted">按所选节点凭证实时显示</span>
-                    </div>
-                    <div class="install-port-map-summary mt-2" id="installPortRiskSummary" role="status" aria-live="polite">
-                        选择节点后显示 SSH 操作用户与 Nginx 监听端口的对应关系。
-                    </div>
-                    <div class="install-table-wrap mt-2">
-                        <table class="table table-sm table-hover align-middle mb-0 install-port-map-table">
-                            <thead class="table-light"><tr><th>目标节点</th><th>SSH 操作用户</th><th>Nginx 端口</th><th>权限提示</th></tr></thead>
-                            <tbody id="installPortMapRows">
-                                <tr><td colspan="4" class="text-muted">选择目标节点后显示映射</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
                 </div>
 
                 <div class="install-subsection mt-3">
@@ -185,15 +158,15 @@
                     </div>
                     <div id="thirdPartyModules" class="mt-2"></div>
                 </div>
-                <div class="install-panel-actions">
+                <div class="upgrade-panel-actions install-panel-actions">
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-step-back="1"><i class="bi bi-chevron-left me-1" aria-hidden="true"></i>上一步</button>
                     <button type="button" class="btn btn-primary btn-sm" id="step2Next">下一步 <i class="bi bi-chevron-right ms-1" aria-hidden="true"></i></button>
                 </div>
             </div>
         </section>
 
-        <section class="card install-panel d-none" data-step-panel="3">
-            <div class="card-header"><h2 class="h6 mb-0"><span class="install-step-number">3</span>确认执行</h2></div>
+        <section class="card upgrade-panel install-panel d-none" data-step-panel="3">
+            <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-primary me-2">3</span>确认执行</h2></div>
             <div class="card-body">
                 <div id="installConfirmSummary" class="install-summary-grid"></div>
                 <h3 class="install-subheading mt-3">最终 configure 参数</h3>
@@ -205,7 +178,7 @@
                 </div>
                 <div id="installRiskWarnings" class="d-grid gap-2"></div>
                 <label class="form-check mt-3"><input class="form-check-input" type="checkbox" id="confirmInstall"><span class="form-check-label">我确认安装参数及节点列表无误</span></label>
-                <div class="install-panel-actions">
+                <div class="upgrade-panel-actions install-panel-actions">
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-step-back="2"><i class="bi bi-chevron-left me-1" aria-hidden="true"></i>上一步</button>
                     <button type="button" class="btn btn-success btn-sm" id="startInstall" disabled><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>开始安装</button>
                 </div>
@@ -213,7 +186,7 @@
         </section>
     </div>
 
-    <aside class="install-progress-column">
+    <aside class="upgrade-progress-column install-progress-column">
         <section class="card install-progress-card">
             <div class="card-header d-flex justify-content-between align-items-center gap-2"><h2 class="h6 mb-0"><i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>安装执行进度</h2><span class="badge text-bg-secondary d-none" id="batchProgressPercent">0%</span></div>
             <div class="card-body">
@@ -248,4 +221,4 @@
 <script type="application/json" id="installDefaultModuleData">{{ default_modules|tojson }}</script>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=226-4"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=231-1"></script>{% endblock %}

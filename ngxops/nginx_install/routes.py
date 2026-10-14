@@ -222,11 +222,11 @@ def _status_context(task: Task) -> dict:
 
 
 def _node_install_items(session: Session) -> List[dict]:
-    """读取安装向导使用的节点、凭证、分组和门禁摘要。"""
+    """读取 SSH 在线节点及安装向导需要的凭证、分组和门禁摘要。"""
     nodes = session.scalars(
         select(Node)
         .options(joinedload(Node.credential), joinedload(Node.groups))
-        .where(Node.is_deleted.is_(False))
+        .where(Node.is_deleted.is_(False), Node.status == "online")
         .order_by(Node.hostname.asc(), Node.id.asc())
     ).unique().all()
     items = []
@@ -235,8 +235,6 @@ def _node_install_items(session: Session) -> List[dict]:
         reason = ""
         if node.is_locked:
             reason = "节点已锁定"
-        elif node.status != "online":
-            reason = "节点非在线状态"
         elif credential is None or not credential.is_enabled:
             reason = "无可用 SSH 凭证"
         items.append(
@@ -246,7 +244,6 @@ def _node_install_items(session: Session) -> List[dict]:
                 "ip": node.ip,
                 "port": node.port,
                 "environment": node.environment,
-                "status": node.status,
                 "locked": node.is_locked,
                 "has_credential": bool(credential and credential.is_enabled),
                 "credential_username": credential.username if credential else "",
