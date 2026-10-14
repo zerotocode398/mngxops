@@ -1766,10 +1766,14 @@
                 }
                 detail.dataset.taskStatus = task.status;
                 updateDetailActions(task);
-                if (["pending", "running"].indexOf(task.status) >= 0) {
+                if (["pending", "running"].indexOf(task.status) >= 0 || task.has_more_logs) {
+                    document.getElementById("logLiveLabel").textContent =
+                        task.has_more_logs && ["pending", "running"].indexOf(task.status) < 0
+                            ? "正在载入剩余日志"
+                            : "实时更新中";
                     window.setTimeout(pollDetail, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
                 } else {
-                    document.getElementById("logLiveLabel").textContent = "已完成";
+                    document.getElementById("logLiveLabel").textContent = "执行已结束";
                 }
             })
             .fail(function () {

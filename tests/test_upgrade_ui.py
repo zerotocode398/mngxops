@@ -8,6 +8,8 @@ from io import BytesIO
 from pathlib import Path
 import re
 import tarfile
+from types import SimpleNamespace
+from unittest.mock import Mock
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -26,9 +28,13 @@ from ngxops.database.session import session_scope
 from ngxops.nodes.models import Node
 from ngxops.settings.models import SystemSetting
 from ngxops.settings.service import initialize_defaults
-from ngxops.tasks.models import Task
+from ngxops.tasks.models import Task, TaskLog
 from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage, NginxUpgradeRun
-from ngxops.upgrade.services import _load_run_snapshot, effective_removed_modules
+from ngxops.upgrade.services import (
+    _load_run_snapshot,
+    _run_remote_command,
+    effective_removed_modules,
+)
 
 
 def test_module_removals_apply_only_to_nodes_that_have_the_parameter():
@@ -111,6 +117,47 @@ def _upload(client, csrf_token, path, filename, data):
         data=fields,
         files={"package_file": (filename, _archive_bytes(), "application/gzip")},
     )
+
+
+def test_upgrade_remote_command_streams_all_output_to_task_logs():
+    """验证升级命令完整分批记录输出且返回值仍限制为末尾行。"""
+    expected = ["configure output line {:03d}".format(index) for index in range(241)]
+    chunks = ["\n".join(expected).encode("utf-8")]
+    channel = Mock()
+    channel.recv_ready.side_effect = lambda: bool(chunks)
+    channel.recv.side_effect = lambda _size: chunks.pop(0)
+    channel.recv_stderr_ready.return_value = False
+    channel.exit_status_ready.side_effect = lambda: not chunks
+    channel.recv_exit_status.return_value = 0
+    client = Mock()
+    client.exec_command.return_value = (
+        None,
+        SimpleNamespace(channel=channel),
+        None,
+    )
+
+    class LogRecorder:
+        """记录传给升级任务的日志批次。"""
+
+        def __init__(self):
+            """初始化内存日志列表。"""
+            self.messages = []
+
+        def check_cancelled(self):
+            """测试任务始终处于活跃状态。"""
+            return None
+
+        def append_log(self, message):
+            """保存一次持久化日志调用的正文。"""
+            self.messages.append(message)
+
+    context = LogRecorder()
+    status, tail = _run_remote_command(client, "make", context=context)
+
+    assert status == 0
+    assert "\n".join(context.messages).splitlines() == expected
+    assert tail.splitlines() == expected[-120:]
+    assert all(len(message) <= 4000 for message in context.messages)
 
 
 def test_compute_config_accepts_third_party_module_models(upgrade_client):
@@ -827,13 +874,51 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     assert 'id="perNodeConfigNote"' in center.text
     assert 'class="nginx-v-output nginx-v-output-alt upgrade-config-output upgrade-confirm-terminal"' in center.text
 
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            session.add_all(
+                TaskLog(
+                    task_id=task_id,
+                    message="configure output line {:03d}".format(index),
+                )
+                for index in range(205)
+            )
+        all_log_ids = session.scalars(
+            select(TaskLog.id).where(TaskLog.task_id == task_id).order_by(TaskLog.id)
+        ).all()
+
+    first_log_page = client.get(
+        "/api/tasks/{}?after_log_id=0&log_limit=200".format(task_id)
+    )
+    assert first_log_page.status_code == 200
+    first_log_data = first_log_page.json()
+    assert first_log_data["has_more_logs"] is True
+    assert len(first_log_data["logs"]) == 200
+    second_log_page = client.get(
+        "/api/tasks/{}?after_log_id={}&log_limit=200".format(
+            task_id, first_log_data["next_log_id"]
+        )
+    )
+    assert second_log_page.status_code == 200
+    second_log_data = second_log_page.json()
+    assert second_log_data["has_more_logs"] is False
+    assert [entry["id"] for entry in first_log_data["logs"] + second_log_data["logs"]] == all_log_ids
+
     upgrade_detail = client.get("/upgrade/tasks/{}/".format(task_id))
     task_center_detail = client.get("/tasks/{}/".format(task_id))
     assert upgrade_detail.status_code == 200
     assert 'id="rollbackUpgrade"' in upgrade_detail.text
     assert 'data-has-backup="1"' in upgrade_detail.text
+    assert 'class="upgrade-log-output"' in upgrade_detail.text
+    assert 'id="logLiveLabel"' in upgrade_detail.text
+    assert "configure output line 204" in upgrade_detail.text
     assert task_center_detail.status_code == 200
     assert 'data-task-active="false"' in task_center_detail.text
+
+    script = (Path.cwd() / "static/js/upgrade-center.js").read_text(encoding="utf-8")
+    stylesheet = (Path.cwd() / "static/css/upgrade.css").read_text(encoding="utf-8")
+    assert "task.has_more_logs" in script
+    assert ".upgrade-log-output { max-height: 520px; color: #00ff88; background: #1a1a2e; }" in stylesheet
 
     with session_scope(app.state.database.session_factory) as session:
         assert session.scalar(select(func.count()).select_from(NginxSourcePackage)) == 11

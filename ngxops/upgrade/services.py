@@ -33,7 +33,7 @@ from ngxops.nodes.models import Node
 from ngxops.releases.services import _reload_nginx
 from ngxops.settings.models import preset_by_key
 from ngxops.settings.service import read_setting
-from ngxops.tasks.executor import TaskContext, TaskOutcome
+from ngxops.tasks.executor import TaskCancelled, TaskContext, TaskOutcome
 from ngxops.tasks.models import Task
 from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage, NginxUpgradeRun
 from ngxops.upgrade.builtin_modules import BUILTIN_ADD_MODULES
@@ -743,6 +743,7 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
             client,
             "{} -V 2>&1".format(shlex.quote(target["nginx_path"])),
             timeout=30,
+            context=context,
         )
         parsed = parse_nginx_v_output(raw_output)
         if status != 0 or not parsed["configure_opts"]:
@@ -757,6 +758,7 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
         status, output = _run_remote_command(
             client,
             "command -v gcc >/dev/null 2>&1 && command -v make >/dev/null 2>&1",
+            context=context,
         )
         if status != 0:
             raise UpgradeTaskError("目标节点缺少 gcc 或 make 编译工具")
@@ -764,11 +766,18 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
         work_dir = run.remote_work_dir
         package_remote = posixpath.join(work_dir, package["file_name"])
         _set_run_phase(session_factory, task_id, context, "uploading_package", 15, "创建远程编译工作目录")
-        _require_remote_success(client, "mkdir -p -- {}".format(shlex.quote(work_dir)), "创建远程工作目录失败")
+        _require_remote_success(
+            client,
+            "mkdir -p -- {}".format(shlex.quote(work_dir)),
+            "创建远程工作目录失败",
+            context=context,
+        )
 
         _set_run_phase(session_factory, task_id, context, "uploading_package", 20, "上传 Nginx 源码包")
         _upload_file(client, package["local_path"], package_remote, context, 20, 29)
-        _verify_remote_md5(client, package_remote, package["file_md5"], "源码包")
+        _verify_remote_md5(
+            client, package_remote, package["file_md5"], "源码包", context=context
+        )
         context.append_log("源码包传输校验通过")
 
         _set_run_phase(session_factory, task_id, context, "uploading_package", 30, "解压 Nginx 源码包")
@@ -778,8 +787,9 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
                 shlex.quote(package_remote), shlex.quote(work_dir)
             ),
             "解压 Nginx 源码包失败",
+            context=context,
         )
-        source_root = _read_archive_root(client, package_remote)
+        source_root = _read_archive_root(client, package_remote, context=context)
         source_dir = posixpath.join(work_dir, source_root)
 
         third_party = json.loads(run.third_party_json or "[]")
@@ -812,6 +822,7 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
                 shlex.quote(run.current_binary_path), shlex.quote(backup_path)
             ),
             "备份当前 Nginx 二进制失败",
+            context=context,
         )
         _store_backup_path(session_factory, task_id, backup_path)
 
@@ -828,7 +839,6 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
             timeout=1800,
             context=context,
         )
-        _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError("configure 失败：\n{}".format(_tail_output(output)))
 
@@ -842,7 +852,6 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
             timeout=7200,
             context=context,
         )
-        _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError("make 编译失败：\n{}".format(_tail_output(output)))
 
@@ -854,7 +863,6 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
             timeout=1800,
             context=context,
         )
-        _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError("make install 失败：\n{}".format(_tail_output(output)))
 
@@ -863,9 +871,11 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
             target_binary = posixpath.join(run.target_prefix, "sbin", "nginx")
         _set_run_phase(session_factory, task_id, context, "verifying", 85, "执行 nginx -t")
         status, output = _run_remote_command(
-            client, "{} -t 2>&1".format(shlex.quote(target_binary)), timeout=120
+            client,
+            "{} -t 2>&1".format(shlex.quote(target_binary)),
+            timeout=120,
+            context=context,
         )
-        _append_command_output(context, output)
         if status != 0:
             _restore_binary(client, backup_path, run.current_binary_path, context)
             raise UpgradeTaskError("nginx -t 校验失败，已尝试恢复旧二进制")
@@ -882,6 +892,7 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
             client,
             "{} -v 2>&1".format(shlex.quote(target_binary)),
             timeout=30,
+            context=context,
         )
         version_match = _VERSION_FROM_OUTPUT.search(output)
         final_version = version_match.group(1) if version_match else run.target_version
@@ -896,8 +907,6 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
         )
         return TaskOutcome("success", "Nginx 编译升级成功", None)
     except Exception as exc:
-        from ngxops.tasks.executor import TaskCancelled
-
         if isinstance(exc, TaskCancelled):
             raise
         log_exception(
@@ -1024,9 +1033,11 @@ def _store_backup_path(session_factory, task_id: int, backup_path: str) -> None:
             )
 
 
-def _require_remote_success(client, command: str, message: str) -> str:
+def _require_remote_success(
+    client, command: str, message: str, context: Optional[TaskContext] = None
+) -> str:
     """执行一次远程命令并将远端正文限制为通用错误。"""
-    status, output = _run_remote_command(client, command)
+    status, output = _run_remote_command(client, command, context=context)
     if status != 0:
         raise UpgradeTaskError(message)
     return output
@@ -1051,24 +1062,34 @@ def _upload_file(client, local_path: str, remote_path: str, context: TaskContext
         raise UpgradeTaskError("上传文件为空")
 
 
-def _verify_remote_md5(client, remote_path: str, expected: str, label: str) -> None:
+def _verify_remote_md5(
+    client,
+    remote_path: str,
+    expected: str,
+    label: str,
+    context: Optional[TaskContext] = None,
+) -> None:
     """比较本地和远端归档 MD5，拒绝不完整传输。"""
     status, output = _run_remote_command(
         client,
         "md5sum -- {} | awk '{{print $1}}'".format(shlex.quote(remote_path)),
+        context=context,
     )
     actual = output.splitlines()[0].strip().lower() if output else ""
     if status != 0 or actual != expected:
         raise UpgradeTaskError("{} MD5 校验失败".format(label))
 
 
-def _read_archive_root(client, archive_path: str) -> str:
+def _read_archive_root(
+    client, archive_path: str, context: Optional[TaskContext] = None
+) -> str:
     """读取源码包顶层目录并验证其为单一安全名称。"""
     _status, output = _run_remote_command(
         client,
         "tar -tzf {} | awk -F/ 'NF {{print $1; exit}}'".format(
             shlex.quote(archive_path)
         ),
+        context=context,
     )
     root = output.strip().splitlines()[0] if output.strip() else ""
     if not _MODULE_NAME.fullmatch(root) or root in (".", ".."):
@@ -1080,7 +1101,12 @@ def _prepare_module(client, item: dict, index: int, work_dir: str, package_dir: 
     """在目标节点准备在线 Git 或平台托管的离线模块。"""
     module_path = resolve_module_path(item, work_dir, index)
     modules_dir = posixpath.dirname(module_path)
-    _require_remote_success(client, "mkdir -p -- {}".format(shlex.quote(modules_dir)), "创建模块目录失败")
+    _require_remote_success(
+        client,
+        "mkdir -p -- {}".format(shlex.quote(modules_dir)),
+        "创建模块目录失败",
+        context=context,
+    )
     if item["source"] == "git":
         setting_key = "upgrade.git_clone_timeout_minutes"
         default_minutes = int(preset_by_key()[setting_key]["value"])
@@ -1088,7 +1114,7 @@ def _prepare_module(client, item: dict, index: int, work_dir: str, package_dir: 
             timeout_minutes = read_setting(session, setting_key, default_minutes)
         git_url = item["git_url"]
         branch = item["branch"]
-        if not _remote_is_dir(client, module_path):
+        if not _remote_is_dir(client, module_path, context=context):
             command = "git clone --depth 1 --branch {} -- {} {} 2>&1".format(
                 shlex.quote(branch), shlex.quote(git_url), shlex.quote(module_path)
             )
@@ -1099,7 +1125,6 @@ def _prepare_module(client, item: dict, index: int, work_dir: str, package_dir: 
         status, output = _run_remote_command(
             client, command, timeout=timeout_minutes * 60, context=context
         )
-        _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError(
                 "第三方模块 {} Git 获取失败；目标机可能无 Git 或无法出网，请改用离线包".format(
@@ -1121,13 +1146,16 @@ def _prepare_module(client, item: dict, index: int, work_dir: str, package_dir: 
     remote_archive = posixpath.join(modules_dir, archive_name)
     temporary_dir = "{}.extract.{}".format(module_path, context.task_id)
     _upload_file(client, str(local_path), remote_archive, context, 40, 44)
-    _verify_remote_md5(client, remote_archive, expected_md5, "第三方模块包")
+    _verify_remote_md5(
+        client, remote_archive, expected_md5, "第三方模块包", context=context
+    )
     _require_remote_success(
         client,
         "rm -rf -- {} {} && mkdir -p -- {}".format(
             shlex.quote(module_path), shlex.quote(temporary_dir), shlex.quote(temporary_dir)
         ),
         "准备第三方模块解压目录失败",
+        context=context,
     )
     extract = (
         "unzip -q {} -d {}".format(shlex.quote(remote_archive), shlex.quote(temporary_dir))
@@ -1136,7 +1164,12 @@ def _prepare_module(client, item: dict, index: int, work_dir: str, package_dir: 
             shlex.quote(remote_archive), shlex.quote(temporary_dir)
         )
     )
-    _require_remote_success(client, extract, "第三方模块 {} 解压失败".format(item["name"]))
+    _require_remote_success(
+        client,
+        extract,
+        "第三方模块 {} 解压失败".format(item["name"]),
+        context=context,
+    )
     normalize = (
         "count=$(find {tmp} -mindepth 1 -maxdepth 1 | wc -l); "
         "first=$(find {tmp} -mindepth 1 -maxdepth 1 -type d -print -quit); "
@@ -1145,28 +1178,52 @@ def _prepare_module(client, item: dict, index: int, work_dir: str, package_dir: 
     ).format(
         tmp=shlex.quote(temporary_dir), dst=shlex.quote(module_path), archive=shlex.quote(remote_archive)
     )
-    _require_remote_success(client, normalize, "整理第三方模块 {} 目录失败".format(item["name"]))
+    _require_remote_success(
+        client,
+        normalize,
+        "整理第三方模块 {} 目录失败".format(item["name"]),
+        context=context,
+    )
 
 
-def _remote_is_dir(client, path: str) -> bool:
+def _remote_is_dir(
+    client, path: str, context: Optional[TaskContext] = None
+) -> bool:
     """检查远程模块目录是否存在。"""
     status, _output = _run_remote_command(
-        client, "test -d {}".format(shlex.quote(path))
+        client, "test -d {}".format(shlex.quote(path)), context=context
     )
     return status == 0
 
 
 def _run_remote_command(client, command: str, timeout: int = 45, context: Optional[TaskContext] = None) -> Tuple[int, str]:
-    """运行远程命令并周期检查取消、限制保留的输出长度。"""
+    """运行远程命令并实时持久化完整输出，同时保留有限尾部供错误摘要使用。"""
     _stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
     channel = stdout.channel
     output_tail = deque(maxlen=120)
     pending = ""
-    total_lines = 0
+    log_lines = []
+    log_chars = 0
     started = time.monotonic()
+
+    def flush_logs(include_partial: bool = False) -> None:
+        """将尚未达到批量阈值的远程输出追加到任务日志。"""
+        nonlocal pending, log_chars
+        if include_partial and pending:
+            log_lines.append(pending.rstrip("\r"))
+            pending = ""
+        if log_lines:
+            _append_command_output(context, "\n".join(log_lines))
+            log_lines.clear()
+            log_chars = 0
+
     while True:
         if context is not None:
-            context.check_cancelled()
+            try:
+                context.check_cancelled()
+            except TaskCancelled:
+                flush_logs(include_partial=True)
+                raise
         chunk = b""
         if channel.recv_ready():
             chunk += channel.recv(65536)
@@ -1177,29 +1234,55 @@ def _run_remote_command(client, command: str, timeout: int = 45, context: Option
             lines = pending.split("\n")
             pending = lines.pop()
             for line in lines:
-                output_tail.append(line.rstrip("\r"))
-                total_lines += 1
-            if total_lines and total_lines % 20 == 0:
-                _append_command_output(context, "\n".join(list(output_tail)[-20:]))
+                line = line.rstrip("\r")
+                output_tail.append(line)
+                log_lines.append(line)
+                log_chars += len(line) + 1
+                if len(log_lines) >= 20 or log_chars >= 3000:
+                    _append_command_output(context, "\n".join(log_lines))
+                    log_lines = []
+                    log_chars = 0
         if channel.exit_status_ready() and not channel.recv_ready() and not channel.recv_stderr_ready():
             break
         if time.monotonic() - started > timeout:
+            flush_logs(include_partial=True)
             channel.close()
             raise UpgradeTaskError("远程命令执行超时")
         if not chunk:
             time.sleep(0.1)
     if pending:
-        output_tail.append(pending.rstrip("\r"))
+        pending = pending.rstrip("\r")
+        output_tail.append(pending)
+        log_lines.append(pending)
+        pending = ""
+    flush_logs()
     return channel.recv_exit_status(), "\n".join(output_tail)
 
 
 def _append_command_output(context: Optional[TaskContext], output: str) -> None:
-    """将命令输出裁剪后追加到任务持久日志。"""
-    if context is None or not output:
+    """分批追加远程命令输出，避免任务日志单条记录被长度限制截断。"""
+    if context is None or output is None:
         return
-    lines = [line for line in output.splitlines() if line.strip()]
-    if lines:
-        context.append_log("\n".join(lines[-20:]))
+    lines = output.split("\n")
+    batch = []
+    batch_chars = 0
+    for line in lines:
+        if len(line) > 3500:
+            if batch:
+                context.append_log("\n".join(batch))
+                batch = []
+                batch_chars = 0
+            for offset in range(0, len(line), 3500):
+                context.append_log(line[offset:offset + 3500])
+            continue
+        if batch and batch_chars + len(line) + 1 > 3500:
+            context.append_log("\n".join(batch))
+            batch = []
+            batch_chars = 0
+        batch.append(line)
+        batch_chars += len(line) + 1
+    if batch:
+        context.append_log("\n".join(batch))
 
 
 def _tail_output(output: str, max_lines: int = 80) -> str:
@@ -1213,6 +1296,7 @@ def _restore_binary(client, backup_path: str, binary_path: str, context: TaskCon
         client,
         "cp -p -- {} {}".format(shlex.quote(backup_path), shlex.quote(binary_path)),
         timeout=120,
+        context=context,
     )
     context.append_log(
         "已恢复旧 Nginx 二进制" if status == 0 else "恢复旧 Nginx 二进制失败",
@@ -1243,6 +1327,7 @@ def _run_rollback(session_factory, encryption_key: bytes, task_id: int, context:
         status, _output = _run_remote_command(
             client,
             "test -f {}".format(shlex.quote(source_run.backup_binary_path)),
+            context=context,
         )
         if status != 0:
             raise UpgradeTaskError("回滚备份文件不存在")
@@ -1254,6 +1339,7 @@ def _run_rollback(session_factory, encryption_key: bytes, task_id: int, context:
                 shlex.quote(source_run.current_binary_path),
             ),
             "恢复旧 Nginx 二进制失败",
+            context=context,
         )
         context.update_progress(75, detail="重新加载 Nginx")
         ok, message = _reload_nginx(client, source_run.current_binary_path)

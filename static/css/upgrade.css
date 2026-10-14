@@ -235,7 +235,7 @@
 .nginx-v-output-alt { color: #e9ecef; background: #16213e; }
 .upgrade-config-output, .upgrade-log-output { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 4px; font: 0.78rem/1.55 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
 .upgrade-config-output { max-height: 480px; }
-.upgrade-log-output { max-height: 520px; }
+.upgrade-log-output { max-height: 520px; color: #00ff88; background: #1a1a2e; }
 .upgrade-log-output .log-error { color: #ff9b9b; }
 .upgrade-log-output .log-warning { color: #ffe18a; }
 @media (max-width: 991.98px) {

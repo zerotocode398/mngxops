@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}升级任务详情 - {{ run.node_hostname }}{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> 升级任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=15">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">{% endblock %}
 
 {% block content %}
 <div class="d-flex gap-2 mb-3 flex-wrap">
@@ -41,10 +41,10 @@
 {% endif %}
 
 <section class="card">
-    <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0">完整执行日志</h2><span class="small text-muted" id="logLiveLabel">{% if task.status in ['pending', 'running'] %}实时更新中{% else %}已完成{% endif %}</span></div>
-    <div class="card-body"><pre class="upgrade-log-output" id="upgradeLog" data-after-log-id="{{ logs[-1].id if logs else 0 }}">{% for item in logs %}<span class="log-{{ item.level }}">{{ item.message }}</span>
+    <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0">完整执行日志</h2><span class="small text-muted" id="logLiveLabel" aria-live="polite">{% if task.status in ['pending', 'running'] %}实时更新中{% else %}执行已结束{% endif %}</span></div>
+    <div class="card-body"><pre class="upgrade-log-output" id="upgradeLog" data-after-log-id="{{ logs[-1].id if logs else 0 }}" aria-live="polite">{% for item in logs %}<span class="log-{{ item.level }}">{{ item.message }}</span>
 {% else %}暂无日志{% endfor %}</pre></div>
 </section>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=7"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=8"></script>{% endblock %}
