@@ -34,6 +34,7 @@ from ngxops.security.dependencies import (
 from ngxops.security.errors import PermissionDenied
 from ngxops.settings.service import read_setting
 from ngxops.tasks.models import Task, TaskLog
+from ngxops.tasks.presentation import format_task_datetime
 from ngxops.ui import render_page
 from ngxops.upgrade.builtin_modules import BUILTIN_ADD_MODULES
 from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage
@@ -244,6 +245,7 @@ def _node_install_items(session: Session) -> List[dict]:
                 "hostname": node.hostname,
                 "ip": node.ip,
                 "port": node.port,
+                "environment": node.environment,
                 "status": node.status,
                 "locked": node.is_locked,
                 "has_credential": bool(credential and credential.is_enabled),
@@ -323,6 +325,14 @@ def nginx_install_center(
         .options(joinedload(NginxSourcePackage.creator))
         .order_by(NginxSourcePackage.created_at.desc(), NginxSourcePackage.id.desc())
     ).all()
+    package_availability = {
+        package.id: (request.app.state.settings.upgrade_package_dir / package.file_name).is_file()
+        for package in packages
+    }
+    for package in packages:
+        package.created_at_display = format_task_datetime(
+            package.created_at, include_seconds=False
+        )
     module_packages = session.scalars(
         select(NginxModulePackage)
         .options(joinedload(NginxModulePackage.creator))
@@ -347,6 +357,11 @@ def nginx_install_center(
         {
             "nodes": nodes,
             "packages": packages,
+            "package_availability": package_availability,
+            "missing_source_package_count": sum(
+                not available for available in package_availability.values()
+            ),
+            "available_source_package_count": sum(package_availability.values()),
             "module_packages": module_packages,
             "recent_runs": recent_runs,
             "default_work_dir": read_setting(session, "upgrade.default_work_dir", "/tmp/nginx-upgrade"),

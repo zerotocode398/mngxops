@@ -9,9 +9,9 @@
 
 ## 向导与门禁
 
-1. 选择 SSH 在线、未锁定且凭证已启用的节点，以及平台托管的 Nginx 源码包。每批上限由 `node.batch_max_count` 控制，默认 3；保存设置后，刷新向导更新选择上限，创建任务时由后端按最新值校验。离线、未知、锁定或无有效凭证的节点不可选。创建时再次检查门禁，并跳过并说明已变化或已有安装任务的节点。
+1. 安装首页沿用升级首页的统计卡片和最近任务布局，并提供开始安装、历史、源码包和模块包入口。向导的目标节点选择复用升级页的摘要标签、紧凑节点弹窗、查询标签、AND 搜索、分页和每页条数交互；弹窗保留安装所需的 SSH 状态、凭证用户名和不可选原因。源码包使用与升级页一致的可搜索单选表格、分页和每页条数控件，缺失文件的包不可选，标题显示为加粗小标题“源码包”。安装门禁仍允许 Nginx 未探测或不可用的在线节点，已检测到 Nginx 时在确认页提示覆盖风险。每批上限由 `node.batch_max_count` 控制，默认 3；保存设置后，刷新向导更新选择上限，创建任务时由后端按最新值校验。离线、未知、锁定或无有效凭证的节点不可选。创建时再次检查门禁，并跳过并说明已变化或已有安装任务的节点。
 2. 设置 `--prefix`、`--user`、`--group`、监听端口、远程工作目录、`make -j`、官方模块、第三方 Git/离线模块和额外 configure 参数。默认模块为 SSL、HTTP/2、realip、stub_status、stream 和 stream_ssl。额外参数不能覆盖受保护的安装路径、二进制路径或运行账户。
-3. 查看服务端生成的 configure 参数、节点状态和覆盖风险后确认。已有 Nginx 的节点允许继续，确认页和开始安装确认均提示目标路径或 `nginx.service` 可能被覆盖。监听端口为 80 且 SSH 用户非 root 时，离开参数步骤会列出风险节点并要求确认；开始安装确认会再次说明 systemd 与二进制启动分流及非 root 权限差异。
+3. 查看服务端生成的 configure 参数、节点状态和覆盖风险后确认。第一步在节点选择后预览 SSH 用户到监听端口的映射，第二步可调整参数并查看详细映射；端口低于 1024 且 SSH 用户非 root 时，显示风险摘要并在离开参数步骤时弹窗确认。已有 Nginx 的节点允许继续，确认页和开始安装确认均提示目标路径或 `nginx.service` 可能被覆盖，开始安装确认也会再次说明低端口权限风险及 systemd 与二进制启动分流。
 
 安装批次号格式为 `IN-YYMMDD-NNNN`。已被 pending/running 安装引用的源码包或离线模块包不能覆盖或删除；安装批次创建和升级包管理共用进程内锁。相同节点已有活动安装时不会重复排队。
 
@@ -29,7 +29,7 @@
 - `POST /api/nginx-install/configure-preview`：校验参数并返回 configure 字符串和目标路径；需要 `upgrade.read` 或 `upgrade.execute` 与 CSRF。
 - `POST /api/nginx-install/tasks`：全量复核包、参数和节点，创建每节点 `nginx_install` 任务及批次；需要 `upgrade.execute` 与 CSRF。
 - `GET /api/nginx-install/batches/{batch_number}`：读取有权查看的批次进度、节点任务和日志入口；`upgrade.execute` 仅能读取本人批次，`upgrade.read` 可读取全部批次。
-- 任务增量日志与协作取消使用通用 `GET /api/tasks/{task_id}`、`POST /api/tasks/{task_id}/cancel`；取消使用 `upgrade.execute` 并额外检查安装阶段。
+- 任务增量日志与协作取消使用通用 `GET /api/tasks/{task_id}`、`POST /api/tasks/{task_id}/cancel`；取消使用 `upgrade.execute` 并额外检查安装阶段。任务中心详情提供安装专用日志入口；通用详情以终端样式增量显示安装日志。
 
 成功响应模型、状态码和认证方案登记在 [api.md](api.md)。参数快照、任务结果和日志不保存 SSH 密码或私钥。执行器和包锁目前位于单进程内，部署限制为单个 Uvicorn worker。最大节点数由 `node.batch_max_count` 设置控制，默认 3。
 

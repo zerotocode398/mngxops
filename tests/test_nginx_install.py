@@ -187,9 +187,37 @@ def test_install_batch_history_package_guard_and_path_sync(install_client, monke
     center = client.get("/nginx-install/center/")
     assert center.status_code == 200, center.text
     assert "已检测到" in center.text
+    assert 'data-step-tab="1"' in center.text
+    assert 'data-step-tab="2"' in center.text
+    assert 'data-step-tab="3"' in center.text
+    assert "确认编译参数" in center.text
+    assert "确认执行" in center.text
+    assert 'id="installPortPreviewRows"' in center.text
+    assert "系统设置默认值" in center.text
+    assert 'id="installNodePickerModal"' in center.text
+    assert 'id="nodePageSize"' in center.text
+    assert 'id="selectedNodeSummary"' in center.text
+    assert "nginx-install.js?v=226-3" in center.text
+    assert 'id="targetPrefix" value="/opt/app"' in center.text
+    assert 'id="nginxUser" value="root"' in center.text
+    assert 'id="nginxGroup" value="root"' in center.text
+    assert 'id="listenPort" value="80"' in center.text
+    assert 'id="thirdPartyModules"' in center.text
+    assert 'id="installPortMapRows"' in center.text
+    assert "SSH 操作用户与监听端口" in center.text
+    assert "--with-http_ssl_module" in center.text
+    assert "--with-http_realip_module" in center.text
+    assert "--with-http_stub_status_module" in center.text
+    assert "--with-stream" in center.text
+    assert "--with-stream_ssl_module" in center.text
     detail = client.get("/nginx-install/task/{}/log/".format(task_id))
     assert detail.status_code == 200, detail.text
     assert 'id="cancelInstallTask"' in detail.text
+
+    task_center_detail = client.get("/tasks/{}/".format(task_id))
+    assert task_center_detail.status_code == 200, task_center_detail.text
+    assert 'href="/nginx-install/task/{}/log/"'.format(task_id) in task_center_detail.text
+    assert 'data-log-mode="plain-text"' in task_center_detail.text
 
     progress = client.get("/api/nginx-install/batches/{}".format(body["batch_number"]))
     assert progress.status_code == 200, progress.text
@@ -294,3 +322,14 @@ def test_install_configure_preview_rejects_path_override(install_client):
     )
     assert response.status_code == 400
     assert "不能覆盖安装路径" in response.json()["message"]
+
+
+def test_install_frontend_warns_for_non_root_privileged_listen_ports():
+    """验证安装向导覆盖所有低端口并显示 SSH 用户与端口映射。"""
+    script = (Path(__file__).parents[1] / "static/js/nginx-install.js").read_text(
+        encoding="utf-8"
+    )
+    assert "return port > 0 && port < 1024;" in script
+    assert "values.listen_port === 80" not in script
+    assert "isPrivilegedListenPort(values.listen_port)" in script
+    assert "对应监听端口" in script

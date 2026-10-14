@@ -30,6 +30,11 @@
                 <i class="bi bi-clock-history me-1" aria-hidden="true"></i>发布历史
             </a>
             {% endif %}
+            {% if is_install_type %}
+            <a class="btn btn-outline-info btn-sm" href="/nginx-install/task/{{ task.id }}/log/">
+                <i class="bi bi-file-text me-1" aria-hidden="true"></i>安装详情
+            </a>
+            {% endif %}
             <a class="btn btn-outline-secondary btn-sm" href="/tasks/">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回任务中心
             </a>
@@ -120,7 +125,7 @@
                 </select>
             </div>
             {% endif %}
-            {% if is_upgrade_type %}
+            {% if is_upgrade_type or is_install_type %}
             <pre class="task-log-list task-log-list-terminal task-log-list-plain" id="taskLogList" data-log-mode="plain-text" aria-live="polite">{% for log in logs %}<span class="task-log-plain-line log-level-{{ log.level }}">{{ format_task_datetime(log.created_at) }} {{ format_task_log_message(log.message, log_target_map) }}
 </span>{% else %}<span class="task-log-plain-empty" data-empty-logs>暂无执行日志</span>{% endfor %}</pre>
             {% else %}

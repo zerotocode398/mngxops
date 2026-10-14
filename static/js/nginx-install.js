@@ -62,13 +62,19 @@
         }
     }
 
+    /** 判断监听端口是否处于 Linux 特权端口范围。 */
+    function isPrivilegedListenPort(port) {
+        return port > 0 && port < 1024;
+    }
+
     function buildNodePicker() {
-        var table = document.getElementById("installNodeTable");
+        var table = document.getElementById("upgradeNodeTable");
         if (!table) return;
         var maxNodes = Number(document.getElementById("installStepper").dataset.batchMax) || 3;
         var selected = {};
-        var nodeRows = Array.prototype.slice.call(table.querySelectorAll("[data-node-row]"));
-        var packageSelect = document.getElementById("sourcePackage");
+        var nodeRows = Array.prototype.slice.call(table.querySelectorAll(".install-node-row"));
+        var packageTable = document.getElementById("installPackageTable");
+        var packageRows = Array.prototype.slice.call(packageTable.querySelectorAll(".upgrade-package-row"));
         var canExecute =
             document.getElementById("installStepper").dataset.canExecute === "true";
         var modulePackages = readJson("installModulePackageData");
@@ -80,44 +86,247 @@
         var batchNumber = "";
         var pollTimer = null;
         var riskConfirmed = false;
+        var nodeSearch = document.getElementById("nodeSearch");
+        var nodePageSize = document.getElementById("nodePageSize");
+        var nodePage = 1;
+        var packageSearch = document.getElementById("installPackageSearch");
+        var packagePageSize = document.getElementById("installPackagePageSize");
+        var packagePage = 1;
 
         table.addEventListener("change", function (event) {
-            var input = event.target.closest("[data-node-id]");
+            var input = event.target.closest(".upgrade-node-check");
             if (!input) return;
-            if (input.checked && Object.keys(selected).length >= maxNodes) {
+            var nodeId = input.value;
+            if (input.checked && !selected[nodeId] && Object.keys(selected).length >= maxNodes) {
                 input.checked = false;
                 notify("单次最多选择 " + maxNodes + " 台节点", "warning");
                 return;
             }
             if (input.checked) {
-                selected[input.dataset.nodeId] = true;
+                selected[nodeId] = true;
             } else {
-                delete selected[input.dataset.nodeId];
+                delete selected[nodeId];
             }
             riskConfirmed = false;
             updateNodeCount();
         });
 
-        var nodeSearch = document.getElementById("nodeSearch");
-        nodeSearch.addEventListener("input", function () {
-            var term = nodeSearch.value.trim().toLowerCase();
-            nodeRows.forEach(function (row) {
-                row.hidden = term && row.dataset.nodeSearch.indexOf(term) < 0;
+        nodeRows.forEach(function (row) {
+            row.addEventListener("click", function (event) {
+                if (event.target.closest("input, button, a, label, select")) return;
+                var checkbox = row.querySelector(".upgrade-node-check");
+                if (!checkbox || (checkbox.disabled && !checkbox.checked)) return;
+                checkbox.checked = !checkbox.checked;
+                checkbox.dispatchEvent(new Event("change", { bubbles: true }));
             });
         });
 
-        function updateNodeCount() {
-            document.getElementById("selectedNodeCount").textContent = String(Object.keys(selected).length);
-            var next = document.getElementById("step1Next");
-            next.disabled = !Object.keys(selected).length || !packageSelect.value;
+        nodeSearch.addEventListener("keydown", function (event) {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            window.commitQueryTagValue("#nodeSearch");
+            nodePage = 1;
+            renderNodePage();
+        });
+        window.jQuery(nodeSearch).on("querytags:change", function () {
+            nodePage = 1;
+            renderNodePage();
+        });
+        nodePageSize.addEventListener("change", function () {
+            nodePage = 1;
+            renderNodePage();
+        });
+        document.getElementById("nodePageFirst").addEventListener("click", function () {
+            nodePage = 1;
+            renderNodePage();
+        });
+        document.getElementById("nodePagePrevious").addEventListener("click", function () {
+            nodePage = Math.max(1, nodePage - 1);
+            renderNodePage();
+        });
+        document.getElementById("nodePageNext").addEventListener("click", function () {
+            nodePage += 1;
+            renderNodePage();
+        });
+        document.getElementById("nodePageLast").addEventListener("click", function () {
+            nodePage = Math.max(1, Math.ceil(matchingNodes().length / (Number(nodePageSize.value) || 10)));
+            renderNodePage();
+        });
+
+        packageTable.addEventListener("change", function (event) {
+            if (!event.target.matches(".upgrade-package-check")) return;
+            updateNodeCount();
+        });
+        packageRows.forEach(function (row) {
+            row.addEventListener("click", function (event) {
+                if (event.target.closest("input, button, a, label, select")) return;
+                var radio = row.querySelector(".upgrade-package-check");
+                if (!radio || radio.disabled) return;
+                radio.checked = true;
+                radio.dispatchEvent(new Event("change", { bubbles: true }));
+            });
+        });
+        packageSearch.addEventListener("keydown", function (event) {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            window.commitQueryTagValue("#installPackageSearch");
+            packagePage = 1;
+            renderPackagePage();
+        });
+        window.jQuery(packageSearch).on("querytags:change", function () {
+            packagePage = 1;
+            renderPackagePage();
+        });
+        packagePageSize.addEventListener("change", function () {
+            packagePage = 1;
+            renderPackagePage();
+        });
+        document.getElementById("installPackagePageFirst").addEventListener("click", function () {
+            packagePage = 1;
+            renderPackagePage();
+        });
+        document.getElementById("installPackagePagePrevious").addEventListener("click", function () {
+            packagePage = Math.max(1, packagePage - 1);
+            renderPackagePage();
+        });
+        document.getElementById("installPackagePageNext").addEventListener("click", function () {
+            packagePage += 1;
+            renderPackagePage();
+        });
+        document.getElementById("installPackagePageLast").addEventListener("click", function () {
+            packagePage = Math.max(1, Math.ceil(matchingPackages().length / (Number(packagePageSize.value) || 10)));
+            renderPackagePage();
+        });
+
+        function matchingNodes() {
+            var terms = window.getQueryTagValue("#nodeSearch")
+                .split(/[,，]/).map(function (term) { return term.trim().toLocaleLowerCase(); })
+                .filter(Boolean);
+            return nodeRows.filter(function (row) {
+                var text = (row.dataset.search || "").toLocaleLowerCase();
+                return terms.every(function (term) { return text.indexOf(term) >= 0; });
+            });
         }
 
-        packageSelect.addEventListener("change", updateNodeCount);
+        function renderNodePage() {
+            var matching = matchingNodes();
+            var pageSize = Number(nodePageSize.value) || 10;
+            var pages = Math.max(1, Math.ceil(matching.length / pageSize));
+            nodePage = Math.min(nodePage, pages);
+            var start = (nodePage - 1) * pageSize;
+            nodeRows.forEach(function (row) { row.classList.add("d-none"); });
+            matching.slice(start, start + pageSize).forEach(function (row) {
+                row.classList.remove("d-none");
+            });
+            var emptyRow = document.getElementById("installNodeEmptyRow");
+            emptyRow.classList.toggle("d-none", matching.length > 0);
+            document.getElementById("installNodeEmptyMessage").textContent = nodeRows.length
+                ? "没有匹配的目标节点"
+                : "暂无可用于安装的节点";
+            document.getElementById("nodeResultCount").textContent = "共 " + matching.length + " 条";
+            document.getElementById("nodePageLabel").textContent = nodePage + " / " + pages;
+            document.getElementById("nodePageFirst").disabled = nodePage <= 1;
+            document.getElementById("nodePagePrevious").disabled = nodePage <= 1;
+            document.getElementById("nodePageNext").disabled = nodePage >= pages;
+            document.getElementById("nodePageLast").disabled = nodePage >= pages;
+            updateNodeCount();
+        }
+
+        function matchingPackages() {
+            var terms = window.getQueryTagValue("#installPackageSearch")
+                .split(/[,，]/).map(function (term) { return term.trim().toLocaleLowerCase(); })
+                .filter(Boolean);
+            return packageRows.filter(function (row) {
+                var text = (row.dataset.search || "").toLocaleLowerCase();
+                return terms.every(function (term) { return text.indexOf(term) >= 0; });
+            });
+        }
+
+        function renderPackagePage() {
+            var matching = matchingPackages();
+            var pageSize = Number(packagePageSize.value) || 10;
+            var pages = Math.max(1, Math.ceil(matching.length / pageSize));
+            packagePage = Math.min(packagePage, pages);
+            var start = (packagePage - 1) * pageSize;
+            packageRows.forEach(function (row) { row.classList.add("d-none"); });
+            matching.slice(start, start + pageSize).forEach(function (row) { row.classList.remove("d-none"); });
+            document.getElementById("installPackageEmptyRow").classList.toggle("d-none", matching.length > 0);
+            document.getElementById("installPackageEmptyMessage").textContent = packageRows.length
+                ? "没有匹配的源码包"
+                : "暂无源码包";
+            document.getElementById("installPackageResultCount").textContent = "共 " + matching.length + " 条";
+            document.getElementById("installPackagePageLabel").textContent = packagePage + " / " + pages;
+            document.getElementById("installPackagePageFirst").disabled = packagePage <= 1;
+            document.getElementById("installPackagePagePrevious").disabled = packagePage <= 1;
+            document.getElementById("installPackagePageNext").disabled = packagePage >= pages;
+            document.getElementById("installPackagePageLast").disabled = packagePage >= pages;
+            updateNodeCount();
+        }
+
+        function updateNodeAvailability() {
+            var selectedCount = Object.keys(selected).length;
+            nodeRows.forEach(function (row) {
+                var checkbox = row.querySelector(".upgrade-node-check");
+                if (!checkbox) return;
+                checkbox.disabled = checkbox.dataset.selectable !== "true" ||
+                    (!checkbox.checked && selectedCount >= maxNodes);
+            });
+        }
+
+        function renderSelectedNodeSummary() {
+            var summary = document.getElementById("selectedNodeSummary");
+            var nodes = selectedNodeObjects();
+            summary.replaceChildren();
+            if (!nodes.length) {
+                summary.textContent = "尚未选择节点";
+                return;
+            }
+            nodes.forEach(function (node) {
+                var chip = document.createElement("span");
+                chip.className = "upgrade-selected-chip";
+                var label = document.createElement("span");
+                label.textContent = (node.hostname || node.ip) + " (" + node.ip + ")";
+                var remove = document.createElement("button");
+                remove.type = "button";
+                remove.className = "upgrade-chip-remove";
+                remove.title = "移除节点";
+                remove.setAttribute("aria-label", "移除节点 " + (node.hostname || node.ip));
+                remove.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
+                remove.addEventListener("click", function () {
+                    var row = nodeRows.find(function (item) {
+                        return item.dataset.nodeId === String(node.id);
+                    });
+                    var checkbox = row && row.querySelector(".upgrade-node-check");
+                    if (checkbox) {
+                        checkbox.checked = false;
+                        checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+                    }
+                });
+                chip.append(label, remove);
+                summary.appendChild(chip);
+            });
+        }
+
+        function updateNodeCount() {
+            var selectedCount = Object.keys(selected).length;
+            document.getElementById("stepOneCount").textContent = String(selectedCount);
+            var next = document.getElementById("step1Next");
+            var pkg = selectedPackage();
+            next.disabled = !selectedCount || !pkg.id;
+            document.getElementById("selectedPackageSummary").textContent = pkg.id
+                ? "已选源码包：" + pkg.label + " · " + pkg.version
+                : "尚未选择源码包";
+            updateNodeAvailability();
+            renderSelectedNodeSummary();
+            renderSshPortMapping();
+        }
+
         document.getElementById("listenPort").addEventListener("input", function () {
             riskConfirmed = false;
+            renderSshPortMapping();
         });
         document.getElementById("step1Next").addEventListener("click", function () {
-            if (!Object.keys(selected).length || !packageSelect.value) {
+            if (!Object.keys(selected).length || !selectedPackage().id) {
                 notify("请选择目标节点和 Nginx 源码包", "warning");
                 return;
             }
@@ -132,6 +341,9 @@
 
         buildModulePicker();
         buildThirdPartyEditor();
+        renderPackagePage();
+        renderNodePage();
+        renderSshPortMapping();
         document.getElementById("step2Next").addEventListener("click", goToConfirmation);
         document.getElementById("confirmInstall").addEventListener("change", function () {
             document.getElementById("startInstall").disabled =
@@ -325,12 +537,91 @@
             }).filter(Boolean);
         }
 
+        function renderSshPortMapping() {
+            var rows = document.getElementById("installPortMapRows");
+            var summary = document.getElementById("installPortRiskSummary");
+            var previewRows = document.getElementById("installPortPreviewRows");
+            var previewPort = document.getElementById("installPortPreviewPort");
+            if (!rows || !summary || !previewRows || !previewPort) return;
+            var nodes = selectedNodeObjects();
+            var port = Number(document.getElementById("listenPort").value);
+            var validPort = Number.isInteger(port) && port >= 1 && port <= 65535;
+            previewPort.textContent = validPort ? "当前监听 :" + port : "监听端口无效";
+            rows.replaceChildren();
+            previewRows.replaceChildren();
+            if (!nodes.length) {
+                var empty = document.createElement("tr");
+                var emptyCell = document.createElement("td");
+                emptyCell.colSpan = 4;
+                emptyCell.className = "text-muted";
+                emptyCell.textContent = "选择目标节点后显示映射";
+                empty.appendChild(emptyCell);
+                rows.appendChild(empty);
+                var emptyPreview = document.createElement("div");
+                emptyPreview.className = "install-port-preview-empty";
+                emptyPreview.textContent = "选择节点后显示 SSH 用户与监听端口映射。";
+                previewRows.appendChild(emptyPreview);
+                summary.classList.remove("risk");
+                summary.textContent = "选择节点后显示 SSH 操作用户与 Nginx 监听端口的对应关系。";
+                return;
+            }
+            if (!validPort) {
+                summary.classList.remove("risk");
+                summary.textContent = "请输入 1–65535 的有效监听端口。";
+            }
+            var riskCount = 0;
+            nodes.forEach(function (node) {
+                var username = node.credential_username || "未配置";
+                var restricted = validPort && isPrivilegedListenPort(port) && username !== "root";
+                if (restricted) riskCount += 1;
+                var row = document.createElement("tr");
+                [node.hostname + " (" + node.ip + ")", username, validPort ? String(port) : "无效"].forEach(function (value) {
+                    var cell = document.createElement("td");
+                    cell.textContent = value;
+                    row.appendChild(cell);
+                });
+                var stateCell = document.createElement("td");
+                var state = document.createElement("span");
+                state.className = "badge text-bg-" + (restricted ? "warning" : "secondary");
+                state.textContent = restricted ? "需要确认" : (validPort ? (port < 1024 ? "root SSH" : "无需特权权限") : "端口无效");
+                stateCell.appendChild(state);
+                row.appendChild(stateCell);
+                rows.appendChild(row);
+
+                var previewRow = document.createElement("div");
+                previewRow.className = "install-port-preview-row";
+                var host = document.createElement("strong");
+                host.className = "install-port-preview-host";
+                host.textContent = node.hostname + " (" + node.ip + ")";
+                var endpoint = document.createElement("span");
+                endpoint.className = "install-port-preview-endpoint";
+                endpoint.textContent = "SSH " + username + " -> Nginx :" + (validPort ? port : "无效");
+                var previewState = document.createElement("span");
+                previewState.className = "badge text-bg-" + (restricted ? "warning" : "secondary");
+                previewState.textContent = restricted ? "需要确认" : (validPort ? (port < 1024 ? "root 权限" : "端口可用") : "端口无效");
+                previewRow.appendChild(host);
+                previewRow.appendChild(endpoint);
+                previewRow.appendChild(previewState);
+                previewRows.appendChild(previewRow);
+            });
+            if (Number.isInteger(port) && port >= 1 && port < 1024 && riskCount) {
+                summary.classList.add("risk");
+                summary.textContent = "端口 " + port + " 低于 1024；" + riskCount + " 台节点使用非 root SSH 用户，继续时会弹窗确认。";
+            } else if (Number.isInteger(port) && port >= 1 && port < 1024) {
+                summary.classList.remove("risk");
+                summary.textContent = "端口 " + port + " 低于 1024；所选节点使用 root SSH 用户。";
+            } else if (Number.isInteger(port) && port >= 1024 && port <= 65535) {
+                summary.classList.remove("risk");
+                summary.textContent = "端口 " + port + " 不属于特权端口范围，不需要低端口权限确认。";
+            }
+        }
+
         function selectedPackage() {
-            var option = packageSelect.options[packageSelect.selectedIndex];
+            var input = packageTable.querySelector(".upgrade-package-check:checked");
             return {
-                id: Number(packageSelect.value),
-                version: option ? option.dataset.version : "",
-                label: option ? option.textContent : ""
+                id: input ? Number(input.value) : 0,
+                version: input ? input.dataset.version : "",
+                label: input ? input.dataset.name : ""
             };
         }
 
@@ -386,16 +677,19 @@
             var nonRoot = nodes.filter(function (node) {
                 return node.credential_username && node.credential_username !== "root";
             });
+            var privilegedPort = isPrivilegedListenPort(values.listen_port);
             if (installed.length) {
                 target.appendChild(makeWarning(
                     "已检测到 Nginx 的节点将继续安装，目标目录或 systemd unit 可能被覆盖：" +
                     installed.map(function (node) { return node.hostname; }).join("、")
                 ));
             }
-            if (values.listen_port === 80 && nonRoot.length) {
+            if (privilegedPort && nonRoot.length) {
                 target.appendChild(makeWarning(
-                    "以下节点使用非 root SSH 用户且监听端口为 80，nginx -t 可能因特权端口权限失败：" +
-                    nonRoot.map(function (node) { return node.hostname + "（" + node.credential_username + "）"; }).join("、")
+                    "以下节点由非 root SSH 用户操作，启动 Nginx 绑定特权端口 " + values.listen_port + " 时可能因权限不足失败：" +
+                    nonRoot.map(function (node) {
+                        return node.hostname + "（SSH 用户 " + node.credential_username + " 对应监听端口 " + values.listen_port + "）";
+                    }).join("、")
                 ));
             }
         }
@@ -427,16 +721,16 @@
             }).then(function (result) {
                 renderConfirmation(result.target_configure_opts);
                 var nodes = selectedNodeObjects();
-                var riskNodes = values.listen_port === 80 ? nodes.filter(function (node) {
+                var riskNodes = isPrivilegedListenPort(values.listen_port) ? nodes.filter(function (node) {
                     return node.credential_username && node.credential_username !== "root";
                 }) : [];
                 if (riskNodes.length && !riskConfirmed) {
                     var maxShow = 10;
                     var names = riskNodes.slice(0, maxShow).map(function (node) {
-                        return node.hostname + " (" + node.ip + ")";
+                        return node.hostname + " (" + node.ip + ", SSH 用户 " + node.credential_username + " 对应监听端口 " + values.listen_port + ")";
                     }).join("\n");
                     if (riskNodes.length > maxShow) names += "\n等共 " + riskNodes.length + " 台";
-                    var message = "以下节点使用非 root SSH 用户且监听端口为 80，nginx -t 可能因特权端口权限失败：\n" + names + "\n\n建议改用 1024 以上端口。是否继续到确认页？";
+                    var message = "以下节点使用非 root SSH 用户，启动 Nginx 绑定监听端口 " + values.listen_port + " 时可能缺少特权端口权限：\n" + names + "\n\n建议改用 1024 以上端口。是否继续到确认页？";
                     window.showConfirm("监听端口风险提示", message, function () {
                         riskConfirmed = true;
                         setStep(3);
@@ -465,8 +759,11 @@
             if (nonRoot.length) {
                 message += "\n\n以下节点使用非 root SSH 用户，将按远端权限尝试 systemctl；若无 unit 写权限且无免密 sudo，将使用二进制启动：" +
                     nonRoot.map(function (node) {
-                        return node.hostname + " (" + node.ip + ", " + node.credential_username + ")";
+                        return node.hostname + " (" + node.ip + ", SSH 用户 " + node.credential_username + " 对应监听端口 " + values.listen_port + ")";
                     }).join("、");
+            }
+            if (isPrivilegedListenPort(values.listen_port) && nonRoot.length) {
+                message += "\n\n监听端口 " + values.listen_port + " 属于特权端口，非 root SSH 用户启动 Nginx 时可能无法绑定；请确认远端具备相应权限。";
             }
             if (existing.length) {
                 message += "\n\n已检测到 Nginx 的节点可能覆盖目标路径或 nginx.service：" +
@@ -608,6 +905,7 @@
                 tab.classList.toggle("active", current === step);
                 tab.classList.toggle("done", current < step);
             });
+            if (step === 2) renderSshPortMapping();
             if (step === 3) document.getElementById("installProgressLive").classList.toggle("d-none", !batchNumber);
         }
     }
@@ -684,7 +982,7 @@
     }
 
     function startInstallPage() {
-        if (document.getElementById("installNodeTable")) buildNodePicker();
+        if (document.getElementById("upgradeNodeTable")) buildNodePicker();
         buildTaskDetailPoller();
     }
 
