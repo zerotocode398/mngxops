@@ -260,7 +260,8 @@ def list_tasks(
     summary="读取任务进度、结果和日志",
     description=(
         "返回任务当前状态及结构化结果树。日志按自增 ID 游标读取；"
-        "后续轮询将 next_log_id 作为 after_log_id。"
+        "后续轮询将 next_log_id 作为 after_log_id。Nginx 升级详情可传 log_view=upgrade_full "
+        "读取独立的逐行完整执行日志；默认日志仍为任务中心摘要。"
     ),
     responses=api_error_responses((401, 403, 404, 422, 500)),
 )
@@ -269,6 +270,10 @@ def get_task(
     task_id: int = Path(..., ge=1),
     after_log_id: int = Query(0, ge=0),
     log_limit: int = Query(200, ge=1, le=500),
+    log_view: Literal["summary", "upgrade_full"] = Query(
+        "summary",
+        description="upgrade_full 仅适用于 Nginx 升级/回滚详情，返回逐行完整执行日志。",
+    ),
     user: User = Depends(require_authenticated_user),
     session: Session = Depends(get_session),
 ) -> Any:
@@ -278,16 +283,48 @@ def get_task(
     )
     if not has_access:
         raise PermissionDenied("无访问权限", "当前账号没有查看任务的权限。")
-    task = _visible_task_query(
-        session, task_id, user, can_read_all, allowed_operations
-    )
+    if log_view == "upgrade_full":
+        can_read_all_upgrades = user.is_superuser or _has_permission(
+            request, session, user, "upgrade", "read"
+        )
+        can_execute_upgrade = user.is_superuser or _has_permission(
+            request, session, user, "upgrade", "execute"
+        )
+        if not can_read_all_upgrades and not can_execute_upgrade:
+            raise PermissionDenied(
+                "无访问权限", "当前账号没有查看 Nginx 升级完整日志的权限。"
+            )
+        query = select(Task).where(
+            Task.id == task_id,
+            Task.operation_type.in_(
+                ("nginx_upgrade", "nginx_rollback")
+            ),
+        )
+        if not can_read_all_upgrades:
+            query = query.where(Task.trigger_user_id == user.id)
+        task = session.scalars(query).one_or_none()
+    else:
+        task = _visible_task_query(
+            session, task_id, user, can_read_all, allowed_operations
+        )
     if task is None:
         return _api_error(404, "任务不存在或无权查看")
 
+    log_model = TaskLog
+    if log_view == "upgrade_full":
+        from ngxops.upgrade.models import NginxUpgradeLog
+
+        has_full_logs = session.scalar(
+            select(func.count())
+            .select_from(NginxUpgradeLog)
+            .where(NginxUpgradeLog.task_id == task_id)
+        )
+        if has_full_logs:
+            log_model = NginxUpgradeLog
     log_rows = session.scalars(
-        select(TaskLog)
-        .where(TaskLog.task_id == task_id, TaskLog.id > after_log_id)
-        .order_by(TaskLog.id.asc())
+        select(log_model)
+        .where(log_model.task_id == task_id, log_model.id > after_log_id)
+        .order_by(log_model.id.asc())
         .limit(log_limit + 1)
     ).all()
     has_more = len(log_rows) > log_limit

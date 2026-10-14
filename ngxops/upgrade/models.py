@@ -172,3 +172,27 @@ class NginxUpgradeRun(Base):
     rollback_of: Mapped[Optional["NginxUpgradeRun"]] = relationship(
         remote_side=[id], foreign_keys=[rollback_of_id]
     )
+
+
+class NginxUpgradeLog(Base):
+    """保存 Nginx 升级与回滚的逐行完整执行日志。"""
+
+    __tablename__ = "ngxops_nginx_upgrade_logs"
+    __table_args__ = (
+        CheckConstraint(
+            "level IN ('debug', 'info', 'warning', 'error')",
+            name="ck_ngxops_nginx_upgrade_logs_level",
+        ),
+        Index("ix_ngxops_nginx_upgrade_logs_task_id_id", "task_id", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("ngxops_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    level: Mapped[str] = mapped_column(String(20), nullable=False, default="info")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.current_timestamp()
+    )
+    task: Mapped[Task] = relationship()

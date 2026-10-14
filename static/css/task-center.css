@@ -263,6 +263,23 @@
     font-family: var(--bs-font-monospace);
 }
 
+.task-log-list-plain {
+    margin: 0;
+    padding: 9px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: .82rem;
+    line-height: 1.55;
+}
+
+.task-log-plain-line {
+    display: block;
+}
+
+.task-log-plain-line.log-level-warning { color: #ffd166; }
+.task-log-plain-line.log-level-error { color: #ff8a8a; }
+.task-log-plain-empty { color: #91b8a6; }
+
 .task-log-list-terminal .task-log-row {
     border-bottom-color: rgba(145, 184, 166, .2);
     font-family: inherit;

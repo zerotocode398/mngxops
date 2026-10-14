@@ -180,6 +180,32 @@ class TaskContext:
         self.task_id = task_id
         self._session_factory = session_factory
         self._cancel_callback_registrar = cancel_callback_registrar
+        self._detail_log_sink = None
+
+    def set_detail_log_sink(
+        self, sink: Callable[[Sequence[str], str], bool]
+    ) -> None:
+        """设置供业务模块写入专属完整日志的持久化入口。"""
+        self._detail_log_sink = sink
+
+    def has_detail_log_sink(self) -> bool:
+        """指示当前任务是否配置了独立完整日志入口。"""
+        return self._detail_log_sink is not None
+
+    def append_detail_logs(
+        self, messages: Sequence[str], level: str = "info"
+    ) -> bool:
+        """将完整日志脱敏后交给业务模块逐行持久化。"""
+        if level not in ("debug", "info", "warning", "error"):
+            raise ValueError("任务日志级别无效")
+        if self._detail_log_sink is None or not messages:
+            return False
+        safe_text = _redact_text("\n".join(str(message) for message in messages))
+        return self._detail_log_sink(safe_text.split("\n"), level)
+
+    def append_detail_log(self, message: str, level: str = "info") -> bool:
+        """将一条完整执行日志交给业务模块持久化。"""
+        return self.append_detail_logs([message], level)
 
     def register_cancel_callback(self, callback: Callable[[], None]) -> None:
         """登记取消时关闭 SSH 等本地阻塞资源的回调。"""

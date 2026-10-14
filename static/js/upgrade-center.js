@@ -56,14 +56,6 @@
         if (window.showToast) window.showToast(message, type || "info", 3000, action);
     }
 
-    function batchLogAction(batchNumber) {
-        return {
-            href: "/tasks/?search=" + encodeURIComponent(batchNumber || ""),
-            label: "查看完整日志",
-            target: "_blank"
-        };
-    }
-
     function stepOneComplete() {
         return selectedNodeIds().length > 0 && !!selectedPackage();
     }
@@ -1444,28 +1436,20 @@
         var states = {};
         taskIds.forEach(function (id) {
             states[id] = {
-                after: 0,
                 status: "pending",
-                progress: 0,
-                detail: "",
-                hostname: "",
-                ip: ""
+                progress: 0
             };
         });
-        notify(message || ("升级任务已创建，批次 " + batchNumber), "success", batchLogAction(batchNumber));
+        notify(message || ("升级任务已创建，批次 " + batchNumber), "success");
         pollBatch(taskIds, states, batchNumber);
     }
 
     function pollBatch(taskIds, states, batchNumber) {
         var jobs = taskIds.map(function (id) {
-            return requestJson("GET", "/api/tasks/" + id + "?after_log_id=" + states[id].after + "&log_limit=100")
+            return requestJson("GET", "/api/tasks/" + id)
                 .done(function (task) {
                     states[id].status = task.status;
                     states[id].progress = task.progress;
-                    states[id].after = task.next_log_id;
-                    states[id].detail = task.detail || "";
-                    states[id].hostname = (task.target_hostnames || "").split(",")[0].trim();
-                    states[id].ip = (task.target_ips || "").split(",")[0].trim();
                 });
         });
         $.when.apply($, jobs).always(function () {
@@ -1473,16 +1457,6 @@
             var done = taskIds.every(function (id) { return ["success", "failed", "cancelled"].indexOf(states[id].status) >= 0; });
             if (!done) {
                 window.setTimeout(function () { pollBatch(taskIds, states, batchNumber); }, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
-            } else if (!states._completionNotified) {
-                states._completionNotified = true;
-                var counts = {success: 0, failed: 0, cancelled: 0};
-                taskIds.forEach(function (id) { counts[states[id].status] += 1; });
-                var resultType = counts.failed ? "warning" : (counts.cancelled ? "info" : "success");
-                notify(
-                    "批次 " + batchNumber + " 已结束：成功 " + counts.success + "，失败 " + counts.failed + "，取消 " + counts.cancelled,
-                    resultType,
-                    batchLogAction(batchNumber)
-                );
             }
         });
     }
@@ -1497,81 +1471,6 @@
         progressBar.style.width = average + "%";
         progressBar.parentElement.setAttribute("aria-valuenow", String(average));
         document.getElementById("batchProgressBadge").textContent = average + "%";
-        if (taskIds.every(function (id) {
-            return ["success", "failed", "cancelled"].indexOf(states[id].status) >= 0;
-        })) {
-            renderBatchResults(taskIds, states);
-        }
-    }
-
-    function renderBatchResults(taskIds, states) {
-        var container = document.getElementById("batchTaskResults");
-        if (!container) return;
-        var counts = {success: 0, failed: 0, cancelled: 0};
-        taskIds.forEach(function (id) { counts[states[id].status] += 1; });
-        var heading = document.createElement("div");
-        heading.className = "upgrade-progress-results-heading";
-        var title = document.createElement("strong");
-        title.textContent = "执行结果";
-        var summary = document.createElement("span");
-        summary.className = "text-muted";
-        summary.textContent = "成功 " + counts.success + " · 失败 " + counts.failed +
-            " · 取消 " + counts.cancelled;
-        heading.append(title, summary);
-
-        var rows = taskIds.map(function (id) {
-            var state = states[id];
-            var row = document.createElement("div");
-            row.className = "upgrade-progress-result";
-            var identity = document.createElement("div");
-            identity.className = "upgrade-progress-result-host";
-            var hostname = document.createElement("strong");
-            hostname.textContent = state.hostname || "任务 #" + id;
-            identity.appendChild(hostname);
-            if (state.ip) {
-                var address = document.createElement("small");
-                address.className = "text-muted font-monospace";
-                address.textContent = "(" + state.ip + ")";
-                identity.appendChild(address);
-            }
-
-            var status = document.createElement("span");
-            status.className = "badge upgrade-progress-result-status " + ({
-                success: "text-bg-success",
-                failed: "text-bg-danger",
-                cancelled: "text-bg-warning",
-                pending: "text-bg-secondary",
-                running: "text-bg-info"
-            }[state.status] || "text-bg-secondary");
-            status.textContent = ({
-                success: "成功",
-                failed: "失败",
-                cancelled: "已取消",
-                pending: "等待中",
-                running: "执行中"
-            }[state.status] || state.status);
-
-            var link = document.createElement("a");
-            link.className = "btn btn-outline-secondary btn-sm upgrade-progress-result-link";
-            link.href = "/tasks/" + encodeURIComponent(id) + "/";
-            link.target = "_blank";
-            link.rel = "noopener";
-            link.title = "查看任务详情";
-            link.setAttribute("aria-label", "查看 " + (state.hostname || "任务 #" + id) + " 的任务详情");
-            var icon = document.createElement("i");
-            icon.className = "bi bi-box-arrow-up-right";
-            icon.setAttribute("aria-hidden", "true");
-            link.appendChild(icon);
-
-            var detail = document.createElement("p");
-            detail.className = "upgrade-progress-result-detail";
-            detail.textContent = state.detail || "任务已结束";
-            row.append(identity, status, link, detail);
-            return row;
-        });
-        container.replaceChildren(heading);
-        rows.forEach(function (row) { container.appendChild(row); });
-        container.classList.remove("d-none");
     }
 
     if (center) {
@@ -1682,10 +1581,20 @@
 
     function appendLogs(task, log) {
         (task.logs || []).forEach(function (entry) {
-            var span = document.createElement("span");
-            span.className = "log-" + entry.level;
-            span.textContent = entry.message + "\n";
-            log.appendChild(span);
+            var empty = log.querySelector(".upgrade-log-empty");
+            if (empty) empty.remove();
+            var line = document.createElement("div");
+            line.className = "upgrade-log-line log-" + (entry.level || "info");
+            var time = document.createElement("time");
+            time.textContent = entry.created_at
+                ? window.formatUtc8DateTime(entry.created_at)
+                : "";
+            time.title = "UTC+8";
+            var message = document.createElement("span");
+            message.className = "upgrade-log-message";
+            message.textContent = entry.message;
+            line.append(time, message);
+            log.appendChild(line);
         });
         log.dataset.afterLogId = String(task.next_log_id || log.dataset.afterLogId || 0);
         log.scrollTop = log.scrollHeight;
@@ -1751,7 +1660,7 @@
     function pollDetail() {
         var taskId = detail.dataset.taskId;
         var log = document.getElementById("upgradeLog");
-        requestJson("GET", "/api/tasks/" + taskId + "?after_log_id=" + log.dataset.afterLogId + "&log_limit=200")
+        requestJson("GET", "/api/tasks/" + taskId + "?log_view=upgrade_full&after_log_id=" + log.dataset.afterLogId + "&log_limit=200")
             .done(function (task) {
                 appendLogs(task, log);
                 document.getElementById("taskProgress").style.width = task.progress + "%";

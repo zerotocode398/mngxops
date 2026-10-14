@@ -28,7 +28,7 @@
 | 方法与路径 | 行为 |
 |---|---|
 | `GET /api/tasks` | 分页查询可见任务；支持 `status`、`operation_type`、`source_batch`、逗号分隔 `search`、`page`、`page_size`。每个 search 词按批次号/主机名/IP/目标配置名做 OR，词与词之间做 AND。 |
-| `GET /api/tasks/{task_id}` | 读取进度、结果树与日志；以 `after_log_id` 和 `log_limit` 增量读取日志，响应的 `next_log_id` 可供下次轮询。 |
+| `GET /api/tasks/{task_id}` | 读取进度、结果树与日志；以 `after_log_id` 和 `log_limit` 增量读取日志，响应的 `next_log_id` 可供下次轮询。升级/回滚详情可增加 `log_view=upgrade_full` 读取专属逐行日志。 |
 | `POST /api/tasks/{task_id}/cancel` | 协作式取消活跃任务；终态返回 400，取消期间状态竞态返回 409。 |
 
 ## 任务中心页面
@@ -50,7 +50,7 @@ NX-040 发布使用 `release_publish` 任务。具备 `releases.publish` 的触�
 
 节点探测任务类型为 `node_ssh_test`、`node_batch_test`、`node_system_info` 和 `node_nginx_version`。具备 `nodes.ssh_test` 权限的用户可轮询本人创建的这些任务；解锁后自动创建的 `node_batch_test` 也允许 `nodes.unlock` 用户轮询本人任务。结果树只包含节点标识、SSH/Nginx 状态、系统信息及摘要，不包含凭证明文或私钥。NX-040 发布任务使用 `release_publish` 类型；详情见 [releases.md](releases.md)。
 
-NX-050 升级和二进制回滚分别使用 `nginx_upgrade`、`nginx_rollback`。具备 `upgrade.execute` 的触发人可轮询本人任务，具备 `upgrade.read` 的触发人也可读取本人升级任务；结果树和日志沿用统一任务协议。取消限升级任务的参数获取和源码包上传阶段，回滚任务不可取消；升级记录、配置差异与回滚入口见 [upgrade.md](upgrade.md)。
+NX-050 升级和二进制回滚分别使用 `nginx_upgrade`、`nginx_rollback`。具备 `upgrade.execute` 的触发人可轮询本人任务，`upgrade.read` 可读取全部升级任务。任务中心的 `ngxops_task_logs` 只记录阶段摘要；`GET /api/tasks/{task_id}?log_view=upgrade_full` 从专属日志表逐行返回远程命令输出和阶段消息，升级详情为每行显示 UTC+8 时间。取消限升级任务的参数获取和源码包上传阶段，回滚任务不可取消；升级记录、配置差异与回滚入口见 [upgrade.md](upgrade.md)。
 
 NX-051 全新安装使用 `nginx_install` 任务，但权限与编译升级共用 `upgrade.*`。具备 `upgrade.execute` 的触发人可轮询和取消本人安装任务，具备 `upgrade.read` 的用户可查看安装历史和全部安装批次；取消仅允许 pending、工具检查、源码上传、解压和模块准备阶段。任务保留安装阶段、configure 参数及启动模式结果；SSH 凭证不进入参数、日志或结果树。安装成功后的完整配置同步作为同一任务的后续阶段运行，失败摘要单独保存且不改变安装成功状态。详情见 [nginx-install.md](nginx-install.md)。
 

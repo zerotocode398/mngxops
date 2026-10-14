@@ -29,11 +29,19 @@ from ngxops.nodes.models import Node
 from ngxops.settings.models import SystemSetting
 from ngxops.settings.service import initialize_defaults
 from ngxops.tasks.models import Task, TaskLog
-from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage, NginxUpgradeRun
+from ngxops.tasks.executor import TaskContext
+from ngxops.upgrade.models import (
+    NginxModulePackage,
+    NginxSourcePackage,
+    NginxUpgradeLog,
+    NginxUpgradeRun,
+)
 from ngxops.upgrade.services import (
+    _format_nginx_v_log_lines,
     _load_run_snapshot,
     _run_remote_command,
     effective_removed_modules,
+    resolve_backup_binary_path,
 )
 
 
@@ -119,8 +127,8 @@ def _upload(client, csrf_token, path, filename, data):
     )
 
 
-def test_upgrade_remote_command_streams_all_output_to_task_logs():
-    """验证升级命令完整分批记录输出且返回值仍限制为末尾行。"""
+def test_upgrade_remote_command_streams_each_line_to_detailed_logs():
+    """验证升级命令逐行写入完整日志且返回值仍限制为末尾行。"""
     expected = ["configure output line {:03d}".format(index) for index in range(241)]
     chunks = ["\n".join(expected).encode("utf-8")]
     channel = Mock()
@@ -142,22 +150,146 @@ def test_upgrade_remote_command_streams_all_output_to_task_logs():
         def __init__(self):
             """初始化内存日志列表。"""
             self.messages = []
+            self.detail_messages = []
 
         def check_cancelled(self):
             """测试任务始终处于活跃状态。"""
             return None
 
         def append_log(self, message):
-            """保存一次持久化日志调用的正文。"""
+            """保存任务中心摘要日志。"""
             self.messages.append(message)
+
+        def has_detail_log_sink(self):
+            """指示测试上下文使用升级专属日志入口。"""
+            return True
+
+        def append_detail_logs(self, messages):
+            """保存升级专属日志行。"""
+            self.detail_messages.extend(messages)
 
     context = LogRecorder()
     status, tail = _run_remote_command(client, "make", context=context)
 
     assert status == 0
-    assert "\n".join(context.messages).splitlines() == expected
+    assert context.detail_messages == expected
+    assert context.messages == []
     assert tail.splitlines() == expected[-120:]
-    assert all(len(message) <= 4000 for message in context.messages)
+
+
+def test_upgrade_remote_command_can_return_hash_output_without_logging():
+    """验证校验输出可供内部比较，但不会把哈希写进升级详情日志。"""
+    hashes = [
+        "e183ea3ddcce8ca0d2ce9868db053d25",
+        "13d50cc1ba29192bfeb85220d142b323",
+    ]
+    chunks = [("\n".join(hashes)).encode("utf-8")]
+    channel = Mock()
+    channel.recv_ready.side_effect = lambda: bool(chunks)
+    channel.recv.side_effect = lambda _size: chunks.pop(0)
+    channel.recv_stderr_ready.return_value = False
+    channel.exit_status_ready.side_effect = lambda: not chunks
+    channel.recv_exit_status.return_value = 0
+    client = Mock()
+    client.exec_command.return_value = (
+        None,
+        SimpleNamespace(channel=channel),
+        None,
+    )
+
+    class LogRecorder:
+        """记录任务中心和升级详情日志。"""
+
+        def __init__(self):
+            """初始化内存日志列表。"""
+            self.messages = []
+            self.detail_messages = []
+
+        def check_cancelled(self):
+            """测试任务始终处于活跃状态。"""
+            return None
+
+        def append_log(self, message):
+            """保存任务中心摘要日志。"""
+            self.messages.append(message)
+
+        def has_detail_log_sink(self):
+            """指示测试上下文使用升级专属日志入口。"""
+            return True
+
+        def append_detail_logs(self, messages):
+            """保存升级专属日志行。"""
+            self.detail_messages.extend(messages)
+
+    context = LogRecorder()
+    status, output = _run_remote_command(
+        client, "md5sum package.tar.gz", context=context, log_output=False
+    )
+
+    assert status == 0
+    assert output.splitlines() == hashes
+    assert context.detail_messages == []
+    assert context.messages == []
+
+
+def test_nginx_v_configure_arguments_are_formatted_as_continued_lines():
+    """验证 nginx -V 的 configure 参数逐项换行并以反斜杠续行。"""
+    lines = _format_nginx_v_log_lines(
+        "nginx version: nginx/1.28.0\n"
+        "configure arguments: --prefix='/opt/nginx app' --with-http_ssl_module",
+        ["--prefix=/opt/nginx app", "--with-http_ssl_module"],
+    )
+
+    assert lines == [
+        "nginx version: nginx/1.28.0",
+        "configure arguments:",
+        "'--prefix=/opt/nginx app' \\",
+        "    --with-http_ssl_module",
+    ]
+
+
+def test_detail_log_sink_redacts_sensitive_assignments_and_private_key_blocks():
+    """验证升级专属日志逐行写入前脱敏密钥赋值和 PEM 内容。"""
+    stored_lines = []
+
+    def store_lines(messages, _level):
+        """收集交给升级日志表的正文。"""
+        stored_lines.extend(messages)
+        return True
+
+    context = TaskContext(1, object(), lambda _task_id, _callback: None)
+    context.set_detail_log_sink(store_lines)
+    context.append_detail_logs(
+        [
+            "password=top-secret-value",
+            "-----BEGIN RSA PRIVATE KEY-----",
+            "private-key-material",
+            "-----END RSA PRIVATE KEY-----",
+        ]
+    )
+
+    stored_text = "\n".join(stored_lines)
+    assert "top-secret-value" not in stored_text
+    assert "private-key-material" not in stored_text
+    assert "[已隐藏]" in stored_text
+    assert "[已隐藏私钥]" in stored_text
+
+
+def test_backup_binary_path_reads_legacy_result_tree_fallback():
+    """验证旧任务结果树中的二进制备份路径仍可用于回滚。"""
+    run = SimpleNamespace(
+        backup_binary_path="",
+        node_hostname="edge-prod",
+        node_ip="192.0.2.40",
+    )
+    task = SimpleNamespace(
+        result_tree_json=(
+            '{"node":{"hostname":"edge-prod",'
+            '"backup_binary_path":"/usr/sbin/nginx.old"}}'
+        )
+    )
+
+    assert resolve_backup_binary_path(run, task) == "/usr/sbin/nginx.old"
 
 
 def test_compute_config_accepts_third_party_module_models(upgrade_client):
@@ -647,8 +779,8 @@ def test_upgrade_center_summary_uses_nonbold_hostname_and_confirm_label(upgrade_
     assert 'row.querySelector(".upgrade-node-hostname").textContent' in script
 
 
-def test_upgrade_center_progress_displays_batch_progress_and_final_results(upgrade_client):
-    """验证升级进度区保留批次进度并在结束后展示节点结果。"""
+def test_upgrade_center_progress_displays_only_batch_progress(upgrade_client):
+    """验证升级进度区只保留批次总体进度，不展示执行结果明细。"""
     client, _app, _csrf_token, _user_id = upgrade_client
     response = client.get("/upgrade/center/")
     script = (Path.cwd() / "static/js/upgrade-center.js").read_text(
@@ -662,15 +794,15 @@ def test_upgrade_center_progress_displays_batch_progress_and_final_results(upgra
     assert 'id="batchNumberLabel"' in response.text
     assert 'id="batchProgressBar"' in response.text
     assert 'aria-label="批次升级进度"' in response.text
-    assert 'id="batchTaskResults"' in response.text
+    assert 'id="batchTaskResults"' not in response.text
     assert 'id="batchTaskRows"' not in response.text
-    assert "target_hostnames" not in render_function
-    assert '"/upgrade/tasks/"' not in render_function
+    assert "target_hostnames" not in script
+    assert 'href = "/tasks/"' not in script
+    assert "batchLogAction" not in script
     assert "cancelUpgrade" not in render_function
     assert 'setAttribute("aria-valuenow", String(average))' in render_function
-    assert "renderBatchResults(taskIds, states)" in render_function
-    assert 'title.textContent = "执行结果"' in render_function
-    assert 'detail.textContent = state.detail || "任务已结束"' in render_function
+    assert "renderBatchResults" not in script
+    assert "已结束：成功" not in script
 
 
 def test_module_search_filters_on_enter_and_query_tag_removal():
@@ -879,12 +1011,25 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
             session.add_all(
                 TaskLog(
                     task_id=task_id,
+                    message="升级阶段摘要 {:03d}".format(index),
+                )
+                for index in range(205)
+            )
+            session.add_all(
+                NginxUpgradeLog(
+                    task_id=task_id,
                     message="configure output line {:03d}".format(index),
+                    created_at=datetime(2026, 10, 12, 3, 4, 0),
                 )
                 for index in range(205)
             )
         all_log_ids = session.scalars(
             select(TaskLog.id).where(TaskLog.task_id == task_id).order_by(TaskLog.id)
+        ).all()
+        all_upgrade_log_ids = session.scalars(
+            select(NginxUpgradeLog.id)
+            .where(NginxUpgradeLog.task_id == task_id)
+            .order_by(NginxUpgradeLog.id)
         ).all()
 
     first_log_page = client.get(
@@ -904,6 +1049,29 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     assert second_log_data["has_more_logs"] is False
     assert [entry["id"] for entry in first_log_data["logs"] + second_log_data["logs"]] == all_log_ids
 
+    first_full_log_page = client.get(
+        "/api/tasks/{}?log_view=upgrade_full&after_log_id=0&log_limit=200".format(task_id)
+    )
+    assert first_full_log_page.status_code == 200
+    first_full_log_data = first_full_log_page.json()
+    assert first_full_log_data["has_more_logs"] is True
+    assert len(first_full_log_data["logs"]) == 200
+    second_full_log_page = client.get(
+        "/api/tasks/{}?log_view=upgrade_full&after_log_id={}&log_limit=200".format(
+            task_id, first_full_log_data["next_log_id"]
+        )
+    )
+    assert second_full_log_page.status_code == 200
+    second_full_log_data = second_full_log_page.json()
+    assert second_full_log_data["has_more_logs"] is False
+    assert [
+        entry["id"]
+        for entry in first_full_log_data["logs"] + second_full_log_data["logs"]
+    ] == all_upgrade_log_ids
+    assert "configure output line 204" not in " ".join(
+        item["message"] for item in first_log_page.json()["logs"]
+    )
+
     upgrade_detail = client.get("/upgrade/tasks/{}/".format(task_id))
     task_center_detail = client.get("/tasks/{}/".format(task_id))
     assert upgrade_detail.status_code == 200
@@ -911,9 +1079,17 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     assert 'data-has-backup="1"' in upgrade_detail.text
     assert 'class="upgrade-log-output"' in upgrade_detail.text
     assert 'id="logLiveLabel"' in upgrade_detail.text
+    assert "升级前 Nginx 二进制备份路径" in upgrade_detail.text
+    assert "远程副本，用于二进制回滚，不是日志备份" not in upgrade_detail.text
     assert "configure output line 204" in upgrade_detail.text
+    assert "2026-10-12 11:04:00" in upgrade_detail.text
     assert task_center_detail.status_code == 200
     assert 'data-task-active="false"' in task_center_detail.text
+    plain_log = task_center_detail.text.split('id="taskLogList"', 1)[1].split("</pre>", 1)[0]
+    assert "data-log-mode=\"plain-text\"" in plain_log
+    assert "task-log-row" not in plain_log
+    assert "升级阶段摘要 000" in plain_log
+    assert "configure output line 204" not in plain_log
 
     script = (Path.cwd() / "static/js/upgrade-center.js").read_text(encoding="utf-8")
     stylesheet = (Path.cwd() / "static/css/upgrade.css").read_text(encoding="utf-8")
@@ -922,6 +1098,48 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
 
     with session_scope(app.state.database.session_factory) as session:
         assert session.scalar(select(func.count()).select_from(NginxSourcePackage)) == 11
+
+
+def test_upgrade_detail_explains_missing_binary_backup_path(upgrade_client):
+    """验证备份阶段前失败时明确显示未生成的二进制副本原因。"""
+    client, app, _csrf_token, user_id = upgrade_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task = Task(
+                operation_type="nginx_upgrade",
+                status="failed",
+                detail="第三方模块准备失败",
+                progress=100,
+                source_batch="UG-BACKUP-MISSING",
+                target_hostnames="edge-prod",
+                target_ips="192.0.2.40",
+                trigger_user_id=user_id,
+            )
+            session.add(task)
+            session.flush()
+            task_id = task.id
+            session.add(
+                NginxUpgradeRun(
+                    task_id=task.id,
+                    batch_number="UG-BACKUP-MISSING",
+                    node_hostname="edge-prod",
+                    node_ip="192.0.2.40",
+                    target_version="1.28.0",
+                    upgrade_mode="upgrade",
+                    remote_work_dir="/tmp/nginx-upgrade",
+                    make_jobs=2,
+                    phase="downloading_modules",
+                )
+            )
+
+    detail = client.get("/upgrade/tasks/{}/".format(task_id))
+
+    assert detail.status_code == 200
+    assert "升级前 Nginx 二进制备份路径" in detail.text
+    assert "尚未生成" in detail.text
+    assert "任务在创建升级前二进制副本之前结束" in detail.text
+    assert 'data-has-backup="0"' in detail.text
+    assert 'id="rollbackUpgrade"' not in detail.text
 
 
 def test_upgrade_home_shows_four_stats_and_recent_task_table(upgrade_client):

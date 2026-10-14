@@ -47,7 +47,7 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 | `GET /health` | 无 | `HealthResponse` | 500 |
 | `GET /api/stats/` | 会话 | `DashboardStatsResponse` | 401、500 |
 | `GET /api/tasks` | 会话 | `TaskListResponse` | 401、403、422、500 |
-| `GET /api/tasks/{task_id}` | 会话 | `TaskDetailResponse` | 401、403、404、422、500 |
+| `GET /api/tasks/{task_id}` | 会话 | `TaskDetailResponse`；`log_view=upgrade_full` 可读取升级/回滚逐行完整日志 | 401、403、404、422、500 |
 | `POST /api/tasks/{task_id}/cancel` | 会话与 CSRF | `TaskCancelResponse` | 400、401、403、404、409、422、500 |
 | `GET /api/users/teams/{team_id}/members` | 超级管理员会话 | `TeamMembersResponse` | 401、403、404、422、500 |
 | `POST /api/users/teams/{team_id}/members` | 超级管理员会话与 CSRF | `TeamMemberUpdateResponse` | 400、401、403、404、422、500 |
@@ -121,7 +121,7 @@ HTML 页面继续使用重定向、Jinja2 错误页或页面提示，不受 JSON
 
 发布中心使用 Jinja2 页面 `/releases/center/`，发布历史使用 `/releases/`。历史 API 需要 `releases.read`，按批次返回持久化任务结果树和当前资产门禁；历史绑定的其他版本元数据按需分页读取，版本正文由关联历史项的预览接口单独返回。发布与回滚创建后分别返回 `release_publish`、`release_rollback` 任务 ID；具备 `releases.publish` 的触发人可轮询本人两类任务；具备 `upgrade.read` 的触发人可轮询本人升级任务。结果树不保存配置正文。发布执行、回滚门禁和备份约定见 [releases.md](releases.md)。
 
-Nginx 编译升级使用 Jinja2 页面 `/upgrade/center/`、`/upgrade/packages/`、`/upgrade/modules/`、`/upgrade/history/` 和 `/upgrade/tasks/{task_id}/`。`POST /api/upgrade/parse-config` 与 `POST /api/upgrade/compute-config` 需要 `upgrade.create`；后者接受 `upgrade_mode` 和 `target_prefix`，在切换路径模式时返回服务端重写后的 `target_opts` 及结构化 `target_params`。`POST /api/upgrade/nodes/{node_id}/nginx-v` 通过 SSH 读取节点基线。`POST /api/upgrade/tasks`、`POST /api/upgrade/tasks/{task_id}/cancel` 和 `POST /api/upgrade/tasks/{task_id}/rollback` 需要 `upgrade.execute` 与 CSRF；包冲突检查接口需要 `upgrade.create`。任务进度和日志沿用 `GET /api/tasks/{task_id}`，页面、接口和任务门禁见 [upgrade.md](upgrade.md)。
+Nginx 编译升级使用 Jinja2 页面 `/upgrade/center/`、`/upgrade/packages/`、`/upgrade/modules/`、`/upgrade/history/` 和 `/upgrade/tasks/{task_id}/`。`POST /api/upgrade/parse-config` 与 `POST /api/upgrade/compute-config` 需要 `upgrade.create`；后者接受 `upgrade_mode` 和 `target_prefix`，在切换路径模式时返回服务端重写后的 `target_opts` 及结构化 `target_params`。`POST /api/upgrade/nodes/{node_id}/nginx-v` 通过 SSH 读取节点基线。`POST /api/upgrade/tasks`、`POST /api/upgrade/tasks/{task_id}/cancel` 和 `POST /api/upgrade/tasks/{task_id}/rollback` 需要 `upgrade.execute` 与 CSRF；包冲突检查接口需要 `upgrade.create`。任务状态和任务中心摘要读取 `GET /api/tasks/{task_id}`；升级详情将 `log_view=upgrade_full` 与同一日志游标参数组合后读取完整执行日志。页面、接口和任务门禁见 [upgrade.md](upgrade.md)。
 
 Nginx 全新安装页面见 [nginx-install.md](nginx-install.md)。configure 预览和安装批次创建分别返回 `InstallConfigureResponse`、`InstallBatchResponse`；批次进度仅向安装读取权限用户或触发人开放。安装任务复用通用日志/取消 API，并按可取消阶段校验权限。
 

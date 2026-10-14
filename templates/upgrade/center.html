@@ -2,7 +2,7 @@
 {% block title %}升级中心 - Nginx 编译升级{% endblock %}
 {% block page_title %}<i class="bi bi-rocket-takeoff" aria-hidden="true"></i> Nginx 升级中心{% endblock %}
 
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=15">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">{% endblock %}
 
 {% block content %}
 <div class="upgrade-toolbar mb-3">
@@ -234,7 +234,6 @@
             <div class="card-body">
                 <div class="text-center text-muted py-4" id="progressPlaceholder"><i class="bi bi-hourglass fs-4" aria-hidden="true"></i><p class="mb-0 mt-2 small">任务执行进度</p></div>
                 <div class="d-none" id="progressLive"><div class="small mb-2" id="batchNumberLabel"></div><div class="progress mb-3" style="height:8px" role="progressbar" aria-label="批次升级进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar" style="width:0%"></div></div></div>
-                <div class="upgrade-progress-results d-none" id="batchTaskResults" aria-live="polite"></div>
             </div>
         </section>
     </aside>
@@ -315,5 +314,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=16"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=17"></script>
 {% endblock %}

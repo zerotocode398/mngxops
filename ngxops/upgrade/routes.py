@@ -27,7 +27,12 @@ from ngxops.tasks.models import Task, TaskLog
 from ngxops.tasks.presentation import format_task_datetime, format_task_datetime_iso
 from ngxops.ui import render_page
 from ngxops.upgrade.builtin_modules import BUILTIN_ADD_MODULES
-from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage, NginxUpgradeRun
+from ngxops.upgrade.models import (
+    NginxModulePackage,
+    NginxSourcePackage,
+    NginxUpgradeLog,
+    NginxUpgradeRun,
+)
 from ngxops.upgrade.services import (
     PackageConflict,
     compute_target_configure_opts,
@@ -39,6 +44,7 @@ from ngxops.upgrade.services import (
     parse_nginx_v_output,
     persist_uploaded_package,
     rewrite_configure_prefix,
+    resolve_backup_binary_path,
     tokenize_configure_args,
     validate_target_prefix,
     validate_remote_work_dir,
@@ -1027,42 +1033,21 @@ def upgrade_history(
     return render_page(request, "upgrade/history.html", result, user, session)
 
 
-def _task_backup_binary_path(run: NginxUpgradeRun, task: Task) -> str:
-    """从升级记录或任务结果树读取二进制备份路径。"""
-    stored_path = (run.backup_binary_path or "").strip()
-    if stored_path:
-        return stored_path
-    try:
-        result_tree = json.loads(task.result_tree_json or "")
-    except (TypeError, ValueError):
+def _backup_path_note(run: NginxUpgradeRun, task: Task, path: str) -> str:
+    """解释二进制备份路径为空时当前升级阶段的含义。"""
+    if path:
         return ""
-    if not isinstance(result_tree, dict):
-        return ""
-
-    records = []
-    node_result = result_tree.get("node")
-    if isinstance(node_result, dict):
-        records.append(node_result)
-    nodes = result_tree.get("nodes")
-    if isinstance(nodes, list):
-        matches = [
-            item for item in nodes
-            if isinstance(item, dict)
-            and (
-                item.get("ip") == run.node_ip
-                or item.get("hostname") == run.node_hostname
-            )
-        ]
-        if matches:
-            records.extend(matches)
-        elif len(nodes) == 1 and isinstance(nodes[0], dict):
-            records.append(nodes[0])
-    records.append(result_tree)
-    for record in records:
-        backup_path = record.get("backup_binary_path") or record.get("backup_path")
-        if isinstance(backup_path, str) and backup_path.strip():
-            return backup_path.strip()
-    return ""
+    if run.phase == "backing_up":
+        if task.status in _UPGRADE_ACTIVE_STATUSES:
+            return "正在复制升级前的 Nginx 可执行文件，备份路径尚未生成。"
+        return "备份命令未完成，因此没有生成可回滚的二进制副本。"
+    if task.status == "success":
+        return "任务已成功结束，但没有记录备份路径；请检查完整执行日志。"
+    if run.phase in ("configuring", "compiling", "replacing_binary", "verifying", "upgrading", "success"):
+        return "任务已越过备份阶段，但没有记录备份路径；请检查完整执行日志。"
+    if task.status in ("failed", "cancelled"):
+        return "任务在创建升级前二进制副本之前结束，因此尚未生成备份。"
+    return "升级尚未进入备份阶段，暂未生成升级前二进制副本。"
 
 
 @router.get("/upgrade/tasks/{task_id}/", include_in_schema=False)
@@ -1081,16 +1066,25 @@ def upgrade_task_detail(
     if run is None:
         raise HTTPException(status_code=404, detail="升级任务不存在")
     task = run.task
-    backup_binary_path = _task_backup_binary_path(run, task)
+    backup_binary_path = resolve_backup_binary_path(run, task)
     logs = session.scalars(
-        select(TaskLog).where(TaskLog.task_id == task.id).order_by(TaskLog.id.asc())
+        select(NginxUpgradeLog)
+        .where(NginxUpgradeLog.task_id == task.id)
+        .order_by(NginxUpgradeLog.id.asc())
     ).all()
+    if not logs:
+        logs = session.scalars(
+            select(TaskLog)
+            .where(TaskLog.task_id == task.id)
+            .order_by(TaskLog.id.asc())
+        ).all()
     current = tokenize_configure_args(run.current_configure_opts)
     target = tokenize_configure_args(run.target_configure_opts)
     context = {
         "run": run,
         "task": task,
         "logs": logs,
+        "format_task_datetime": format_task_datetime,
         "current_params": current,
         "target_params": target,
         "param_removed": [item for item in current if item not in set(target)],
@@ -1098,15 +1092,16 @@ def upgrade_task_detail(
         "status_label": _STATUS_LABELS.get(task.status, task.status),
         "status_class": _status_context(task)["status_class"],
         "can_execute": _has_upgrade_permission(request, session, user, "execute"),
-        "has_backup": bool(run.backup_binary_path),
+        "has_backup": bool(backup_binary_path),
         "backup_binary_path": backup_binary_path,
+        "backup_path_note": _backup_path_note(run, task, backup_binary_path),
         "is_rollback": run.upgrade_mode == "rollback",
         "mode_label": _MODE_LABELS.get(run.upgrade_mode, "二进制回滚"),
         "can_rollback": (
             _has_upgrade_permission(request, session, user, "execute")
             and run.upgrade_mode != "rollback"
             and task.status in ("success", "failed")
-            and bool(run.backup_binary_path)
+            and bool(backup_binary_path)
             and run.rolled_back_at is None
         ),
         "can_cancel": (

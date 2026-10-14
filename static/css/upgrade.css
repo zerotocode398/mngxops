@@ -23,15 +23,6 @@
 .upgrade-overview-status, .upgrade-overview-progress-cell { padding-right: 0.3rem !important; padding-left: 0.3rem !important; white-space: nowrap; }
 .upgrade-overview-status .badge { padding-right: 0.25rem; padding-left: 0.25rem; font-size: 0.68rem; }
 .upgrade-overview-progress { width: 100%; min-width: 0; height: 6px; margin-bottom: 3px; }
-.upgrade-progress-results { display: grid; gap: 0; max-height: 320px; overflow: auto; border-top: 1px solid var(--gray-200); }
-.upgrade-progress-results-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; padding: 9px 1px 6px; font-size: 0.8125rem; }
-.upgrade-progress-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; padding: 8px 1px; border-top: 1px solid var(--gray-100); }
-.upgrade-progress-result-host { display: flex; align-items: baseline; gap: 5px; min-width: 0; white-space: nowrap; }
-.upgrade-progress-result-host strong { min-width: 0; overflow: hidden; font-size: 0.8125rem; font-weight: 500; text-overflow: ellipsis; }
-.upgrade-progress-result-host small { flex: 0 0 auto; font-size: 0.72rem; }
-.upgrade-progress-result-status { align-self: center; white-space: nowrap; }
-.upgrade-progress-result-detail { grid-column: 1 / -1; margin: 0; color: var(--gray-600); font-size: 0.75rem; overflow-wrap: anywhere; }
-.upgrade-progress-result-link { align-self: center; padding: 2px 5px; }
 .upgrade-history-table-wrap { overflow-x: hidden; }
 .upgrade-history-table { width: 100%; table-layout: fixed; }
 .upgrade-history-col-node { width: 26%; }
@@ -233,11 +224,18 @@
 .upgrade-param-added { color: #70e09a; font-weight: 600; }
 .nginx-v-output { max-height: 300px; overflow: auto; padding: 14px 18px; border-radius: 6px; color: #00ff88; background: #1a1a2e; font: 0.82rem/1.6 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
 .nginx-v-output-alt { color: #e9ecef; background: #16213e; }
-.upgrade-config-output, .upgrade-log-output { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 4px; font: 0.78rem/1.55 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+.upgrade-config-output, .upgrade-log-output { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 4px; font: 0.78rem/1.55 var(--font-mono, Consolas, monospace); }
 .upgrade-config-output { max-height: 480px; }
 .upgrade-log-output { max-height: 520px; color: #00ff88; background: #1a1a2e; }
-.upgrade-log-output .log-error { color: #ff9b9b; }
-.upgrade-log-output .log-warning { color: #ffe18a; }
+.upgrade-log-line { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; padding: 2px 0; }
+.upgrade-log-line time { color: #91b8a6; white-space: nowrap; }
+.upgrade-log-message { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.upgrade-log-line.log-error .upgrade-log-message { color: #ff9b9b; }
+.upgrade-log-line.log-warning .upgrade-log-message { color: #ffe18a; }
+.upgrade-log-empty { color: #91b8a6; }
+@media (max-width: 575.98px) {
+    .upgrade-log-line { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
 @media (max-width: 991.98px) {
     .upgrade-layout { grid-template-columns: minmax(0, 1fr); }
     .upgrade-progress-column { position: static; }

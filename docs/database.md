@@ -12,7 +12,7 @@
 ## 初始化与升级
 
 - 初始化/升级入口：`python -m ngxops.database upgrade`。Web 启动绝不自动迁移；执行升级前应停止服务并备份数据库。
-- 迁移通过 `ngxops_schema_migrations` 记录版本，使用 `BEGIN IMMEDIATE` 串行化升级，并在同一事务内执行迁移及写入版本记录。当前版本 16 将源码包身份改为上传人、名称和版本组合；该表重建迁移在事务期间临时关闭外键检查，并在提交前运行 `foreign_key_check`。
+- 迁移通过 `ngxops_schema_migrations` 记录版本，使用 `BEGIN IMMEDIATE` 串行化升级，并在同一事务内执行迁移及写入版本记录。迁移版本 16 将源码包身份改为上传人、名称和版本组合；该表重建迁移在事务期间临时关闭外键检查，并在提交前运行 `foreign_key_check`。迁移版本 17 为 Nginx 升级/回滚新增专属逐行日志表。
 - 禁止 `metadata.create_all()`、自动重建表、删除库或启动时批量改写数据。表结构变化必须加入有序迁移，保留旧数据并给出回滚/备份说明。
 - 若数据库含有业务表但没有本项目的迁移台账，升级命令拒绝写入。特别是原 `mngxops` SQLite 文件不会被自动接管；需要先对照完整 schema 并显式登记兼容基线。空库与已有库路径不得混用。
 - 原迁移计划引用的 `mngxops/docs/fastapi-migration-baseline.md` 当前不存在，因此本项目以 `mngxops/apps/*/models.py`、全部 Django migrations 和模块文档交叉确认，不把缺失报告视为已经核实的 schema。
@@ -81,6 +81,7 @@
 - 迁移版本 14 创建 `ngxops_system_settings`，以唯一 key 保存已接线设置的字符串值、类型、分组和展示元数据；修改人删除时置空，分组/排序字段有索引。默认值按需补齐且不覆盖已有 value，清理与运行设置见 [settings.md](settings.md)。
 - 迁移版本 15 合并 Nginx 安装权限：`nginx_install.read` 授权迁移到 `upgrade.read`，`nginx_install.create` 授权迁移到 `upgrade.execute`，覆盖角色和用户直授权限后删除旧权限项。安装和升级从此共用 `upgrade.*` RBAC 资源，任务操作类型仍分开保存。
 - 迁移版本 16 重建 `ngxops_nginx_source_packages` 并保留原记录及 ID，将唯一约束改为 `(name, version, created_by)`，增加 MD5 查询索引；源码包和模块包均先按上传人、名称、版本判重，未命中时才按 MD5 判重。
+- 迁移版本 17 创建 `ngxops_nginx_upgrade_logs`，按任务逐行保存 Nginx 升级/回滚的完整执行日志，并以 `(task_id, id)` 支持增量游标读取；任务删除时级联清理。通用 `ngxops_task_logs` 继续只保存任务中心所需的阶段摘要。
 - NX-052 启停批次直接复用 `ngxops_tasks` 与 `ngxops_task_logs`，不新增业务表或迁移；动作存放在 `target_configs`，`source_batch` 保存批次号，目标摘要和结构化结果分别存放在任务摘要字段与结果树中。
 - 凭证迁移不会读取或接管 mngxops 数据库中的旧记录。升级仍须显式停止服务、备份后执行 `python -m ngxops.database upgrade`。
 

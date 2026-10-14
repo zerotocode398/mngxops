@@ -400,9 +400,17 @@
     }
 
     function renderLog(log) {
+        var formattedMessage = formatLogMessage(log.message);
+        var logMode = document.getElementById("taskLogList").dataset.logMode;
+        if (logMode === "plain-text") {
+            var line = document.createElement("span");
+            line.className = "task-log-plain-line log-level-" + (log.level || "info");
+            var timestamp = log.created_at ? window.formatUtc8DateTime(log.created_at) : "";
+            line.textContent = timestamp + " " + formattedMessage + "\n";
+            return line;
+        }
         var row = document.createElement("div");
         row.className = "task-log-row log-level-" + (log.level || "info");
-        var formattedMessage = formatLogMessage(log.message);
         row.dataset.logHostIp = findLogHostIp(formattedMessage);
         var time = document.createElement("time");
         time.textContent = log.created_at ? window.formatUtc8DateTime(log.created_at) : "";
@@ -623,7 +631,10 @@
                 cursor = Math.max(cursor, Number(payload.next_log_id) || 0);
                 detail.setAttribute("data-log-cursor", String(cursor));
                 if (logCount && !logHostFilter) {
-                    logCount.textContent = logList.querySelectorAll(".task-log-row").length + " 条";
+                    var logSelector = logList.dataset.logMode === "plain-text"
+                        ? ".task-log-plain-line"
+                        : ".task-log-row";
+                    logCount.textContent = logList.querySelectorAll(logSelector).length + " 条";
                 }
                 if (loadMoreLogs) {
                     loadMoreLogs.hidden = !payload.has_more_logs;

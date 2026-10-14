@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}升级任务详情 - {{ run.node_hostname }}{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> 升级任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17">{% endblock %}
 
 {% block content %}
 <div class="d-flex gap-2 mb-3 flex-wrap">
@@ -22,7 +22,12 @@
             <div class="col-12 col-md-6"><span class="text-muted">远程工作目录：</span><code>{{ run.remote_work_dir }}</code></div>
             <div class="col-12 col-md-6"><span class="text-muted">编译并行数：</span>{{ run.make_jobs }}</div>
             <div class="col-12 col-md-6"><span class="text-muted">批次：</span><code>{{ run.batch_number }}</code></div>
-            <div class="col-12 col-md-6"><span class="text-muted">备份路径：</span><code class="upgrade-backup-path">{{ backup_binary_path or "-" }}</code></div>
+            <div class="col-12 col-md-6">
+                <span class="text-muted">升级前 Nginx 二进制备份路径：</span>
+                {% if backup_binary_path %}<code class="upgrade-backup-path">{{ backup_binary_path }}</code>
+                {% else %}<span class="text-muted" data-backup-binary-path>尚未生成</span>{% endif %}
+                {% if not backup_binary_path and backup_path_note %}<small class="d-block text-muted">{{ backup_path_note }}</small>{% endif %}
+            </div>
             {% if rolled_back %}<div class="col-12 col-md-6"><span class="text-muted">回滚时间：</span>{{ run.rolled_back_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>{% endif %}
             <div class="col-12"><div class="progress mt-2" style="height:8px"><div class="progress-bar{% if task.status == 'success' %} bg-success{% elif task.status == 'failed' %} bg-danger{% elif task.status == 'cancelled' %} bg-secondary{% endif %}" id="taskProgress" style="width:{{ task.progress }}%"></div></div><small id="taskProgressLabel">{{ task.progress }}% · {{ task.detail }}</small></div>
         </div>
@@ -42,9 +47,11 @@
 
 <section class="card">
     <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0">完整执行日志</h2><span class="small text-muted" id="logLiveLabel" aria-live="polite">{% if task.status in ['pending', 'running'] %}实时更新中{% else %}执行已结束{% endif %}</span></div>
-    <div class="card-body"><pre class="upgrade-log-output" id="upgradeLog" data-after-log-id="{{ logs[-1].id if logs else 0 }}" aria-live="polite">{% for item in logs %}<span class="log-{{ item.level }}">{{ item.message }}</span>
-{% else %}暂无日志{% endfor %}</pre></div>
+    <div class="card-body"><div class="upgrade-log-output" id="upgradeLog" data-after-log-id="{{ logs[-1].id if logs else 0 }}" aria-live="polite">
+        {% for item in logs %}<div class="upgrade-log-line log-{{ item.level }}"><time title="UTC+8">{{ format_task_datetime(item.created_at) }}</time><span class="upgrade-log-message">{{ item.message }}</span></div>
+        {% else %}<div class="upgrade-log-empty">暂无日志</div>{% endfor %}
+    </div></div>
 </section>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=8"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=9"></script>{% endblock %}

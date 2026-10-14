@@ -4,7 +4,7 @@
 {% block page_title %}任务详情 #{{ task.id }}{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=7">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=8">
 {% endblock %}
 
 {% block content %}
@@ -120,11 +120,15 @@
                 </select>
             </div>
             {% endif %}
-            <div class="task-log-list task-log-list-terminal" id="taskLogList" aria-live="polite">
-                {% for log in logs %}
-                <div class="task-log-row log-level-{{ log.level }}"><time>{{ format_task_datetime(log.created_at) }}</time><span class="task-log-message">{{ format_task_log_message(log.message, log_target_map) }}</span></div>
+            {% if is_upgrade_type %}
+            <pre class="task-log-list task-log-list-terminal task-log-list-plain" id="taskLogList" data-log-mode="plain-text" aria-live="polite">{% for log in logs %}<span class="task-log-plain-line log-level-{{ log.level }}">{{ format_task_datetime(log.created_at) }} {{ format_task_log_message(log.message, log_target_map) }}
+</span>{% else %}<span class="task-log-plain-empty" data-empty-logs>暂无执行日志</span>{% endfor %}</pre>
+            {% else %}
+            <div class="task-log-list task-log-list-terminal" id="taskLogList" data-log-mode="rows" aria-live="polite">
+                {% for log in logs %}<div class="task-log-row log-level-{{ log.level }}"><time>{{ format_task_datetime(log.created_at) }}</time><span class="task-log-message">{{ format_task_log_message(log.message, log_target_map) }}</span></div>
                 {% else %}<p class="small text-muted mb-0" data-empty-logs>暂无执行日志</p>{% endfor %}
             </div>
+            {% endif %}
             <button class="btn btn-outline-secondary btn-sm mt-2" type="button" id="taskLoadMoreLogs"
                     data-has-more="{{ 'true' if has_more_logs else 'false' }}"{% if not has_more_logs %} hidden{% endif %}>
                 <i class="bi bi-arrow-down-circle me-1" aria-hidden="true"></i>加载更多日志
@@ -135,5 +139,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=8"></script>
+<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=9"></script>
 {% endblock %}
