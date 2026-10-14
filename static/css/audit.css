@@ -21,6 +21,7 @@
 
 .audit-detail-toggle {
     flex: 0 0 auto;
+    margin-left: auto;
     line-height: 1;
 }
 

@@ -3,7 +3,7 @@
 {% block title %}操作日志 - ngxops{% endblock %}
 {% block page_title %}操作日志{% endblock %}
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/audit.css') }}?v=1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/audit.css') }}?v=2">
 {% endblock %}
 
 {% block content %}
@@ -121,6 +121,7 @@ $(function () {
         var $cell = $button.closest("td");
         var expanded = $button.attr("aria-expanded") === "true";
         $cell.find(".audit-detail-full").toggleClass("d-none", expanded);
+        $cell.find(".audit-detail-preview > span").toggleClass("d-none", !expanded);
         $button.attr("aria-expanded", String(!expanded));
         $button.attr("aria-label", expanded ? "展开详情" : "收起详情");
         $button.attr("title", expanded ? "展开详情" : "收起详情");

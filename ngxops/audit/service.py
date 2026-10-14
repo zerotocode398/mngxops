@@ -331,7 +331,7 @@ def _capture_before_flush(session: Session, flush_context, instances) -> None:
             label = _object_label(obj, table_name)
             action_label = verbs[object_action] + module
             detail = "{}「{}」".format(verbs[object_action], label)
-            if object_action == "delete" and table_name in (
+            if table_name in (
                 "ngxops_nginx_source_packages",
                 "ngxops_nginx_module_packages",
             ):
@@ -340,14 +340,19 @@ def _capture_before_flush(session: Session, flush_context, instances) -> None:
                     if table_name == "ngxops_nginx_source_packages"
                     else "模块包"
                 )
-                package_id = getattr(obj, "id", "?")
                 package_name = str(getattr(obj, "name", "") or "未命名")
                 package_version = str(getattr(obj, "version", "") or "")
                 file_name = str(getattr(obj, "file_name", "") or "")
-                action_label = "删除{}".format(package_type)
-                detail = "删除{} #{}「{}」".format(
-                    package_type, package_id, package_name
-                )
+                if object_action == "create":
+                    verb = "上传"
+                    action_label = "上传{}".format(package_type)
+                elif object_action == "update":
+                    verb = "覆盖"
+                    action_label = "覆盖{}".format(package_type)
+                else:
+                    verb = "删除"
+                    action_label = "删除{}".format(package_type)
+                detail = "{}{}「{}」".format(verb, package_type, package_name)
                 if package_version:
                     detail += " 版本「{}」".format(package_version)
                 if file_name:

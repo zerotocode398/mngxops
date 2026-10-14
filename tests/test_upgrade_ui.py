@@ -180,6 +180,15 @@ def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client
     assert upload_notice.status_code == 200
     assert 'id="packageNotice"' in upload_notice.text
 
+    source_overwrite = _upload(
+        client,
+        csrf_token,
+        "/upgrade/packages/upload/",
+        "nginx-1.26.1-updated.tar.gz",
+        {"name": "Nginx stable", "version": "1.26.1", "overwrite": "1"},
+    )
+    assert source_overwrite.status_code == 200, source_overwrite.text
+
     source_duplicate = _upload(
         client,
         csrf_token,
@@ -203,6 +212,14 @@ def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client
     )
     assert module_conflict.status_code == 200
     assert module_conflict.json()["exists"] is True
+    module_overwrite = _upload(
+        client,
+        csrf_token,
+        "/upgrade/modules/upload/",
+        "ngx-module-test-updated.tar.gz",
+        {"name": "ngx-module-test", "version": "1.0", "overwrite": "1"},
+    )
+    assert module_overwrite.status_code == 200, module_overwrite.text
     module_duplicate = _upload(
         client,
         csrf_token,
@@ -219,8 +236,29 @@ def test_uploads_use_home_storage_and_md5_prevents_duplicate_rows(upgrade_client
     with session_scope(app.state.database.session_factory) as session:
         source_rows = session.scalars(select(NginxSourcePackage)).all()
         module_rows = session.scalars(select(NginxModulePackage)).all()
+        audit_rows = session.scalars(
+            select(AuditLog)
+            .where(
+                AuditLog.user_id == user_id,
+                AuditLog.module == "Nginx 升级",
+                AuditLog.action.in_(
+                    ("上传源码包", "覆盖源码包", "上传模块包", "覆盖模块包")
+                ),
+            )
+            .order_by(AuditLog.id)
+        ).all()
         assert len(source_rows) == 1
         assert len(module_rows) == 1
+        assert [row.action for row in audit_rows] == [
+            "上传源码包",
+            "覆盖源码包",
+            "上传模块包",
+            "覆盖模块包",
+        ]
+        assert "Nginx stable" in audit_rows[0].detail
+        assert "1.26.1" in audit_rows[0].detail
+        assert "ngx-module-test" in audit_rows[2].detail
+        assert "1.0" in audit_rows[2].detail
         assert source_rows[0].file_md5 == expected_md5
         assert module_rows[0].file_md5 == expected_md5
         assert source_rows[0].created_by == user_id
@@ -416,12 +454,43 @@ def test_deleting_source_and_module_packages_writes_specific_audit(upgrade_clien
         entries = [(entry.action, entry.detail) for entry in audit_entries]
 
     assert [entry[0] for entry in entries] == ["删除源码包", "删除模块包"]
+    assert len(entries) == 2
+    assert "#{}".format(source_id) not in entries[0][1]
+    assert "#{}".format(module_id) not in entries[1][1]
     assert "nginx-stable" in entries[0][1]
     assert "1.28.1" in entries[0][1]
     assert "nginx-stable-1.28.1.tar.gz" in entries[0][1]
     assert "ngx_http_echo" in entries[1][1]
     assert "0.63" in entries[1][1]
     assert "ngx_http_echo-0.63.tar.gz" in entries[1][1]
+
+
+def test_audit_expanded_detail_hides_its_preview(upgrade_client):
+    """展开长操作日志时只显示完整摘要，不重复展示预览文本。"""
+    client, app, _csrf_token, user_id = upgrade_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            session.add(
+                AuditLog(
+                    user_id=user_id,
+                    username="upgrade-admin",
+                    module="Nginx 升级",
+                    action="删除源码包",
+                    ip="127.0.0.1",
+                    result="success",
+                    detail="删除源码包「nginx-stable」版本「1.28.1」；归档文件：source-{}.tar.gz".format(
+                        "a" * 64
+                    ),
+                )
+            )
+
+    response = client.get("/audit/")
+    template = (Path.cwd() / "templates/audit/list.html").read_text(encoding="utf-8")
+
+    assert response.status_code == 200
+    assert 'class="audit-detail-full d-none"' in response.text
+    assert 'class="audit-detail-preview"' in response.text
+    assert '.audit-detail-preview > span").toggleClass("d-none", !expanded)' in template
 
 
 def test_upgrade_center_summary_uses_nonbold_hostname_and_confirm_label(upgrade_client):

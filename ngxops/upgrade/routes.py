@@ -563,6 +563,9 @@ async def upload_source_package(
             version=version,
             description=description,
             overwrite=overwrite in ("1", "on", "true"),
+            audit_actor_id=user.id,
+            audit_username=user.username,
+            audit_ip=request_client_ip(request),
         )
     except PackageConflict as exc:
         return _upload_response(
@@ -664,6 +667,9 @@ async def upload_module_package(
             version=version,
             description=description,
             overwrite=overwrite in ("1", "on", "true"),
+            audit_actor_id=user.id,
+            audit_username=user.username,
+            audit_ip=request_client_ip(request),
         )
     except PackageConflict as exc:
         return _upload_response(

@@ -210,6 +210,9 @@ def store_package(
     description: str,
     is_official: bool = False,
     overwrite: bool = False,
+    audit_actor_id: Optional[int] = None,
+    audit_username: Optional[str] = None,
+    audit_ip: Optional[str] = None,
 ) -> Tuple[Any, bool]:
     """验证并持久化源码包或离线模块包，返回记录及是否覆盖。"""
     extension = validate_archive_content(content, filename, package_kind)
@@ -286,6 +289,13 @@ def store_package(
     stored_path.write_bytes(content)
     old_path = package_dir / existing.file_name if existing else None
     try:
+        if audit_actor_id is not None:
+            prepare_audit_session(
+                session,
+                actor_id=audit_actor_id,
+                username=audit_username,
+                ip=audit_ip,
+            )
         if existing:
             existing.name = (name or "").strip()
             existing.version = normalized_version
