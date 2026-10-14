@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}升级任务详情 - {{ run.node_hostname }}{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> 升级任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=10">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=15">{% endblock %}
 
 {% block content %}
 <div class="d-flex gap-2 mb-3 flex-wrap">
@@ -22,7 +22,7 @@
             <div class="col-12 col-md-6"><span class="text-muted">远程工作目录：</span><code>{{ run.remote_work_dir }}</code></div>
             <div class="col-12 col-md-6"><span class="text-muted">编译并行数：</span>{{ run.make_jobs }}</div>
             <div class="col-12 col-md-6"><span class="text-muted">批次：</span><code>{{ run.batch_number }}</code></div>
-            <div class="col-12 col-md-6"><span class="text-muted">备份路径：</span><code>{{ run.backup_binary_path or "-" }}</code></div>
+            <div class="col-12 col-md-6"><span class="text-muted">备份路径：</span><code class="upgrade-backup-path">{{ backup_binary_path or "-" }}</code></div>
             {% if rolled_back %}<div class="col-12 col-md-6"><span class="text-muted">回滚时间：</span>{{ run.rolled_back_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>{% endif %}
             <div class="col-12"><div class="progress mt-2" style="height:8px"><div class="progress-bar{% if task.status == 'success' %} bg-success{% elif task.status == 'failed' %} bg-danger{% elif task.status == 'cancelled' %} bg-secondary{% endif %}" id="taskProgress" style="width:{{ task.progress }}%"></div></div><small id="taskProgressLabel">{{ task.progress }}% · {{ task.detail }}</small></div>
         </div>

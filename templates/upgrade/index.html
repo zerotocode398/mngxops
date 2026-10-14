@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/dashboard.css') }}">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=12">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=15">
 {% endblock %}
 
 {% block content %}
@@ -78,11 +78,22 @@
         </div>
         <div class="table-responsive dashboard-recent-table upgrade-overview-table">
             <table class="table table-sm table-hover align-middle mb-0 upgrade-overview-grid">
+                <colgroup>
+                    <col class="upgrade-overview-col-batch">
+                    <col class="upgrade-overview-col-node">
+                    <col class="upgrade-overview-col-current-version">
+                    <col class="upgrade-overview-col-target-version">
+                    <col class="upgrade-overview-col-status">
+                    <col class="upgrade-overview-col-progress">
+                    <col class="upgrade-overview-col-operator">
+                    <col class="upgrade-overview-col-time">
+                </colgroup>
                 <thead class="table-light">
                     <tr>
                         <th scope="col" class="upgrade-overview-col-batch">批次</th>
                         <th scope="col" class="upgrade-overview-col-node">目标节点</th>
-                        <th scope="col" class="upgrade-overview-col-version">当前版本 → 目标版本</th>
+                        <th scope="col" class="upgrade-overview-col-current-version">当前版本</th>
+                        <th scope="col" class="upgrade-overview-col-target-version">目标版本</th>
                         <th scope="col" class="upgrade-overview-col-status">状态</th>
                         <th scope="col" class="upgrade-overview-col-progress">进度</th>
                         <th scope="col" class="upgrade-overview-col-operator">操作人</th>
@@ -103,8 +114,9 @@
                             <code class="task-batch-code upgrade-overview-batch">{{ run.batch_number }}</code>
                             {% endif %}
                         </td>
-                        <td><span class="upgrade-overview-node-name" title="{{ run.node_hostname }}">{{ run.node_hostname }}</span><small class="text-muted upgrade-overview-node-ip" title="{{ run.node_ip }}">{{ run.node_ip }}</small></td>
-                        <td class="text-nowrap"><code>{{ row.current_version }}</code><span class="text-muted mx-1" aria-hidden="true">→</span><code>{{ run.target_version }}</code></td>
+                        <td><div class="upgrade-overview-node" title="{{ run.node_hostname }} ({{ run.node_ip }})"><span class="upgrade-overview-node-name">{{ run.node_hostname }}</span><small class="text-muted upgrade-overview-node-ip">({{ run.node_ip }})</small></div></td>
+                        <td><code class="upgrade-overview-version">{{ row.current_version }}</code></td>
+                        <td><code class="upgrade-overview-version">{{ run.target_version }}</code></td>
                         <td class="upgrade-overview-status"><span class="badge text-bg-{{ row.status_class }}">{{ row.status_label }}</span></td>
                         <td class="upgrade-overview-progress-cell">
                             <div class="progress upgrade-overview-progress" aria-label="進度 {{ task.progress }}%">
@@ -113,10 +125,10 @@
                             <small class="text-muted">{{ task.progress }}%</small>
                         </td>
                         <td class="text-truncate" title="{{ row.operator }}">{{ row.operator }}</td>
-                        <td class="text-nowrap"><time datetime="{{ row.created_at_iso }}">{{ row.created_at_display }}</time></td>
+                        <td><time datetime="{{ row.created_at_iso }}">{{ row.created_at_display }}</time></td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="7">{% set message = "暂无升级记录" %}{% include "includes/empty_state.html" %}</td></tr>
+                    <tr><td colspan="8">{% set message = "暂无升级记录" %}{% include "includes/empty_state.html" %}</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

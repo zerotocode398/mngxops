@@ -4,33 +4,45 @@
 .upgrade-overview .upgrade-overview-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .upgrade-overview-stats .dashboard-stat-card { min-height: 82px; }
 .upgrade-overview-recent { min-width: 0; overflow: hidden; }
-.upgrade-overview-table table { width: 100%; min-width: 1040px; table-layout: fixed; }
-.upgrade-overview-col-batch { width: 20%; }
-.upgrade-overview-col-node { width: 22%; }
-.upgrade-overview-col-version { width: 18%; }
-.upgrade-overview-col-status { width: 8%; }
-.upgrade-overview-col-progress { width: 8%; }
-.upgrade-overview-col-operator { width: 10%; }
-.upgrade-overview-col-time { width: 14%; }
-.upgrade-overview-batch { display: block; white-space: nowrap; }
-.upgrade-overview-node-name, .upgrade-overview-node-ip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-overview-table { overflow-x: hidden; }
+.upgrade-overview-table table { width: 100%; table-layout: fixed; }
+.upgrade-overview-col-batch { width: 18%; }
+.upgrade-overview-col-node { width: 25%; }
+.upgrade-overview-col-current-version { width: 10%; }
+.upgrade-overview-col-target-version { width: 10%; }
+.upgrade-overview-col-status { width: 9%; }
+.upgrade-overview-col-progress { width: 7%; }
+.upgrade-overview-col-operator { width: 8%; }
+.upgrade-overview-col-time { width: 13%; }
+.upgrade-overview-batch { display: block; overflow: visible; padding: 0; background: transparent; color: inherit; white-space: nowrap; }
+.upgrade-overview-node { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.2rem; min-width: 0; white-space: nowrap; }
+.upgrade-overview-node-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-overview-node-ip { flex: 0 0 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-overview-node-name { font-weight: 400; }
-.upgrade-overview-status, .upgrade-overview-progress-cell { padding-right: 0.3rem !important; padding-left: 0.3rem !important; }
+.upgrade-overview-version { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-overview-status, .upgrade-overview-progress-cell { padding-right: 0.3rem !important; padding-left: 0.3rem !important; white-space: nowrap; }
+.upgrade-overview-status .badge { padding-right: 0.25rem; padding-left: 0.25rem; font-size: 0.68rem; }
 .upgrade-overview-progress { width: 100%; min-width: 0; height: 6px; margin-bottom: 3px; }
-.upgrade-history-table { width: 100%; min-width: 1040px; table-layout: fixed; }
-.upgrade-history-col-node { width: 24%; }
-.upgrade-history-col-version { width: 18%; }
-.upgrade-history-col-batch { width: 18%; }
-.upgrade-history-col-status { width: 12%; }
-.upgrade-history-col-progress { width: 10%; }
-.upgrade-history-col-time { width: 13%; }
-.upgrade-history-col-detail { width: 5%; }
+.upgrade-history-table-wrap { overflow-x: hidden; }
+.upgrade-history-table { width: 100%; table-layout: fixed; }
+.upgrade-history-col-node { width: 26%; }
+.upgrade-history-col-current-version { width: 10%; }
+.upgrade-history-col-target-version { width: 10%; }
+.upgrade-history-col-batch { width: 17%; }
+.upgrade-history-col-status { width: 9%; }
+.upgrade-history-col-progress { width: 7%; }
+.upgrade-history-col-time { width: 14%; }
+.upgrade-history-col-detail { width: 7%; }
 .upgrade-history-table > :not(caption) > * > *:first-child { padding-left: 0.5rem; }
 .upgrade-history-table > :not(caption) > * > *:last-child { padding-right: 0.5rem; }
-.upgrade-history-node-name, .upgrade-history-node-ip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-history-node { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.2rem; min-width: 0; white-space: nowrap; }
+.upgrade-history-node-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upgrade-history-node-ip { flex: 0 0 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-history-node-name { font-weight: 400; }
+.upgrade-history-version { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-history-batch { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-history-progress { width: 100%; min-width: 0; height: 6px; }
+.upgrade-backup-path { overflow-wrap: anywhere; }
 .upgrade-selected-targets { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 7px 9px; border: 1px solid var(--gray-300); border-radius: 4px; background: #fff; }
 .upgrade-selected-summary { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .upgrade-selected-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 6px 3px 9px; border: 1px solid var(--gray-200); border-radius: 4px; background: var(--gray-100); overflow-wrap: anywhere; }

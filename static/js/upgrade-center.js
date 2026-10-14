@@ -56,6 +56,14 @@
         if (window.showToast) window.showToast(message, type || "info", 3000, action);
     }
 
+    function batchLogAction(batchNumber) {
+        return {
+            href: "/tasks/?search=" + encodeURIComponent(batchNumber || ""),
+            label: "查看完整日志",
+            target: "_blank"
+        };
+    }
+
     function stepOneComplete() {
         return selectedNodeIds().length > 0 && !!selectedPackage();
     }
@@ -1435,7 +1443,7 @@
         document.getElementById("batchNumberLabel").textContent = "批次 " + batchNumber;
         var states = {};
         taskIds.forEach(function (id) { states[id] = { after: 0, status: "pending", progress: 0 }; });
-        notify(message || ("升级任务已创建，批次 " + batchNumber), "success");
+        notify(message || ("升级任务已创建，批次 " + batchNumber), "success", batchLogAction(batchNumber));
         pollBatch(taskIds, states, batchNumber);
     }
 
@@ -1460,7 +1468,8 @@
                 var resultType = counts.failed ? "warning" : (counts.cancelled ? "info" : "success");
                 notify(
                     "批次 " + batchNumber + " 已结束：成功 " + counts.success + "，失败 " + counts.failed + "，取消 " + counts.cancelled,
-                    resultType
+                    resultType,
+                    batchLogAction(batchNumber)
                 );
             }
         });

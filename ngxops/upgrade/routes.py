@@ -1027,6 +1027,44 @@ def upgrade_history(
     return render_page(request, "upgrade/history.html", result, user, session)
 
 
+def _task_backup_binary_path(run: NginxUpgradeRun, task: Task) -> str:
+    """从升级记录或任务结果树读取二进制备份路径。"""
+    stored_path = (run.backup_binary_path or "").strip()
+    if stored_path:
+        return stored_path
+    try:
+        result_tree = json.loads(task.result_tree_json or "")
+    except (TypeError, ValueError):
+        return ""
+    if not isinstance(result_tree, dict):
+        return ""
+
+    records = []
+    node_result = result_tree.get("node")
+    if isinstance(node_result, dict):
+        records.append(node_result)
+    nodes = result_tree.get("nodes")
+    if isinstance(nodes, list):
+        matches = [
+            item for item in nodes
+            if isinstance(item, dict)
+            and (
+                item.get("ip") == run.node_ip
+                or item.get("hostname") == run.node_hostname
+            )
+        ]
+        if matches:
+            records.extend(matches)
+        elif len(nodes) == 1 and isinstance(nodes[0], dict):
+            records.append(nodes[0])
+    records.append(result_tree)
+    for record in records:
+        backup_path = record.get("backup_binary_path") or record.get("backup_path")
+        if isinstance(backup_path, str) and backup_path.strip():
+            return backup_path.strip()
+    return ""
+
+
 @router.get("/upgrade/tasks/{task_id}/", include_in_schema=False)
 def upgrade_task_detail(
     request: Request,
@@ -1043,6 +1081,7 @@ def upgrade_task_detail(
     if run is None:
         raise HTTPException(status_code=404, detail="升级任务不存在")
     task = run.task
+    backup_binary_path = _task_backup_binary_path(run, task)
     logs = session.scalars(
         select(TaskLog).where(TaskLog.task_id == task.id).order_by(TaskLog.id.asc())
     ).all()
@@ -1060,6 +1099,7 @@ def upgrade_task_detail(
         "status_class": _status_context(task)["status_class"],
         "can_execute": _has_upgrade_permission(request, session, user, "execute"),
         "has_backup": bool(run.backup_binary_path),
+        "backup_binary_path": backup_binary_path,
         "is_rollback": run.upgrade_mode == "rollback",
         "mode_label": _MODE_LABELS.get(run.upgrade_mode, "二进制回滚"),
         "can_rollback": (
