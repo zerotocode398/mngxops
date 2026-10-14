@@ -473,6 +473,32 @@ Nginx 安装/升级	执行
 194. **已完成**：确认页内置模块增减和第三方模块数量支持点击展开明细；安装路径摘要只显示实际目录，多节点路径不同时可展开查看节点映射；并行编译摘要显示纯数值。目标节点改为主机名/IP、现有版本、目标版本表格，滚动区约显示 10 行；参数基线不一致时逐行按需展开目标参数。模块搜索输入时不筛选，按 Enter 筛选，删除已提交查询标签后自动重新筛选；节点主机名/IP保持正常字重，升级页脚本缓存版本更新至 v13。
 195. **已完成**：确认当前数据目录中 11 条源码包记录对应的归档文件均缺失；步骤一现禁选并标记缺失包，按账号权限提供源码包管理页或联系管理员重新上传的提示。开始升级接口区分文件缺失与 MD5 不匹配，提示重新上传并写入不含文件内容/摘要的原因日志；仍拒绝校验失败的归档。更新 `ngxops/upgrade/routes.py`、`ngxops/upgrade/services.py`、升级向导模板/脚本、`tests/test_upgrade_ui.py` 和升级文档。隔离回归 2 passed，JS 语法检查和 `git diff --check` 通过；未修改当前数据库或归档文件，无数据库迁移。
 196. **已完成**：删除源码包和离线模块包时，独立删除事务带入当前操作人及客户端 IP；操作审计动作分别标记“删除源码包”/“删除模块包”，详情包含包 ID、名称、版本和归档文件名。新增升级页回归用例覆盖两类删除及不存在对象不产生审计。更新 `ngxops/upgrade/routes.py`、`ngxops/upgrade/services.py`、`ngxops/audit/service.py`、`tests/test_upgrade_ui.py` 和 `docs/audit.md`；无数据库迁移。
-197. **已完成**：源码包/模块包删除摘要不再记录包 ID；审计页长详情展开时隐藏截断预览，修复预览与全文同时显示造成的重复观感。删除由同一事务的 ORM 审计监听器写入一条记录。
+197. **已完成**：源码包/模块包删除摘要不再记录包 ID；审计页长详情展开时隐藏截断预览，修复预览与全文同时显示造成的重复观感；展开和收起按钮固定在详情区右侧同一位置。删除由同一事务的 ORM 审计监听器写入一条记录。
 198. **已完成**：源码包/模块包成功上传分别写入“上传源码包”/“上传模块包”审计；覆盖上传分别标记为“覆盖源码包”/“覆盖模块包”，记录名称、版本、归档文件名、操作人和客户端 IP。新增回归用例覆盖上传、覆盖、删除摘要和展开行为；无数据库迁移。
-199. Nginx 升级步骤 3 编译参数，第三方模块支持在线/离线，这个在线一般是拉取互联网的，这个超时时间是硬编码吗；
+199. **已完成**：新增系统设置 `upgrade.git_clone_timeout_minutes`，默认 2 分钟，范围 1–10 分钟；在线第三方模块的 `git clone/fetch` 在模块准备时读取设置并换算为秒，移除 1800 秒硬编码，离线包不受影响。沿用系统设置预置补齐机制，无数据库迁移；未启动临时服务或运行功能验证，由用户统一验证。
+200. **已完成**：升级执行进度区仅显示批次号和批次平均进度，移除逐主机状态、阶段、详情跳转和单节点取消控件；进度条补充无障碍数值。更新升级中心模板/脚本及缓存版本。
+201. **已完成**：升级执行加载参数时在 Session 内复制所需标量到不可变 `_UpgradeRunSnapshot`，不再将已关闭 Session 的 `NginxUpgradeRun` 传给后台执行流程；避免 `DetachedInstanceError`。新增隔离数据库回归用例。
+202. **已完成**：任务详情中的 Nginx 编译升级/回滚来源批次，在用户拥有 `upgrade.read` 权限时链接到按批次筛选的升级历史；无权限时显示纯文本。新增任务中心回归用例。
+203. **已完成**：升级首页最近任务表删除无实际作用的操作列，改用固定布局和紧凑列宽；批次、主机名/IP保持单行省略，主机名采用正常字重，状态/进度列间距收窄。更新表格回归检查及 CSS 缓存版本。
+204. **已完成**：升级历史主机名改为正常字重，主机名/IP和批次保持单行省略；创建时间统一按 UTC+8 格式化并输出时区 ISO 值，调整历史表列宽。新增展示回归检查及 CSS 缓存版本。
+205. **已完成**：升级首页最近任务批次取消省略，扩大批次/目标节点列并压缩状态/进度列；首页和历史表设 1040px 最小宽度，窄屏横向滚动。历史目标节点列增宽，主机名/IP保持各自单行省略；升级首页与历史页样式缓存版本更新至 v12。未启动临时服务或进行页面功能验证，由用户统一验证。
+206. **已完成**：任务中心 Nginx 升级/回滚在无结构化结果树时按发布配置的节点结果表展示目标、状态、进度和消息；升级日志沿用绿色终端样式，多目标时提供“发布主机”筛选；筛选选项展示主机名和 IP。更新详情模板/脚本缓存版本；未启动临时服务或进行页面功能验证，由用户统一验证。
+207. **已完成**：任务详情节点执行结果统一为“主机名 / 结果 / 原因”表格；异常优先展示 exception/error/reason 等信息，并从发布节点失败配置中汇总原因。结果区默认显示约 5 行，更多节点可在表格内滚动；原因最多显示两行且可悬停查看全文，表头固定且轮询刷新保留滚动位置。任务详情执行日志统一采用绿色终端样式，不区分任务类型；CSS 缓存版本更新至 v6。未启动临时服务或进行页面功能验证，由用户统一验证。
+```text
+2026-10-14 10:08:20 DEBUG paramiko.transport [chan 0] EOF sent (0)
+2026-10-14 10:08:20 ERROR ngxops.upgrade.services Nginx 升级任务异常 task_id=68 exception_type=DetachedInstanceError exception=Instance <NginxUpgradeRun at 0x22006166c10> is not bound to a Session; attribute refresh operation cannot proceed (Background on this error at: https://sqlalche.me/e/20/bhk3)
+  File "D:\PyCharm\联动优势\works\django-labs\ngxops\ngxops\upgrade\services.py", line 733, in _run_upgrade
+    if run.current_configure_opts and set(parsed["params"]) != set(
+  File "D:\PyCharm\联动优势\works\django-labs\ngxops\venv\lib\site-packages\sqlalchemy\orm\attributes.py", line 569, in __get__
+    return self.impl.get(state, dict_)  # type: ignore[no-any-return]
+  File "D:\PyCharm\联动优势\works\django-labs\ngxops\venv\lib\site-packages\sqlalchemy\orm\attributes.py", line 1096, in get
+    value = self._fire_loader_callables(state, key, passive)
+  File "D:\PyCharm\联动优势\works\django-labs\ngxops\venv\lib\site-packages\sqlalchemy\orm\attributes.py", line 1126, in _fire_loader_callables
+    return state._load_expired(state, passive)
+  File "D:\PyCharm\联动优势\works\django-labs\ngxops\venv\lib\site-packages\sqlalchemy\orm\state.py", line 828, in _load_expired
+    self.manager.expired_attribute_loader(self, toload, passive)
+  File "D:\PyCharm\联动优势\works\django-labs\ngxops\venv\lib\site-packages\sqlalchemy\orm\loading.py", line 1607, in load_scalar_attributes
+    raise orm_exc.DetachedInstanceError(
+```
+208. Nginx 升级“最近升级任务”，批次不要缩写；目标节点主机名和ip不要换行；状态和进度列过宽，可以给批次和目标节点适当留点；
+209. Nginx 升级“升级历史”，目标节点主机名和 ip 不要换行。

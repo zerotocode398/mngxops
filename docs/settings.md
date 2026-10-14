@@ -43,6 +43,7 @@
 | Nginx 升级 | `upgrade.default_work_dir` | `/tmp/nginx-upgrade` | 升级和安装向导的默认远程工作目录 |
 | Nginx 升级 | `upgrade.make_jobs_default` | 4 | 升级和安装向导的默认 make 并行数 |
 | Nginx 升级 | `upgrade.package_max_size_mb` | 20 MB | 源码和第三方模块包上传大小限制；保存后立即生效 |
+| Nginx 升级 | `upgrade.git_clone_timeout_minutes` | 2 分钟 | 在线第三方模块 Git clone/fetch 等待上限；允许 1–10 分钟，保存后对后续模块获取生效 |
 | 安装管理 | `install.default_user` | `root` | 新打开的安装向导默认用户 |
 | 安装管理 | `install.default_group` | `root` | 新打开的安装向导默认组 |
 | 安装管理 | `install.default_prefix` | `/opt/app` | 新打开的安装向导默认安装路径 |

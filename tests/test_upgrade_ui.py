@@ -28,7 +28,7 @@ from ngxops.settings.models import SystemSetting
 from ngxops.settings.service import initialize_defaults
 from ngxops.tasks.models import Task
 from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage, NginxUpgradeRun
-from ngxops.upgrade.services import effective_removed_modules
+from ngxops.upgrade.services import _load_run_snapshot, effective_removed_modules
 
 
 def test_module_removals_apply_only_to_nodes_that_have_the_parameter():
@@ -489,8 +489,99 @@ def test_audit_expanded_detail_hides_its_preview(upgrade_client):
 
     assert response.status_code == 200
     assert 'class="audit-detail-full d-none"' in response.text
+    assert 'class="audit-detail-layout"' in response.text
     assert 'class="audit-detail-preview"' in response.text
-    assert '.audit-detail-preview > span").toggleClass("d-none", !expanded)' in template
+    assert '.audit-detail-preview").toggleClass("d-none", !expanded)' in template
+    stylesheet = (Path.cwd() / "static/css/audit.css").read_text(encoding="utf-8")
+    assert ".audit-detail-layout {" in stylesheet
+    assert "grid-template-columns: minmax(0, 1fr) 1.5rem;" in stylesheet
+
+
+def test_upgrade_run_snapshot_survives_session_close(upgrade_client):
+    """验证升级执行参数在 Session 关闭前复制为普通快照。"""
+    _client, app, _csrf_token, user_id = upgrade_client
+    package_dir = app.state.settings.upgrade_package_dir
+    package_dir.mkdir(parents=True, exist_ok=True)
+    package_content = b"nginx-source"
+    package_path = package_dir / "nginx-snapshot.tar.gz"
+    package_path.write_bytes(package_content)
+
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            credential = Credential(
+                name="snapshot-credential",
+                username="deploy",
+                password=encrypt_secret(
+                    app.state.credential_encryption_key, "snapshot-password"
+                ),
+                created_by=user_id,
+            )
+            package = NginxSourcePackage(
+                name="snapshot-source",
+                version="1.28.0",
+                file_name=package_path.name,
+                file_size=len(package_content),
+                file_md5=hashlib.md5(package_content).hexdigest(),
+                created_by=user_id,
+            )
+            task = Task(
+                operation_type="nginx_upgrade",
+                status="pending",
+                source_batch="UG-SNAPSHOT-0001",
+                trigger_user_id=user_id,
+            )
+            session.add_all((credential, package, task))
+            session.flush()
+            node = Node(
+                hostname="snapshot-node",
+                ip="192.0.2.251",
+                port=22,
+                credential_id=credential.id,
+                environment="test",
+                nginx_version="1.26.1",
+                nginx_path="/usr/sbin/nginx",
+                nginx_available=True,
+                status="online",
+                created_by=user_id,
+            )
+            session.add(node)
+            session.flush()
+            session.add(
+                NginxUpgradeRun(
+                    task_id=task.id,
+                    node_id=node.id,
+                    source_package_id=package.id,
+                    batch_number="UG-SNAPSHOT-0001",
+                    node_hostname=node.hostname,
+                    node_ip=node.ip,
+                    source_package_name=package.name,
+                    target_version=package.version,
+                    upgrade_mode="upgrade",
+                    remote_work_dir="/tmp/nginx-upgrade",
+                    make_jobs=2,
+                    current_version="1.26.1",
+                    current_configure_opts="--prefix=/usr/local/nginx",
+                    current_binary_path="/usr/local/nginx/sbin/nginx",
+                    target_configure_opts="--prefix=/usr/local/nginx",
+                    target_prefix="/usr/local/nginx",
+                    third_party_json="[]",
+                )
+            )
+            session.flush()
+            task_id = task.id
+
+    run_snapshot, target, package_snapshot = _load_run_snapshot(
+        app.state.database.session_factory,
+        app.state.credential_encryption_key,
+        package_dir,
+        task_id,
+    )
+
+    assert run_snapshot.current_configure_opts == "--prefix=/usr/local/nginx"
+    assert run_snapshot.current_binary_path == "/usr/local/nginx/sbin/nginx"
+    assert run_snapshot.target_version == "1.28.0"
+    assert target["hostname"] == "snapshot-node"
+    assert package_snapshot["local_path"] == str(package_path)
 
 
 def test_upgrade_center_summary_uses_nonbold_hostname_and_confirm_label(upgrade_client):
@@ -507,6 +598,28 @@ def test_upgrade_center_summary_uses_nonbold_hostname_and_confirm_label(upgrade_
     assert "统一目标 configure 参数" not in response.text
     assert 'summaryGrid.className = "upgrade-summary-grid"' in script
     assert 'row.querySelector(".upgrade-node-hostname").textContent' in script
+
+
+def test_upgrade_center_progress_displays_batch_and_overall_progress(upgrade_client):
+    """验证升级进度区仅保留批次号和整体进度。"""
+    client, _app, _csrf_token, _user_id = upgrade_client
+    response = client.get("/upgrade/center/")
+    script = (Path.cwd() / "static/js/upgrade-center.js").read_text(
+        encoding="utf-8"
+    )
+    start = script.index("function renderBatchTasks")
+    end = script.index("if (center)", start)
+    render_function = script[start:end]
+
+    assert response.status_code == 200
+    assert 'id="batchNumberLabel"' in response.text
+    assert 'id="batchProgressBar"' in response.text
+    assert 'aria-label="批次升级进度"' in response.text
+    assert 'id="batchTaskRows"' not in response.text
+    assert "target_hostnames" not in render_function
+    assert '"/upgrade/tasks/"' not in render_function
+    assert "cancelUpgrade" not in render_function
+    assert 'setAttribute("aria-valuenow", String(average))' in render_function
 
 
 def test_module_search_filters_on_enter_and_query_tag_removal():
@@ -627,6 +740,7 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
                     make_jobs=2,
                     current_version="1.26.1",
                     backup_binary_path="/usr/sbin/nginx.bak",
+                    created_at=datetime(2026, 10, 12, 3, 4, 0),
                 )
             )
 
@@ -657,6 +771,13 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     )
     assert history.status_code == 200
     assert "edge-prod" in history.text
+    assert (
+        '<time datetime="2026-10-12T11:04:00+08:00">'
+        "2026-10-12 11:04</time>"
+    ) in history.text
+    assert 'class="upgrade-history-node-name" title="edge-prod"' in history.text
+    assert "<strong>edge-prod</strong>" not in history.text
+    assert "upgrade-history-col-time" in history.text
     assert 'data-query-tags' in history.text
     assert 'id="upgradeStatus"' in history.text
     assert "筛选</button>" not in history.text
@@ -782,6 +903,22 @@ def test_upgrade_home_shows_four_stats_and_recent_task_table(upgrade_client):
     assert 'href="/upgrade/history/"' in response.text
     assert "最近升级任务" in response.text
     assert "UG-HOME-PENDING" in response.text
+    assert 'class="upgrade-overview-node-name" title="edge-overview"' in response.text
+    assert "<strong>edge-overview</strong>" not in response.text
+    overview_table = response.text.split('id="upgradeRecentHeading"', 1)[1].split(
+        "</section>", 1
+    )[0]
+    assert "upgrade-overview-col-time" in overview_table
+    assert 'class="upgrade-overview-col-detail' not in overview_table
+    assert overview_table.split("</thead>", 1)[0].count('<th scope="col"') == 7
+    upgrade_css = (Path.cwd() / "static/css/upgrade.css").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        ".upgrade-overview-table table { width: 100%; table-layout: fixed; }"
+        in upgrade_css
+    )
+    assert ".upgrade-overview-table table { min-width: 920px; }" not in upgrade_css
     stats = dict(
         re.findall(
             r'data-upgrade-stat="([^"]+)">([^<]+)</span>', response.text

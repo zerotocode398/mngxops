@@ -1005,9 +1005,19 @@ def upgrade_history(
             )
         )
     result = _page_context(request, session, query, page, per_page)
+    history_runs = result.pop("items")
     result.update(
         {
-            "runs": result.pop("items"),
+            "runs": [
+                {
+                    "run": run,
+                    "created_at_display": format_task_datetime(
+                        run.created_at, include_seconds=False
+                    ),
+                    "created_at_iso": format_task_datetime_iso(run.created_at),
+                }
+                for run in history_runs
+            ],
             "search": search,
             "status_filter": status,
             "status_choices": list(_STATUS_LABELS.items()),

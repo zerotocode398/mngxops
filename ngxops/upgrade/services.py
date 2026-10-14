@@ -14,6 +14,7 @@ import threading
 import uuid
 import zipfile
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -30,6 +31,7 @@ from ngxops.database.session import session_scope
 from ngxops.logging_setup import log_exception
 from ngxops.nodes.models import Node
 from ngxops.releases.services import _reload_nginx
+from ngxops.settings.models import preset_by_key
 from ngxops.settings.service import read_setting
 from ngxops.tasks.executor import TaskContext, TaskOutcome
 from ngxops.tasks.models import Task
@@ -43,6 +45,21 @@ _VERSION_FROM_NAME = re.compile(r"nginx-([0-9]+(?:\.[0-9]+){1,3})", re.IGNORECAS
 _VERSION_FROM_OUTPUT = re.compile(r"nginx version:\s*nginx/([0-9]+(?:\.[0-9]+){1,3})")
 _VALID_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$")
 _VALID_GIT_URL = re.compile(r"^(?:https?://|ssh://|git://|[A-Za-z0-9_.-]+@)[^\s]+$")
+
+
+@dataclass(frozen=True)
+class _UpgradeRunSnapshot:
+    """保存后台升级执行所需的非 ORM 参数快照。"""
+
+    remote_work_dir: str
+    current_configure_opts: str
+    third_party_json: str
+    current_binary_path: str
+    target_configure_opts: str
+    make_jobs: int
+    upgrade_mode: str
+    target_prefix: str
+    target_version: str
 _MAX_ARCHIVE_MEMBERS = 50000
 _MAX_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024
 _BATCH_LOCK = threading.Lock()
@@ -939,7 +956,18 @@ def _load_run_snapshot(session_factory, encryption_key: bytes, package_dir: Path
             raise UpgradeTaskError("Nginx 源码包文件缺失")
         if _file_md5(package_path) != package.file_md5:
             raise UpgradeTaskError("Nginx 源码包校验值已变化")
-        return run, {
+        run_snapshot = _UpgradeRunSnapshot(
+            remote_work_dir=run.remote_work_dir,
+            current_configure_opts=run.current_configure_opts,
+            third_party_json=run.third_party_json,
+            current_binary_path=run.current_binary_path,
+            target_configure_opts=run.target_configure_opts,
+            make_jobs=run.make_jobs,
+            upgrade_mode=run.upgrade_mode,
+            target_prefix=run.target_prefix,
+            target_version=run.target_version,
+        )
+        return run_snapshot, {
             "id": node.id,
             "hostname": node.hostname,
             "ip": node.ip,
@@ -1054,6 +1082,10 @@ def _prepare_module(client, item: dict, index: int, work_dir: str, package_dir: 
     modules_dir = posixpath.dirname(module_path)
     _require_remote_success(client, "mkdir -p -- {}".format(shlex.quote(modules_dir)), "创建模块目录失败")
     if item["source"] == "git":
+        setting_key = "upgrade.git_clone_timeout_minutes"
+        default_minutes = int(preset_by_key()[setting_key]["value"])
+        with session_scope(session_factory) as session:
+            timeout_minutes = read_setting(session, setting_key, default_minutes)
         git_url = item["git_url"]
         branch = item["branch"]
         if not _remote_is_dir(client, module_path):
@@ -1064,7 +1096,9 @@ def _prepare_module(client, item: dict, index: int, work_dir: str, package_dir: 
             command = "git -C {} fetch --depth 1 origin {} && git -C {} checkout -f FETCH_HEAD".format(
                 shlex.quote(module_path), shlex.quote(branch), shlex.quote(module_path)
             )
-        status, output = _run_remote_command(client, command, timeout=1800, context=context)
+        status, output = _run_remote_command(
+            client, command, timeout=timeout_minutes * 60, context=context
+        )
         _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError(

@@ -9,10 +9,19 @@
     overflow-wrap: anywhere;
 }
 
-.audit-detail-preview {
-    display: flex;
-    align-items: flex-start;
+.audit-detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 1.5rem;
+    align-items: start;
     gap: 0.25rem;
+}
+
+.audit-detail-content {
+    min-width: 0;
+}
+
+.audit-detail-preview {
+    min-width: 0;
 }
 
 .audit-detail-preview > span {
@@ -20,8 +29,13 @@
 }
 
 .audit-detail-toggle {
-    flex: 0 0 auto;
-    margin-left: auto;
+    display: inline-flex;
+    width: 1.5rem;
+    height: 1.5rem;
+    align-items: center;
+    justify-content: center;
+    justify-self: end;
+    margin: 0;
     line-height: 1;
 }
 

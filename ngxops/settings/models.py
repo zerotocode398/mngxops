@@ -59,6 +59,7 @@ PRESET_SETTINGS = (
     {"key": "upgrade.default_work_dir", "group": "Nginx升级", "type": "string", "value": "/tmp/nginx-upgrade", "label": "默认编译工作目录", "description": "升级与安装向导的远程编译目录默认值。", "sort_order": 80, "unit": ""},
     {"key": "upgrade.make_jobs_default", "group": "Nginx升级", "type": "integer", "value": "4", "label": "默认并行编译数 (-j)", "description": "升级与安装向导的 make 并行编译数默认值。", "sort_order": 81, "min_value": 1, "max_value": 32, "unit": "核"},
     {"key": "upgrade.package_max_size_mb", "group": "Nginx升级", "type": "integer", "value": "20", "label": "源码包/第三方模块包上传限制", "description": "源码与模块归档共用的上传上限；保存后立即生效。", "sort_order": 82, "min_value": 1, "max_value": 2048, "unit": "MB"},
+    {"key": "upgrade.git_clone_timeout_minutes", "group": "Nginx升级", "type": "integer", "value": "2", "label": "Git clone 超时", "description": "在线第三方模块 clone/fetch 的等待上限；保存后对后续模块获取生效。", "sort_order": 83, "min_value": 1, "max_value": 10, "unit": "分钟"},
     {"key": "install.default_user", "group": "安装管理", "type": "string", "value": "root", "label": "默认用户 (--user)", "description": "安装向导用户参数的默认值；向导内可改。", "sort_order": 90, "unit": ""},
     {"key": "install.default_group", "group": "安装管理", "type": "string", "value": "root", "label": "默认用户组 (--group)", "description": "安装向导用户组参数的默认值；向导内可改。", "sort_order": 91, "unit": ""},
     {"key": "install.default_prefix", "group": "安装管理", "type": "string", "value": "/opt/app", "label": "默认安装路径 (--prefix)", "description": "安装向导 prefix 参数的默认值；向导内可改。", "sort_order": 92, "unit": ""},

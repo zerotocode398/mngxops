@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/dashboard.css') }}">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=10">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=12">
 {% endblock %}
 
 {% block content %}
@@ -77,17 +77,16 @@
             {% endif %}
         </div>
         <div class="table-responsive dashboard-recent-table upgrade-overview-table">
-            <table class="table table-sm table-hover align-middle mb-0">
+            <table class="table table-sm table-hover align-middle mb-0 upgrade-overview-grid">
                 <thead class="table-light">
                     <tr>
-                        <th scope="col">批次</th>
-                        <th scope="col">目标节点</th>
-                        <th scope="col">当前版本 → 目标版本</th>
-                        <th scope="col">状态</th>
-                        <th scope="col">进度</th>
-                        <th scope="col">操作人</th>
-                        <th scope="col">时间</th>
-                        <th scope="col" class="text-end">操作</th>
+                        <th scope="col" class="upgrade-overview-col-batch">批次</th>
+                        <th scope="col" class="upgrade-overview-col-node">目标节点</th>
+                        <th scope="col" class="upgrade-overview-col-version">当前版本 → 目标版本</th>
+                        <th scope="col" class="upgrade-overview-col-status">状态</th>
+                        <th scope="col" class="upgrade-overview-col-progress">进度</th>
+                        <th scope="col" class="upgrade-overview-col-operator">操作人</th>
+                        <th scope="col" class="upgrade-overview-col-time">时间</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -97,32 +96,27 @@
                     <tr>
                         <td>
                             {% if can_read %}
-                            <a class="text-decoration-none" href="/upgrade/history/?search={{ run.batch_number|urlencode }}">
-                                <code class="task-batch-code">{{ run.batch_number }}</code>
+                            <a class="text-decoration-none d-block" href="/upgrade/history/?search={{ run.batch_number|urlencode }}">
+                                <code class="task-batch-code upgrade-overview-batch">{{ run.batch_number }}</code>
                             </a>
                             {% else %}
-                            <code class="task-batch-code">{{ run.batch_number }}</code>
+                            <code class="task-batch-code upgrade-overview-batch">{{ run.batch_number }}</code>
                             {% endif %}
                         </td>
-                        <td><strong>{{ run.node_hostname }}</strong><small class="text-muted d-block">{{ run.node_ip }}</small></td>
+                        <td><span class="upgrade-overview-node-name" title="{{ run.node_hostname }}">{{ run.node_hostname }}</span><small class="text-muted upgrade-overview-node-ip" title="{{ run.node_ip }}">{{ run.node_ip }}</small></td>
                         <td class="text-nowrap"><code>{{ row.current_version }}</code><span class="text-muted mx-1" aria-hidden="true">→</span><code>{{ run.target_version }}</code></td>
-                        <td><span class="badge text-bg-{{ row.status_class }}">{{ row.status_label }}</span></td>
-                        <td>
+                        <td class="upgrade-overview-status"><span class="badge text-bg-{{ row.status_class }}">{{ row.status_label }}</span></td>
+                        <td class="upgrade-overview-progress-cell">
                             <div class="progress upgrade-overview-progress" aria-label="進度 {{ task.progress }}%">
                                 <div class="progress-bar{% if task.status == 'success' %} bg-success{% elif task.status == 'failed' %} bg-danger{% endif %}" role="progressbar" style="width: {{ task.progress }}%" aria-valuenow="{{ task.progress }}" aria-valuemin="0" aria-valuemax="100"></div>
                             </div>
                             <small class="text-muted">{{ task.progress }}%</small>
                         </td>
-                        <td class="text-truncate">{{ row.operator }}</td>
+                        <td class="text-truncate" title="{{ row.operator }}">{{ row.operator }}</td>
                         <td class="text-nowrap"><time datetime="{{ row.created_at_iso }}">{{ row.created_at_display }}</time></td>
-                        <td class="text-end">
-                            <a class="btn btn-outline-secondary btn-sm" href="{{ '/upgrade/tasks/' ~ task.id ~ '/' if can_read else '/tasks/' ~ task.id ~ '/' }}" title="查看详情" aria-label="查看升级任务详情">
-                                <i class="bi bi-file-text" aria-hidden="true"></i>
-                            </a>
-                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8">{% set message = "暂无升级记录" %}{% include "includes/empty_state.html" %}</td></tr>
+                    <tr><td colspan="7">{% set message = "暂无升级记录" %}{% include "includes/empty_state.html" %}</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

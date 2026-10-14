@@ -177,6 +177,30 @@ def test_task_center_search_paging_and_task_detail(task_center_client):
     assert '<a href="/releases/?search=release-261002-0001"><code>' not in detail.text
 
 
+def test_upgrade_task_source_batch_links_to_upgrade_history(task_center_client):
+    """升级任务来源批次链接到筛选后的升级历史。"""
+    client, app, _token, admin_id, _operator_id, *_rest = task_center_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task_id = _create_task(
+                session,
+                "nginx_upgrade",
+                admin_id,
+                batch="UG-261014-0001",
+                hosts="upgrade-node",
+                ips="192.0.2.51",
+            )
+
+    detail = client.get("/tasks/{}/".format(task_id))
+
+    assert detail.status_code == 200
+    assert (
+        'href="/upgrade/history/?search=UG-261014-0001" target="_blank" '
+        'rel="noopener"><code class="task-batch-code">UG-261014-0001</code></a>'
+    ) in detail.text
+    assert 'href="/tasks/?search=UG-261014-0001"' not in detail.text
+
+
 def test_dashboard_and_task_center_share_batch_code_style(task_center_client):
     """首页与任务中心批次号使用共享的字号和色彩样式。"""
     client, _app, _token, _admin, _operator, _release_id, _publisher, _own, _other = task_center_client

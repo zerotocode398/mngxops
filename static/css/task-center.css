@@ -110,62 +110,60 @@
     background: #fbfcfd;
 }
 
+.task-node-result-scroll {
+    max-height: 270px;
+    overflow: auto;
+}
+
 .task-node-result-table {
+    width: 100%;
+    min-width: 720px;
     table-layout: fixed;
 }
 
-.task-node-result-host {
-    width: 28%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.task-node-result-table td:nth-child(2) {
-    width: 22%;
-    white-space: nowrap;
-}
-
-.task-node-result-message {
-    width: 50%;
-    overflow: visible;
-    white-space: nowrap;
-}
-
-.task-node-result-details {
-    position: relative;
-    max-width: 100%;
-}
-
-.task-node-result-preview {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    cursor: pointer;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.task-node-result-details[open] .task-node-result-full {
-    display: block;
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
+.task-node-result-table thead th {
+    position: sticky;
+    top: 0;
     z-index: 1;
-    width: min(560px, 82vw);
-    max-height: 60vh;
-    overflow: auto;
-    padding: 6px 8px;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    background: #fff;
-    text-align: left;
-    white-space: normal;
-    overflow-wrap: anywhere;
+    background: #f8f9fa;
 }
 
-.task-node-result-full .task-tree-fields {
-    grid-template-columns: minmax(90px, 130px) minmax(0, 1fr);
+.task-node-result-table tbody tr { height: 46px; }
+
+.task-node-result-table th:first-child,
+.task-node-result-table td:first-child { width: 30%; }
+
+.task-node-result-host {
+    width: 30%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+.task-node-result-host small { line-height: 1.2; }
+
+.task-node-result-table th:nth-child(2),
+.task-node-result-table td:nth-child(2) {
+    width: 18%;
+    white-space: nowrap;
+}
+
+.task-node-result-table th:nth-child(3),
+.task-node-result-table td:nth-child(3) { width: 52%; }
+
+.task-node-result-reason {
+    width: 52%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.task-node-result-reason span {
+    display: -webkit-box;
+    overflow: hidden;
+    line-height: 1.2;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 #taskTargetOverflow[hidden] {
@@ -295,7 +293,10 @@
         gap: 0;
     }
 
-    .task-node-result-host { width: 34%; }
-    .task-node-result-table td:nth-child(2) { width: 26%; }
-    .task-node-result-message { width: 40%; }
+    .task-node-result-table th:first-child,
+    .task-node-result-table td:first-child { width: 34%; }
+    .task-node-result-table th:nth-child(2),
+    .task-node-result-table td:nth-child(2) { width: 20%; }
+    .task-node-result-table th:nth-child(3),
+    .task-node-result-table td:nth-child(3) { width: 46%; }
 }

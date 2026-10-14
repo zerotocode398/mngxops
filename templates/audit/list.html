@@ -3,7 +3,7 @@
 {% block title %}操作日志 - ngxops{% endblock %}
 {% block page_title %}操作日志{% endblock %}
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/audit.css') }}?v=2">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/audit.css') }}?v=3">
 {% endblock %}
 
 {% block content %}
@@ -76,8 +76,11 @@
                     <td class="text-nowrap">{{ row.log.ip or "-" }}</td>
                     <td>{% if row.log.result == "success" %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
                     <td class="audit-detail-cell">
-                        <div class="audit-detail-preview">
-                            <span>{% if row.task_link_in_detail %}创建任务：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{{ row.task_detail_preview_suffix }}{% if row.log.detail|length > 80 %}...{% endif %}{% else %}{{ row.log.detail[:80] }}{% if row.log.detail|length > 80 %}...{% endif %}{% endif %}</span>
+                        <div class="audit-detail-layout">
+                            <div class="audit-detail-content">
+                                <div class="audit-detail-preview"><span>{% if row.task_link_in_detail %}创建任务：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{{ row.task_detail_preview_suffix }}{% if row.log.detail|length > 80 %}...{% endif %}{% else %}{{ row.log.detail[:80] }}{% if row.log.detail|length > 80 %}...{% endif %}{% endif %}</span></div>
+                                {% if row.log.detail|length > 80 %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">{% if row.task_link_in_detail %}创建任务：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{{ row.task_detail_suffix }}{% else %}{{ row.log.detail }}{% endif %}</div>{% endif %}
+                            </div>
                             {% if row.log.detail|length > 80 %}
                             <button class="btn btn-link btn-sm p-0 audit-detail-toggle" type="button"
                                     aria-label="展开详情" title="展开详情" aria-expanded="false"
@@ -86,7 +89,6 @@
                             </button>
                             {% endif %}
                         </div>
-                        {% if row.log.detail|length > 80 %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">{% if row.task_link_in_detail %}创建任务：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{{ row.task_detail_suffix }}{% else %}{{ row.log.detail }}{% endif %}</div>{% endif %}
                         {% if row.log.source_batch %}<div class="small text-muted audit-detail-meta">批次：{{ row.log.source_batch }}</div>{% endif %}
                         {% if row.log.task_id and not row.task_link_in_detail %}<span class="small audit-detail-meta">任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}<span>#{{ row.log.task_id }}</span>{% endif %}</span>{% endif %}
                     </td>
@@ -121,7 +123,7 @@ $(function () {
         var $cell = $button.closest("td");
         var expanded = $button.attr("aria-expanded") === "true";
         $cell.find(".audit-detail-full").toggleClass("d-none", expanded);
-        $cell.find(".audit-detail-preview > span").toggleClass("d-none", !expanded);
+        $cell.find(".audit-detail-preview").toggleClass("d-none", !expanded);
         $button.attr("aria-expanded", String(!expanded));
         $button.attr("aria-label", expanded ? "展开详情" : "收起详情");
         $button.attr("title", expanded ? "展开详情" : "收起详情");

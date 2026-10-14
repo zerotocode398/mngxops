@@ -21,7 +21,7 @@
 3. 多节点 configure 参数不一致时展示风险弹窗，列出主机名、安装目录、实际二进制路径和版本；可展开查看完整识别信息与节点参数，并选择返回改选或确认继续。确认后再选择参考节点。参考节点当前参数按多行 `./configure` 命令显示。通过双栏弹窗选择要增加或移除的官方 configure 参数；搜索支持多个以逗号分隔的 AND 条件，并提示可在另一栏操作的匹配项；模块搜索在按 Enter 后应用，删除已提交的查询标签时自动重新筛选。步骤摘要按参考节点基线以删除线/增添标记展示具体参数变化，目标节点仍逐台计算；移除项只作用于该节点基线中存在的参数。还可添加最多 20 项在线 Git 或平台离线包模块。参数使用 shell 引号解析和序列化。平滑升级保留节点原 prefix；切换路径升级由服务端将 `--prefix` 和显式 `--sbin-path` 改写到指定安装目录。
 4. 检查目标清单后创建按节点分开的 `nginx_upgrade` 任务，共用 `UG-YYMMDD-XXXX` 批次号；通过统一任务 API 轮询实际进度、阶段、日志和结果。
 
-每个任务连接一个节点并复用同一 SSH 会话：检查 gcc/make，上传并校验源码包，解压并准备第三方模块，备份旧二进制，执行 configure/make/make install、`nginx -t`、reload/start，最后读取版本并更新节点资产。Git 获取失败会提示改用离线包。任务异常消息只保留受控摘要和有限命令输出，不记录 SSH 凭证。
+每个任务连接一个节点并复用同一 SSH 会话：检查 gcc/make，上传并校验源码包，解压并准备第三方模块，备份旧二进制，执行 configure/make/make install、`nginx -t`、reload/start，最后读取版本并更新节点资产。在线第三方模块通过目标节点访问 Git，clone/fetch 超时由 `upgrade.git_clone_timeout_minutes` 设置，默认 2 分钟、允许 1–10 分钟；Git 获取失败会提示改用离线包。任务异常消息只保留受控摘要和有限命令输出，不记录 SSH 凭证。
 
 取消仅允许 pending、读取配置和源码包上传阶段。执行器对远程命令使用检查点和连接关闭回调；已发出的远程编译命令不保证立即停止。失败任务若已有旧二进制备份且尚未回滚，可创建 `nginx_rollback` 任务；成功回滚后原记录保存回滚时间。
 
@@ -47,4 +47,4 @@
 - 执行器在单个 Uvicorn worker 的进程内运行；多 worker 部署前需要持久化队列或外部任务执行器。
 - configure 差异按参数 token 精确比较，不把 `=dynamic` 与静态模块视为等价。
 - 第三方在线 Git 仓库由目标节点直接访问；HTTP(S) URL 不允许嵌入账号或密码，SSH 格式 URL 仍按 Git 的远端认证配置工作。
-- `NGXOPS_UPGRADE_PACKAGE_MAX_SIZE_MB` 仅在 v14 系统设置表不可用时作为兼容默认值；正常运行时由 `upgrade.package_max_size_mb` 和 `node.batch_max_count` 控制上传大小与批量节点数，见 [settings.md](settings.md)。
+- `NGXOPS_UPGRADE_PACKAGE_MAX_SIZE_MB` 仅在 v14 系统设置表不可用时作为兼容默认值；正常运行时由 `upgrade.package_max_size_mb` 和 `node.batch_max_count` 控制上传大小与批量节点数，见 [settings.md](settings.md)。在线模块 Git 获取超时由 `upgrade.git_clone_timeout_minutes` 控制。

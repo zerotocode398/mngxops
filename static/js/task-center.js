@@ -28,11 +28,13 @@
         root.querySelectorAll("[data-task-progress-text]").forEach(function (label) {
             label.textContent = value + "%";
         });
+        root.dataset.taskProgress = String(value);
         root.querySelectorAll(".task-progress[role='progressbar'], .task-progress-track[role='progressbar']")
             .forEach(function (bar) { bar.setAttribute("aria-valuenow", String(value)); });
     }
 
     function updateStatus(root, status) {
+        root.dataset.taskStatus = status;
         root.querySelectorAll("[data-task-status]").forEach(function (current) {
             current.replaceWith(statusBadge(status));
         });
@@ -121,6 +123,9 @@
         if (result.nginx_available === false) return {label: "未检测到 Nginx", style: "bg-warning text-dark"};
         if (result.nginx_available === true) return {label: "SSH / Nginx 正常", style: "bg-success"};
         if (result.ssh_success === true) return {label: "SSH 正常", style: "bg-success"};
+        if (result.status === "pending") return {label: "等待中", style: "bg-secondary"};
+        if (result.status === "running") return {label: "执行中", style: "bg-info text-dark"};
+        if (result.status === "cancelled") return {label: "已取消", style: "bg-warning text-dark"};
         if (result.success === true || result.status === "success" || result.status === "online") {
             return {label: result.status === "online" ? "在线" : "成功", style: "bg-success"};
         }
@@ -130,11 +135,59 @@
         return {label: result.status || "完成", style: "bg-secondary"};
     }
 
+    function resultText(value) {
+        if (value === null || value === undefined) return "";
+        if (typeof value === "string") return value.trim();
+        if (Array.isArray(value)) {
+            return value.map(resultText).filter(Boolean).join("；");
+        }
+        if (typeof value === "object") {
+            return Object.keys(value).length ? JSON.stringify(value) : "";
+        }
+        return String(value);
+    }
+
+    function nodeResultReason(result) {
+        var reason = "";
+        ["exception", "error", "errors", "reason", "message", "detail", "action"]
+            .some(function (key) {
+                reason = resultText(result[key]);
+                return Boolean(reason);
+            });
+        if (reason) return reason;
+        if (Array.isArray(result.bindings) && result.bindings.length) {
+            var failed = result.bindings.filter(function (binding) {
+                return binding && binding.status === "failed";
+            });
+            var items = failed.length ? failed : result.bindings;
+            var messages = items.map(function (binding) {
+                var message = resultText(
+                    binding.error || binding.exception || binding.reason ||
+                    binding.message || binding.detail
+                );
+                if (!message && binding.status === "failed") message = "执行失败";
+                if (!message) return "";
+                var name = binding.config_name || binding.remote_path || "";
+                return name ? name + "：" + message : message;
+            }).filter(Boolean);
+            if (messages.length) {
+                var visible = messages.slice(0, 5).join("；");
+                return messages.length > 5
+                    ? visible + "；另有 " + (messages.length - 5) + " 项"
+                    : visible;
+            }
+        }
+        if (result.status === "failed" || result.success === false) return "执行失败";
+        if (result.status === "cancelled") return "任务已取消";
+        if (result.status === "running") return "正在执行";
+        if (result.status === "pending") return "等待执行";
+        return "-";
+    }
+
     function renderNodeResults(root, nodes) {
-        var expandedResults = Object.create(null);
-        root.querySelectorAll(".task-node-result-details[open]").forEach(function (details) {
-            if (details.dataset.resultKey) expandedResults[details.dataset.resultKey] = true;
-        });
+        var previousScroll = root.querySelector(".task-node-result-scroll");
+        var scrollTop = previousScroll ? previousScroll.scrollTop : 0;
+        var scrollLeft = previousScroll ? previousScroll.scrollLeft : 0;
         root.replaceChildren();
         if (!nodes.length) {
             var empty = document.createElement("p");
@@ -143,8 +196,20 @@
             root.appendChild(empty);
             return;
         }
+        var scroll = document.createElement("div");
+        scroll.className = "task-node-result-scroll";
         var table = document.createElement("table");
         table.className = "table table-sm align-middle mb-0 task-node-result-table";
+        var head = document.createElement("thead");
+        head.className = "table-light";
+        var headerRow = document.createElement("tr");
+        ["主机名", "结果", "原因"].forEach(function (label) {
+            var cell = document.createElement("th");
+            cell.scope = "col";
+            cell.textContent = label;
+            headerRow.appendChild(cell);
+        });
+        head.appendChild(headerRow);
         var body = document.createElement("tbody");
         nodes.slice().sort(function (left, right) {
             return Number(left.ssh_success === true) - Number(right.ssh_success === true);
@@ -167,30 +232,21 @@
             badge.className = "badge " + status.style;
             badge.textContent = status.label;
             statusCell.appendChild(badge);
-            var messageCell = document.createElement("td");
-            messageCell.className = "task-node-result-message";
-            var message = result.message || result.detail || result.action || "-";
-            if (typeof message !== "string") message = JSON.stringify(message);
-            var details = document.createElement("details");
-            details.className = "task-node-result-details";
-            details.dataset.resultKey = String(
-                result.node_id || result.hostname || result.ip || index
-            );
-            details.open = Boolean(expandedResults[details.dataset.resultKey]);
-            var summary = document.createElement("summary");
-            summary.className = "task-node-result-preview";
-            summary.title = message;
-            summary.textContent = message.length > 80 ? message.slice(0, 77) + "..." : message;
-            var fullResult = document.createElement("div");
-            fullResult.className = "task-node-result-full";
-            fullResult.appendChild(resultValue(result, "", false));
-            details.append(summary, fullResult);
-            messageCell.appendChild(details);
-            row.append(nodeCell, statusCell, messageCell);
+            var reasonCell = document.createElement("td");
+            reasonCell.className = "task-node-result-reason";
+            var reason = nodeResultReason(result);
+            var reasonText = document.createElement("span");
+            reasonText.textContent = reason;
+            reasonText.title = reason;
+            reasonCell.appendChild(reasonText);
+            row.append(nodeCell, statusCell, reasonCell);
             body.appendChild(row);
         });
-        table.appendChild(body);
-        root.appendChild(table);
+        table.append(head, body);
+        scroll.appendChild(table);
+        root.appendChild(scroll);
+        scroll.scrollTop = scrollTop;
+        scroll.scrollLeft = scrollLeft;
     }
 
     function renderTaskResult(root, value, expandAll) {
@@ -204,6 +260,26 @@
             return;
         }
         renderResult(root, value, expandAll);
+    }
+
+    function upgradeResultTree(status, progress, message) {
+        var nodes = logTargetMap.map(function (target) {
+            return {
+                hostname: target.hostname,
+                ip: target.ip,
+                status: status,
+                progress: progress,
+                message: message || "等待任务结果"
+            };
+        });
+        return {
+            summary: {
+                success: status === "success" ? nodes.length : 0,
+                failed: status === "failed" ? nodes.length : 0,
+                total: nodes.length
+            },
+            nodes: nodes
+        };
     }
 
     function initializeTargetToggle() {
@@ -401,7 +477,8 @@
         var active = detail.getAttribute("data-task-active") === "true";
         var isConfigSync = detail.getAttribute("data-is-config-sync") === "true";
         var isReleaseTask = detail.getAttribute("data-is-release-type") === "true";
-        var isHostScopedLogTask = isConfigSync || isReleaseTask;
+        var isUpgradeTask = detail.getAttribute("data-is-upgrade-type") === "true";
+        var isHostScopedLogTask = isConfigSync || isReleaseTask || isUpgradeTask;
         var resultElement = document.getElementById("taskResultData");
         var labelsElement = document.getElementById("taskResultLabels");
         var logTargetsElement = document.getElementById("taskLogTargets");
@@ -409,6 +486,14 @@
         try { initialResult = JSON.parse(resultElement.textContent); } catch (error) {}
         try { fieldLabels = JSON.parse(labelsElement.textContent); } catch (error) {}
         try { logTargetMap = JSON.parse(logTargetsElement.textContent); } catch (error) {}
+        if (isUpgradeTask && (initialResult === null || initialResult === undefined)) {
+            var initialDetail = detail.querySelector("[data-task-detail]");
+            initialResult = upgradeResultTree(
+                detail.dataset.taskStatus,
+                Number(detail.dataset.taskProgress) || 0,
+                initialDetail ? initialDetail.textContent : ""
+            );
+        }
         logList.querySelectorAll(".task-log-row").forEach(function (row) {
             var message = row.querySelector(".task-log-message");
             message.textContent = formatLogMessage(message.textContent);
@@ -500,13 +585,19 @@
                 if (loadMoreLogs) {
                     loadMoreLogs.hidden = !payload.has_more_logs;
                 }
-                if (payload.result_tree !== null && payload.result_tree !== undefined) {
+                var resultTree = payload.result_tree;
+                if (isUpgradeTask && (resultTree === null || resultTree === undefined)) {
+                    resultTree = upgradeResultTree(
+                        payload.status, payload.progress, payload.detail
+                    );
+                }
+                if (resultTree !== null && resultTree !== undefined) {
                     renderTaskResult(
                         resultRoot,
-                        payload.result_tree,
+                        resultTree,
                         isConfigSync
                     );
-                    renderSummary(summaryRoot, payload.result_tree.summary);
+                    renderSummary(summaryRoot, resultTree.summary);
                 }
                 if (terminalStatuses.indexOf(payload.status) >= 0) {
                     active = false;

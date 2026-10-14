@@ -1434,12 +1434,8 @@
         document.getElementById("batchProgressBadge").classList.remove("d-none");
         document.getElementById("batchNumberLabel").textContent = "批次 " + batchNumber;
         var states = {};
-        taskIds.forEach(function (id) { states[id] = { after: 0, status: "pending", progress: 0, detail: "等待执行" }; });
-        notify(message || ("升级任务已创建，批次 " + batchNumber), "success", {
-            href: "/tasks/" + taskIds[0] + "/",
-            label: "查看任务详情",
-            target: "_blank"
-        });
+        taskIds.forEach(function (id) { states[id] = { after: 0, status: "pending", progress: 0 }; });
+        notify(message || ("升级任务已创建，批次 " + batchNumber), "success");
         pollBatch(taskIds, states, batchNumber);
     }
 
@@ -1449,13 +1445,11 @@
                 .done(function (task) {
                     states[id].status = task.status;
                     states[id].progress = task.progress;
-                    states[id].detail = task.detail;
                     states[id].after = task.next_log_id;
-                    states[id].task = task;
                 });
         });
         $.when.apply($, jobs).always(function () {
-            renderBatchTasks(taskIds, states, batchNumber);
+            renderBatchTasks(taskIds, states);
             var done = taskIds.every(function (id) { return ["success", "failed", "cancelled"].indexOf(states[id].status) >= 0; });
             if (!done) {
                 window.setTimeout(function () { pollBatch(taskIds, states, batchNumber); }, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
@@ -1464,72 +1458,24 @@
                 var counts = {success: 0, failed: 0, cancelled: 0};
                 taskIds.forEach(function (id) { counts[states[id].status] += 1; });
                 var resultType = counts.failed ? "warning" : (counts.cancelled ? "info" : "success");
-                var targetId = taskIds.find(function (id) { return states[id].status === "failed"; }) || taskIds[0];
                 notify(
                     "批次 " + batchNumber + " 已结束：成功 " + counts.success + "，失败 " + counts.failed + "，取消 " + counts.cancelled,
-                    resultType,
-                    {href: "/tasks/" + targetId + "/", label: "查看任务详情", target: "_blank"}
+                    resultType
                 );
             }
         });
     }
 
-    function renderBatchTasks(taskIds, states, batchNumber) {
-        var rows = document.getElementById("batchTaskRows");
-        rows.replaceChildren();
+    function renderBatchTasks(taskIds, states) {
         var totalProgress = 0;
         taskIds.forEach(function (id) {
-            var state = states[id];
-            totalProgress += state.progress;
-            var row = document.createElement("div");
-            row.className = "upgrade-task-row";
-            var summary = document.createElement("div");
-            summary.className = "min-w-0";
-            var label = document.createElement("strong");
-            label.textContent = state.task ? state.task.target_hostnames + " · " + state.task.target_ips : "任务 #" + id;
-            var step = document.createElement("small");
-            step.className = "text-muted d-block text-truncate";
-            step.textContent = state.detail;
-            summary.append(label, step);
-            var right = document.createElement("div");
-            right.className = "text-end text-nowrap";
-            var badge = document.createElement("span");
-            badge.className = "badge text-bg-" + (state.status === "success" ? "success" : (state.status === "failed" ? "danger" : (state.status === "running" ? "info" : "secondary")));
-            badge.textContent = ({ pending: "等待", running: "执行中", success: "完成", failed: "失败", cancelled: "已取消" })[state.status] || state.status;
-            var link = document.createElement("a");
-            link.className = "btn btn-outline-secondary btn-sm ms-1";
-            link.href = "/upgrade/tasks/" + id + "/";
-            link.title = "打开任务详情";
-            link.setAttribute("aria-label", "打开任务详情");
-            link.innerHTML = '<i class="bi bi-arrow-up-right" aria-hidden="true"></i>';
-            right.append(badge, link);
-            if (state.status === "pending" || state.status === "running") {
-                var cancellable = state.status === "pending" || /加入队列|获取|检查|上传|创建远程|解压/.test(state.detail);
-                if (cancellable) {
-                    var cancel = document.createElement("button");
-                    cancel.className = "btn btn-outline-danger btn-sm ms-1";
-                    cancel.type = "button";
-                    cancel.title = "取消升级";
-                    cancel.setAttribute("aria-label", "取消升级");
-                    cancel.innerHTML = '<i class="bi bi-stop-circle" aria-hidden="true"></i>';
-                    cancel.addEventListener("click", function () { cancelUpgrade(id, batchNumber); });
-                    right.appendChild(cancel);
-                }
-            }
-            row.append(summary, right);
-            rows.appendChild(row);
+            totalProgress += states[id].progress;
         });
         var average = taskIds.length ? Math.floor(totalProgress / taskIds.length) : 0;
-        document.getElementById("batchProgressBar").style.width = average + "%";
+        var progressBar = document.getElementById("batchProgressBar");
+        progressBar.style.width = average + "%";
+        progressBar.parentElement.setAttribute("aria-valuenow", String(average));
         document.getElementById("batchProgressBadge").textContent = average + "%";
-    }
-
-    function cancelUpgrade(taskId, batchNumber) {
-        window.showConfirm("取消升级", "确认取消该节点的升级任务？执行中的远程命令会在下一个检查点停止。", function () {
-            requestJson("POST", "/api/upgrade/tasks/" + taskId + "/cancel", {})
-                .done(function (result) { notify(result.message, "success"); })
-                .fail(function (error) { notify(errorMessage(error), "danger"); });
-        });
     }
 
     if (center) {

@@ -4,15 +4,17 @@
 {% block page_title %}任务详情 #{{ task.id }}{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=4">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=6">
 {% endblock %}
 
 {% block content %}
 <section class="card task-detail-card" id="taskDetail"
          data-task-id="{{ task.id }}" data-task-active="{{ 'true' if task.status in ('pending', 'running') else 'false' }}"
          data-api-url="/api/tasks/{{ task.id }}" data-log-cursor="{{ log_cursor }}"
+         data-task-status="{{ task.status }}" data-task-progress="{{ task.progress }}"
          data-is-config-sync="{{ 'true' if is_config_sync_type else 'false' }}"
-         data-is-release-type="{{ 'true' if is_release_type else 'false' }}">
+         data-is-release-type="{{ 'true' if is_release_type else 'false' }}"
+         data-is-upgrade-type="{{ 'true' if is_upgrade_type else 'false' }}">
     <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
         <h2 class="h6 mb-0"><i class="bi bi-card-text me-1" aria-hidden="true"></i>任务详情 #{{ task.id }}</h2>
         <div class="d-flex flex-wrap gap-2">
@@ -38,7 +40,8 @@
             <div class="col-sm-6 col-lg-3"><span class="text-muted">任务类型</span><strong>{{ operation_label }}</strong></div>
             <div class="col-sm-6 col-lg-3"><span class="text-muted">来源批次</span>
                 {% if task.source_batch %}
-                    {% if is_release_type %}<code class="task-batch-code">{{ task.source_batch }}</code>
+                    {% if is_upgrade_type %}{% if can_read_upgrade %}<a href="/upgrade/history/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener"><code class="task-batch-code">{{ task.source_batch }}</code></a>{% else %}<code class="task-batch-code">{{ task.source_batch }}</code>{% endif %}
+                    {% elif is_release_type %}<code class="task-batch-code">{{ task.source_batch }}</code>
                     {% else %}<a href="/tasks/?search={{ task.source_batch|urlencode }}"><code class="task-batch-code">{{ task.source_batch }}</code></a>{% endif %}
                 {% else %}<span>-</span>{% endif %}
             </div>
@@ -108,16 +111,16 @@
                 <h3 class="h6 mb-0" id="taskLogsHeading"><i class="bi bi-list-ul me-1" aria-hidden="true"></i>执行日志</h3>
                 <span class="small text-muted" data-log-count>{{ logs|length }} 条</span>
             </div>
-            {% if (is_config_sync_type or is_release_type) and target_node_count > 1 %}
+            {% if (is_config_sync_type or is_release_type or is_upgrade_type) and target_node_count > 1 %}
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <label class="small text-muted mb-0" for="taskLogHostFilter">{{ '发布主机' if is_release_type else '同步主机' }}</label>
+                <label class="small text-muted mb-0" for="taskLogHostFilter">{{ '发布主机' if (is_release_type or is_upgrade_type) else '同步主机' }}</label>
                 <select class="form-select form-select-sm task-log-filter-select" id="taskLogHostFilter" aria-label="按主机筛选执行日志">
                     <option value="">全部主机</option>
-                    {% for target in log_target_map %}<option value="{{ target.ip }}">{{ target.hostname }}</option>{% endfor %}
+                    {% for target in log_target_map %}<option value="{{ target.ip }}">{{ target.hostname }} ({{ target.ip }})</option>{% endfor %}
                 </select>
             </div>
             {% endif %}
-            <div class="task-log-list{% if is_config_sync_type or is_release_type %} task-log-list-terminal{% endif %}" id="taskLogList" aria-live="polite">
+            <div class="task-log-list task-log-list-terminal" id="taskLogList" aria-live="polite">
                 {% for log in logs %}
                 <div class="task-log-row log-level-{{ log.level }}"><time>{{ format_task_datetime(log.created_at) }}</time><span class="task-log-message">{{ log.message }}</span></div>
                 {% else %}<p class="small text-muted mb-0" data-empty-logs>暂无执行日志</p>{% endfor %}
@@ -132,5 +135,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=6"></script>
+<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=7"></script>
 {% endblock %}

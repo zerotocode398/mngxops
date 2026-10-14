@@ -270,6 +270,9 @@ def task_detail(
             )
         ) or ""
     checker = getattr(request.app.state, "permission_checker", None)
+    can_read_upgrade = user.is_superuser or bool(
+        checker and checker(session, user, "upgrade", "read")
+    )
     can_execute_upgrade = user.is_superuser or bool(
         checker and checker(session, user, "upgrade", "execute")
     )
@@ -305,6 +308,9 @@ def task_detail(
             ),
             "is_release_type": task.operation_type
             in ("release_publish", "release_rollback"),
+            "is_upgrade_type": task.operation_type
+            in ("nginx_upgrade", "nginx_rollback"),
+            "can_read_upgrade": can_read_upgrade,
             "is_config_sync_type": task.operation_type == "config_batch_sync",
             "can_cancel": _can_cancel_task(
                 task, upgrade_phase, can_execute_upgrade

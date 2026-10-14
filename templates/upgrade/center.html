@@ -233,7 +233,7 @@
             <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0"><i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>升级执行进度</h2><span class="badge text-bg-secondary d-none" id="batchProgressBadge">0%</span></div>
             <div class="card-body">
                 <div class="text-center text-muted py-4" id="progressPlaceholder"><i class="bi bi-hourglass fs-4" aria-hidden="true"></i><p class="mb-0 mt-2 small">任务执行进度</p></div>
-                <div class="d-none" id="progressLive"><div class="small mb-2" id="batchNumberLabel"></div><div class="progress mb-3" style="height:8px"><div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar" style="width:0%"></div></div><div id="batchTaskRows" class="upgrade-task-rows"></div></div>
+                <div class="d-none" id="progressLive"><div class="small mb-2" id="batchNumberLabel"></div><div class="progress mb-3" style="height:8px" role="progressbar" aria-label="批次升级进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar" style="width:0%"></div></div></div>
             </div>
         </section>
     </aside>
@@ -314,5 +314,5 @@
 
 {% block scripts %}
 <script>window.NGXOPS_BUILTIN_MODULES = {{ builtin_modules|tojson }};</script>
-<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=13"></script>
+<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=14"></script>
 {% endblock %}
