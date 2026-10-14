@@ -11,6 +11,8 @@
     var fieldLabels = {};
     var logTargetMap = [];
     var terminalStatuses = ["success", "failed", "cancelled"];
+    var currentTaskStatus = "";
+    var currentTaskDetail = "";
 
     function statusBadge(status) {
         var badge = document.createElement("span");
@@ -203,7 +205,7 @@
         var head = document.createElement("thead");
         head.className = "table-light";
         var headerRow = document.createElement("tr");
-        ["主机名", "结果", "原因"].forEach(function (label) {
+        ["目标节点", "结果", "原因"].forEach(function (label) {
             var cell = document.createElement("th");
             cell.scope = "col";
             cell.textContent = label;
@@ -217,15 +219,18 @@
             var row = document.createElement("tr");
             var nodeCell = document.createElement("td");
             nodeCell.className = "task-node-result-host";
+            var identity = document.createElement("span");
+            identity.className = "task-node-result-identity";
             var host = document.createElement("strong");
             host.textContent = result.hostname || result.name || "节点 #" + (result.node_id || "-");
-            nodeCell.appendChild(host);
+            identity.appendChild(host);
             if (result.ip) {
                 var address = document.createElement("small");
-                address.className = "d-block text-muted font-monospace";
-                address.textContent = result.ip;
-                nodeCell.appendChild(address);
+                address.className = "text-muted font-monospace";
+                address.textContent = "(" + result.ip + ")";
+                identity.appendChild(address);
             }
+            nodeCell.appendChild(identity);
             var statusCell = document.createElement("td");
             var status = nodeStatus(result);
             var badge = document.createElement("span");
@@ -250,7 +255,7 @@
     }
 
     function renderTaskResult(root, value, expandAll) {
-        var nodeResults = value && Array.isArray(value.nodes) ? value.nodes : [];
+        var nodeResults = taskResultNodes(value);
         var hasNodeResults = nodeResults.length > 0 && nodeResults.every(function (item) {
             return item && typeof item === "object" &&
                 (item.node_id !== undefined || item.hostname || item.ip);
@@ -262,24 +267,50 @@
         renderResult(root, value, expandAll);
     }
 
-    function upgradeResultTree(status, progress, message) {
-        var nodes = logTargetMap.map(function (target) {
-            return {
+    function taskResultNodes(value) {
+        var nodes = [];
+        if (value && Array.isArray(value.nodes) && value.nodes.length) {
+            nodes = value.nodes;
+        } else if (value && value.node && typeof value.node === "object") {
+            nodes = [value.node];
+        } else if (value && typeof value === "object" &&
+            (value.node_id !== undefined || value.hostname || value.ip)) {
+            nodes = [value];
+        } else if (logTargetMap.length) {
+            var summary = value && value.summary || {};
+            var status = value && value.status;
+            if (!status && Number(summary.failed) > 0) status = "failed";
+            if (!status && Number(summary.success) > 0 && !Number(summary.failed)) status = "success";
+            var message = value && (
+                value.exception || value.error || value.reason ||
+                value.message || value.detail
+            );
+            nodes = logTargetMap.map(function (target) {
+                return {
+                    hostname: target.hostname,
+                    ip: target.ip,
+                    status: status || currentTaskStatus,
+                    message: message || currentTaskDetail
+                };
+            });
+        }
+        return nodes.map(function (node, index) {
+            var target = logTargetMap[index] || {};
+            var result = Object.assign({
                 hostname: target.hostname,
-                ip: target.ip,
-                status: status,
-                progress: progress,
-                message: message || "等待任务结果"
-            };
+                ip: target.ip
+            }, node);
+            if (!result.hostname) result.hostname = target.hostname;
+            if (!result.ip) result.ip = target.ip;
+            if (!result.status && result.success === undefined) {
+                if (result.exception || result.error || result.errors || result.reason) {
+                    result.status = "failed";
+                } else if (nodes.length === 1) {
+                    result.status = currentTaskStatus;
+                }
+            }
+            return result;
         });
-        return {
-            summary: {
-                success: status === "success" ? nodes.length : 0,
-                failed: status === "failed" ? nodes.length : 0,
-                total: nodes.length
-            },
-            nodes: nodes
-        };
     }
 
     function initializeTargetToggle() {
@@ -311,22 +342,38 @@
 
     function formatLogMessage(message) {
         var formatted = String(message || "");
-        var replacements = [];
         logTargetMap.slice().sort(function (left, right) {
-            return String(right.ip || "").length - String(left.ip || "").length;
+            return Math.max(String(right.hostname || "").length, String(right.ip || "").length) -
+                Math.max(String(left.hostname || "").length, String(left.ip || "").length);
         }).forEach(function (target, index) {
             var hostname = String(target.hostname || "").trim();
             var ip = String(target.ip || "").trim();
-            var label = hostname + " (" + ip + ")";
-            if (!hostname || !ip) return;
-            var token = "\u0000" + index + "\u0000";
-            formatted = formatted.split(label).join(token);
-            formatted = formatted.split(ip).join(token);
-            replacements.push({token: token, label: label});
+            var label = hostname && ip ? hostname + " (" + ip + ")" : hostname || ip;
+            if (!label || formatted.indexOf(label) >= 0) return;
+            var token = "\u0000task-target-" + index + "\u0000";
+            var matched = false;
+            if (hostname && formatted.indexOf(hostname) >= 0) {
+                formatted = formatted.split(hostname).join(token);
+                matched = true;
+            }
+            if (ip && formatted.indexOf(ip) >= 0) {
+                formatted = formatted.split(ip).join(token);
+                matched = true;
+            }
+            if (matched) {
+                formatted = formatted.replace(token, label).split(token).join("");
+                formatted = formatted.replace(/ {2,}/g, " ");
+            }
         });
-        replacements.forEach(function (item) {
-            formatted = formatted.split(item.token).join(item.label);
-        });
+        if (logTargetMap.length === 1) {
+            var target = logTargetMap[0];
+            var hostname = String(target.hostname || "").trim();
+            var ip = String(target.ip || "").trim();
+            var identity = hostname && ip ? hostname + " (" + ip + ")" : hostname || ip;
+            if (identity && formatted.indexOf(identity) < 0) {
+                formatted = (identity + " " + formatted).trim();
+            }
+        }
         return formatted;
     }
 
@@ -336,7 +383,8 @@
             var target = logTargetMap[index];
             var hostname = String(target.hostname || "").trim();
             var ip = String(target.ip || "").trim();
-            if (hostname && ip && formatted.indexOf(hostname + " (" + ip + ")") >= 0) {
+            var identity = hostname && ip ? hostname + " (" + ip + ")" : hostname || ip;
+            if (identity && formatted.indexOf(identity) >= 0) {
                 return ip;
             }
         }
@@ -476,9 +524,6 @@
         var cursor = Number(detail.getAttribute("data-log-cursor")) || 0;
         var active = detail.getAttribute("data-task-active") === "true";
         var isConfigSync = detail.getAttribute("data-is-config-sync") === "true";
-        var isReleaseTask = detail.getAttribute("data-is-release-type") === "true";
-        var isUpgradeTask = detail.getAttribute("data-is-upgrade-type") === "true";
-        var isHostScopedLogTask = isConfigSync || isReleaseTask || isUpgradeTask;
         var resultElement = document.getElementById("taskResultData");
         var labelsElement = document.getElementById("taskResultLabels");
         var logTargetsElement = document.getElementById("taskLogTargets");
@@ -486,14 +531,10 @@
         try { initialResult = JSON.parse(resultElement.textContent); } catch (error) {}
         try { fieldLabels = JSON.parse(labelsElement.textContent); } catch (error) {}
         try { logTargetMap = JSON.parse(logTargetsElement.textContent); } catch (error) {}
-        if (isUpgradeTask && (initialResult === null || initialResult === undefined)) {
-            var initialDetail = detail.querySelector("[data-task-detail]");
-            initialResult = upgradeResultTree(
-                detail.dataset.taskStatus,
-                Number(detail.dataset.taskProgress) || 0,
-                initialDetail ? initialDetail.textContent : ""
-            );
-        }
+        var isHostScopedLogTask = Boolean(logHostFilter);
+        currentTaskStatus = detail.dataset.taskStatus || "";
+        var initialDetail = detail.querySelector("[data-task-detail]");
+        currentTaskDetail = initialDetail ? initialDetail.textContent : "";
         logList.querySelectorAll(".task-log-row").forEach(function (row) {
             var message = row.querySelector(".task-log-message");
             message.textContent = formatLogMessage(message.textContent);
@@ -552,6 +593,8 @@
                 if (!response.ok || payload.success === false) return;
                 updateProgress(detail, payload.progress);
                 updateStatus(detail, payload.status);
+                currentTaskStatus = payload.status || "";
+                currentTaskDetail = payload.detail || "";
                 var started = detail.querySelector("[data-task-started]");
                 var finished = detail.querySelector("[data-task-finished]");
                 var duration = detail.querySelector("[data-task-duration]");
@@ -586,19 +629,8 @@
                     loadMoreLogs.hidden = !payload.has_more_logs;
                 }
                 var resultTree = payload.result_tree;
-                if (isUpgradeTask && (resultTree === null || resultTree === undefined)) {
-                    resultTree = upgradeResultTree(
-                        payload.status, payload.progress, payload.detail
-                    );
-                }
-                if (resultTree !== null && resultTree !== undefined) {
-                    renderTaskResult(
-                        resultRoot,
-                        resultTree,
-                        isConfigSync
-                    );
-                    renderSummary(summaryRoot, resultTree.summary);
-                }
+                renderTaskResult(resultRoot, resultTree, isConfigSync);
+                renderSummary(summaryRoot, resultTree && resultTree.summary);
                 if (terminalStatuses.indexOf(payload.status) >= 0) {
                     active = false;
                     detail.setAttribute("data-task-active", "false");

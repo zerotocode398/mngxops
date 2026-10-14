@@ -35,7 +35,7 @@
                 {% set run = row.run %}
                 {% set task = run.task %}
                 <tr>
-                    <td><div class="upgrade-history-node" title="{{ run.node_hostname }} ({{ run.node_ip }})"><span class="upgrade-history-node-name">{{ run.node_hostname }}</span><small class="text-muted upgrade-history-node-ip">({{ run.node_ip }})</small></div></td>
+                    <td><div class="upgrade-history-node" title="{{ run.node_hostname }} ({{ run.node_ip }})"><span class="upgrade-history-node-name" title="{{ run.node_hostname }}">{{ run.node_hostname }}</span><small class="text-muted upgrade-history-node-ip">({{ run.node_ip }})</small></div></td>
                     <td><code class="upgrade-history-version">{{ run.current_version or "未知" }}</code></td>
                     <td><code class="upgrade-history-version">{{ run.target_version }}</code></td>
                     <td><code class="upgrade-history-batch" title="{{ run.batch_number }}">{{ run.batch_number }}</code>{% if run.rolled_back_at %}<small class="text-warning-emphasis d-block">已回滚 · {{ run.rolled_back_at.strftime("%Y-%m-%d %H:%M") }}</small>{% endif %}</td>

@@ -600,8 +600,8 @@ def test_upgrade_center_summary_uses_nonbold_hostname_and_confirm_label(upgrade_
     assert 'row.querySelector(".upgrade-node-hostname").textContent' in script
 
 
-def test_upgrade_center_progress_displays_batch_and_overall_progress(upgrade_client):
-    """验证升级进度区仅保留批次号和整体进度。"""
+def test_upgrade_center_progress_displays_batch_progress_and_final_results(upgrade_client):
+    """验证升级进度区保留批次进度并在结束后展示节点结果。"""
     client, _app, _csrf_token, _user_id = upgrade_client
     response = client.get("/upgrade/center/")
     script = (Path.cwd() / "static/js/upgrade-center.js").read_text(
@@ -615,11 +615,15 @@ def test_upgrade_center_progress_displays_batch_and_overall_progress(upgrade_cli
     assert 'id="batchNumberLabel"' in response.text
     assert 'id="batchProgressBar"' in response.text
     assert 'aria-label="批次升级进度"' in response.text
+    assert 'id="batchTaskResults"' in response.text
     assert 'id="batchTaskRows"' not in response.text
     assert "target_hostnames" not in render_function
     assert '"/upgrade/tasks/"' not in render_function
     assert "cancelUpgrade" not in render_function
     assert 'setAttribute("aria-valuenow", String(average))' in render_function
+    assert "renderBatchResults(taskIds, states)" in render_function
+    assert 'title.textContent = "执行结果"' in render_function
+    assert 'detail.textContent = state.detail || "任务已结束"' in render_function
 
 
 def test_module_search_filters_on_enter_and_query_tag_removal():
@@ -910,7 +914,7 @@ def test_upgrade_home_shows_four_stats_and_recent_task_table(upgrade_client):
     )[0]
     assert "upgrade-overview-col-time" in overview_table
     assert 'class="upgrade-overview-col-detail' not in overview_table
-    assert overview_table.split("</thead>", 1)[0].count('<th scope="col"') == 7
+    assert overview_table.split("</thead>", 1)[0].count('<th scope="col"') == 8
     upgrade_css = (Path.cwd() / "static/css/upgrade.css").read_text(
         encoding="utf-8"
     )
@@ -925,3 +929,15 @@ def test_upgrade_home_shows_four_stats_and_recent_task_table(upgrade_client):
         )
     )
     assert stats == {"source": "1", "module": "1", "running": "2", "failed-7d": "1"}
+
+
+def test_upgrade_recent_task_columns_have_more_room():
+    """验证升级概览状态、进度、操作人和时间列获得更宽空间。"""
+    stylesheet = (Path.cwd() / "static/css/upgrade.css").read_text(
+        encoding="utf-8"
+    )
+
+    assert ".upgrade-overview-col-status { width: 10%; }" in stylesheet
+    assert ".upgrade-overview-col-progress { width: 9%; }" in stylesheet
+    assert ".upgrade-overview-col-operator { width: 10%; }" in stylesheet
+    assert ".upgrade-overview-col-time { width: 14%; }" in stylesheet

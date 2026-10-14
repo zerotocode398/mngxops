@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/dashboard.css') }}">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=15">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">
 {% endblock %}
 
 {% block content %}
@@ -114,7 +114,7 @@
                             <code class="task-batch-code upgrade-overview-batch">{{ run.batch_number }}</code>
                             {% endif %}
                         </td>
-                        <td><div class="upgrade-overview-node" title="{{ run.node_hostname }} ({{ run.node_ip }})"><span class="upgrade-overview-node-name">{{ run.node_hostname }}</span><small class="text-muted upgrade-overview-node-ip">({{ run.node_ip }})</small></div></td>
+                        <td><div class="upgrade-overview-node" title="{{ run.node_hostname }} ({{ run.node_ip }})"><span class="upgrade-overview-node-name" title="{{ run.node_hostname }}">{{ run.node_hostname }}</span><small class="text-muted upgrade-overview-node-ip">({{ run.node_ip }})</small></div></td>
                         <td><code class="upgrade-overview-version">{{ row.current_version }}</code></td>
                         <td><code class="upgrade-overview-version">{{ run.target_version }}</code></td>
                         <td class="upgrade-overview-status"><span class="badge text-bg-{{ row.status_class }}">{{ row.status_label }}</span></td>

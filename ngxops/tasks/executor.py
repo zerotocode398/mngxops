@@ -149,13 +149,21 @@ def _finish_task(
             )
             if result.rowcount != 1:
                 return False
-            session.add(
-                TaskLog(
-                    task_id=task_id,
-                    level="error" if status == "failed" else "info",
-                    message=_redact_text(detail)[:MAX_LOG_LENGTH],
-                )
+            safe_detail = _redact_text(detail)[:MAX_LOG_LENGTH]
+            latest_log = session.scalar(
+                select(TaskLog.message)
+                .where(TaskLog.task_id == task_id)
+                .order_by(TaskLog.id.desc())
+                .limit(1)
             )
+            if latest_log != safe_detail:
+                session.add(
+                    TaskLog(
+                        task_id=task_id,
+                        level="error" if status == "failed" else "info",
+                        message=safe_detail,
+                    )
+                )
             return True
 
 

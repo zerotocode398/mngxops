@@ -16,7 +16,9 @@ from ngxops.app import create_app
 from ngxops.config import get_settings
 from ngxops.database.migration_runner import upgrade_database
 from ngxops.database.session import session_scope
+from ngxops.tasks.executor import _append_log_in_session, _finish_task
 from ngxops.tasks.models import Task, TaskLog
+from ngxops.tasks.presentation import format_task_log_message
 
 
 @pytest.fixture
@@ -199,6 +201,115 @@ def test_upgrade_task_source_batch_links_to_upgrade_history(task_center_client):
         'rel="noopener"><code class="task-batch-code">UG-261014-0001</code></a>'
     ) in detail.text
     assert 'href="/tasks/?search=UG-261014-0001"' not in detail.text
+
+
+def test_upgrade_task_result_and_logs_use_shared_host_identity(task_center_client):
+    """验证升级单节点结果与日志使用共享的主机名/IP 展示。"""
+    client, app, _token, admin_id, _operator_id, *_rest = task_center_client
+    message = "远程命令执行超时"
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task_id = _create_task(
+                session,
+                "nginx_upgrade",
+                admin_id,
+                batch="UG-261014-HOST",
+                hosts="builder-a",
+                ips="192.0.2.52",
+                status="failed",
+                detail=message,
+                tree={
+                    "summary": {"total": 1, "success": 0, "failed": 1},
+                    "error": message,
+                },
+            )
+            session.add(
+                TaskLog(
+                    task_id=task_id,
+                    level="error",
+                    message=message,
+                )
+            )
+
+    detail = client.get("/tasks/{}/".format(task_id))
+    script = (Path.cwd() / "static/js/task-center.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert detail.status_code == 200
+    assert "builder-a (192.0.2.52) {}".format(message) in detail.text
+    assert 'id="taskLogHostFilter"' not in detail.text
+    assert "function taskResultNodes(value)" in script
+    assert 'value.node && typeof value.node === "object"' in script
+    assert 'address.textContent = "(" + result.ip + ")"' in script
+
+
+def test_multi_target_log_filter_is_available_for_every_task_type(task_center_client):
+    """验证非发布类多目标任务也能按目标主机筛选日志。"""
+    client, app, _token, admin_id, _operator_id, *_rest = task_center_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task_id = _create_task(
+                session,
+                "node_batch_test",
+                admin_id,
+                hosts="probe-a, probe-b",
+                ips="192.0.2.61, 192.0.2.62",
+                with_log=True,
+            )
+
+    detail = client.get("/tasks/{}/".format(task_id))
+
+    assert detail.status_code == 200
+    assert "目标主机" in detail.text
+    assert 'id="taskLogHostFilter"' in detail.text
+    assert "probe-a (192.0.2.61)" in detail.text
+    assert "probe-b (192.0.2.62)" in detail.text
+
+
+def test_task_log_host_normalization_does_not_repeat_ip():
+    """验证日志已有主机名和 IP 时会合并为一个目标标记。"""
+    formatted = format_task_log_message(
+        "builder-c 192.0.2.54 开始升级",
+        [{"hostname": "builder-c", "ip": "192.0.2.54"}],
+    )
+
+    assert formatted == "builder-c (192.0.2.54) 开始升级"
+
+
+def test_task_finish_does_not_repeat_the_last_failure_log(task_center_client):
+    """验证统一任务终态不会重复追加相同的异常日志。"""
+    _client, app, _token, admin_id, _operator_id, *_rest = task_center_client
+    message = "远程命令执行超时"
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task_id = _create_task(
+                session,
+                "nginx_upgrade",
+                admin_id,
+                hosts="builder-b",
+                ips="192.0.2.53",
+                status="running",
+            )
+            assert _append_log_in_session(
+                session, task_id, message, level="error"
+            )
+
+    assert _finish_task(
+        app.state.database.session_factory,
+        task_id,
+        "failed",
+        message,
+        json.dumps({"status": "failed", "error": message}),
+    )
+
+    with session_scope(app.state.database.session_factory) as session:
+        messages = session.scalars(
+            select(TaskLog.message)
+            .where(TaskLog.task_id == task_id)
+            .order_by(TaskLog.id.asc())
+        ).all()
+    assert messages.count(message) == 1
 
 
 def test_dashboard_and_task_center_share_batch_code_style(task_center_client):

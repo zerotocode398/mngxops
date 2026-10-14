@@ -141,7 +141,21 @@
     line-height: 1.2;
 }
 
-.task-node-result-host small { line-height: 1.2; }
+.task-node-result-identity {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.task-node-result-identity strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.task-node-result-host small { flex: 0 0 auto; line-height: 1.2; }
 
 .task-node-result-table th:nth-child(2),
 .task-node-result-table td:nth-child(2) {

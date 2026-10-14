@@ -37,6 +37,44 @@ def format_task_datetime_iso(value: Optional[datetime], empty: str = "") -> str:
     return _as_utc(value).astimezone(_UTC_PLUS_EIGHT).isoformat(timespec="seconds")
 
 
+def format_task_log_message(message: str, targets: List[dict]) -> str:
+    """为任务日志补充并统一显示可识别的目标主机名和 IP。"""
+    formatted = str(message or "")
+    ordered_targets = sorted(
+        targets,
+        key=lambda target: max(
+            len(str(target.get("hostname") or "")),
+            len(str(target.get("ip") or "")),
+        ),
+        reverse=True,
+    )
+    for index, target in enumerate(ordered_targets):
+        hostname = str(target.get("hostname") or "").strip()
+        ip = str(target.get("ip") or "").strip()
+        identity = "{} ({})".format(hostname, ip) if hostname and ip else hostname or ip
+        if not identity or identity in formatted:
+            continue
+        token = "\u0000task-target-{}\u0000".format(index)
+        matched = False
+        if hostname and hostname in formatted:
+            formatted = formatted.replace(hostname, token)
+            matched = True
+        if ip and ip in formatted:
+            formatted = formatted.replace(ip, token)
+            matched = True
+        if matched:
+            formatted = formatted.replace(token, identity, 1).replace(token, "")
+            formatted = formatted.replace("  ", " ")
+    if len(targets) == 1:
+        target = targets[0]
+        hostname = str(target.get("hostname") or "").strip()
+        ip = str(target.get("ip") or "").strip()
+        identity = "{} ({})".format(hostname, ip) if hostname and ip else hostname or ip
+        if identity and identity not in formatted:
+            formatted = "{} {}".format(identity, formatted).strip()
+    return formatted
+
+
 OPERATION_LABELS = {
     "release_publish": "发布配置",
     "release_rollback": "回滚配置",

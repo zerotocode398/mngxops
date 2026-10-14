@@ -21,6 +21,7 @@ from ngxops.tasks.presentation import (
     format_execution_duration,
     format_task_datetime,
     format_task_datetime_iso,
+    format_task_log_message,
     format_task_summary,
     task_search_filters,
 )
@@ -301,6 +302,7 @@ def task_detail(
             "result_field_labels": RESULT_FIELD_LABELS,
             "logs": logs,
             "format_task_datetime": format_task_datetime,
+            "format_task_log_message": format_task_log_message,
             "log_cursor": max((row.id for row in logs), default=0),
             "has_more_logs": has_more_logs,
             "execution_duration": format_execution_duration(
@@ -340,7 +342,11 @@ def _task_log_target_map(hostnames: str, ips: str) -> list:
     names = [item.strip() for item in (hostnames or "").split(",")]
     addresses = [item.strip() for item in (ips or "").split(",")]
     return [
-        {"hostname": names[index], "ip": addresses[index]}
-        for index in range(min(len(names), len(addresses)))
-        if names[index] and addresses[index]
+        {
+            "hostname": names[index] if index < len(names) else "",
+            "ip": addresses[index] if index < len(addresses) else "",
+        }
+        for index in range(max(len(names), len(addresses)))
+        if (names[index] if index < len(names) else "")
+        or (addresses[index] if index < len(addresses) else "")
     ]

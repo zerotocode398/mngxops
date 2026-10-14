@@ -6,14 +6,14 @@
 .upgrade-overview-recent { min-width: 0; overflow: hidden; }
 .upgrade-overview-table { overflow-x: hidden; }
 .upgrade-overview-table table { width: 100%; table-layout: fixed; }
-.upgrade-overview-col-batch { width: 18%; }
-.upgrade-overview-col-node { width: 25%; }
-.upgrade-overview-col-current-version { width: 10%; }
-.upgrade-overview-col-target-version { width: 10%; }
-.upgrade-overview-col-status { width: 9%; }
-.upgrade-overview-col-progress { width: 7%; }
-.upgrade-overview-col-operator { width: 8%; }
-.upgrade-overview-col-time { width: 13%; }
+.upgrade-overview-col-batch { width: 16%; }
+.upgrade-overview-col-node { width: 23%; }
+.upgrade-overview-col-current-version { width: 9%; }
+.upgrade-overview-col-target-version { width: 9%; }
+.upgrade-overview-col-status { width: 10%; }
+.upgrade-overview-col-progress { width: 9%; }
+.upgrade-overview-col-operator { width: 10%; }
+.upgrade-overview-col-time { width: 14%; }
 .upgrade-overview-batch { display: block; overflow: visible; padding: 0; background: transparent; color: inherit; white-space: nowrap; }
 .upgrade-overview-node { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.2rem; min-width: 0; white-space: nowrap; }
 .upgrade-overview-node-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -23,6 +23,15 @@
 .upgrade-overview-status, .upgrade-overview-progress-cell { padding-right: 0.3rem !important; padding-left: 0.3rem !important; white-space: nowrap; }
 .upgrade-overview-status .badge { padding-right: 0.25rem; padding-left: 0.25rem; font-size: 0.68rem; }
 .upgrade-overview-progress { width: 100%; min-width: 0; height: 6px; margin-bottom: 3px; }
+.upgrade-progress-results { display: grid; gap: 0; max-height: 320px; overflow: auto; border-top: 1px solid var(--gray-200); }
+.upgrade-progress-results-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; padding: 9px 1px 6px; font-size: 0.8125rem; }
+.upgrade-progress-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; padding: 8px 1px; border-top: 1px solid var(--gray-100); }
+.upgrade-progress-result-host { display: flex; align-items: baseline; gap: 5px; min-width: 0; white-space: nowrap; }
+.upgrade-progress-result-host strong { min-width: 0; overflow: hidden; font-size: 0.8125rem; font-weight: 500; text-overflow: ellipsis; }
+.upgrade-progress-result-host small { flex: 0 0 auto; font-size: 0.72rem; }
+.upgrade-progress-result-status { align-self: center; white-space: nowrap; }
+.upgrade-progress-result-detail { grid-column: 1 / -1; margin: 0; color: var(--gray-600); font-size: 0.75rem; overflow-wrap: anywhere; }
+.upgrade-progress-result-link { align-self: center; padding: 2px 5px; }
 .upgrade-history-table-wrap { overflow-x: hidden; }
 .upgrade-history-table { width: 100%; table-layout: fixed; }
 .upgrade-history-col-node { width: 26%; }
