@@ -437,6 +437,7 @@
             name.maxLength = 100;
             name.placeholder = "模块名";
             name.setAttribute("aria-label", "模块名称");
+            var selectedPackageName = "";
             var source = document.createElement("select");
             source.className = "form-select form-select-sm";
             source.setAttribute("aria-label", "模块来源");
@@ -490,12 +491,22 @@
                 var option = document.createElement("option");
                 option.value = String(item.id);
                 option.textContent = item.name + (item.version ? " · " + item.version : "");
+                option.dataset.name = item.name;
                 packageSelect.appendChild(option);
             });
             var packageColumn = document.createElement("div");
             packageColumn.className = "col-12 install-third-party-package-fields d-none";
             packageColumn.appendChild(packageSelect);
             source.addEventListener("change", updateThirdPartyFields);
+            packageSelect.addEventListener("change", function () {
+                var nextName = packageSelect.selectedOptions[0]
+                    ? packageSelect.selectedOptions[0].dataset.name || ""
+                    : "";
+                if (!name.value || name.value === selectedPackageName) {
+                    name.value = nextName;
+                }
+                selectedPackageName = nextName;
+            });
             fieldsGrid.append(urlColumn, branchColumn, packageColumn);
             fields.appendChild(fieldsGrid);
             var removeColumn = document.createElement("div");

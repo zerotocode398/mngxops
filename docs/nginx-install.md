@@ -10,14 +10,14 @@
 ## 向导与门禁
 
 1. 安装首页沿用升级首页的统计卡片和最近任务布局，并提供开始安装、历史、源码包和模块包入口。向导复用升级页的摘要标签、紧凑节点弹窗、查询标签、AND 搜索、分页和每页条数交互；节点列表仅展示 SSH 在线节点，按“主机名 / IP、SSH 用户、环境、Nginx、节点组”排列。检测到 Nginx 时只显示版本号；锁定或无有效凭证的在线节点仍显示不可选原因。源码包使用与升级页一致的可搜索单选表格、分页和每页条数控件，缺失文件的包不可选。安装门禁允许 Nginx 未探测或不可用的在线节点，已检测到 Nginx 时在确认页提示覆盖风险。每批上限由 `node.batch_max_count` 控制，默认 3；保存设置后，刷新向导更新选择上限，创建任务时由后端按最新值校验。离线、未知、锁定或无有效凭证的节点不可选。创建时再次检查门禁，并跳过并说明已变化或已有安装任务的节点。
-2. 设置 `--prefix`、`--user`、`--group`、监听端口、远程工作目录、`make -j`、官方模块、第三方 Git/离线模块和额外 configure 参数。默认模块为 SSL、HTTP/2、realip、stub_status、stream 和 stream_ssl。额外参数不能覆盖受保护的安装路径、二进制路径或运行账户。
+2. 设置 `--prefix`、`--user`、`--group`、监听端口、远程工作目录、`make -j`、官方模块、第三方 Git/离线模块和额外 configure 参数。编译参数表单采用两列布局；已选官方模块保留绿色终端逐项展示，仅删除重复的备注文案，完整 configure 参数在确认步骤查看。选择离线模块包后会自动带入包名，手工修改的名称会保留。默认模块为 SSL、HTTP/2、realip、stub_status、stream 和 stream_ssl。额外参数不能覆盖受保护的安装路径、二进制路径或运行账户。
 3. 查看服务端生成的 configure 参数、节点状态和覆盖风险后确认。目标选择和编译参数步骤不展示 SSH 用户到监听端口的映射；端口低于 1024 且 SSH 用户非 root 时，离开参数步骤会弹窗提示风险，确认页和开始安装确认也会列出受影响节点。已有 Nginx 的节点允许继续，确认页和开始安装确认均提示目标路径或 `nginx.service` 可能被覆盖，开始安装确认也会再次说明低端口权限风险及 systemd 与二进制启动分流。
 
 安装批次号格式为 `IN-YYMMDD-NNNN`。已被 pending/running 安装引用的源码包或离线模块包不能覆盖或删除；安装批次创建和升级包管理共用进程内锁。相同节点已有活动安装时不会重复排队。
 
 ## 执行与结果
 
-每个节点由 NX-005 任务线程池执行独立任务：检查 gcc/make、上传并校验源码、解压、准备第三方模块、configure、make、make install、按需改写主配置默认 `listen 80`、执行 `nginx -t`，最后启动并读取版本。
+每个节点由 NX-005 任务线程池执行独立任务：检查 gcc/make、上传并校验源码、解压、准备第三方模块、configure、make、make install、按需改写主配置默认 `listen 80`、执行 `nginx -t`，最后启动并读取版本。在线第三方模块的 clone/fetch 超时读取系统设置 `upgrade.git_clone_timeout_minutes`（“Git clone 超时”，默认 2 分钟，范围 1–10 分钟），与 Nginx 升级共用。
 
 - 有 `systemctl` 且当前 SSH 身份可写 systemd unit 目录或使用免密 sudo 时，写入 `/etc/systemd/system/nginx.service`，执行 daemon-reload、enable 和 start。unit 的 `User`/`Group` 使用向导值；注册、启用或启动失败会使安装失败，不静默改用二进制启动。
 - 无 systemd 管理能力时直接启动编译出的 Nginx 二进制，并在任务日志记录分流原因。

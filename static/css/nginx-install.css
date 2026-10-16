@@ -1,4 +1,6 @@
 .install-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.install-layout { grid-template-columns: minmax(0, 2fr) minmax(280px, .72fr); }
+.install-config-grid .form-label { margin-bottom: 6px; }
 .install-overview { display: grid; gap: 12px; min-width: 0; }
 .install-overview-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .install-overview-stats .dashboard-stat-card { min-height: 82px; }
@@ -61,6 +63,10 @@
 
 @media (max-width: 991.98px) {
     .install-detail-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 1199.98px) {
+    .install-layout { grid-template-columns: minmax(0, 1fr); }
+    .install-progress-column { position: static; }
 }
 @media (max-width: 575.98px) {
     .install-overview-toolbar .btn { flex: 1 1 calc(50% - 8px); }

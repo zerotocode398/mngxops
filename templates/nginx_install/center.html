@@ -3,7 +3,7 @@
 {% block page_title %}<i class="bi bi-download" aria-hidden="true"></i> Nginx 安装中心{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=236-1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=239-2">
 {% endblock %}
 
 {% block content %}
@@ -132,13 +132,13 @@
         <section class="card upgrade-panel install-panel d-none" data-step-panel="2">
             <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-primary me-2">2</span>确认编译参数</h2></div>
             <div class="card-body">
-                <div class="row g-3">
-                    <div class="col-12 col-lg-6"><label class="form-label" for="targetPrefix">安装路径 (--prefix)</label><input class="form-control form-control-sm" id="targetPrefix" value="{{ default_prefix }}" maxlength="500"></div>
-                    <div class="col-12 col-lg-6"><label class="form-label" for="remoteWorkDir">远程工作目录</label><input class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}" maxlength="500"></div>
-                    <div class="col-6 col-xxl-3"><label class="form-label" for="nginxUser">用户 (--user)</label><input class="form-control form-control-sm" id="nginxUser" value="{{ default_user }}" maxlength="100"></div>
-                    <div class="col-6 col-xxl-3"><label class="form-label" for="nginxGroup">用户组 (--group)</label><input class="form-control form-control-sm" id="nginxGroup" value="{{ default_group }}" maxlength="100"></div>
-                    <div class="col-6 col-xxl-3"><label class="form-label" for="listenPort">监听端口</label><input class="form-control form-control-sm" type="number" id="listenPort" value="{{ default_listen_port }}" min="1" max="65535"></div>
-                    <div class="col-6 col-xxl-3"><label class="form-label" for="makeJobs">并行编译 (-j)</label><input class="form-control form-control-sm" type="number" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32"></div>
+                <div class="row g-3 install-config-grid">
+                    <div class="col-12 col-md-6"><label class="form-label" for="targetPrefix">安装路径 (--prefix)</label><input class="form-control" id="targetPrefix" value="{{ default_prefix }}" maxlength="500"></div>
+                    <div class="col-12 col-md-6"><label class="form-label" for="remoteWorkDir">远程工作目录</label><input class="form-control" id="remoteWorkDir" value="{{ default_work_dir }}" maxlength="500"></div>
+                    <div class="col-12 col-md-6"><label class="form-label" for="nginxUser">用户 (--user)</label><input class="form-control" id="nginxUser" value="{{ default_user }}" maxlength="100"></div>
+                    <div class="col-12 col-md-6"><label class="form-label" for="nginxGroup">用户组 (--group)</label><input class="form-control" id="nginxGroup" value="{{ default_group }}" maxlength="100"></div>
+                    <div class="col-12 col-md-6"><label class="form-label" for="listenPort">监听端口</label><input class="form-control" type="number" id="listenPort" value="{{ default_listen_port }}" min="1" max="65535"></div>
+                    <div class="col-12 col-md-6"><label class="form-label" for="makeJobs">并行编译 (-j)</label><input class="form-control" type="number" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32"></div>
                 </div>
 
                 <div class="install-subsection mt-3">
@@ -146,7 +146,6 @@
                         <div><h3 class="install-subheading">模块调整</h3><div class="small text-muted"><span id="moduleSelectedCount">0</span> 项已选</div></div>
                         <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#moduleAdjustModal"><i class="bi bi-sliders me-1" aria-hidden="true"></i>调整编译参数</button>
                     </div>
-                    <div class="form-text mt-2">已选编译参数每行一项。</div>
                     <pre id="selectedModuleSummary" class="nginx-v-output install-module-summary mt-2">尚未选择编译参数</pre>
                     <textarea class="form-control form-control-sm font-monospace mt-2" id="extraOpts" rows="2" placeholder="--with-http_gzip_static_module"></textarea>
                 </div>
@@ -231,4 +230,4 @@
 <script type="application/json" id="installDefaultModuleData">{{ default_modules|tojson }}</script>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=236-1"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=239-2"></script>{% endblock %}
