@@ -3,7 +3,7 @@
 {% block page_title %}<i class="bi bi-download" aria-hidden="true"></i> Nginx 安装中心{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=231-1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=236-1">
 {% endblock %}
 
 {% block content %}
@@ -132,32 +132,32 @@
         <section class="card upgrade-panel install-panel d-none" data-step-panel="2">
             <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-primary me-2">2</span>确认编译参数</h2></div>
             <div class="card-body">
-                <div class="install-defaults-note mb-3"><span class="badge text-bg-light me-1">系统设置默认值</span>安装路径、运行用户、用户组和监听端口已预填，可按本批安装调整。</div>
-                <div class="row g-2">
-                    <div class="col-12 col-md-6"><label class="form-label" for="targetPrefix">安装路径 (--prefix)</label><input class="form-control form-control-sm" id="targetPrefix" value="{{ default_prefix }}" maxlength="500"></div>
-                    <div class="col-6 col-md-3"><label class="form-label" for="nginxUser">用户 (--user)</label><input class="form-control form-control-sm" id="nginxUser" value="{{ default_user }}" maxlength="100"></div>
-                    <div class="col-6 col-md-3"><label class="form-label" for="nginxGroup">用户组 (--group)</label><input class="form-control form-control-sm" id="nginxGroup" value="{{ default_group }}" maxlength="100"></div>
-                    <div class="col-6 col-md-3"><label class="form-label" for="listenPort">监听端口</label><input class="form-control form-control-sm" type="number" id="listenPort" value="{{ default_listen_port }}" min="1" max="65535"></div>
-                    <div class="col-12 col-md-6"><label class="form-label" for="remoteWorkDir">远程工作目录</label><input class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}" maxlength="500"></div>
-                    <div class="col-6 col-md-3"><label class="form-label" for="makeJobs">并行编译 (-j)</label><input class="form-control form-control-sm" type="number" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32"></div>
+                <div class="row g-3">
+                    <div class="col-12 col-lg-6"><label class="form-label" for="targetPrefix">安装路径 (--prefix)</label><input class="form-control form-control-sm" id="targetPrefix" value="{{ default_prefix }}" maxlength="500"></div>
+                    <div class="col-12 col-lg-6"><label class="form-label" for="remoteWorkDir">远程工作目录</label><input class="form-control form-control-sm" id="remoteWorkDir" value="{{ default_work_dir }}" maxlength="500"></div>
+                    <div class="col-6 col-xxl-3"><label class="form-label" for="nginxUser">用户 (--user)</label><input class="form-control form-control-sm" id="nginxUser" value="{{ default_user }}" maxlength="100"></div>
+                    <div class="col-6 col-xxl-3"><label class="form-label" for="nginxGroup">用户组 (--group)</label><input class="form-control form-control-sm" id="nginxGroup" value="{{ default_group }}" maxlength="100"></div>
+                    <div class="col-6 col-xxl-3"><label class="form-label" for="listenPort">监听端口</label><input class="form-control form-control-sm" type="number" id="listenPort" value="{{ default_listen_port }}" min="1" max="65535"></div>
+                    <div class="col-6 col-xxl-3"><label class="form-label" for="makeJobs">并行编译 (-j)</label><input class="form-control form-control-sm" type="number" id="makeJobs" value="{{ default_make_jobs }}" min="1" max="32"></div>
                 </div>
 
                 <div class="install-subsection mt-3">
                     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-                        <div><h3 class="install-subheading">支持模块</h3><div class="small text-muted"><span id="moduleSelectedCount">0</span> 项已选</div></div>
-                        <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#moduleAdjustModal"><i class="bi bi-sliders me-1" aria-hidden="true"></i>调整模块</button>
+                        <div><h3 class="install-subheading">模块调整</h3><div class="small text-muted"><span id="moduleSelectedCount">0</span> 项已选</div></div>
+                        <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#moduleAdjustModal"><i class="bi bi-sliders me-1" aria-hidden="true"></i>调整编译参数</button>
                     </div>
-                    <div id="selectedModuleSummary" class="install-module-summary mt-2">尚未调整模块</div>
+                    <div class="form-text mt-2">已选编译参数每行一项。</div>
+                    <pre id="selectedModuleSummary" class="nginx-v-output install-module-summary mt-2">尚未选择编译参数</pre>
                     <textarea class="form-control form-control-sm font-monospace mt-2" id="extraOpts" rows="2" placeholder="--with-http_gzip_static_module"></textarea>
                 </div>
 
-                <div class="install-subsection mt-3">
-                    <div class="d-flex justify-content-between align-items-center gap-2">
-                        <div><h3 class="install-subheading">第三方模块</h3><div class="small text-muted">在线 Git 由目标机拉取；离线归档从平台模块包上传。</div></div>
+                <section class="upgrade-third-party mt-3" aria-labelledby="thirdPartyModulesTitle">
+                    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-1">
+                        <div><h3 class="h6 mb-0" id="thirdPartyModulesTitle"><i class="bi bi-box me-1" aria-hidden="true"></i>第三方模块</h3><div class="form-text">支持在线 Git（目标机需可出网）或离线包（先在模块包页面上传）。</div></div>
                         <button class="btn btn-outline-primary btn-sm" type="button" id="addThirdParty"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>添加模块</button>
                     </div>
-                    <div id="thirdPartyModules" class="mt-2"></div>
-                </div>
+                    <div id="thirdPartyModules"></div>
+                </section>
                 <div class="upgrade-panel-actions install-panel-actions">
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-step-back="1"><i class="bi bi-chevron-left me-1" aria-hidden="true"></i>上一步</button>
                     <button type="button" class="btn btn-primary btn-sm" id="step2Next">下一步 <i class="bi bi-chevron-right ms-1" aria-hidden="true"></i></button>
@@ -170,7 +170,8 @@
             <div class="card-body">
                 <div id="installConfirmSummary" class="install-summary-grid"></div>
                 <h3 class="install-subheading mt-3">最终 configure 参数</h3>
-                <pre class="install-config-output" id="installConfigurePreview">./configure 等待生成...</pre>
+                <p class="small text-muted mb-2">每行一项编译参数；反斜杠表示同一条命令续行。</p>
+                <pre class="nginx-v-output upgrade-config-output" id="installConfigurePreview">./configure 等待生成...</pre>
                 <h3 class="install-subheading mt-3">目标节点</h3>
                 <div id="installConfirmNodes" class="install-confirm-list"></div>
                 <div class="alert alert-info small mt-3 mb-3">
@@ -203,12 +204,21 @@
 </div>
 
 <div class="modal fade" id="moduleAdjustModal" tabindex="-1" aria-labelledby="moduleAdjustTitle" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
-        <div class="modal-header"><h2 class="modal-title fs-6" id="moduleAdjustTitle">调整支持模块</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title h6" id="moduleAdjustTitle"><i class="bi bi-sliders me-1" aria-hidden="true"></i>调整编译参数</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
         <div class="modal-body">
             <div class="row g-3">
-                <div class="col-md-6"><div class="install-modal-column-title">可选官方模块</div><input class="form-control form-control-sm mb-2" id="moduleSearch" type="search" placeholder="搜索 configure 参数"><div class="install-module-list" id="builtinModuleList"></div></div>
-                <div class="col-md-6"><div class="install-modal-column-title">已选模块</div><div class="install-module-list" id="selectedModuleList"></div></div>
+                <section class="col-12 col-lg-6" aria-labelledby="builtinModuleTitle">
+                    <h3 class="h6" id="builtinModuleTitle"><i class="bi bi-plus-circle me-1" aria-hidden="true"></i>可选编译参数</h3>
+                    <p class="form-text">勾选添加 Nginx 官方编译参数。</p>
+                    <div class="upgrade-query-field"><input class="form-control form-control-sm" id="moduleSearch" type="search" aria-label="搜索可选编译参数" placeholder="搜索 configure 参数"></div>
+                    <div class="upgrade-module-options" id="builtinModuleList"></div>
+                </section>
+                <section class="col-12 col-lg-6" aria-labelledby="selectedModuleTitle">
+                    <h3 class="h6" id="selectedModuleTitle"><i class="bi bi-list-check me-1" aria-hidden="true"></i>已选编译参数</h3>
+                    <p class="form-text">当前选中的参数会加入 configure 命令。</p>
+                    <div class="upgrade-module-options" id="selectedModuleList"></div>
+                </section>
             </div>
         </div>
         <div class="modal-footer"><button class="btn btn-secondary btn-sm" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-primary btn-sm" type="button" id="saveModules" data-bs-dismiss="modal">应用选择</button></div>
@@ -221,4 +231,4 @@
 <script type="application/json" id="installDefaultModuleData">{{ default_modules|tojson }}</script>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=231-1"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=236-1"></script>{% endblock %}

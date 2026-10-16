@@ -352,7 +352,7 @@
             var picker = document.getElementById("builtinModuleList");
             builtinModules.forEach(function (moduleName) {
                 var label = document.createElement("label");
-                label.className = "install-module-option";
+                label.className = "upgrade-module-option";
                 label.dataset.moduleSearch = moduleName.toLowerCase();
                 var input = document.createElement("input");
                 input.type = "checkbox";
@@ -368,7 +368,7 @@
             });
             document.getElementById("moduleSearch").addEventListener("input", function () {
                 var term = this.value.trim().toLowerCase();
-                picker.querySelectorAll(".install-module-option").forEach(function (row) {
+                picker.querySelectorAll(".upgrade-module-option").forEach(function (row) {
                     row.hidden = term && row.dataset.moduleSearch.indexOf(term) < 0;
                 });
             });
@@ -401,7 +401,7 @@
             }
             values.forEach(function (value) {
                 var row = document.createElement("div");
-                row.className = "install-module-option";
+                row.className = "upgrade-module-option install-module-selected";
                 var icon = document.createElement("i");
                 icon.className = "bi bi-check2 text-success";
                 icon.setAttribute("aria-hidden", "true");
@@ -416,8 +416,8 @@
         function updateModuleSummary() {
             document.getElementById("moduleSelectedCount").textContent = String(chosenModules.length);
             document.getElementById("selectedModuleSummary").textContent = chosenModules.length
-                ? chosenModules.slice(0, 3).join("  ") + (chosenModules.length > 3 ? "  等 " + chosenModules.length + " 项" : "")
-                : "未选择官方模块";
+                ? chosenModules.join("\n")
+                : "未选择编译参数";
         }
 
         function buildThirdPartyEditor() {
@@ -429,10 +429,13 @@
 
         function createThirdPartyRow() {
             var row = document.createElement("div");
-            row.className = "install-third-party-row";
+            row.className = "upgrade-third-party-row install-third-party-row";
+            var grid = document.createElement("div");
+            grid.className = "row g-2 align-items-end";
             var name = document.createElement("input");
             name.className = "form-control form-control-sm";
-            name.placeholder = "模块名称";
+            name.maxLength = 100;
+            name.placeholder = "模块名";
             name.setAttribute("aria-label", "模块名称");
             var source = document.createElement("select");
             source.className = "form-select form-select-sm";
@@ -450,8 +453,17 @@
             remove.setAttribute("aria-label", "移除模块");
             remove.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
             remove.addEventListener("click", function () { row.remove(); });
+
+            var nameColumn = document.createElement("div");
+            nameColumn.className = "col-12 col-md-2";
+            nameColumn.appendChild(name);
+            var sourceColumn = document.createElement("div");
+            sourceColumn.className = "col-12 col-md-2";
+            sourceColumn.appendChild(source);
             var fields = document.createElement("div");
-            fields.className = "install-third-party-extra";
+            fields.className = "col-12 col-md-7 install-third-party-extra";
+            var fieldsGrid = document.createElement("div");
+            fieldsGrid.className = "row g-1";
             var url = document.createElement("input");
             url.className = "form-control form-control-sm";
             url.placeholder = "Git 仓库地址";
@@ -461,8 +473,14 @@
             branch.placeholder = "分支，默认 master";
             branch.value = "master";
             branch.setAttribute("aria-label", "Git 分支");
+            var urlColumn = document.createElement("div");
+            urlColumn.className = "col-8 install-third-party-git-fields";
+            urlColumn.appendChild(url);
+            var branchColumn = document.createElement("div");
+            branchColumn.className = "col-4 install-third-party-git-fields";
+            branchColumn.appendChild(branch);
             var packageSelect = document.createElement("select");
-            packageSelect.className = "form-select form-select-sm d-none";
+            packageSelect.className = "form-select form-select-sm";
             packageSelect.setAttribute("aria-label", "离线模块包");
             var placeholder = document.createElement("option");
             placeholder.value = "";
@@ -474,15 +492,17 @@
                 option.textContent = item.name + (item.version ? " · " + item.version : "");
                 packageSelect.appendChild(option);
             });
+            var packageColumn = document.createElement("div");
+            packageColumn.className = "col-12 install-third-party-package-fields d-none";
+            packageColumn.appendChild(packageSelect);
             source.addEventListener("change", updateThirdPartyFields);
-            fields.appendChild(url);
-            fields.appendChild(branch);
-            fields.appendChild(packageSelect);
-            remove.addEventListener("click", function () { row.remove(); });
-            row.appendChild(name);
-            row.appendChild(source);
-            row.appendChild(fields);
-            row.appendChild(remove);
+            fieldsGrid.append(urlColumn, branchColumn, packageColumn);
+            fields.appendChild(fieldsGrid);
+            var removeColumn = document.createElement("div");
+            removeColumn.className = "col-12 col-md-1 text-end";
+            removeColumn.appendChild(remove);
+            grid.append(sourceColumn, nameColumn, fields, removeColumn);
+            row.appendChild(grid);
             row.installFields = { name: name, source: source, url: url, branch: branch, packageId: packageSelect };
             updateThirdPartyFields.call(source);
             return row;
@@ -491,11 +511,13 @@
         function updateThirdPartyFields() {
             var source = this.value;
             var row = this.closest(".install-third-party-row");
-            var fields = row.querySelector(".install-third-party-extra");
-            row.installFields.url.classList.toggle("d-none", source !== "git");
-            row.installFields.branch.classList.toggle("d-none", source !== "git");
-            row.installFields.packageId.classList.toggle("d-none", source !== "package");
-            fields.classList.toggle("d-none", false);
+            row.querySelectorAll(".install-third-party-git-fields").forEach(function (column) {
+                column.classList.toggle("d-none", source !== "git");
+            });
+            row.querySelector(".install-third-party-package-fields").classList.toggle(
+                "d-none",
+                source !== "package"
+            );
         }
 
         function getThirdPartyModules() {
