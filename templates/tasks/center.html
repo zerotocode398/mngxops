@@ -71,7 +71,7 @@
                 <tbody>
                     {% for row in rows %}
                     {% set task = row.task %}
-                    {% set detail_url = "/nginx-install/task/" ~ task.id ~ "/log/" if task.operation_type == "nginx_install" else "/tasks/" ~ task.id ~ "/" %}
+                    {% set detail_url = "/tasks/" ~ task.id ~ "/" %}
                     <tr class="task-center-row" data-task-id="{{ task.id }}"
                         data-task-active="{{ 'true' if task.status in ('pending', 'running') else 'false' }}"
                         data-detail-url="{{ detail_url }}">

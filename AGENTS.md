@@ -744,6 +744,7 @@ e9707275226af0ee7d70a97142da9a93
 251. **已完成**：安装任务创建后使用全局右上角 `showToast` 显示服务端成功消息及批次号；被跳过节点仍显示警告提示。实现：`static/js/nginx-install.js`。验证：静态核对成功与跳过提示走全局 Toast；未启动服务或运行测试，待用户页面验证。
 252. **已完成**：安装批次进度补齐升级页同款进度条无障碍状态、终态颜色和结束动画处理；批次进度请求短暂失败时保留现有进度并自动重试，单次故障只提示一次。实现：`templates/nginx_install/center.html`、`static/js/nginx-install.js`。无 API 或数据结构变化；未启动服务或运行测试，待用户页面验证。
 253. **已完成**：安装任务详情调整为升级详情的紧凑任务信息、状态、实时进度条、编译参数和终端日志布局，继续显示安装路径、主配置路径、监听端口和配置同步结果；样式复用 `static/css/upgrade.css`。实现：`templates/nginx_install/task_log.html`、`ngxops/nginx_install/routes.py`、`static/js/nginx-install.js`，脚本缓存版本递增至 `255-1`。路由、权限与任务日志 API 不变；未启动服务或运行测试，待用户页面验证。
-254. **已完成**：任务中心中安装任务的任务行点击、任务编号和详情按钮均直达 `/nginx-install/task/{id}/log/`；其他任务继续进入统一任务详情。实现：`templates/tasks/center.html`。沿用安装详情页现有权限门禁；未启动服务或运行测试，待用户页面验证。
+254. **已完成**：任务中心的安装任务点击整行、任务编号或详情按钮均进入统一任务详情；详情页来源批次中的批次号新窗口打开专用安装详情。实现：`templates/tasks/center.html`、`templates/tasks/detail.html`。安装详情继续使用现有权限门禁；未启动服务或运行测试，待用户页面验证。
 255. **已完成**：安装任务日志保留原有持久化阶段记录和远端命令输出，并明确记录编译工具检查、源码解压、configure、make、make install、`nginx -t`、安装版本回读及回退版本说明等核心步骤；详情页实时追加日志并显示当前进度说明。实现：`ngxops/nginx_install/services.py`、`templates/nginx_install/task_log.html`、`static/js/nginx-install.js`。复用统一 `TaskLog`，无数据库迁移；`git diff --check` 通过。未启动服务或运行测试，待用户页面验证。
 256. **已完成**：安装中心“最近安装任务”的目标节点中，主机名和 IP 使用与升级中心相同的单行 flex 布局；长文本截断省略显示。实现：`templates/nginx_install/index.html`、`static/css/nginx-install.css`，样式缓存参数统一递增至 `255-2`。未启动服务或运行测试，待用户页面验证。
+257. **已完成**：修正 Nginx 全新安装在任务中心的详情跳转：任务中心任务行、编号和详情按钮进入统一任务详情；统一详情中的安装批次号新窗口打开 Nginx 安装详情。实现与行为记录见 254。未启动服务或运行测试，待用户页面验证。
