@@ -3,7 +3,7 @@
 {% block page_title %}<i class="bi bi-download" aria-hidden="true"></i> Nginx 安装中心{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=239-2">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=243-1">
 {% endblock %}
 
 {% block content %}
@@ -169,10 +169,13 @@
             <div class="card-body">
                 <div id="installConfirmSummary" class="install-summary-grid"></div>
                 <h3 class="install-subheading mt-3">最终 configure 参数</h3>
-                <p class="small text-muted mb-2">每行一项编译参数；反斜杠表示同一条命令续行。</p>
                 <pre class="nginx-v-output upgrade-config-output" id="installConfigurePreview">./configure 等待生成...</pre>
                 <h3 class="install-subheading mt-3">目标节点</h3>
                 <div id="installConfirmNodes" class="install-confirm-list"></div>
+                <section class="install-path-check-section d-none" id="installPathCheckSection" aria-live="polite">
+                    <h3 class="install-subheading mt-3">远端路径权限</h3>
+                    <div id="installPathCheckResults"></div>
+                </section>
                 <div class="alert alert-info small mt-3 mb-3">
                     安装通过 nginx -t 后启动。若节点可管理 systemd，将注册并 enable nginx.service，再以配置用户启动；否则使用编译出的 Nginx 二进制直接启动。安装成功后回写节点路径与探测状态，并自动同步配置；同步失败不会回滚安装。
                 </div>
@@ -230,4 +233,4 @@
 <script type="application/json" id="installDefaultModuleData">{{ default_modules|tojson }}</script>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=239-2"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=243-1"></script>{% endblock %}

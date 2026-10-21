@@ -38,8 +38,16 @@
 .install-module-summary { max-height: min(24vh, 190px); }
 .install-module-selected { cursor: default; }
 .install-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; padding: 12px; border: 1px solid var(--gray-200); border-radius: 4px; background: #f8f9fa; }
-.install-summary-item { min-width: 0; overflow-wrap: anywhere; }
-.install-summary-item small { display: block; color: var(--gray-600); font-size: .75rem; }
+.install-summary-item { display: grid; grid-template-columns: minmax(86px, auto) minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; padding: 6px 0; border-bottom: 1px solid var(--gray-200); overflow-wrap: anywhere; }
+.install-summary-key { color: var(--gray-700); font-size: .8125rem; font-weight: 600; }
+.install-summary-value { min-width: 0; font-size: .8125rem; }
+.install-summary-startup .install-summary-value { color: #0f766e; font-weight: 500; }
+.install-risk-node-wrap { max-height: min(45vh, 360px); overflow: auto; }
+.install-risk-node-table { min-width: 480px; }
+.install-risk-node-table thead { position: sticky; top: 0; z-index: 1; }
+.install-path-check-table { min-width: 760px; }
+.install-path-check-table code { display: block; overflow-wrap: anywhere; white-space: normal; }
+.install-path-check-message { color: var(--gray-600); font-size: .75rem; }
 .install-config-output, .install-log-output { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 4px; color: #e7edf5; background: #202832; font: .78rem/1.55 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
 .install-log-output { max-height: 560px; }
 .install-log-line { display: grid; grid-template-columns: 138px minmax(0, 1fr); gap: 10px; padding: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; }

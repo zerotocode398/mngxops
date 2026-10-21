@@ -5,6 +5,7 @@ import logging
 import posixpath
 import re
 import shlex
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
@@ -788,6 +789,214 @@ def _eligible_node_reason(node: Node, active_node_ids: set) -> str:
     if node.id in active_node_ids:
         return "节点已有进行中的安装任务"
     return ""
+
+
+def _remote_path_check_command(path: str) -> str:
+    """生成会清理自身临时目录的远端路径写入检查命令。"""
+    command = "path={};\n".format(shlex.quote(path))
+    command += """created_dirs=''
+probe=''
+cleanup_created_dirs() {
+    [ -z "$probe" ] || rmdir -- "$probe" >/dev/null 2>&1 || true
+    printf '%s' "$created_dirs" | while IFS= read -r created_dir; do
+        [ -z "$created_dir" ] || rmdir -- "$created_dir" >/dev/null 2>&1 || true
+    done
+}
+trap cleanup_created_dirs EXIT
+ensure_dir() {
+    [ -d "$1" ] && return 0
+    [ ! -e "$1" ] || return 1
+    parent=$(dirname -- "$1")
+    [ "$parent" != "$1" ] || return 1
+    ensure_dir "$parent" || return 1
+    if mkdir -- "$1" 2>/dev/null; then
+        created_dirs="$1
+$created_dirs"
+        return 0
+    fi
+    [ -d "$1" ]
+}
+if [ -e "$path" ] && [ ! -d "$path" ]; then
+    printf NOT_DIRECTORY
+    exit 20
+fi
+if ! ensure_dir "$path"; then
+    printf NO_WRITE
+    exit 21
+fi
+probe=$(mktemp -d "$path/.ngxops-permission-check.XXXXXX" 2>/dev/null) || {
+    printf NO_WRITE
+    exit 21
+}
+if ! rmdir -- "$probe" 2>/dev/null; then
+    printf CLEANUP_FAILED
+    exit 22
+fi
+probe=''
+printf OK
+"""
+    return command
+
+
+def _check_remote_path_permission(client, path: str) -> Tuple[bool, bool, str]:
+    """使用临时目录确认 SSH 用户可在目标路径写入。"""
+    status, _output = _run_remote_command(
+        client,
+        _remote_path_check_command(path),
+        timeout=30,
+        log_output=False,
+    )
+    messages = {
+        0: "有写入权限",
+        20: "目标路径已存在但不是目录",
+        21: "当前 SSH 用户无法在目标路径创建目录或临时文件",
+        22: "权限检查目录未能清理",
+    }
+    return status == 0, True, messages.get(status, "远端路径权限检查失败")
+
+
+def _path_check_result(path: str, message: str, checked: bool = False) -> dict:
+    """构造单个路径的权限检查结果。"""
+    return {"path": path, "checked": checked, "writable": False, "message": message}
+
+
+def _check_node_install_paths(
+    item: dict, target_prefix: str, remote_work_dir: str
+) -> dict:
+    """通过单条 SSH 连接检查一个节点的两个安装目标路径。"""
+    result = item["result"]
+    client = None
+    try:
+        client = _connect_target(item["target"])
+        for field, path in (
+            ("install_path", target_prefix),
+            ("remote_work_dir", remote_work_dir),
+        ):
+            writable, checked, message = _check_remote_path_permission(client, path)
+            result[field] = {
+                "path": path,
+                "checked": checked,
+                "writable": writable,
+                "message": message,
+            }
+        result["success"] = all(
+            result[field]["writable"]
+            for field in ("install_path", "remote_work_dir")
+        )
+    except ValueError as exc:
+        result["error"] = str(exc)
+        for field in ("install_path", "remote_work_dir"):
+            result[field]["message"] = "未检查：{}".format(result["error"])
+    except Exception:
+        result["error"] = "SSH 路径权限检查失败"
+        for field in ("install_path", "remote_work_dir"):
+            result[field]["message"] = "未检查：{}".format(result["error"])
+    finally:
+        if client is not None:
+            client.close()
+    return result
+
+
+def check_install_path_permissions(
+    session_factory: sessionmaker,
+    encryption_key: bytes,
+    node_ids: Sequence[int],
+    target_prefix: str,
+    remote_work_dir: str,
+) -> dict:
+    """并发检查安装批次中各节点的安装路径和临时工作目录权限。"""
+    normalized_prefix = validate_target_prefix(target_prefix)
+    normalized_work_dir = validate_remote_work_dir(remote_work_dir)
+    unique_ids = list(dict.fromkeys(node_ids))
+    if not unique_ids:
+        raise ValueError("请选择至少一个目标节点")
+
+    with session_scope(session_factory) as session:
+        nodes = session.scalars(
+            select(Node)
+            .options(joinedload(Node.credential))
+            .where(Node.id.in_(unique_ids))
+        ).unique().all()
+        by_id = {node.id: node for node in nodes}
+        if set(by_id) != set(unique_ids):
+            raise ValueError("部分节点不存在")
+        active_node_ids = set(
+            session.scalars(
+                select(NginxInstallRun.node_id)
+                .join(Task, Task.id == NginxInstallRun.task_id)
+                .where(
+                    NginxInstallRun.node_id.in_(unique_ids),
+                    Task.status.in_(("pending", "running")),
+                )
+            ).all()
+        )
+        checks = []
+        results_by_id = {}
+        for node_id in unique_ids:
+            node = by_id[node_id]
+            credential = node.credential
+            username = credential.username if credential else ""
+            result = {
+                "node_id": node.id,
+                "hostname": node.hostname,
+                "ip": node.ip,
+                "username": username,
+                "success": False,
+                "error": "",
+                "install_path": _path_check_result(
+                    normalized_prefix, "未检查"
+                ),
+                "remote_work_dir": _path_check_result(
+                    normalized_work_dir, "未检查"
+                ),
+            }
+            results_by_id[node_id] = result
+            reason = _eligible_node_reason(node, active_node_ids)
+            if reason:
+                result["error"] = reason
+                for field in ("install_path", "remote_work_dir"):
+                    result[field]["message"] = "未检查：{}".format(reason)
+                continue
+            try:
+                secret = (
+                    credential.get_password(encryption_key)
+                    if credential.auth_type == "password"
+                    else credential.get_private_key(encryption_key)
+                )
+            except CredentialDecryptionError:
+                result["error"] = "节点 SSH 凭证解密失败"
+                for field in ("install_path", "remote_work_dir"):
+                    result[field]["message"] = "未检查：节点 SSH 凭证解密失败"
+                continue
+            target = {
+                "id": node.id,
+                "hostname": node.hostname,
+                "ip": node.ip,
+                "port": node.port,
+                "username": credential.username,
+                "auth_type": credential.auth_type,
+                "password": secret if credential.auth_type == "password" else "",
+                "private_key": secret if credential.auth_type != "password" else "",
+                "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+                "detect_retries": read_setting(session, "node.detect_retries", 1),
+            }
+            checks.append({"target": target, "result": result})
+
+    if checks:
+        with ThreadPoolExecutor(max_workers=min(3, len(checks))) as pool:
+            list(
+                pool.map(
+                    lambda item: _check_node_install_paths(
+                        item, normalized_prefix, normalized_work_dir
+                    ),
+                    checks,
+                )
+            )
+    results = [results_by_id[node_id] for node_id in unique_ids]
+    return {
+        "all_passed": all(item["success"] for item in results),
+        "nodes": results,
+    }
 
 
 def create_install_batch(

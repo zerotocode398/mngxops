@@ -85,7 +85,6 @@
         });
         var batchNumber = "";
         var pollTimer = null;
-        var riskConfirmed = false;
         var nodeSearch = document.getElementById("nodeSearch");
         var nodePageSize = document.getElementById("nodePageSize");
         var nodePage = 1;
@@ -107,7 +106,6 @@
             } else {
                 delete selected[nodeId];
             }
-            riskConfirmed = false;
             updateNodeCount();
         });
 
@@ -320,9 +318,6 @@
             renderSelectedNodeSummary();
         }
 
-        document.getElementById("listenPort").addEventListener("input", function () {
-            riskConfirmed = false;
-        });
         document.getElementById("step1Next").addEventListener("click", function () {
             if (!Object.keys(selected).length || !selectedPackage().id) {
                 notify("请选择目标节点和 Nginx 源码包", "warning");
@@ -576,7 +571,7 @@
             };
         }
 
-        function renderConfirmation(configure) {
+        function renderConfirmation(configure, pathChecks) {
             var nodes = selectedNodeObjects();
             var pkg = selectedPackage();
             var values = formValues();
@@ -584,20 +579,20 @@
             summary.replaceChildren();
             [
                 ["源码版本", pkg.version],
-                ["安装前缀", values.target_prefix],
-                ["运行账户", values.nginx_user + ":" + values.nginx_group],
+                ["安装路径", values.target_prefix],
                 ["监听端口", String(values.listen_port)],
-                ["工作目录", values.remote_work_dir],
-                ["编译并发", "-j" + values.make_jobs],
-                ["官方模块", String(values.added_modules.length)],
-                ["第三方模块", String(values.added_third_party.length)],
+                ["临时安装目录", values.remote_work_dir],
+                ["编译并发", String(values.make_jobs)],
                 ["启动管理", "优先注册并启用 nginx.service；不可管理时使用二进制启动"]
             ].forEach(function (pair) {
                 var item = document.createElement("div");
-                item.className = "install-summary-item";
-                var label = document.createElement("small");
-                label.textContent = pair[0];
+                item.className = "install-summary-item" +
+                    (pair[0] === "启动管理" ? " install-summary-startup" : "");
+                var label = document.createElement("strong");
+                label.className = "install-summary-key";
+                label.textContent = pair[0] + ":";
                 var value = document.createElement("span");
+                value.className = "install-summary-value";
                 value.textContent = pair[1] || "-";
                 item.appendChild(label);
                 item.appendChild(value);
@@ -618,7 +613,59 @@
                 row.appendChild(state);
                 nodeList.appendChild(row);
             });
+            renderPathCheckResults(pathChecks || []);
             renderWarnings(nodes, values);
+        }
+
+        function escapePathCheckHtml(value) {
+            return String(value || "").replace(/[&<>\"']/g, function (character) {
+                return {
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;"
+                }[character];
+            });
+        }
+
+        function pathPermissionCell(permission) {
+            var badgeClass = permission.checked
+                ? (permission.writable ? "success" : "danger")
+                : "secondary";
+            var label = permission.checked
+                ? (permission.writable ? "可写" : "无写入权限")
+                : "未检查";
+            return "<div><code>" + escapePathCheckHtml(permission.path) +
+                "</code><span class=\"badge text-bg-" + badgeClass + "\">" + label +
+                "</span><div class=\"install-path-check-message\">" +
+                escapePathCheckHtml(permission.message) + "</div></div>";
+        }
+
+        function pathCheckTableHtml(results) {
+            var rows = results.map(function (item) {
+                var stateClass = item.success ? "success" : "danger";
+                var stateLabel = item.success ? "通过" : "未通过";
+                return "<tr><td><strong>" + escapePathCheckHtml(item.hostname) +
+                    "</strong><div class=\"small text-muted\">" + escapePathCheckHtml(item.ip) +
+                    "</div></td><td><code>" + escapePathCheckHtml(item.username || "-") +
+                    "</code></td><td>" + pathPermissionCell(item.install_path) +
+                    "</td><td>" + pathPermissionCell(item.remote_work_dir) +
+                    "</td><td><span class=\"badge text-bg-" + stateClass + "\">" +
+                    stateLabel + "</span>" + (item.error
+                        ? "<div class=\"install-path-check-message\">" +
+                            escapePathCheckHtml(item.error) + "</div>"
+                        : "") + "</td></tr>";
+            }).join("");
+            return "<div class=\"table-responsive install-risk-node-wrap\"><table class=\"table table-sm table-bordered align-middle install-path-check-table mb-0\"><thead class=\"table-light\"><tr><th>节点</th><th>SSH 用户</th><th>安装路径</th><th>远程工作目录</th><th>结果</th></tr></thead><tbody>" +
+                rows + "</tbody></table></div>";
+        }
+
+        function renderPathCheckResults(results) {
+            var section = document.getElementById("installPathCheckSection");
+            var target = document.getElementById("installPathCheckResults");
+            section.classList.toggle("d-none", !results.length);
+            target.innerHTML = results.length ? pathCheckTableHtml(results) : "";
         }
 
         function renderWarnings(nodes, values) {
@@ -652,6 +699,33 @@
             return alert;
         }
 
+        /** 构造可快速核对主机、SSH 用户和监听端口的安全提示内容。 */
+        function buildPortRiskMessage(nodes, listenPort) {
+            function escapeHtml(value) {
+                return String(value).replace(/[&<>"']/g, function (character) {
+                    return {
+                        "&": "&amp;",
+                        "<": "&lt;",
+                        ">": "&gt;",
+                        '"': "&quot;",
+                        "'": "&#39;"
+                    }[character];
+                });
+            }
+
+            var rows = nodes.map(function (node) {
+                return "<tr><td><strong>" + escapeHtml(node.hostname) +
+                    "</strong><div class=\"small text-muted\">" + escapeHtml(node.ip) +
+                    "</div></td><td><code>" + escapeHtml(node.credential_username) +
+                    "</code></td><td><span class=\"badge text-bg-warning\">" +
+                    escapeHtml(listenPort) + "</span></td></tr>";
+            }).join("");
+            return "<p class=\"mb-3\">以下节点使用非 root SSH 用户，启动 Nginx 绑定特权端口时可能缺少权限：</p>" +
+                "<div class=\"table-responsive install-risk-node-wrap mb-3\"><table class=\"table table-sm table-bordered align-middle install-risk-node-table mb-0\"><thead class=\"table-light\"><tr><th scope=\"col\">主机名 / IP</th><th scope=\"col\">SSH 用户</th><th scope=\"col\">监听端口</th></tr></thead><tbody>" +
+                rows + "</tbody></table></div>" +
+                "<div class=\"alert alert-warning py-2 small mb-0\"><i class=\"bi bi-exclamation-triangle-fill me-1\" aria-hidden=\"true\"></i>建议改用 1024 以上端口。确认后继续到执行参数页。</div>";
+        }
+
         function goToConfirmation() {
             if (!selectedPackage().id || !selectedNodeObjects().length) {
                 notify("请返回第一步检查节点与源码包", "warning");
@@ -670,25 +744,43 @@
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(values)
             }).then(function (result) {
-                renderConfirmation(result.target_configure_opts);
-                var nodes = selectedNodeObjects();
-                var riskNodes = isPrivilegedListenPort(values.listen_port) ? nodes.filter(function (node) {
-                    return node.credential_username && node.credential_username !== "root";
-                }) : [];
-                if (riskNodes.length && !riskConfirmed) {
-                    var maxShow = 10;
-                    var names = riskNodes.slice(0, maxShow).map(function (node) {
-                        return node.hostname + " (" + node.ip + ", SSH 用户 " + node.credential_username + " 对应监听端口 " + values.listen_port + ")";
-                    }).join("\n");
-                    if (riskNodes.length > maxShow) names += "\n等共 " + riskNodes.length + " 台";
-                    var message = "以下节点使用非 root SSH 用户，启动 Nginx 绑定监听端口 " + values.listen_port + " 时可能缺少特权端口权限：\n" + names + "\n\n建议改用 1024 以上端口。是否继续到确认页？";
-                    window.showConfirm("监听端口风险提示", message, function () {
-                        riskConfirmed = true;
-                        setStep(3);
-                    });
+                if (!canExecute) {
+                    renderConfirmation(result.target_configure_opts, []);
+                    setStep(3);
                     return;
                 }
-                setStep(3);
+                button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>正在检查远端路径权限';
+                return requestJson("/api/nginx-install/path-permissions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        node_ids: Object.keys(selected).map(Number),
+                        target_prefix: values.target_prefix,
+                        remote_work_dir: values.remote_work_dir
+                    })
+                }).then(function (pathCheck) {
+                    renderConfirmation(result.target_configure_opts, pathCheck.nodes);
+                    if (!pathCheck.all_passed) {
+                        window.showAlert(
+                            "远端路径权限检查未通过",
+                            "以下节点的安装路径或远程工作目录不可写，已停止进入确认步骤：<div class=\"mt-3\">" +
+                                pathCheckTableHtml(pathCheck.nodes) + "</div>",
+                            true
+                        );
+                        return;
+                    }
+                    var nodes = selectedNodeObjects();
+                    var riskNodes = isPrivilegedListenPort(values.listen_port) ? nodes.filter(function (node) {
+                        return node.credential_username && node.credential_username !== "root";
+                    }) : [];
+                    if (riskNodes.length) {
+                        window.showConfirm("监听端口风险提示", buildPortRiskMessage(riskNodes, values.listen_port), function () {
+                            setStep(3);
+                        }, true, "lg", "继续到确认页");
+                        return;
+                    }
+                    setStep(3);
+                });
             }).catch(function (error) {
                 notify(error.message, "danger");
             }).finally(function () {

@@ -186,25 +186,28 @@ def test_install_batch_history_package_guard_and_path_sync(install_client, monke
     assert home.status_code == 200, home.text
     center = client.get("/nginx-install/center/")
     assert center.status_code == 200, center.text
-    assert "已检测到" in center.text
+    assert '"nginx_available": true' in center.text
     assert 'data-step-tab="1"' in center.text
     assert 'data-step-tab="2"' in center.text
     assert 'data-step-tab="3"' in center.text
     assert "确认编译参数" in center.text
     assert "确认执行" in center.text
-    assert 'id="installPortPreviewRows"' in center.text
-    assert "系统设置默认值" in center.text
     assert 'id="installNodePickerModal"' in center.text
     assert 'id="nodePageSize"' in center.text
     assert 'id="selectedNodeSummary"' in center.text
-    assert "nginx-install.js?v=226-3" in center.text
+    assert "nginx-install.js?v=243-1" in center.text
+    assert "nginx-install.css?v=243-1" in center.text
+    assert "每行一项编译参数；反斜杠表示同一条命令续行。" not in center.text
     assert 'id="targetPrefix" value="/opt/app"' in center.text
     assert 'id="nginxUser" value="root"' in center.text
     assert 'id="nginxGroup" value="root"' in center.text
     assert 'id="listenPort" value="80"' in center.text
     assert 'id="thirdPartyModules"' in center.text
-    assert 'id="installPortMapRows"' in center.text
-    assert "SSH 操作用户与监听端口" in center.text
+    assert 'id="installPortPreviewRows"' not in center.text
+    assert 'id="installPortMapRows"' not in center.text
+    assert "SSH 操作用户与监听端口" not in center.text
+    assert 'id="installPathCheckSection"' in center.text
+    assert 'id="installPathCheckResults"' in center.text
     assert "--with-http_ssl_module" in center.text
     assert "--with-http_realip_module" in center.text
     assert "--with-http_stub_status_module" in center.text
@@ -324,12 +327,95 @@ def test_install_configure_preview_rejects_path_override(install_client):
     assert "不能覆盖安装路径" in response.json()["message"]
 
 
+def test_install_path_permissions_checks_both_paths_and_reports_denial(
+    install_client, monkeypatch
+):
+    """验证安装路径与工作目录分别远端检查并安全引用路径。"""
+    client, _app, csrf, _executor, node_id, _locked_id, _package_id, _user_id = install_client
+    commands = []
+    closed = []
+    targets = []
+
+    class FakeClient:
+        """记录关闭状态的 SSH 客户端替身。"""
+
+        def close(self):
+            """记录 SSH 会话关闭。"""
+            closed.append(True)
+
+    def fake_connect(target):
+        """确认目标使用关联凭证的 SSH 用户。"""
+        targets.append(target)
+        return FakeClient()
+
+    def fake_run(_client, command, timeout=45, **_kwargs):
+        """模拟安装路径可写、含 shell 元字符的工作目录不可写。"""
+        commands.append(command)
+        if "path=/opt/ngx;" in command:
+            return 0, "OK"
+        if "path='/tmp/nginx; touch /tmp/ngxops-path-check'" in command:
+            return 21, "NO_WRITE"
+        return 21, "NO_WRITE"
+
+    monkeypatch.setattr("ngxops.nginx_install.services._connect_target", fake_connect)
+    monkeypatch.setattr("ngxops.nginx_install.services._run_remote_command", fake_run)
+    response = client.post(
+        "/api/nginx-install/path-permissions",
+        headers={"X-CSRFToken": csrf},
+        json={
+            "node_ids": [node_id],
+            "target_prefix": "/opt/ngx",
+            "remote_work_dir": "/tmp/nginx; touch /tmp/ngxops-path-check",
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["all_passed"] is False
+    assert payload["nodes"][0]["username"] == "deploy"
+    assert payload["nodes"][0]["install_path"] == {
+        "path": "/opt/ngx",
+        "checked": True,
+        "writable": True,
+        "message": "有写入权限",
+    }
+    work_dir = payload["nodes"][0]["remote_work_dir"]
+    assert work_dir["checked"] is True
+    assert work_dir["writable"] is False
+    assert "无法在目标路径创建" in work_dir["message"]
+    assert payload["nodes"][0]["success"] is False
+    assert len(commands) == 2
+    assert targets[0]["username"] == "deploy"
+    assert targets[0]["password"] == "ssh-secret-value"
+    assert all("mkdir -- \"$1\"" in command for command in commands)
+    assert "path='/tmp/nginx; touch /tmp/ngxops-path-check';" in commands[1]
+    assert "ssh-secret-value" not in response.text
+    assert closed == [True]
+
+
 def test_install_frontend_warns_for_non_root_privileged_listen_ports():
-    """验证安装向导覆盖所有低端口并显示 SSH 用户与端口映射。"""
+    """验证安装确认展示低端口风险表格和键值摘要。"""
     script = (Path(__file__).parents[1] / "static/js/nginx-install.js").read_text(
         encoding="utf-8"
     )
     assert "return port > 0 && port < 1024;" in script
     assert "values.listen_port === 80" not in script
     assert "isPrivilegedListenPort(values.listen_port)" in script
-    assert "对应监听端口" in script
+    assert "buildPortRiskMessage(riskNodes, values.listen_port)" in script
+    assert 'true, "lg", "继续到确认页"' in script
+    assert "riskConfirmed" not in script
+    assert "主机名 / IP" in script
+    assert "SSH 用户</th>" in script
+    assert "install-risk-node-wrap" in script
+    assert '"/api/nginx-install/path-permissions"' in script
+    assert "pathCheck.all_passed" in script
+    assert "远端路径权限检查未通过" in script
+
+    summary = script.split("function renderConfirmation(configure, pathChecks) {", 1)[1].split(
+        "function renderWarnings(", 1
+    )[0]
+    assert '["安装路径", values.target_prefix]' in summary
+    assert '["临时安装目录", values.remote_work_dir]' in summary
+    assert '["编译并发", String(values.make_jobs)]' in summary
+    assert "运行账户" not in summary
+    assert "官方模块" not in summary
+    assert "第三方模块" not in summary

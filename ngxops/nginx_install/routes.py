@@ -18,6 +18,7 @@ from ngxops.database.session import session_scope
 from ngxops.nginx_install.models import NginxInstallRun
 from ngxops.nginx_install.services import (
     build_install_configure_opts,
+    check_install_path_permissions,
     create_install_batch,
     default_install_modules,
     derive_paths_from_prefix,
@@ -113,6 +114,44 @@ class InstallConfigureResponse(BaseModel):
     success: bool = True
     target_configure_opts: str
     paths: InstallPaths
+
+
+class InstallPathPermission(BaseModel):
+    """描述一个目标目录是否可由 SSH 用户写入。"""
+
+    path: str
+    checked: bool
+    writable: bool
+    message: str
+
+
+class InstallNodePathCheck(BaseModel):
+    """描述一个节点的 Nginx 安装路径预检结果。"""
+
+    node_id: int
+    hostname: str
+    ip: str
+    username: str
+    success: bool
+    error: str
+    install_path: InstallPathPermission
+    remote_work_dir: InstallPathPermission
+
+
+class InstallPathCheckRequest(BaseModel):
+    """描述安装目标路径权限预检请求。"""
+
+    node_ids: List[int] = Field(..., min_length=1, max_length=50)
+    target_prefix: str = Field(..., min_length=1, max_length=500)
+    remote_work_dir: str = Field(..., min_length=1, max_length=500)
+
+
+class InstallPathCheckResponse(BaseModel):
+    """描述所有目标节点的安装路径权限预检结果。"""
+
+    success: bool = True
+    all_passed: bool
+    nodes: List[InstallNodePathCheck]
 
 
 class SkippedInstallNode(BaseModel):
@@ -545,6 +584,44 @@ def install_configure_preview(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/api/nginx-install/path-permissions",
+    response_model=InstallPathCheckResponse,
+    summary="检查 Nginx 安装目标路径权限",
+    description=(
+        "使用节点 SSH 用户检查安装路径和远程工作目录是否可写。"
+        "检查过程会临时创建并清理空目录，不执行安装或保留探测文件。"
+    ),
+    responses=api_error_responses((400, 401, 403, 422, 500)),
+)
+def install_path_permissions(
+    request: Request,
+    payload: InstallPathCheckRequest,
+    user: User = Depends(require_permission("upgrade", "execute")),
+    session: Session = Depends(get_session),
+) -> InstallPathCheckResponse:
+    """在线程池中检查所选节点的远程安装路径权限。"""
+    batch_limit = read_setting(session, "node.batch_max_count", 3)
+    node_ids = list(dict.fromkeys(payload.node_ids))
+    if len(node_ids) > batch_limit:
+        raise HTTPException(
+            status_code=400,
+            detail="单次最多检查 {} 台节点".format(batch_limit),
+        )
+    session.rollback()
+    try:
+        result = check_install_path_permissions(
+            request.app.state.database.session_factory,
+            request.app.state.credential_encryption_key,
+            node_ids,
+            payload.target_prefix,
+            payload.remote_work_dir,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return InstallPathCheckResponse(**result)
 
 
 @router.post(
