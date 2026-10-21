@@ -740,10 +740,9 @@ e9707275226af0ee7d70a97142da9a93
 247. **已完成**：路径检查失败时，若同时存在非 root SSH 用户绑定特权监听端口的风险，在同一大尺寸、可滚动提示框中合并展示失败路径与端口风险节点；两张表统一使用“节点、SSH 用户、未通过项目、原因”表头、列宽和行高样式。路径失败仍阻止继续，并提示先修复、重新检查，路径通过后仍需确认端口风险。无端口风险时只显示路径失败项；路径通过时保留原有单独端口确认流程。公共 `showAlert` 增加可选尺寸参数，默认行为不变。实现：`static/js/nginx-install.js`、`static/js/app.js`、`static/css/nginx-install.css`、`templates/base.html`、`templates/nginx_install/center.html`。验证：静态核对合并条件、路径门禁、HTML 转义、长列表滚动和缓存版本递增；未运行测试或启动服务，待用户页面验证。
 248. **已完成**：Nginx 安装步骤 3 的确认摘要复用 Nginx 升级步骤 4 的 `.upgrade-summary` 表格布局，源码包显示名称和版本，安装路径、监听端口、工作目录、编译并发及启动管理信息沿用相同的标签/值样式。实现：`templates/nginx_install/center.html`、`static/js/nginx-install.js`、`static/css/nginx-install.css`。验证：静态核对共享样式类、动态摘要结构与响应式布局；未运行测试或启动服务，待用户页面验证。
 249. **已完成**：最终 configure 参数改为升级确认页同款终端样式，并在标题与终端之间增加间距。实现：`templates/nginx_install/center.html`；递增安装页 CSS/JS 资源版本。验证：静态核对确认区结构、终端样式类和资源版本；未运行测试或启动服务，待用户页面验证。
-250. Nginx 安装，点击开始安装后弹窗内容如下，目前是纯文本形式，无法一眼看到关键信息，按需调整。
-```text
-开始 Nginx 安装
-
-将为 1 台节点安装 1.31.2。安装完成后会尝试自动同步配置。 启动策略：优先注册并启用 nginx.service；无法管理 systemd 时改用二进制启动。 以下节点使用非 root SSH 用户，将按远端权限尝试 systemctl；若无 unit 写权限且无免密 sudo，将使用二进制启动：麒麟66 (10.10.77.66, SSH 用户 umpay 对应监听端口 18888)
-```
-251. 
+250. **已完成**：Nginx 安装“开始安装”确认弹窗由纯文本改为 HTML 结构，顶部复用升级确认摘要样式，列出目标节点数、源码包/版本、路径、端口、Nginx 用户组、编译并发、启动方式和安装后同步；节点表展示主机/IP、SSH 用户、监听端口及 Nginx 状态，systemd 回退、特权端口和覆盖风险使用分组提示。动态字段均转义，弹窗放大并限制长节点表高度。实现：`static/js/nginx-install.js`、`static/css/nginx-install.css`、`templates/nginx_install/center.html`。验证：静态核对 HTML 内容构建、动态字段转义、风险条件和资源版本；未运行测试或启动服务，待用户页面验证。
+251. Nginx 安装，点击安装后使用全局右上角弹窗，以 Nginx 升级为基准进行调整。
+252. Nginx 安装，安装执行进度，以 Nginx 升级为基准进行调整。
+253. Nginx 安装，Nginx 安装任务详情，页面样式以 Nginx 升级“升级任务详情”为基准进行调整。
+254. 任务中心 Nginx 安装任务跳转参考 Nginx 升级回滚。
+255. 任务中心 Nginx 安装 任务详情的执行日志记录核心步骤，参考 Nginx 升级回滚。

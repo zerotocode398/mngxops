@@ -49,6 +49,15 @@
 .install-check-summary-table code { display: block; overflow-wrap: anywhere; white-space: normal; }
 .install-check-node-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .install-check-reason { overflow-wrap: anywhere; }
+.install-start-confirm { max-height: min(60vh, 560px); overflow: auto; }
+.install-start-node-wrap { max-height: min(32vh, 260px); overflow: auto; border: 1px solid var(--gray-200); border-radius: 4px; }
+.install-start-node-table { width: 100%; min-width: 600px; table-layout: fixed; }
+.install-start-node-table thead { position: sticky; top: 0; z-index: 1; }
+.install-start-node-table th:nth-child(1) { width: 38%; }
+.install-start-node-table th:nth-child(2) { width: 22%; }
+.install-start-node-table th:nth-child(3), .install-start-node-table th:nth-child(4) { width: 20%; }
+.install-start-node-table tbody > tr { height: 48px; }
+.install-start-node-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .install-path-check-message { color: var(--gray-600); font-size: .75rem; }
 .install-config-output, .install-log-output { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 4px; color: #e7edf5; background: #202832; font: .78rem/1.55 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
 .install-log-output { max-height: 560px; }

@@ -822,32 +822,69 @@
             });
         }
 
-        function confirmStart() {
-            var values = formValues();
-            var nodes = selectedNodeObjects();
+        function installStartSummaryItemHtml(label, value) {
+            return "<div class=\"upgrade-summary-item\"><span class=\"upgrade-summary-label\">" +
+                escapePathCheckHtml(label) + "</span><div class=\"upgrade-summary-value\">" +
+                escapePathCheckHtml(value) + "</div></div>";
+        }
+
+        function buildInstallStartConfirmation(nodes, values) {
+            var pkg = selectedPackage();
             var existing = nodes.filter(function (node) { return node.nginx_available === true; });
             var nonRoot = nodes.filter(function (node) {
                 return node.credential_username && node.credential_username !== "root";
             });
-            var message = "将为 " + nodes.length + " 台节点安装 " + selectedPackage().version +
-                "。安装完成后会尝试自动同步配置。";
-            message += "\n\n启动策略：优先注册并启用 nginx.service；无法管理 systemd 时改用二进制启动。";
+            var summary = [
+                ["目标节点", nodes.length + " 台"],
+                ["源码包", pkg.label + " · " + pkg.version],
+                ["安装路径", values.target_prefix],
+                ["临时安装目录", values.remote_work_dir],
+                ["监听端口", String(values.listen_port)],
+                ["Nginx 用户 / 用户组", values.nginx_user + " / " + values.nginx_group],
+                ["编译并发", String(values.make_jobs)],
+                ["启动管理", "优先尝试 nginx.service；权限不足时使用二进制启动"],
+                ["安装后操作", "尝试自动同步配置"],
+                ["已检测到 Nginx", existing.length + " 台"]
+            ].map(function (pair) {
+                return installStartSummaryItemHtml(pair[0], pair[1]);
+            }).join("");
+            var nodeRows = nodes.map(function (node) {
+                var nginxStatus = node.nginx_available === true
+                    ? '<span class="badge text-bg-warning">已检测到</span>'
+                    : node.nginx_available === false
+                        ? '<span class="badge text-bg-success">未检测到</span>'
+                        : '<span class="badge text-bg-secondary">未知</span>';
+                return "<tr><td><strong class=\"install-start-node-name\" title=\"" +
+                    escapePathCheckHtml(node.hostname) + "\">" + escapePathCheckHtml(node.hostname) +
+                    "</strong><div class=\"small text-muted\">" + escapePathCheckHtml(node.ip) +
+                    "</div></td><td><code>" + escapePathCheckHtml(node.credential_username || "-") +
+                    "</code></td><td><span class=\"badge text-bg-warning\">" +
+                    escapePathCheckHtml(values.listen_port) + "</span></td><td>" + nginxStatus + "</td></tr>";
+            }).join("");
+            var warnings = "";
             if (nonRoot.length) {
-                message += "\n\n以下节点使用非 root SSH 用户，将按远端权限尝试 systemctl；若无 unit 写权限且无免密 sudo，将使用二进制启动：" +
-                    nonRoot.map(function (node) {
-                        return node.hostname + " (" + node.ip + ", SSH 用户 " + node.credential_username + " 对应监听端口 " + values.listen_port + ")";
-                    }).join("、");
+                warnings += '<div class="alert alert-info py-2 small mb-2">非 root SSH 用户将按远端权限尝试 systemd；若无 unit 写权限且无免密 sudo，将使用 Nginx 二进制启动。</div>';
             }
             if (isPrivilegedListenPort(values.listen_port) && nonRoot.length) {
-                message += "\n\n监听端口 " + values.listen_port + " 属于特权端口，非 root SSH 用户启动 Nginx 时可能无法绑定；请确认远端具备相应权限。";
+                warnings += '<div class="alert alert-warning py-2 small mb-2">监听端口 ' +
+                    escapePathCheckHtml(values.listen_port) +
+                    ' 属于特权端口，非 root SSH 用户可能无法绑定。</div>';
             }
             if (existing.length) {
-                message += "\n\n已检测到 Nginx 的节点可能覆盖目标路径或 nginx.service：" +
-                    existing.map(function (node) { return node.hostname; }).join("、");
+                warnings += '<div class="alert alert-warning py-2 small mb-0">已检测到 Nginx 的节点可能覆盖目标路径或 nginx.service，请核对上方节点状态。</div>';
             }
-            window.showConfirm("开始 Nginx 安装", message, function () {
+            return '<div class="install-start-confirm"><div class="upgrade-summary mb-3"><div class="upgrade-summary-grid">' +
+                summary + '</div></div><section aria-labelledby="installStartNodeTitle"><h3 class="h6 mb-2" id="installStartNodeTitle">目标节点</h3>' +
+                '<div class="table-responsive install-start-node-wrap"><table class="table table-sm table-hover align-middle mb-0 install-start-node-table"><thead class="table-light"><tr><th>节点 / IP</th><th>SSH 用户</th><th>监听端口</th><th>Nginx 状态</th></tr></thead><tbody>' +
+                nodeRows + '</tbody></table></div></section>' + warnings + '</div>';
+        }
+
+        function confirmStart() {
+            var values = formValues();
+            var nodes = selectedNodeObjects();
+            window.showConfirm("开始 Nginx 安装", buildInstallStartConfirmation(nodes, values), function () {
                 submitInstall(values);
-            }, false, "md", "开始安装");
+            }, true, "lg", "开始安装");
         }
 
         function submitInstall(values) {
