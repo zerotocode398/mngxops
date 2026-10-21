@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/dashboard.css') }}">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=226-2">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=255-2">
 {% endblock %}
 
 {% block content %}
@@ -88,7 +88,7 @@
                     {% set task = run.task %}
                     <tr>
                         <td><a href="/nginx-install/history/?search={{ run.batch_number|urlencode }}"><code class="install-overview-batch">{{ run.batch_number }}</code></a></td>
-                        <td><div class="install-overview-node" title="{{ run.node_hostname }} ({{ run.node_ip }})"><span>{{ run.node_hostname }}</span><small class="text-muted">{{ run.node_ip }}</small></div></td>
+                        <td><div class="install-overview-node" title="{{ run.node_hostname }} ({{ run.node_ip }})"><span class="install-overview-node-name" title="{{ run.node_hostname }}">{{ run.node_hostname }}</span><small class="text-muted install-overview-node-ip">({{ run.node_ip }})</small></div></td>
                         <td><code class="install-overview-value">{{ run.target_version }}</code></td>
                         <td><code class="install-overview-value" title="{{ run.target_prefix }}">{{ run.target_prefix }}</code></td>
                         <td><span class="badge text-bg-{{ 'success' if task.status == 'success' else ('danger' if task.status == 'failed' else ('info' if task.status == 'running' else 'secondary')) }}">{{ {"pending":"等待执行","running":"执行中","success":"安装成功","failed":"安装失败","cancelled":"已取消"}.get(task.status, task.status) }}</span></td>

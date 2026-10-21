@@ -508,6 +508,7 @@ def _run_install(
             "command -v gcc >/dev/null 2>&1 && command -v make >/dev/null 2>&1",
             "目标节点缺少 gcc 或 make 编译工具",
         )
+        context.append_log("gcc 与 make 检查通过")
         context.check_cancelled()
 
         _phase(session_factory, task_id, context, "uploading_package", 10, "创建远程工作目录")
@@ -532,6 +533,7 @@ def _run_install(
         )
         source_root = _read_archive_root(client, remote_package)
         source_dir = posixpath.join(work_dir, source_root)
+        context.append_log("源码包解压完成：{}".format(source_root))
         context.check_cancelled()
 
         third_party = run["third_party"]
@@ -571,6 +573,7 @@ def _run_install(
         _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError("configure 失败：\n{}".format(_tail_output(output)))
+        context.append_log("configure 执行完成")
         context.check_cancelled()
 
         _phase(
@@ -592,6 +595,7 @@ def _run_install(
         _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError("make 编译失败：\n{}".format(_tail_output(output)))
+        context.append_log("make 编译完成")
         context.check_cancelled()
 
         _phase(session_factory, task_id, context, "installing", 78, "执行 make install")
@@ -604,6 +608,7 @@ def _run_install(
         _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError("make install 失败：\n{}".format(_tail_output(output)))
+        context.append_log("make install 完成")
 
         _phase(session_factory, task_id, context, "verifying", 84, "写入监听端口并执行 nginx -t")
         if run["listen_port"] != 80:
@@ -618,6 +623,7 @@ def _run_install(
         _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError(_listen_error(output))
+        context.append_log("nginx -t 检查通过")
         context.check_cancelled()
 
         _phase(session_factory, task_id, context, "starting", 88, "探测 systemd 管理能力")
@@ -657,6 +663,13 @@ def _run_install(
         )
         match = re.search(r"nginx/([0-9]+(?:\.[0-9]+){1,3})", output or "")
         version = match.group(1) if status == 0 and match else package["version"]
+        if match and status == 0:
+            context.append_log("安装后的 Nginx 版本：{}".format(version))
+        else:
+            context.append_log(
+                "无法读取安装后的 Nginx 版本，使用源码包版本 {}".format(version),
+                "warning",
+            )
         context.append_log("回写 Nginx 版本 {} 和路径 {}".format(version, paths["nginx_path"]))
         _write_node_install_result(
             session_factory,

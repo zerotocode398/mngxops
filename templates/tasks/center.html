@@ -71,10 +71,11 @@
                 <tbody>
                     {% for row in rows %}
                     {% set task = row.task %}
+                    {% set detail_url = "/nginx-install/task/" ~ task.id ~ "/log/" if task.operation_type == "nginx_install" else "/tasks/" ~ task.id ~ "/" %}
                     <tr class="task-center-row" data-task-id="{{ task.id }}"
                         data-task-active="{{ 'true' if task.status in ('pending', 'running') else 'false' }}"
-                        data-detail-url="/tasks/{{ task.id }}/">
-                        <td><a href="/tasks/{{ task.id }}/" class="task-id-link"><code>#{{ task.id }}</code></a></td>
+                        data-detail-url="{{ detail_url }}">
+                        <td><a href="{{ detail_url }}" class="task-id-link"><code>#{{ task.id }}</code></a></td>
                         <td><span class="badge badge-outline task-type-label" title="{{ row.operation_label }}">{{ row.operation_label }}</span></td>
                         <td><span class="badge task-status-badge status-{{ task.status }}" data-task-status>{{ row.status_label }}</span></td>
                         <td>
@@ -96,7 +97,7 @@
                         <td class="text-nowrap"><small><time datetime="{{ row.created_at_iso }}">{{ row.created_at_display }}</time></small></td>
                         <td class="text-nowrap" data-task-actions>
                             <div class="btn-group btn-group-sm" role="group" aria-label="任务操作">
-                                <a href="/tasks/{{ task.id }}/" class="btn btn-outline-info" title="详情" aria-label="详情">
+                                <a href="{{ detail_url }}" class="btn btn-outline-info" title="详情" aria-label="详情">
                                     <i class="bi bi-eye" aria-hidden="true"></i>
                                 </a>
                                 {% if row.can_cancel %}

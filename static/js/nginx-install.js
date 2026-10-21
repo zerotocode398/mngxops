@@ -56,9 +56,9 @@
         });
     }
 
-    function notify(message, type) {
+    function notify(message, type, duration) {
         if (window.showToast) {
-            window.showToast(message, type || "info");
+            window.showToast(message, type || "info", duration || 3000);
         }
     }
 
@@ -85,6 +85,7 @@
         });
         var batchNumber = "";
         var pollTimer = null;
+        var pollFailureNotified = false;
         var nodeSearch = document.getElementById("nodeSearch");
         var nodePageSize = document.getElementById("nodePageSize");
         var nodePage = 1;
@@ -903,6 +904,7 @@
                 document.getElementById("progressPlaceholder").classList.add("d-none");
                 document.getElementById("installProgressLive").classList.remove("d-none");
                 document.getElementById("installBatchNumber").textContent = batchNumber;
+                notify(result.message || ("安装任务已创建，批次 " + batchNumber), "success");
                 if (result.skipped && result.skipped.length) {
                     notify(result.skipped.map(function (item) { return item.hostname + "：" + item.reason; }).join("；"), "warning", 6000);
                 }
@@ -920,11 +922,15 @@
         function pollBatch() {
             if (!batchNumber) return;
             requestJson("/api/nginx-install/batches/" + encodeURIComponent(batchNumber))
-                .then(renderBatch)
+                .then(function (batch) {
+                    pollFailureNotified = false;
+                    renderBatch(batch);
+                })
                 .catch(function (error) {
-                    if (pollTimer) window.clearInterval(pollTimer);
-                    pollTimer = null;
-                    notify(error.message, "danger");
+                    if (!pollFailureNotified) {
+                        notify("读取安装进度失败，将自动重试：" + error.message, "danger");
+                        pollFailureNotified = true;
+                    }
                 });
         }
 
@@ -932,7 +938,14 @@
             var list = document.getElementById("installTaskList");
             document.getElementById("batchProgressPercent").classList.remove("d-none");
             document.getElementById("batchProgressPercent").textContent = batch.progress + "%";
-            document.getElementById("batchProgressBar").style.width = batch.progress + "%";
+            var batchProgressBar = document.getElementById("batchProgressBar");
+            batchProgressBar.style.width = batch.progress + "%";
+            batchProgressBar.parentElement.setAttribute("aria-valuenow", String(batch.progress));
+            batchProgressBar.classList.remove("bg-success", "bg-warning", "bg-danger", "bg-secondary");
+            if (batch.finished) {
+                batchProgressBar.classList.remove("progress-bar-striped", "progress-bar-animated");
+                batchProgressBar.classList.add(batch.all_success ? "bg-success" : "bg-warning");
+            }
             var existingRows = {};
             Array.prototype.slice.call(list.querySelectorAll("details[data-task-id]")).forEach(function (row) {
                 existingRows[row.dataset.taskId] = row;
@@ -1027,9 +1040,9 @@
         if (!data) return;
         var taskId = Number(data.dataset.taskId);
         var batch = data.dataset.batch;
-        var afterLogId = Number(data.dataset.afterLogId || 0);
-        var terminal = ["success", "failed", "cancelled"];
         var logOutput = document.getElementById("installLogOutput");
+        var afterLogId = Number(logOutput.dataset.afterLogId || 0);
+        var terminal = ["success", "failed", "cancelled"];
         var state = document.getElementById("installLogState");
         var cancel = document.getElementById("cancelInstallTask");
         var timer = null;
@@ -1048,15 +1061,21 @@
                     state.textContent = "任务已结束";
                 }
             }).catch(function () {
-                state.textContent = "暂时无法读取最新状态";
+                state.textContent = "暂时无法读取最新状态，将自动重试";
             });
         }
 
         function update(task, batchTask) {
             document.getElementById("installTaskStatus").textContent = statusLabels[task.status] || task.status;
             document.getElementById("installTaskStatus").className = "badge text-bg-" + (task.status === "success" ? "success" : (task.status === "failed" ? "danger" : (task.status === "running" ? "info" : "secondary")));
-            document.getElementById("installTaskPercent").textContent = task.progress + "%";
-            document.getElementById("installTaskPercent").classList.toggle("d-none", terminal.indexOf(task.status) >= 0);
+            var progressBar = document.getElementById("installTaskProgress");
+            progressBar.style.width = task.progress + "%";
+            progressBar.parentElement.setAttribute("aria-valuenow", String(task.progress));
+            progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
+            if (terminal.indexOf(task.status) >= 0) {
+                progressBar.classList.add(task.status === "success" ? "bg-success" : (task.status === "failed" ? "bg-danger" : "bg-secondary"));
+            }
+            document.getElementById("installTaskProgressLabel").textContent = task.progress + "% · " + (task.detail || "");
             if (batchTask) {
                 document.getElementById("installTaskPhase").textContent = phaseLabels[batchTask.phase] || batchTask.phase;
                 if (batchTask.sync_ok !== null) {
@@ -1065,11 +1084,14 @@
                 if (cancel) cancel.classList.toggle("d-none", !["pending", "checking_tools", "uploading_package", "extracting_package", "preparing_modules"].includes(batchTask.phase) || terminal.indexOf(task.status) >= 0);
             }
             task.logs.forEach(function (item) {
+                var empty = logOutput.querySelector("[data-empty-log]");
+                if (empty) empty.remove();
                 var line = document.createElement("div");
-                line.className = "install-log-line log-" + item.level;
+                line.className = "upgrade-log-line log-" + item.level;
                 var time = document.createElement("time");
                 time.textContent = new Date(item.created_at).toLocaleString();
                 var message = document.createElement("span");
+                message.className = "upgrade-log-message";
                 message.textContent = item.message;
                 line.appendChild(time);
                 line.appendChild(message);

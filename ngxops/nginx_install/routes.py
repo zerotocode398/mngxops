@@ -538,9 +538,7 @@ def nginx_install_task_log(
             "logs": logs,
             "phase_label": _PHASE_LABELS.get(run.phase, run.phase),
             "status_context": _status_context(task),
-            "configure_display": "./configure \\\n{}".format(
-                run.target_configure_opts
-            ),
+            "format_task_datetime": format_task_datetime,
             "can_cancel": (
                 can_execute
                 and task.status in ("pending", "running")

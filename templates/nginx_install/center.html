@@ -3,7 +3,7 @@
 {% block page_title %}<i class="bi bi-download" aria-hidden="true"></i> Nginx 安装中心{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=250-1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=255-2">
 {% endblock %}
 
 {% block content %}
@@ -198,7 +198,7 @@
                 <div class="install-progress-placeholder" id="progressPlaceholder"><i class="bi bi-hourglass" aria-hidden="true"></i><p class="mb-0 mt-2">批次启动后显示每个节点的执行进度</p></div>
                 <div class="d-none" id="installProgressLive">
                     <div class="small text-muted mb-2">批次 <code id="installBatchNumber"></code></div>
-                    <div class="progress mb-3" style="height:7px"><div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar" style="width:0%"></div></div>
+                    <div class="progress mb-3" style="height:8px" role="progressbar" aria-label="批次安装进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar" style="width:0%"></div></div>
                     <div class="install-task-list" id="installTaskList"></div>
                     <div class="d-none alert alert-success small mt-3 mb-0" id="batchCompleteNotice"></div>
                 </div>
@@ -235,4 +235,4 @@
 <script type="application/json" id="installDefaultModuleData">{{ default_modules|tojson }}</script>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=250-1"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=255-1"></script>{% endblock %}

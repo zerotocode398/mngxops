@@ -16,9 +16,9 @@
 .install-overview-table th:nth-child(7) { width: 10%; }
 .install-overview-table th:nth-child(8) { width: 7%; }
 .install-overview-batch, .install-overview-value { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.install-overview-node { display: grid; min-width: 0; }
-.install-overview-node span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.install-overview-node small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.install-overview-node { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.2rem; min-width: 0; white-space: nowrap; }
+.install-overview-node-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.install-overview-node-ip { flex: 0 0 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .install-overview-progress { width: 100%; min-width: 0; height: 6px; margin-bottom: 3px; }
 .install-counter { color: var(--gray-600); font-size: .8125rem; white-space: nowrap; }
 .install-table-wrap { max-height: 275px; overflow: auto; border: 1px solid var(--gray-200); border-radius: 4px; }

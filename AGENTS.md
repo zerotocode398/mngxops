@@ -741,8 +741,9 @@ e9707275226af0ee7d70a97142da9a93
 248. **已完成**：Nginx 安装步骤 3 的确认摘要复用 Nginx 升级步骤 4 的 `.upgrade-summary` 表格布局，源码包显示名称和版本，安装路径、监听端口、工作目录、编译并发及启动管理信息沿用相同的标签/值样式。实现：`templates/nginx_install/center.html`、`static/js/nginx-install.js`、`static/css/nginx-install.css`。验证：静态核对共享样式类、动态摘要结构与响应式布局；未运行测试或启动服务，待用户页面验证。
 249. **已完成**：最终 configure 参数改为升级确认页同款终端样式，并在标题与终端之间增加间距。实现：`templates/nginx_install/center.html`；递增安装页 CSS/JS 资源版本。验证：静态核对确认区结构、终端样式类和资源版本；未运行测试或启动服务，待用户页面验证。
 250. **已完成**：Nginx 安装“开始安装”确认弹窗由纯文本改为 HTML 结构，顶部复用升级确认摘要样式，列出目标节点数、源码包/版本、路径、端口、Nginx 用户组、编译并发、启动方式和安装后同步；节点表展示主机/IP、SSH 用户、监听端口及 Nginx 状态，systemd 回退、特权端口和覆盖风险使用分组提示。动态字段均转义，弹窗放大并限制长节点表高度。实现：`static/js/nginx-install.js`、`static/css/nginx-install.css`、`templates/nginx_install/center.html`。验证：静态核对 HTML 内容构建、动态字段转义、风险条件和资源版本；未运行测试或启动服务，待用户页面验证。
-251. Nginx 安装，点击安装后使用全局右上角弹窗，以 Nginx 升级为基准进行调整。
-252. Nginx 安装，安装执行进度，以 Nginx 升级为基准进行调整。
-253. Nginx 安装，Nginx 安装任务详情，页面样式以 Nginx 升级“升级任务详情”为基准进行调整。
-254. 任务中心 Nginx 安装任务跳转参考 Nginx 升级回滚。
-255. 任务中心 Nginx 安装 任务详情的执行日志记录核心步骤，参考 Nginx 升级回滚。
+251. **已完成**：安装任务创建后使用全局右上角 `showToast` 显示服务端成功消息及批次号；被跳过节点仍显示警告提示。实现：`static/js/nginx-install.js`。验证：静态核对成功与跳过提示走全局 Toast；未启动服务或运行测试，待用户页面验证。
+252. **已完成**：安装批次进度补齐升级页同款进度条无障碍状态、终态颜色和结束动画处理；批次进度请求短暂失败时保留现有进度并自动重试，单次故障只提示一次。实现：`templates/nginx_install/center.html`、`static/js/nginx-install.js`。无 API 或数据结构变化；未启动服务或运行测试，待用户页面验证。
+253. **已完成**：安装任务详情调整为升级详情的紧凑任务信息、状态、实时进度条、编译参数和终端日志布局，继续显示安装路径、主配置路径、监听端口和配置同步结果；样式复用 `static/css/upgrade.css`。实现：`templates/nginx_install/task_log.html`、`ngxops/nginx_install/routes.py`、`static/js/nginx-install.js`，脚本缓存版本递增至 `255-1`。路由、权限与任务日志 API 不变；未启动服务或运行测试，待用户页面验证。
+254. **已完成**：任务中心中安装任务的任务行点击、任务编号和详情按钮均直达 `/nginx-install/task/{id}/log/`；其他任务继续进入统一任务详情。实现：`templates/tasks/center.html`。沿用安装详情页现有权限门禁；未启动服务或运行测试，待用户页面验证。
+255. **已完成**：安装任务日志保留原有持久化阶段记录和远端命令输出，并明确记录编译工具检查、源码解压、configure、make、make install、`nginx -t`、安装版本回读及回退版本说明等核心步骤；详情页实时追加日志并显示当前进度说明。实现：`ngxops/nginx_install/services.py`、`templates/nginx_install/task_log.html`、`static/js/nginx-install.js`。复用统一 `TaskLog`，无数据库迁移；`git diff --check` 通过。未启动服务或运行测试，待用户页面验证。
+256. **已完成**：安装中心“最近安装任务”的目标节点中，主机名和 IP 使用与升级中心相同的单行 flex 布局；长文本截断省略显示。实现：`templates/nginx_install/index.html`、`static/css/nginx-install.css`，样式缓存参数统一递增至 `255-2`。未启动服务或运行测试，待用户页面验证。
