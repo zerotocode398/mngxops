@@ -577,8 +577,10 @@
             var values = formValues();
             var summary = document.getElementById("installConfirmSummary");
             summary.replaceChildren();
+            var summaryGrid = document.createElement("div");
+            summaryGrid.className = "upgrade-summary-grid";
             [
-                ["源码版本", pkg.version],
+                ["源码包", pkg.label + " · " + pkg.version],
                 ["安装路径", values.target_prefix],
                 ["监听端口", String(values.listen_port)],
                 ["临时安装目录", values.remote_work_dir],
@@ -586,18 +588,18 @@
                 ["启动管理", "优先注册并启用 nginx.service；不可管理时使用二进制启动"]
             ].forEach(function (pair) {
                 var item = document.createElement("div");
-                item.className = "install-summary-item" +
-                    (pair[0] === "启动管理" ? " install-summary-startup" : "");
-                var label = document.createElement("strong");
-                label.className = "install-summary-key";
-                label.textContent = pair[0] + ":";
-                var value = document.createElement("span");
-                value.className = "install-summary-value";
+                item.className = "upgrade-summary-item";
+                var label = document.createElement("span");
+                label.className = "upgrade-summary-label";
+                label.textContent = pair[0];
+                var value = document.createElement("div");
+                value.className = "upgrade-summary-value";
                 value.textContent = pair[1] || "-";
                 item.appendChild(label);
                 item.appendChild(value);
-                summary.appendChild(item);
+                summaryGrid.appendChild(item);
             });
+            summary.appendChild(summaryGrid);
             document.getElementById("installConfigurePreview").textContent = "./configure \\\n" + configure;
             var nodeList = document.getElementById("installConfirmNodes");
             nodeList.replaceChildren();
@@ -661,6 +663,40 @@
                 rows + "</tbody></table></div>";
         }
 
+        function failedPathPermissionTableHtml(results) {
+            var rows = [];
+            results.forEach(function (item) {
+                [["安装路径", item.install_path], ["远程工作目录", item.remote_work_dir]]
+                    .forEach(function (entry) {
+                        var permission = entry[1] || {};
+                        if (permission.checked && permission.writable) {
+                            return;
+                        }
+                        rows.push("<tr>" + installCheckNodeCellHtml(item.hostname, item.ip) +
+                            "<td><code>" + escapePathCheckHtml(item.username || "-") +
+                            "</code></td><td><strong>" + entry[0] + "</strong><div><code>" +
+                            escapePathCheckHtml(permission.path || "-") + "</code></div></td><td>" +
+                            "<div class=\"install-check-reason\">" +
+                            escapePathCheckHtml(permission.message || item.error || "写入权限检查未通过") +
+                            "</div>" +
+                            "</td></tr>");
+                    });
+            });
+            return installCheckTableHtml(rows.join(""));
+        }
+
+        function installCheckNodeCellHtml(hostname, ip) {
+            var safeHostname = escapePathCheckHtml(hostname);
+            return "<td><strong class=\"install-check-node-name\" title=\"" + safeHostname +
+                "\">" + safeHostname + "</strong><div class=\"small text-muted\">" +
+                escapePathCheckHtml(ip) + "</div></td>";
+        }
+
+        function installCheckTableHtml(rows) {
+            return "<div class=\"table-responsive install-risk-node-wrap\"><table class=\"table table-sm table-bordered align-middle install-check-summary-table mb-0\"><thead class=\"table-light\"><tr><th>节点</th><th>SSH 用户</th><th>未通过项目</th><th>原因</th></tr></thead><tbody>" +
+                rows + "</tbody></table></div>";
+        }
+
         function renderPathCheckResults(results) {
             var section = document.getElementById("installPathCheckSection");
             var target = document.getElementById("installPathCheckResults");
@@ -701,28 +737,16 @@
 
         /** 构造可快速核对主机、SSH 用户和监听端口的安全提示内容。 */
         function buildPortRiskMessage(nodes, listenPort, pathCheckFailed) {
-            function escapeHtml(value) {
-                return String(value).replace(/[&<>"']/g, function (character) {
-                    return {
-                        "&": "&amp;",
-                        "<": "&lt;",
-                        ">": "&gt;",
-                        '"': "&quot;",
-                        "'": "&#39;"
-                    }[character];
-                });
-            }
-
             var rows = nodes.map(function (node) {
-                return "<tr><td><strong>" + escapeHtml(node.hostname) +
-                    "</strong><div class=\"small text-muted\">" + escapeHtml(node.ip) +
-                    "</div></td><td><code>" + escapeHtml(node.credential_username) +
-                    "</code></td><td><span class=\"badge text-bg-warning\">" +
-                    escapeHtml(listenPort) + "</span></td></tr>";
+                return "<tr>" + installCheckNodeCellHtml(node.hostname, node.ip) +
+                    "<td><code>" + escapePathCheckHtml(node.credential_username || "-") +
+                    "</code></td><td><strong>监听端口</strong><div><code>" +
+                    escapePathCheckHtml(listenPort) + "</code></div></td><td>" +
+                    "<div class=\"install-check-reason\">非 root SSH 用户绑定特权端口时可能因权限不足失败。</div>" +
+                    "</td></tr>";
             }).join("");
             return "<p class=\"mb-3\">以下节点使用非 root SSH 用户，启动 Nginx 绑定特权端口时可能缺少权限：</p>" +
-                "<div class=\"table-responsive install-risk-node-wrap mb-3\"><table class=\"table table-sm table-bordered align-middle install-risk-node-table mb-0\"><thead class=\"table-light\"><tr><th scope=\"col\">主机名 / IP</th><th scope=\"col\">SSH 用户</th><th scope=\"col\">监听端口</th></tr></thead><tbody>" +
-                rows + "</tbody></table></div>" +
+                installCheckTableHtml(rows) +
                 "<div class=\"alert alert-warning py-2 small mb-0\"><i class=\"bi bi-exclamation-triangle-fill me-1\" aria-hidden=\"true\"></i>建议改用 1024 以上端口。" +
                 (pathCheckFailed
                     ? "请先修复路径问题并重新检查；路径通过后仍需确认端口风险。"
@@ -768,9 +792,8 @@
                         return node.credential_username && node.credential_username !== "root";
                     }) : [];
                     if (!pathCheck.all_passed) {
-                        var failedNodes = pathCheck.nodes.filter(function (node) { return !node.success; });
                         var message = "<p class=\"mb-2\">远端路径权限检查未通过，已停止进入确认步骤。请修复以下项目后重新检查：</p><div class=\"mt-3\">" +
-                            pathCheckTableHtml(failedNodes) + "</div>";
+                            failedPathPermissionTableHtml(pathCheck.nodes) + "</div>";
                         if (riskNodes.length) {
                             message += "<hr class=\"my-3\"><h3 class=\"h6 mb-2\">监听端口风险</h3>" +
                                 buildPortRiskMessage(riskNodes, values.listen_port, true);

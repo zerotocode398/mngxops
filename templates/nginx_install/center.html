@@ -3,7 +3,7 @@
 {% block page_title %}<i class="bi bi-download" aria-hidden="true"></i> Nginx 安装中心{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=16">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=243-1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=248-2">
 {% endblock %}
 
 {% block content %}
@@ -167,9 +167,11 @@
         <section class="card upgrade-panel install-panel d-none" data-step-panel="3">
             <div class="card-header"><h2 class="h6 mb-0"><span class="badge text-bg-primary me-2">3</span>确认执行</h2></div>
             <div class="card-body">
-                <div id="installConfirmSummary" class="install-summary-grid"></div>
-                <h3 class="install-subheading mt-3">最终 configure 参数</h3>
-                <pre class="nginx-v-output upgrade-config-output" id="installConfigurePreview">./configure 等待生成...</pre>
+                <div id="installConfirmSummary" class="upgrade-summary mb-3"></div>
+                <section class="upgrade-confirm-config mb-3" aria-labelledby="installConfigurePreviewLabel">
+                    <h3 class="h6 mb-2" id="installConfigurePreviewLabel">最终 configure 参数</h3>
+                    <pre class="nginx-v-output nginx-v-output-alt upgrade-config-output upgrade-confirm-terminal" id="installConfigurePreview">./configure 等待生成...</pre>
+                </section>
                 <h3 class="install-subheading mt-3">目标节点</h3>
                 <div id="installConfirmNodes" class="install-confirm-list"></div>
                 <section class="install-path-check-section d-none" id="installPathCheckSection" aria-live="polite">
@@ -233,4 +235,4 @@
 <script type="application/json" id="installDefaultModuleData">{{ default_modules|tojson }}</script>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=243-2"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=248-3"></script>{% endblock %}

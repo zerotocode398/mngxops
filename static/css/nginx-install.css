@@ -37,16 +37,18 @@
 #installPackageSearch.query-tag-input-field { padding: .125rem .15rem; font-size: .875rem; line-height: 1.5; }
 .install-module-summary { max-height: min(24vh, 190px); }
 .install-module-selected { cursor: default; }
-.install-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; padding: 12px; border: 1px solid var(--gray-200); border-radius: 4px; background: #f8f9fa; }
-.install-summary-item { display: grid; grid-template-columns: minmax(86px, auto) minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; padding: 6px 0; border-bottom: 1px solid var(--gray-200); overflow-wrap: anywhere; }
-.install-summary-key { color: var(--gray-700); font-size: .8125rem; font-weight: 600; }
-.install-summary-value { min-width: 0; font-size: .8125rem; }
-.install-summary-startup .install-summary-value { color: #0f766e; font-weight: 500; }
 .install-risk-node-wrap { max-height: min(45vh, 360px); overflow: auto; }
-.install-risk-node-table { min-width: 480px; }
-.install-risk-node-table thead { position: sticky; top: 0; z-index: 1; }
 .install-path-check-table { min-width: 760px; }
 .install-path-check-table code { display: block; overflow-wrap: anywhere; white-space: normal; }
+.install-check-summary-table { min-width: 760px; table-layout: fixed; }
+.install-check-summary-table th:nth-child(1) { width: 27%; }
+.install-check-summary-table th:nth-child(2) { width: 18%; }
+.install-check-summary-table th:nth-child(3) { width: 30%; }
+.install-check-summary-table th:nth-child(4) { width: 25%; }
+.install-check-summary-table tbody > tr { height: 64px; }
+.install-check-summary-table code { display: block; overflow-wrap: anywhere; white-space: normal; }
+.install-check-node-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.install-check-reason { overflow-wrap: anywhere; }
 .install-path-check-message { color: var(--gray-600); font-size: .75rem; }
 .install-config-output, .install-log-output { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 4px; color: #e7edf5; background: #202832; font: .78rem/1.55 var(--font-mono, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
 .install-log-output { max-height: 560px; }
@@ -78,7 +80,7 @@
 }
 @media (max-width: 575.98px) {
     .install-overview-toolbar .btn { flex: 1 1 calc(50% - 8px); }
-    .install-summary-grid, .install-detail-list { grid-template-columns: minmax(0, 1fr); }
+    .install-detail-list { grid-template-columns: minmax(0, 1fr); }
     .install-log-line { grid-template-columns: minmax(0, 1fr); gap: 1px; }
     .install-log-line time { font-size: .68rem; }
 }

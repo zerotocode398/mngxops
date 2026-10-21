@@ -736,5 +736,14 @@ e9707275226af0ee7d70a97142da9a93
 2026-10-21 10:19:21 INFO uvicorn.error Finished server process [10672]
 2026-10-21 10:19:21 INFO uvicorn.error Stopping reloader process [19420]
 ```
-246. **已完成**：Nginx 安装远端路径权限检查未通过时，结果表仅显示检查失败的节点，过滤已通过节点；失败仍阻止进入确认步骤。实现：`static/js/nginx-install.js`。验证：静态核对失败节点过滤与门禁分支；未运行测试或启动服务，待用户页面验证。
-247. **已完成**：路径检查失败时，若同时存在非 root SSH 用户绑定特权监听端口的风险，在同一大尺寸、可滚动提示框中合并展示失败节点与端口风险节点；路径失败仍阻止继续，并提示先修复、重新检查，路径通过后仍需确认端口风险。无端口风险时只显示路径失败项；路径通过时保留原有单独端口确认流程。公共 `showAlert` 增加可选尺寸参数，默认行为不变。实现：`static/js/nginx-install.js`、`static/js/app.js`、`templates/base.html`、`templates/nginx_install/center.html`。验证：静态核对合并条件、路径门禁、HTML 转义、长列表滚动和缓存版本递增；未运行测试或启动服务，待用户页面验证。
+246. **已完成**：Nginx 安装远端路径权限检查失败提示仅逐项展示不可写或未检查的路径，不显示已通过路径，并移除该提示表格中的“结果”列；失败仍阻止进入确认步骤。实现：`static/js/nginx-install.js`。验证：静态核对路径级过滤、通过项排除、失败原因转义及提示表格列；未运行测试或启动服务，待用户页面验证。
+247. **已完成**：路径检查失败时，若同时存在非 root SSH 用户绑定特权监听端口的风险，在同一大尺寸、可滚动提示框中合并展示失败路径与端口风险节点；两张表统一使用“节点、SSH 用户、未通过项目、原因”表头、列宽和行高样式。路径失败仍阻止继续，并提示先修复、重新检查，路径通过后仍需确认端口风险。无端口风险时只显示路径失败项；路径通过时保留原有单独端口确认流程。公共 `showAlert` 增加可选尺寸参数，默认行为不变。实现：`static/js/nginx-install.js`、`static/js/app.js`、`static/css/nginx-install.css`、`templates/base.html`、`templates/nginx_install/center.html`。验证：静态核对合并条件、路径门禁、HTML 转义、长列表滚动和缓存版本递增；未运行测试或启动服务，待用户页面验证。
+248. **已完成**：Nginx 安装步骤 3 的确认摘要复用 Nginx 升级步骤 4 的 `.upgrade-summary` 表格布局，源码包显示名称和版本，安装路径、监听端口、工作目录、编译并发及启动管理信息沿用相同的标签/值样式。实现：`templates/nginx_install/center.html`、`static/js/nginx-install.js`、`static/css/nginx-install.css`。验证：静态核对共享样式类、动态摘要结构与响应式布局；未运行测试或启动服务，待用户页面验证。
+249. **已完成**：最终 configure 参数改为升级确认页同款终端样式，并在标题与终端之间增加间距。实现：`templates/nginx_install/center.html`；递增安装页 CSS/JS 资源版本。验证：静态核对确认区结构、终端样式类和资源版本；未运行测试或启动服务，待用户页面验证。
+250. Nginx 安装，点击开始安装后弹窗内容如下，目前是纯文本形式，无法一眼看到关键信息，按需调整。
+```text
+开始 Nginx 安装
+
+将为 1 台节点安装 1.31.2。安装完成后会尝试自动同步配置。 启动策略：优先注册并启用 nginx.service；无法管理 systemd 时改用二进制启动。 以下节点使用非 root SSH 用户，将按远端权限尝试 systemctl；若无 unit 写权限且无免密 sudo，将使用二进制启动：麒麟66 (10.10.77.66, SSH 用户 umpay 对应监听端口 18888)
+```
+251. 
