@@ -143,7 +143,7 @@ def discover_remote_configs(
             target["password"],
             target["private_key"],
             context,
-            target.get("ssh_timeout", 10),
+            target.get("ssh_timeout", 3),
             target.get("detect_retries", 1),
         )
         if client is None:

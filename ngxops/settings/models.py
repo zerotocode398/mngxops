@@ -40,9 +40,11 @@ class SystemSetting(Base):
 PRESET_SETTINGS = (
     {"key": "dashboard.recent_tasks_count", "group": "仪表盘", "type": "integer", "value": "20", "label": "最近任务显示条数", "description": "仪表盘与运维工具首页最近任务列表最大行数；刷新对应页面后生效。", "sort_order": 1, "min_value": 1, "max_value": 100, "unit": "条"},
     {"key": "node.batch_max_count", "group": "节点管理", "type": "integer", "value": "3", "label": "批量操作最大节点数", "description": "节点探测、锁定/解锁/删除、凭证测试、配置同步、发布、升级、安装、启停和卸载的并行及勾选上限；刷新页面后更新勾选上限。", "sort_order": 10, "min_value": 1, "max_value": 50, "unit": "台"},
-    {"key": "node.ssh_connect_timeout", "group": "节点管理", "type": "integer", "value": "10", "label": "SSH 连接超时", "description": "SSH 连接超时时间；下次连接生效。", "sort_order": 11, "min_value": 1, "max_value": 120, "unit": "秒"},
+    {"key": "node.ssh_connect_timeout", "group": "节点管理", "type": "integer", "value": "3", "label": "SSH 连接超时", "description": "SSH 连接超时时间；下次连接生效。", "sort_order": 11, "min_value": 1, "max_value": 10, "unit": "秒"},
     {"key": "node.ssh_default_port", "group": "节点管理", "type": "integer", "value": "22", "label": "SSH 默认端口", "description": "仅用于新建节点和批量导入，已有节点不变。", "sort_order": 12, "min_value": 1, "max_value": 65535, "unit": ""},
     {"key": "node.detect_retries", "group": "节点管理", "type": "integer", "value": "1", "label": "节点探测重试次数", "description": "SSH 连接失败后的额外重试次数，不含首次；下次连接生效。", "sort_order": 13, "min_value": 0, "max_value": 10, "unit": "次"},
+    {"key": "node.status_probe_concurrency", "group": "节点管理", "type": "integer", "value": "3", "label": "节点状态巡检并发数", "description": "后台 SSH/Nginx 状态巡检的最大并发数；保存后最多 5 秒生效。", "sort_order": 14, "min_value": 1, "max_value": 10, "unit": "台"},
+    {"key": "node.status_probe_interval_seconds", "group": "节点管理", "type": "integer", "value": "60", "label": "节点状态巡检间隔", "description": "每台节点两次后台状态巡检的最短间隔；保存后最多 5 秒生效。", "sort_order": 15, "min_value": 30, "max_value": 300, "unit": "秒"},
     {"key": "config.discover_max_depth", "group": "配置管理", "type": "integer", "value": "3", "label": "配置发现最大递归深度", "description": "远程 Nginx 配置 include 扫描最大递归层次；下次发现或同步生效。", "sort_order": 30, "min_value": 1, "max_value": 20, "unit": "层"},
     {"key": "config.default_nginx_path", "group": "配置管理", "type": "string", "value": "/etc/nginx/nginx.conf", "label": "默认 Nginx 主配置路径", "description": "仅用于新建节点或空同步设置；已有主配置路径不变。", "sort_order": 31, "unit": ""},
     {"key": "config.default_nginx_bin", "group": "配置管理", "type": "string", "value": "/usr/sbin/nginx", "label": "默认 Nginx 可执行文件路径", "description": "仅用于新建或导入节点且未填写 Nginx 路径时。", "sort_order": 32, "unit": ""},

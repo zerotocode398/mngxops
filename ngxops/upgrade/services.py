@@ -615,7 +615,7 @@ def _load_node_target(session_factory, encryption_key: bytes, node_id: int) -> d
             "auth_type": credential.auth_type,
             "password": secret if credential.auth_type == "password" else "",
             "private_key": secret if credential.auth_type == "key" else "",
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
             "detect_retries": read_setting(session, "node.detect_retries", 1),
         }
 
@@ -635,7 +635,7 @@ def _load_private_key(value: str) -> paramiko.PKey:
 
 def _connect_target(target: dict, context: Optional[TaskContext] = None) -> paramiko.SSHClient:
     """按系统超时和重试设置连接 SSH 节点。"""
-    timeout = max(1, int(target.get("ssh_timeout", 10)))
+    timeout = max(1, int(target.get("ssh_timeout", 3)))
     retry_count = min(max(int(target.get("detect_retries", 1)), 0), 10)
     pkey = None
     if target["auth_type"] != "password":
@@ -1206,7 +1206,7 @@ def _load_run_snapshot(session_factory, encryption_key: bytes, package_dir: Path
             "auth_type": credential.auth_type,
             "password": secret if credential.auth_type == "password" else "",
             "private_key": secret if credential.auth_type == "key" else "",
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
             "detect_retries": read_setting(session, "node.detect_retries", 1),
         }, {
             "file_name": package.file_name,
@@ -2019,6 +2019,6 @@ def _load_rollback_snapshot(session_factory, encryption_key: bytes, task_id: int
             "auth_type": credential.auth_type,
             "password": secret if credential.auth_type == "password" else "",
             "private_key": secret if credential.auth_type == "key" else "",
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
             "detect_retries": read_setting(session, "node.detect_retries", 1),
         }

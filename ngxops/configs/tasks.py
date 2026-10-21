@@ -89,7 +89,7 @@ def _load_target(
             "max_discover_depth": read_setting(
                 session, "config.discover_max_depth", 3
             ),
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
             "detect_retries": read_setting(session, "node.detect_retries", 1),
         }
         try:
@@ -408,7 +408,7 @@ def _cleanup_marked_bindings(
             target["password"],
             target["private_key"],
             context,
-            target.get("ssh_timeout", 10),
+            target.get("ssh_timeout", 3),
             target.get("detect_retries", 1),
         )
         if client is None:
@@ -535,7 +535,7 @@ def _sync_node(
             target["password"],
             target["private_key"],
             context,
-            target.get("ssh_timeout", 10),
+            target.get("ssh_timeout", 3),
             target.get("detect_retries", 1),
         )
     if ssh_client is None:

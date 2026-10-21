@@ -220,7 +220,7 @@ def _load_install_snapshot(
             "auth_type": credential.auth_type,
             "password": secret if credential.auth_type == "password" else "",
             "private_key": secret if credential.auth_type != "password" else "",
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
             "detect_retries": read_setting(session, "node.detect_retries", 1),
         }
         package_snapshot = {
@@ -977,7 +977,7 @@ def check_install_path_permissions(
                 "auth_type": credential.auth_type,
                 "password": secret if credential.auth_type == "password" else "",
                 "private_key": secret if credential.auth_type != "password" else "",
-                "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+                "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
                 "detect_retries": read_setting(session, "node.detect_retries", 1),
             }
             checks.append({"target": target, "result": result})

@@ -11,6 +11,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from sqlalchemy import inspect
+from sqlalchemy.engine import Engine
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -36,6 +38,7 @@ from ngxops.configs.routes import router as configs_router
 from ngxops.configs.api import api_router as configs_api_router
 from ngxops.nodes.routes import api_router as nodes_api_router
 from ngxops.nodes.routes import router as nodes_router
+from ngxops.nodes.monitor import NodeStatusMonitor
 from ngxops.nginx_install.routes import router as nginx_install_router
 from ngxops.nginx_service.routes import router as nginx_service_router
 from ngxops.nginx_uninstall.routes import router as nginx_uninstall_router
@@ -71,6 +74,11 @@ class HealthResponse(BaseModel):
     status: str
 
 
+def _has_node_table(engine: Engine) -> bool:
+    """确认当前数据库已经迁移出节点表。"""
+    return inspect(engine).has_table("ngxops_nodes")
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     """创建不连接业务数据库的 FastAPI 应用实例。"""
     active_settings = settings or get_settings()
@@ -79,7 +87,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        """在进程启动时准备可写数据目录。"""
+        """准备密钥、恢复任务并管理后台执行器生命周期。"""
         active_settings.data_dir.mkdir(parents=True, exist_ok=True)
         app.state.secret_key = load_or_create_secret_key(
             active_settings.data_dir,
@@ -90,6 +98,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         )
         executor = TaskExecutor(database.session_factory)
         app.state.task_executor = executor
+        status_monitor = None
+        app.state.node_status_monitor = None
         try:
             if active_settings.database_path.is_file():
                 await run_in_threadpool(
@@ -97,8 +107,21 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                     database.engine,
                     database.session_factory,
                 )
+                has_node_table = await run_in_threadpool(
+                    _has_node_table,
+                    database.engine,
+                )
+                if has_node_table:
+                    status_monitor = NodeStatusMonitor(
+                        database.session_factory,
+                        app.state.credential_encryption_key,
+                    )
+                    status_monitor.start()
+                    app.state.node_status_monitor = status_monitor
             yield
         finally:
+            if status_monitor is not None:
+                status_monitor.stop()
             executor.shutdown()
             database.engine.dispose()
 

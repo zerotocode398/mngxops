@@ -718,7 +718,7 @@ def _load_release_target(
             "auth_type": credential.auth_type,
             "password": "",
             "private_key": "",
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
             "detect_retries": read_setting(session, "node.detect_retries", 1),
         }
         try:

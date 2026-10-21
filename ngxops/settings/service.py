@@ -73,6 +73,18 @@ def initialize_defaults(session: Session) -> None:
         setting.options = item.get("options", "")
         setting.is_required = 1 if item.get("is_required", True) else 0
         setting.sort_order = item.get("sort_order", 0)
+        if item["key"] == "node.ssh_connect_timeout":
+            try:
+                previous_value = int(setting.value)
+            except (TypeError, ValueError):
+                previous_value = int(item["value"])
+            bounded_value = min(
+                item["max_value"],
+                max(item["min_value"], previous_value),
+            )
+            if str(bounded_value) != setting.value:
+                setting.value = str(bounded_value)
+                setting.updated_at = datetime.utcnow()
 
 
 def read_setting(session: Session, key: str, default=None):

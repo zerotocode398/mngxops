@@ -50,7 +50,7 @@ def _load_targets(
                 "password": "",
                 "private_key": "",
                 "credential_error": "",
-                "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+                "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
                 "detect_retries": read_setting(session, "node.detect_retries", 1),
             }
             credential = node.credential
@@ -83,6 +83,7 @@ def _connect_target(
     """使用节点凭证建立 SSH 连接并返回不含明文的错误摘要。"""
     if target["credential_error"]:
         return None, target["credential_error"]
+    target["_probe_started_at"] = datetime.utcnow()
     return _connect_ssh(
         target["ip"],
         target["port"],
@@ -119,13 +120,21 @@ def _probe_target(target: dict, context: TaskContext) -> dict:
         available, version = _probe_nginx(client, target["nginx_path"])
     finally:
         client.close()
-    available = available and bool(version)
+    if available is True and not version:
+        available = False
+    message = (
+        "SSH 连接成功"
+        if available is True
+        else "SSH 连接成功，Nginx 探测超时"
+        if available is None
+        else "SSH 连接成功，未检测到 Nginx"
+    )
     result.update(
         {
             "ssh_success": True,
             "nginx_available": available,
-            "nginx_version": version if available else "",
-            "message": "SSH 连接成功" if available else "SSH 连接成功，未检测到 Nginx",
+            "nginx_version": version if available is True else "",
+            "message": message,
         }
     )
     return result
@@ -169,7 +178,14 @@ def _apply_probe_result(
             )
             if node is None:
                 return
-            if target["is_locked"]:
+            if node.is_locked:
+                return
+            probe_started_at = target.get("_probe_started_at")
+            if (
+                probe_started_at is not None
+                and node.last_probe_at is not None
+                and node.last_probe_at > probe_started_at
+            ):
                 return
             if target["credential_error"]:
                 if update_credential_error_state:
@@ -180,6 +196,9 @@ def _apply_probe_result(
                     )
                     node.updated_at = now
                 return
+            credential = session.get(Credential, node.credential_id)
+            if credential is None or not credential.is_enabled:
+                return
             node.last_probe_at = now
             if result["ssh_success"]:
                 node.status = "online"
@@ -189,7 +208,7 @@ def _apply_probe_result(
                 node.nginx_available = result["nginx_available"]
                 node.nginx_version = result["nginx_version"]
                 node.last_nginx_probe_at = now
-                if not result["nginx_available"]:
+                if result["nginx_available"] is False:
                     mark_node_bindings_orphaned(session, node.id, now)
             node.updated_at = now
 
@@ -436,8 +455,9 @@ def _run_nginx_probe(
             available, output = _probe_nginx(client, target["nginx_path"])
         finally:
             client.close()
-        available = available and bool(output)
-        version = output if available else ""
+        if available is True and not output:
+            available = False
+        version = output if available is True else ""
         result = {
             "node_id": node_id,
             "hostname": target["hostname"],
@@ -445,13 +465,19 @@ def _run_nginx_probe(
             "ssh_success": True,
             "nginx_available": available,
             "nginx_version": version if available else "",
-            "message": "检测到 Nginx" if available else "SSH 在线，未检测到 Nginx",
+            "message": (
+                "检测到 Nginx"
+                if available is True
+                else "Nginx 探测超时"
+                if available is None
+                else "SSH 在线，未检测到 Nginx"
+            ),
         }
         _apply_probe_result(session_factory, target, result, update_nginx=True)
-        if not available:
+        if available is not True:
             return TaskOutcome(
                 "failed",
-                "SSH 在线，但未检测到 Nginx",
+                "SSH 在线，但 Nginx 未确认可用",
                 _single_result_tree(result, False),
             )
         context.append_log("节点 {} Nginx {}".format(target["ip"], version))

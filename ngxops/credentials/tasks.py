@@ -2,6 +2,7 @@
 
 import re
 import shlex
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from io import StringIO
@@ -44,7 +45,7 @@ def _connect_ssh(
     password: str,
     private_key: str,
     context: TaskContext,
-    timeout: int = 10,
+    timeout: int = 3,
     retries: int = 1,
     detailed_logging: bool = False,
 ) -> Tuple[Optional[paramiko.SSHClient], str]:
@@ -102,15 +103,33 @@ def _connect_ssh(
     return None, "SSH 连接失败"
 
 
-def _probe_nginx(client: paramiko.SSHClient, nginx_path: str) -> Tuple[bool, str]:
-    """执行远程 Nginx 版本探测并只保留规范化版本号。"""
+def _probe_nginx(
+    client: paramiko.SSHClient,
+    nginx_path: str,
+    timeout: int = 10,
+) -> Tuple[Optional[bool], str]:
+    """执行有截止时间的远程 Nginx 版本探测并返回三态结果。"""
     command = "{} -v".format(shlex.quote(nginx_path or "/usr/sbin/nginx"))
+    timeout_seconds = min(10, max(1, int(timeout)))
+    deadline = time.monotonic() + timeout_seconds
     try:
-        _stdin, stdout, stderr = client.exec_command(command, timeout=20)
+        _stdin, stdout, stderr = client.exec_command(
+            command,
+            timeout=timeout_seconds,
+        )
+        channel = stdout.channel
+        while not channel.exit_status_ready():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                channel.close()
+                return None, ""
+            time.sleep(min(0.05, remaining))
         exit_status = stdout.channel.recv_exit_status()
         output = (stderr.read() + stdout.read()).decode("utf-8", "replace")
     except Exception:
-        return False, ""
+        return None, ""
+    if exit_status < 0:
+        return None, ""
     if exit_status != 0:
         return False, ""
     match = _NGINX_VERSION.search(output)
@@ -124,6 +143,7 @@ def _test_node(
 ) -> dict:
     """测试单个节点的 SSH 和 Nginx 可用性。"""
     context.check_cancelled()
+    node["_probe_started_at"] = datetime.utcnow()
     client, error = _connect_ssh(
         node["ip"],
         node["port"],
@@ -132,7 +152,7 @@ def _test_node(
         auth["password"],
         auth["private_key"],
         context,
-        auth.get("ssh_timeout", 10),
+        auth.get("ssh_timeout", 3),
         auth.get("detect_retries", 1),
     )
     if client is None:
@@ -141,7 +161,12 @@ def _test_node(
         nginx_available, nginx_version = _probe_nginx(client, node["nginx_path"])
     finally:
         client.close()
-    message = "SSH 连接成功，检测到 Nginx" if nginx_available else "SSH 连接成功，未检测到 Nginx"
+    if nginx_available is None:
+        message = "SSH 连接成功，Nginx 探测超时"
+    elif nginx_available:
+        message = "SSH 连接成功，检测到 Nginx"
+    else:
+        message = "SSH 连接成功，未检测到 Nginx"
     return {
         "node_id": node["id"],
         "hostname": node["hostname"],
@@ -178,7 +203,7 @@ def _load_test_targets(
             "auth_type": credential.auth_type,
             "password": secret if credential.auth_type == "password" else "",
             "private_key": secret if credential.auth_type == "key" else "",
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
             "detect_retries": read_setting(session, "node.detect_retries", 1),
         }
         nodes = session.scalars(
@@ -204,6 +229,7 @@ def _apply_node_test(
     session_factory: sessionmaker,
     credential_id: int,
     result: dict,
+    probe_started_at: Optional[datetime] = None,
 ) -> None:
     """将连接探测结果写回仍关联凭证的活跃节点。"""
     now = datetime.utcnow()
@@ -218,6 +244,17 @@ def _apply_node_test(
             )
             if node is None:
                 return
+            credential = session.get(Credential, credential_id)
+            if credential is None or not credential.is_enabled:
+                return
+            if node.is_locked:
+                return
+            if (
+                probe_started_at is not None
+                and node.last_probe_at is not None
+                and node.last_probe_at > probe_started_at
+            ):
+                return
             node.updated_at = now
             node.last_probe_at = now
             if not result["ssh_success"]:
@@ -227,7 +264,7 @@ def _apply_node_test(
             node.nginx_available = result["nginx_available"]
             node.last_nginx_probe_at = now
             node.nginx_version = result["nginx_version"] if result["nginx_available"] else ""
-            if not result["nginx_available"]:
+            if result["nginx_available"] is False:
                 mark_node_bindings_orphaned(session, node.id, now)
 
 
@@ -293,7 +330,12 @@ def build_credential_enable_runner(
             for index, future in enumerate(as_completed(futures), start=1):
                 context.check_cancelled()
                 result = future.result()
-                _apply_node_test(session_factory, credential_id, result)
+                _apply_node_test(
+                    session_factory,
+                    credential_id,
+                    result,
+                    futures[future].get("_probe_started_at"),
+                )
                 outcomes.append(result)
                 if not result["ssh_success"]:
                     failures += 1

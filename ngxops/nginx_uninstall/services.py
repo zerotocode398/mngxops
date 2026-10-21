@@ -178,7 +178,7 @@ def _load_target(
             "password": secret if credential.auth_type == "password" else "",
             "private_key": secret if credential.auth_type != "password" else "",
             "locked": node.is_locked,
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
             "detect_retries": read_setting(session, "node.detect_retries", 1),
         }, ""
 
@@ -711,7 +711,7 @@ def _load_run_target(session_factory: sessionmaker, task_id: int, encryption_key
             "password": secret if credential.auth_type == "password" else "",
             "private_key": secret if credential.auth_type != "password" else "",
             "resolved_prefix": run.resolved_prefix,
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 10),
+            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
             "detect_retries": read_setting(session, "node.detect_retries", 1),
         }
         snapshot = {
