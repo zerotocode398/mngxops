@@ -700,7 +700,7 @@
         }
 
         /** 构造可快速核对主机、SSH 用户和监听端口的安全提示内容。 */
-        function buildPortRiskMessage(nodes, listenPort) {
+        function buildPortRiskMessage(nodes, listenPort, pathCheckFailed) {
             function escapeHtml(value) {
                 return String(value).replace(/[&<>"']/g, function (character) {
                     return {
@@ -723,7 +723,10 @@
             return "<p class=\"mb-3\">以下节点使用非 root SSH 用户，启动 Nginx 绑定特权端口时可能缺少权限：</p>" +
                 "<div class=\"table-responsive install-risk-node-wrap mb-3\"><table class=\"table table-sm table-bordered align-middle install-risk-node-table mb-0\"><thead class=\"table-light\"><tr><th scope=\"col\">主机名 / IP</th><th scope=\"col\">SSH 用户</th><th scope=\"col\">监听端口</th></tr></thead><tbody>" +
                 rows + "</tbody></table></div>" +
-                "<div class=\"alert alert-warning py-2 small mb-0\"><i class=\"bi bi-exclamation-triangle-fill me-1\" aria-hidden=\"true\"></i>建议改用 1024 以上端口。确认后继续到执行参数页。</div>";
+                "<div class=\"alert alert-warning py-2 small mb-0\"><i class=\"bi bi-exclamation-triangle-fill me-1\" aria-hidden=\"true\"></i>建议改用 1024 以上端口。" +
+                (pathCheckFailed
+                    ? "请先修复路径问题并重新检查；路径通过后仍需确认端口风险。"
+                    : "确认后继续到执行参数页。") + "</div>";
         }
 
         function goToConfirmation() {
@@ -760,19 +763,26 @@
                     })
                 }).then(function (pathCheck) {
                     renderConfirmation(result.target_configure_opts, pathCheck.nodes);
-                    if (!pathCheck.all_passed) {
-                        window.showAlert(
-                            "远端路径权限检查未通过",
-                            "以下节点的安装路径或远程工作目录不可写，已停止进入确认步骤：<div class=\"mt-3\">" +
-                                pathCheckTableHtml(pathCheck.nodes) + "</div>",
-                            true
-                        );
-                        return;
-                    }
                     var nodes = selectedNodeObjects();
                     var riskNodes = isPrivilegedListenPort(values.listen_port) ? nodes.filter(function (node) {
                         return node.credential_username && node.credential_username !== "root";
                     }) : [];
+                    if (!pathCheck.all_passed) {
+                        var failedNodes = pathCheck.nodes.filter(function (node) { return !node.success; });
+                        var message = "<p class=\"mb-2\">远端路径权限检查未通过，已停止进入确认步骤。请修复以下项目后重新检查：</p><div class=\"mt-3\">" +
+                            pathCheckTableHtml(failedNodes) + "</div>";
+                        if (riskNodes.length) {
+                            message += "<hr class=\"my-3\"><h3 class=\"h6 mb-2\">监听端口风险</h3>" +
+                                buildPortRiskMessage(riskNodes, values.listen_port, true);
+                        }
+                        window.showAlert(
+                            riskNodes.length ? "安装检查未通过" : "远端路径权限检查未通过",
+                            message,
+                            true,
+                            "lg"
+                        );
+                        return;
+                    }
                     if (riskNodes.length) {
                         window.showConfirm("监听端口风险提示", buildPortRiskMessage(riskNodes, values.listen_port), function () {
                             setStep(3);

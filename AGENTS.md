@@ -736,5 +736,5 @@ e9707275226af0ee7d70a97142da9a93
 2026-10-21 10:19:21 INFO uvicorn.error Finished server process [10672]
 2026-10-21 10:19:21 INFO uvicorn.error Stopping reloader process [19420]
 ```
-246. Nginx 安装，远端路径权限检查未通过，仅展示未通过项目；
-247. Nginx 安装，监听端口风险提示、远端路径权限检查未通过 能否合并在一起？
+246. **已完成**：Nginx 安装远端路径权限检查未通过时，结果表仅显示检查失败的节点，过滤已通过节点；失败仍阻止进入确认步骤。实现：`static/js/nginx-install.js`。验证：静态核对失败节点过滤与门禁分支；未运行测试或启动服务，待用户页面验证。
+247. **已完成**：路径检查失败时，若同时存在非 root SSH 用户绑定特权监听端口的风险，在同一大尺寸、可滚动提示框中合并展示失败节点与端口风险节点；路径失败仍阻止继续，并提示先修复、重新检查，路径通过后仍需确认端口风险。无端口风险时只显示路径失败项；路径通过时保留原有单独端口确认流程。公共 `showAlert` 增加可选尺寸参数，默认行为不变。实现：`static/js/nginx-install.js`、`static/js/app.js`、`templates/base.html`、`templates/nginx_install/center.html`。验证：静态核对合并条件、路径门禁、HTML 转义、长列表滚动和缓存版本递增；未运行测试或启动服务，待用户页面验证。

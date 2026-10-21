@@ -387,6 +387,14 @@
         }
     }
 
+    function applyAlertSize(size) {
+        var $dialog = $("#ngxopsAlertModal .modal-dialog");
+        $dialog.removeClass("modal-sm modal-lg modal-xl");
+        if (size === "sm" || size === "lg" || size === "xl") {
+            $dialog.addClass("modal-" + size);
+        }
+    }
+
     function resolveConfirmSize(asHtml, message, size) {
         if (size) {
             return size;
@@ -484,7 +492,8 @@
             + pad(date.getUTCMinutes()) + ":" + pad(date.getUTCSeconds());
     }
 
-    function showAlert(title, message, asHtml) {
+    function showAlert(title, message, asHtml, size) {
+        applyAlertSize(size);
         $("#ngxopsAlertTitle").text(title || "提示");
         if (asHtml) {
             $("#ngxopsAlertBody").html(message || "");
