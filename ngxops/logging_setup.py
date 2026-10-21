@@ -3,9 +3,11 @@
 import logging
 import re
 import traceback
+from contextlib import contextmanager
+from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Iterator, Optional
 
 
 _PRIVATE_KEY_PATTERN = re.compile(
@@ -19,6 +21,45 @@ _SENSITIVE_VALUE_PATTERN = re.compile(
     r"(\s*[:=]\s*)(?:bearer\s+)?"
     r"(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)"
 )
+_LOG_CONTEXT_FIELDS = (
+    "request_id",
+    "task_id",
+    "node_id",
+    "operation_type",
+    "source_batch",
+    "actor_user_id",
+)
+_LOG_CONTEXT: ContextVar[Dict[str, str]] = ContextVar(
+    "ngxops_log_context", default={}
+)
+
+
+@contextmanager
+def log_context(**values: object) -> Iterator[None]:
+    """在当前请求或任务作用域内补充可关联的日志字段。"""
+    current = dict(_LOG_CONTEXT.get())
+    for name in _LOG_CONTEXT_FIELDS:
+        if name not in values:
+            continue
+        value = values[name]
+        text = "-" if value is None or value == "" else str(value)
+        current[name] = text.replace("\r", " ").replace("\n", " ")[:128]
+    token = _LOG_CONTEXT.set(current)
+    try:
+        yield
+    finally:
+        _LOG_CONTEXT.reset(token)
+
+
+class LogContextFilter(logging.Filter):
+    """将当前请求或任务上下文附加到所有传播至根记录器的日志。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """为格式化器提供稳定的关联字段。"""
+        context = _LOG_CONTEXT.get()
+        for name in _LOG_CONTEXT_FIELDS:
+            setattr(record, name, context.get(name, "-"))
+        return True
 
 
 class RedactingFormatter(logging.Formatter):
@@ -48,6 +89,8 @@ def configure_logging(
         logging.INFO,
     )
     root_logger.setLevel(level)
+    logging.getLogger("paramiko").setLevel(logging.WARNING)
+    logging.getLogger("paramiko.transport").setLevel(logging.WARNING)
 
     for handler in list(root_logger.handlers):
         if getattr(handler, "_ngxops_handler", False):
@@ -55,7 +98,11 @@ def configure_logging(
             handler.close()
 
     formatter = RedactingFormatter(
-        "%(asctime)s %(levelname)s %(name)s %(message)s",
+        "%(asctime)s %(levelname)s %(name)s request_id=%(request_id)s "
+        "task_id=%(task_id)s node_id=%(node_id)s "
+        "operation_type=%(operation_type)s "
+        "source_batch=%(source_batch)s actor_user_id=%(actor_user_id)s "
+        "%(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     file_handler = RotatingFileHandler(
@@ -64,11 +111,13 @@ def configure_logging(
         backupCount=10,
         encoding="utf-8",
     )
+    file_handler.addFilter(LogContextFilter())
     file_handler.setFormatter(formatter)
     file_handler._ngxops_handler = True
     root_logger.addHandler(file_handler)
 
     console_handler = logging.StreamHandler()
+    console_handler.addFilter(LogContextFilter())
     console_handler.setFormatter(formatter)
     console_handler._ngxops_handler = True
     root_logger.addHandler(console_handler)

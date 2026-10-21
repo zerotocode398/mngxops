@@ -84,7 +84,7 @@ $env:NGXOPS_HOME = 'D:\ngxops-data'
 
 源码和单文件程序未设置 `NGXOPS_HOME` 时，数据目录都是启动命令所在的当前工作目录。
 
-设置 `NGXOPS_HOME` 或使用 `--home` 可覆盖默认位置。`logs/ngxops.log` 保存 Web 请求、已提交业务操作、应用/任务异常和调用位置；`logs/ngxops-cli.log` 保存命令行管理操作。日志按 10 MiB 分片，最多保留 10 个历史分片。Web 请求日志记录方法、路径、状态、耗时、用户 ID 和来源 IP，不记录查询参数、请求正文、Cookie 或认证头。异常堆栈不包含局部变量；SQLAlchemy 隐藏绑定参数，日志格式会遮蔽常见密码、令牌和私钥字段。
+设置 `NGXOPS_HOME` 或使用 `--home` 可覆盖默认位置。运行日志默认级别为 INFO，与 FastAPI 调试模式分开；`NGXOPS_LOG_LEVEL` 或 `--log-level` 可显式调高/调低 ngxops 诊断级别。Paramiko 协议层固定为 WARNING，以免无业务上下文的握手明细进入文件。`logs/ngxops.log` 保存 Web 请求、已提交业务操作、应用/任务异常和调用位置；`logs/ngxops-cli.log` 保存命令行管理操作。日志按 10 MiB 分片，最多保留 10 个历史分片。每个非静态 HTTP 请求生成唯一请求 ID，写入日志并通过 `X-Request-ID` 响应头返回；后台任务日志包括任务 ID、操作类型、批次和触发用户 ID；自动节点巡检失败记录操作类型和节点 ID。Web 请求日志记录方法、路径、状态、耗时、用户 ID 和来源 IP，不记录查询参数、请求正文、Cookie 或认证头。异常堆栈不包含局部变量；SQLAlchemy 隐藏绑定参数，日志格式会遮蔽常见密码、令牌和私钥字段。
 
 运行日志包含账户标识、来源地址和异常文本，应按敏感运维资料限制文件访问并纳入备份/清理策略。数据库 `/audit/` 操作记录和 `/audit/logins/` 登录记录继续按系统设置中的保留周期清理；文件日志由大小轮转控制。
 

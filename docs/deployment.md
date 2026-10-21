@@ -36,7 +36,7 @@ python run_server.py
 | `NGXOPS_PORT` | 源码运行 `8000`；冻结运行 `11993` | Uvicorn 监听端口；也可用 `--port` 覆盖 |
 | `NGXOPS_DEBUG` | 源码运行开启；冻结运行关闭 | FastAPI 调试模式 |
 | `NGXOPS_RELOAD` | 跟随调试模式 | Uvicorn 自动重载；生产关闭 |
-| `NGXOPS_LOG_LEVEL` | 调试时 `debug`，否则 `info` | Uvicorn 日志级别；也可用 `--log-level` 覆盖 |
+| `NGXOPS_LOG_LEVEL` | `info` | 运行日志级别，与 `NGXOPS_DEBUG` 调试模式分开；也可用 `--log-level` 覆盖 |
 | `NGXOPS_HOME` | 当前工作目录 | SQLite、上传文件、密钥和日志所在的可写数据目录；CLI 也支持 `--home` |
 | `NGXOPS_SECRET_KEY` | 未设置时在数据目录生成 `.secret_key` | CSRF Cookie 签名密钥；固定配置或备份该文件以保留密钥 |
 | `NGXOPS_HTTPS` | `0` | 设为 `1` 后会话与 CSRF Cookie 使用 Secure 属性；仅在外部请求使用 HTTPS 时启用 |
@@ -44,7 +44,7 @@ python run_server.py
 | `NGXOPS_RELEASE_BACKUP_DIR` | `/opt/app/mascloud/ansible/mngxops` | `release.backup_dir` 的兼容默认值；迁移 v14 后由系统设置控制远程备份根目录 |
 | `NGXOPS_UPGRADE_PACKAGE_MAX_SIZE_MB` | `20` | 设置表不可用时的兼容上传限制，取值 1 至 1024 MiB；迁移 v14 后由 `upgrade.package_max_size_mb` 控制，系统设置范围为 1 至 2048 MiB |
 
-`run_server.py` 接受 `--host`、`--port`、`--log-level`、`--reload` 和 `--no-reload`。生产环境应设置 `NGXOPS_DEBUG=0`、`NGXOPS_RELOAD=0`，并按实际 TLS 终止方式配置 Secure Cookie。部署在反向代理后时，`NGXOPS_CSRF_TRUSTED_ORIGINS` 使用浏览器访问的完整来源。
+`run_server.py` 接受 `--host`、`--port`、`--log-level`、`--reload` 和 `--no-reload`。日志默认使用 INFO，即使源码开发模式启用调试和热重载也不会自动输出 DEBUG；可用 `NGXOPS_LOG_LEVEL=debug` 或 `--log-level debug` 临时提高 ngxops 诊断详细程度。Paramiko 协议层固定为 WARNING，避免无业务上下文的握手协商明细进入文件。运行日志包含请求 ID；请求响应同时返回 `X-Request-ID`。后台任务日志包含任务 ID、操作类型、批次和触发用户 ID；自动节点巡检失败记录操作类型和节点 ID。生产环境应设置 `NGXOPS_DEBUG=0`、`NGXOPS_RELOAD=0`，并按实际 TLS 终止方式配置 Secure Cookie。部署在反向代理后时，`NGXOPS_CSRF_TRUSTED_ORIGINS` 使用浏览器访问的完整来源。
 
 `NGXOPS_*` 是当前配置前缀；为兼容旧部署，同名 `MNGXOPS_*` 变量仍可用，二者同时设置时 `NGXOPS_*` 优先。单文件程序的构建、英文 CLI、后台 `start/stop/status`、数据库初始化、管理员密码重置和日志位置见 [packaging.md](packaging.md)。源码和单文件程序未指定数据目录时，都使用启动命令所在的当前工作目录。
 

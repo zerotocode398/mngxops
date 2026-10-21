@@ -588,3 +588,153 @@ e9707275226af0ee7d70a97142da9a93
 242. **已完成**：删除安装确认页 configure 预览下方的续行说明。
 243. **已完成**：Nginx 安装进入确认步骤前，逐节点使用 SSH 用户预检安装路径和远程工作目录写权限；失败展示节点、路径及原因并阻止继续，通过后在确认页显示检查结果。临时创建并清理检查目录，不保留探测文件。新增 `POST /api/nginx-install/path-permissions`，要求 `upgrade.execute`，并发受节点批量设置上限约束。预检通过后权限仍可能变化，最终以安装执行结果为准。更新 `ngxops/nginx_install/services.py`、`ngxops/nginx_install/routes.py`、安装向导模板/脚本/样式及相关文档。验证：`pytest -q tests/test_nginx_install.py` 4 passed；Python `compileall`、Node `--check`、OpenAPI 请求/响应模型登记与 `git diff --check` 通过。使用模拟 SSH 验证路径成功/拒绝和 shell 路径引用，未连接真实 SSH 主机。
 244. **已完成**：新增进程内节点状态巡检器，周期检查未删除、未锁定且凭证启用的节点；巡检通过独立线程池运行，不阻塞 FastAPI 事件循环，不写任务中心日志，也不对同一节点并发或重复探测。并发设置 `node.status_probe_concurrency` 范围 1–10、默认 3；间隔设置 `node.status_probe_interval_seconds` 范围 30–300 秒、默认 60 秒；SSH 连接超时范围调整为 1–10 秒、默认 3 秒。巡检连接不重试，Nginx 版本命令设置 10 秒上限；晚返回的旧结果、节点已锁定/删除或凭证已禁用时不覆盖状态。SSH 失败写离线并保留 Nginx 结果；Nginx 命令超时写未知而不是判定已卸载；超过 3 个巡检间隔无对应新观测时，SSH/Nginx 状态分别降为未知。100 台节点、并发 3、单次平均 2 秒时，估算单轮约 128 秒，具体取决于连接耗时和队列积压；并发上限 10 且部署仍限定单 Uvicorn worker。该并发仅限制状态巡检，不限制同时运行的其他运维任务。新增 `ngxops/nodes/monitor.py`，更新应用生命周期、节点/凭证探测写回、SSH 超时设置与各 SSH 任务参数快照，并更新设置和节点文档。设置表复用 NX-061 已有迁移版本 14，无新增数据库迁移。未运行测试或启动服务，待用户统一验证。
+245. **已完成**：运行日志默认级别改为 INFO，和开发模式的 FastAPI debug/reload 解耦；仍可通过 `NGXOPS_LOG_LEVEL` 或 `--log-level` 调整 ngxops 日志级别。日志格式新增 request_id、task_id、node_id、operation_type、source_batch 和 actor_user_id 字段；非静态请求生成并返回 `X-Request-ID`，任务执行器在开始/成功/失败/取消时写 INFO 事件，自动节点巡检失败记录操作类型和节点 ID。Paramiko 协议层固定为 WARNING，避免其独立传输线程输出无法关联业务的握手明细。更新 `ngxops/logging_setup.py`、`ngxops/config.py`、`ngxops/app.py`、`ngxops/tasks/executor.py`、`ngxops/nodes/monitor.py` 及部署、安全、打包文档。没有新增数据库迁移；未运行测试，待用户统一验证。
+```text
+2026-10-21 10:18:54 DEBUG paramiko.transport Kex: curve25519-sha256@libssh.org
+2026-10-21 10:18:54 DEBUG paramiko.transport HostKey: ssh-ed25519
+2026-10-21 10:18:54 DEBUG paramiko.transport Cipher: aes128-ctr
+2026-10-21 10:18:54 DEBUG paramiko.transport MAC: hmac-sha2-256
+2026-10-21 10:18:54 DEBUG paramiko.transport starting thread (client mode): 0xf4ad6a0
+2026-10-21 10:18:54 DEBUG paramiko.transport Compression: none
+2026-10-21 10:18:54 DEBUG paramiko.transport === End of kex handshake ===
+2026-10-21 10:18:54 DEBUG paramiko.transport Local version/idstring: SSH-2.0-paramiko_5.0.0
+2026-10-21 10:18:54 DEBUG paramiko.transport Remote version/idstring: SSH-2.0-OpenSSH_8.0
+2026-10-21 10:18:54 INFO paramiko.transport Connected (version 2.0, client OpenSSH_8.0)
+2026-10-21 10:18:54 DEBUG paramiko.transport === Key exchange possibilities ===
+2026-10-21 10:18:54 DEBUG paramiko.transport kex algos: curve25519-sha256, curve25519-sha256@libssh.org, ecdh-sha2-nistp256, ecdh-sha2-nistp384, ecdh-sha2-nistp521, diffie-hellman-group-exchange-sha256, diffie-hellman-group14-sha256, diffie-hellman-group16-sha512, diffie-hellman-group18-sha512, diffie-hellman-group-exchange-sha1, diffie-hellman-group14-sha1
+2026-10-21 10:18:54 DEBUG paramiko.transport server key: rsa-sha2-512, rsa-sha2-256, ssh-rsa, ecdsa-sha2-nistp256, ssh-ed25519
+2026-10-21 10:18:54 DEBUG paramiko.transport client encrypt: aes256-gcm@openssh.com, chacha20-poly1305@openssh.com, aes256-ctr, aes256-cbc, aes128-gcm@openssh.com, aes128-ctr, aes128-cbc
+2026-10-21 10:18:54 DEBUG paramiko.transport server encrypt: aes256-gcm@openssh.com, chacha20-poly1305@openssh.com, aes256-ctr, aes256-cbc, aes128-gcm@openssh.com, aes128-ctr, aes128-cbc
+2026-10-21 10:18:54 DEBUG paramiko.transport client mac: hmac-sha2-256-etm@openssh.com, hmac-sha1-etm@openssh.com, umac-128-etm@openssh.com, hmac-sha2-512-etm@openssh.com, hmac-sha2-256, hmac-sha1, umac-128@openssh.com, hmac-sha2-512
+2026-10-21 10:18:54 DEBUG paramiko.transport server mac: hmac-sha2-256-etm@openssh.com, hmac-sha1-etm@openssh.com, umac-128-etm@openssh.com, hmac-sha2-512-etm@openssh.com, hmac-sha2-256, hmac-sha1, umac-128@openssh.com, hmac-sha2-512
+2026-10-21 10:18:54 DEBUG paramiko.transport client compress: none, zlib@openssh.com
+2026-10-21 10:18:54 DEBUG paramiko.transport server compress: none, zlib@openssh.com
+2026-10-21 10:18:54 DEBUG paramiko.transport client lang: <none>
+2026-10-21 10:18:54 DEBUG paramiko.transport server lang: <none>
+2026-10-21 10:18:54 DEBUG paramiko.transport kex follows: False
+2026-10-21 10:18:54 DEBUG paramiko.transport === Key exchange agreements ===
+2026-10-21 10:18:54 DEBUG paramiko.transport Kex: curve25519-sha256@libssh.org
+2026-10-21 10:18:54 DEBUG paramiko.transport HostKey: ssh-ed25519
+2026-10-21 10:18:54 DEBUG paramiko.transport Cipher: aes128-ctr
+2026-10-21 10:18:54 DEBUG paramiko.transport MAC: hmac-sha2-256
+2026-10-21 10:18:54 DEBUG paramiko.transport Compression: none
+2026-10-21 10:18:54 DEBUG paramiko.transport === End of kex handshake ===
+2026-10-21 10:18:54 DEBUG paramiko.transport kex engine KexCurve25519 specified hash_algo <built-in function openssl_sha256>
+2026-10-21 10:18:54 DEBUG paramiko.transport Switch to new keys ...
+2026-10-21 10:18:54 DEBUG paramiko.transport Got EXT_INFO: {'server-sig-algs': b'ssh-ed25519,sk-ssh-ed25519@openssh.com,ssh-rsa,rsa-sha2-256,rsa-sha2-512,ssh-dss,sm2,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ecdsa-sha2-nistp256@openssh.com'}
+2026-10-21 10:18:54 DEBUG paramiko.transport Adding ssh-ed25519 host key for 10.10.77.66: b'066a71c5d4f678c342472aed48ee959b'
+2026-10-21 10:18:54 DEBUG paramiko.transport starting thread (client mode): 0xf4a2fd0
+2026-10-21 10:18:54 DEBUG paramiko.transport Local version/idstring: SSH-2.0-paramiko_5.0.0
+2026-10-21 10:18:54 DEBUG paramiko.transport kex engine KexCurve25519 specified hash_algo <built-in function openssl_sha256>
+2026-10-21 10:18:54 DEBUG paramiko.transport Switch to new keys ...
+2026-10-21 10:18:54 DEBUG paramiko.transport Got EXT_INFO: {'server-sig-algs': b'ssh-ed25519,ssh-rsa,rsa-sha2-256,rsa-sha2-512,ssh-dss,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521'}
+2026-10-21 10:18:54 DEBUG paramiko.transport Adding ssh-ed25519 host key for 10.10.77.102: b'accb93ba6d9bd6d5988f8f73f177810b'
+2026-10-21 10:18:54 DEBUG paramiko.transport userauth is OK
+2026-10-21 10:18:54 INFO paramiko.transport Auth banner: b'\nAuthorized users only. All activities may be monitored and reported.\n'
+2026-10-21 10:18:54 INFO paramiko.transport Authentication (password) successful!
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] Max packet in: 32768 bytes
+2026-10-21 10:18:54 INFO ngxops.audit.service business_action user=admin module=系统设置 action=更新系统设置 result=success ip=127.0.0.1 detail=分组「节点管理」修改 1 项：node.ssh_connect_timeout
+2026-10-21 10:18:54 INFO ngxops.access request method=POST path=/api/settings/group status=200 duration_ms=16 user_id=1 client_ip=127.0.0.1
+2026-10-21 10:18:54 DEBUG paramiko.transport Received global request "hostkeys-00@openssh.com"
+2026-10-21 10:18:54 DEBUG paramiko.transport Rejecting "hostkeys-00@openssh.com" global request from server.
+2026-10-21 10:18:54 DEBUG paramiko.transport Remote version/idstring: SSH-2.0-OpenSSH_8.0
+2026-10-21 10:18:54 INFO paramiko.transport Connected (version 2.0, client OpenSSH_8.0)
+2026-10-21 10:18:54 DEBUG paramiko.transport userauth is OK
+2026-10-21 10:18:54 INFO paramiko.transport Authentication (password) successful!
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] Max packet in: 32768 bytes
+2026-10-21 10:18:54 DEBUG paramiko.transport === Key exchange possibilities ===
+2026-10-21 10:18:54 DEBUG paramiko.transport kex algos: curve25519-sha256, curve25519-sha256@libssh.org, ecdh-sha2-nistp256, ecdh-sha2-nistp384, ecdh-sha2-nistp521, diffie-hellman-group-exchange-sha256, diffie-hellman-group14-sha256, diffie-hellman-group16-sha512, diffie-hellman-group18-sha512, diffie-hellman-group-exchange-sha1, diffie-hellman-group14-sha1
+2026-10-21 10:18:54 DEBUG paramiko.transport server key: rsa-sha2-512, rsa-sha2-256, ssh-rsa, ecdsa-sha2-nistp256, ssh-ed25519
+2026-10-21 10:18:54 DEBUG paramiko.transport client encrypt: aes256-gcm@openssh.com, chacha20-poly1305@openssh.com, aes256-ctr, aes256-cbc, aes128-gcm@openssh.com, aes128-ctr, aes128-cbc
+2026-10-21 10:18:54 DEBUG paramiko.transport server encrypt: aes256-gcm@openssh.com, chacha20-poly1305@openssh.com, aes256-ctr, aes256-cbc, aes128-gcm@openssh.com, aes128-ctr, aes128-cbc
+2026-10-21 10:18:54 DEBUG paramiko.transport client mac: hmac-sha2-256-etm@openssh.com, hmac-sha1-etm@openssh.com, umac-128-etm@openssh.com, hmac-sha2-512-etm@openssh.com, hmac-sha2-256, hmac-sha1, umac-128@openssh.com, hmac-sha2-512
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] Max packet out: 32768 bytes
+2026-10-21 10:18:54 DEBUG paramiko.transport server mac: hmac-sha2-256-etm@openssh.com, hmac-sha1-etm@openssh.com, umac-128-etm@openssh.com, hmac-sha2-512-etm@openssh.com, hmac-sha2-256, hmac-sha1, umac-128@openssh.com, hmac-sha2-512
+2026-10-21 10:18:54 DEBUG paramiko.transport Secsh channel 0 opened.
+2026-10-21 10:18:54 DEBUG paramiko.transport client compress: none, zlib@openssh.com
+2026-10-21 10:18:54 DEBUG paramiko.transport server compress: none, zlib@openssh.com
+2026-10-21 10:18:54 DEBUG paramiko.transport client lang: <none>
+2026-10-21 10:18:54 DEBUG paramiko.transport server lang: <none>
+2026-10-21 10:18:54 DEBUG paramiko.transport kex follows: False
+2026-10-21 10:18:54 DEBUG paramiko.transport === Key exchange agreements ===
+2026-10-21 10:18:54 DEBUG paramiko.transport Kex: curve25519-sha256@libssh.org
+2026-10-21 10:18:54 DEBUG paramiko.transport HostKey: ssh-ed25519
+2026-10-21 10:18:54 DEBUG paramiko.transport Cipher: aes128-ctr
+2026-10-21 10:18:54 DEBUG paramiko.transport MAC: hmac-sha2-256
+2026-10-21 10:18:54 DEBUG paramiko.transport Compression: none
+2026-10-21 10:18:54 DEBUG paramiko.transport === End of kex handshake ===
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] Sesch channel 0 request ok
+2026-10-21 10:18:54 DEBUG paramiko.transport Received global request "hostkeys-00@openssh.com"
+2026-10-21 10:18:54 DEBUG paramiko.transport kex engine KexCurve25519 specified hash_algo <built-in function openssl_sha256>
+2026-10-21 10:18:54 DEBUG paramiko.transport Rejecting "hostkeys-00@openssh.com" global request from server.
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] EOF received (0)
+2026-10-21 10:18:54 DEBUG paramiko.transport Switch to new keys ...
+2026-10-21 10:18:54 DEBUG paramiko.transport Adding ssh-ed25519 host key for [112.33.119.171]:26520: b'7a78b6736ec5c6e8d8cdd077ac8b8be4'
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] EOF sent (0)
+2026-10-21 10:18:54 DEBUG paramiko.transport Got EXT_INFO: {'server-sig-algs': b'ssh-ed25519,ssh-rsa,rsa-sha2-256,rsa-sha2-512,ssh-dss,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521'}
+2026-10-21 10:18:54 DEBUG paramiko.transport EOF in transport thread
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] Max packet out: 32768 bytes
+2026-10-21 10:18:54 DEBUG paramiko.transport Secsh channel 0 opened.
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] Sesch channel 0 request ok
+2026-10-21 10:18:54 DEBUG paramiko.transport userauth is OK
+2026-10-21 10:18:54 INFO paramiko.transport Auth banner: b' Authorized only. All activity will be monitored and reported \n'
+2026-10-21 10:18:54 INFO paramiko.transport Authentication (password) successful!
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] Max packet in: 32768 bytes
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] EOF received (0)
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] EOF sent (0)
+2026-10-21 10:18:54 DEBUG paramiko.transport Received global request "hostkeys-00@openssh.com"
+2026-10-21 10:18:54 DEBUG paramiko.transport Rejecting "hostkeys-00@openssh.com" global request from server.
+2026-10-21 10:18:54 DEBUG paramiko.transport EOF in transport thread
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] Max packet out: 32768 bytes
+2026-10-21 10:18:54 DEBUG paramiko.transport Secsh channel 0 opened.
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] Sesch channel 0 request ok
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] EOF received (0)
+2026-10-21 10:18:54 DEBUG paramiko.transport [chan 0] EOF sent (0)
+2026-10-21 10:18:54 DEBUG paramiko.transport EOF in transport thread
+2026-10-21 10:19:07 DEBUG paramiko.transport starting thread (client mode): 0xf4b30d0
+2026-10-21 10:19:07 DEBUG paramiko.transport Local version/idstring: SSH-2.0-paramiko_5.0.0
+2026-10-21 10:19:07 DEBUG paramiko.transport Remote version/idstring: SSH-2.0-OpenSSH_8.0
+2026-10-21 10:19:07 INFO paramiko.transport Connected (version 2.0, client OpenSSH_8.0)
+2026-10-21 10:19:07 DEBUG paramiko.transport === Key exchange possibilities ===
+2026-10-21 10:19:07 DEBUG paramiko.transport kex algos: curve25519-sha256, curve25519-sha256@libssh.org, ecdh-sha2-nistp256, ecdh-sha2-nistp384, ecdh-sha2-nistp521, diffie-hellman-group-exchange-sha256, diffie-hellman-group14-sha256, diffie-hellman-group16-sha512, diffie-hellman-group18-sha512, diffie-hellman-group-exchange-sha1, diffie-hellman-group14-sha1
+2026-10-21 10:19:07 DEBUG paramiko.transport server key: rsa-sha2-512, rsa-sha2-256, ssh-rsa, ecdsa-sha2-nistp256, ssh-ed25519
+2026-10-21 10:19:07 DEBUG paramiko.transport client encrypt: aes256-gcm@openssh.com, chacha20-poly1305@openssh.com, aes256-ctr, aes256-cbc, aes128-gcm@openssh.com, aes128-ctr, aes128-cbc
+2026-10-21 10:19:07 DEBUG paramiko.transport server encrypt: aes256-gcm@openssh.com, chacha20-poly1305@openssh.com, aes256-ctr, aes256-cbc, aes128-gcm@openssh.com, aes128-ctr, aes128-cbc
+2026-10-21 10:19:07 DEBUG paramiko.transport client mac: hmac-sha2-256-etm@openssh.com, hmac-sha1-etm@openssh.com, umac-128-etm@openssh.com, hmac-sha2-512-etm@openssh.com, hmac-sha2-256, hmac-sha1, umac-128@openssh.com, hmac-sha2-512
+2026-10-21 10:19:07 DEBUG paramiko.transport server mac: hmac-sha2-256-etm@openssh.com, hmac-sha1-etm@openssh.com, umac-128-etm@openssh.com, hmac-sha2-512-etm@openssh.com, hmac-sha2-256, hmac-sha1, umac-128@openssh.com, hmac-sha2-512
+2026-10-21 10:19:07 DEBUG paramiko.transport client compress: none, zlib@openssh.com
+2026-10-21 10:19:07 DEBUG paramiko.transport server compress: none, zlib@openssh.com
+2026-10-21 10:19:07 DEBUG paramiko.transport client lang: <none>
+2026-10-21 10:19:07 DEBUG paramiko.transport server lang: <none>
+2026-10-21 10:19:07 DEBUG paramiko.transport kex follows: False
+2026-10-21 10:19:07 DEBUG paramiko.transport === Key exchange agreements ===
+2026-10-21 10:19:07 DEBUG paramiko.transport Kex: curve25519-sha256@libssh.org
+2026-10-21 10:19:07 DEBUG paramiko.transport HostKey: ssh-ed25519
+2026-10-21 10:19:07 DEBUG paramiko.transport Cipher: aes128-ctr
+2026-10-21 10:19:07 DEBUG paramiko.transport MAC: hmac-sha2-256
+2026-10-21 10:19:07 DEBUG paramiko.transport Compression: none
+2026-10-21 10:19:07 DEBUG paramiko.transport === End of kex handshake ===
+2026-10-21 10:19:07 DEBUG paramiko.transport kex engine KexCurve25519 specified hash_algo <built-in function openssl_sha256>
+2026-10-21 10:19:07 DEBUG paramiko.transport Switch to new keys ...
+2026-10-21 10:19:07 DEBUG paramiko.transport Adding ssh-ed25519 host key for [112.33.17.255]:33333: b'298145dc80569814ff79e2a308fa8588'
+2026-10-21 10:19:07 DEBUG paramiko.transport Got EXT_INFO: {'server-sig-algs': b'ssh-ed25519,ssh-rsa,rsa-sha2-256,rsa-sha2-512,ssh-dss,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521'}
+2026-10-21 10:19:08 DEBUG paramiko.transport userauth is OK
+2026-10-21 10:19:08 INFO paramiko.transport Auth banner: b' Authorized only. All activity will be monitored and reported \n'
+2026-10-21 10:19:08 INFO paramiko.transport Authentication (password) successful!
+2026-10-21 10:19:08 DEBUG paramiko.transport [chan 0] Max packet in: 32768 bytes
+2026-10-21 10:19:08 DEBUG paramiko.transport Received global request "hostkeys-00@openssh.com"
+2026-10-21 10:19:08 DEBUG paramiko.transport Rejecting "hostkeys-00@openssh.com" global request from server.
+2026-10-21 10:19:08 DEBUG paramiko.transport [chan 0] Max packet out: 32768 bytes
+2026-10-21 10:19:08 DEBUG paramiko.transport Secsh channel 0 opened.
+2026-10-21 10:19:08 DEBUG paramiko.transport [chan 0] Sesch channel 0 request ok
+2026-10-21 10:19:08 DEBUG paramiko.transport [chan 0] EOF received (0)
+2026-10-21 10:19:08 DEBUG paramiko.transport [chan 0] EOF sent (0)
+2026-10-21 10:19:08 DEBUG paramiko.transport EOF in transport thread
+2026-10-21 10:19:20 INFO uvicorn.error Shutting down
+2026-10-21 10:19:20 INFO uvicorn.error Waiting for application shutdown.
+2026-10-21 10:19:21 INFO uvicorn.error Application shutdown complete.
+2026-10-21 10:19:21 INFO uvicorn.error Finished server process [10672]
+2026-10-21 10:19:21 INFO uvicorn.error Stopping reloader process [19420]
+```
+246. Nginx 安装，远端路径权限检查未通过，仅展示未通过项目；
+247. Nginx 安装，监听端口风险提示、远端路径权限检查未通过 能否合并在一起？

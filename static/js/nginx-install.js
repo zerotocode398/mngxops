@@ -776,7 +776,7 @@
                     if (riskNodes.length) {
                         window.showConfirm("监听端口风险提示", buildPortRiskMessage(riskNodes, values.listen_port), function () {
                             setStep(3);
-                        }, true, "lg", "继续到确认页");
+                        }, true, "lg", "继续");
                         return;
                     }
                     setStep(3);

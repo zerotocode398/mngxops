@@ -6,7 +6,7 @@
 - 登录辅助函数 `login_user(request, user)` 轮换 session key 后记录 `user_id`；`logout_user(request)` 清空并撤销当前会话。NX-010 登录成功会轮换会话键并保存非敏感设备识别信息；改密撤销该用户全部旧会话，再重新签发当前浏览器会话。
 - 不活跃且停用、已删除或格式无效的账户不能继续使用登录态。过期会话在对应 Cookie 再次访问时惰性删除；全表过期数据清理留待数据保留阶段。
 - `NGXOPS_SECRET_KEY` 优先用于 CSRF 签名；未配置时应用在数据目录创建 `.secret_key`。部署 HTTPS 时设置 `NGXOPS_HTTPS=1`，会话和 CSRF Cookie 使用 `Secure`。
-- 运行日志位于数据目录 `logs/`，包含请求路径、状态、来源地址、业务操作摘要及异常信息；不会记录请求正文、Cookie、认证头或 SQL 绑定参数。日志目录仍包含运维标识信息，必须限制文件权限。
+- 运行日志位于数据目录 `logs/`，默认使用 INFO；每个非静态请求有可从 `X-Request-ID` 响应头定位的请求 ID，后台任务日志带任务 ID、操作类型、批次和触发用户 ID。日志包含请求路径、状态、来源地址、业务操作摘要及异常信息；不会记录请求正文、Cookie、认证头或 SQL 绑定参数。日志目录仍包含运维标识信息，必须限制文件权限。
 - SSH 凭证使用独立的 Fernet 密钥文件 `.fernet_key` 加密，不能与 `db.sqlite3` 分开备份。凭证解密 API 需要 `credentials.read` 权限并返回 `Cache-Control: no-store`；不得把密码、私钥写入日志、任务参数或审计详情。
 
 ## CSRF

@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 from ngxops.credentials.models import Credential
 from ngxops.database.session import session_scope
+from ngxops.logging_setup import log_context
 from ngxops.nodes.models import Node
 from ngxops.nodes.tasks import _apply_probe_result, _load_targets, _probe_target
 from ngxops.settings.service import read_setting
@@ -213,11 +214,11 @@ def _collect_finished_probes(
         except TaskCancelled:
             pass
         except Exception as exc:
-            logger.warning(
-                "Node status probe failed node_id=%s error_type=%s",
-                node_id,
-                type(exc).__name__,
-            )
+            with log_context(operation_type="node_status_probe", node_id=node_id):
+                logger.warning(
+                    "Node status probe failed error_type=%s",
+                    type(exc).__name__,
+                )
         next_due[node_id] = datetime.utcnow() + timedelta(seconds=interval)
 
 
@@ -228,15 +229,16 @@ def _probe_and_store(
     stop_event: threading.Event,
 ) -> None:
     """单次连接探测节点并复用 NX-022 状态写回规则。"""
-    targets = _load_targets(session_factory, [node_id], encryption_key)
-    if not targets:
-        return
-    target = targets[0]
-    if target["is_locked"] or target["credential_error"]:
-        return
-    target["detect_retries"] = 0
-    result = _probe_target(target, _MonitorContext(stop_event))
-    _apply_probe_result(session_factory, target, result, update_nginx=True)
+    with log_context(operation_type="node_status_probe", node_id=node_id):
+        targets = _load_targets(session_factory, [node_id], encryption_key)
+        if not targets:
+            return
+        target = targets[0]
+        if target["is_locked"] or target["credential_error"]:
+            return
+        target["detect_retries"] = 0
+        result = _probe_target(target, _MonitorContext(stop_event))
+        _apply_probe_result(session_factory, target, result, update_nginx=True)
 
 
 def _expire_stale_states(session_factory: sessionmaker, interval: int) -> None:

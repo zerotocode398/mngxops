@@ -4,6 +4,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -30,7 +31,7 @@ from ngxops.rbac.routes import api_router as rbac_api_router
 from ngxops.rbac.routes import router as rbac_router
 from ngxops.rbac.service import user_has_permission
 from ngxops.config import Settings, get_settings
-from ngxops.logging_setup import configure_logging, log_exception
+from ngxops.logging_setup import configure_logging, log_context, log_exception
 from ngxops.credentials.routes import api_router as credentials_api_router
 from ngxops.credentials.routes import router as credentials_router
 from ngxops.credentials.crypto import load_or_create_fernet_key
@@ -148,25 +149,29 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if request.url.path.startswith("/static/"):
             return await call_next(request)
         started_at = time.monotonic()
+        request_id = uuid4().hex
         response = None
-        try:
-            response = await call_next(request)
-            return response
-        finally:
-            session = request.scope.get("session")
-            user_id = session.get("user_id", "-") if session is not None else "-"
-            client_ip = request.client.host if request.client is not None else "-"
-            status_code = response.status_code if response is not None else 500
-            logging.getLogger("ngxops.access").info(
-                "request method=%s path=%s status=%s duration_ms=%d "
-                "user_id=%s client_ip=%s",
-                request.method,
-                request.url.path,
-                status_code,
-                int((time.monotonic() - started_at) * 1000),
-                user_id,
-                client_ip,
-            )
+        with log_context(request_id=request_id):
+            try:
+                response = await call_next(request)
+                response.headers["X-Request-ID"] = request_id
+                return response
+            finally:
+                session = request.scope.get("session")
+                user_id = session.get("user_id", "-") if session is not None else "-"
+                client_ip = request.client.host if request.client is not None else "-"
+                status_code = response.status_code if response is not None else 500
+                with log_context(actor_user_id=user_id):
+                    logging.getLogger("ngxops.access").info(
+                        "request method=%s path=%s status=%s duration_ms=%d "
+                        "user_id=%s client_ip=%s",
+                        request.method,
+                        request.url.path,
+                        status_code,
+                        int((time.monotonic() - started_at) * 1000),
+                        user_id,
+                        client_ip,
+                    )
 
     app.mount(
         "/static",

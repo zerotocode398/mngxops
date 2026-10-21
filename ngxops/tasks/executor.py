@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ngxops.audit.service import prepare_audit_session
 from ngxops.audit.service import write_audit_log
-from ngxops.logging_setup import log_exception
+from ngxops.logging_setup import log_context, log_exception
 from ngxops.database.session import session_scope
 from ngxops.tasks.models import ACTIVE_STATUSES, OPERATION_TYPES, Task, TaskLog
 
@@ -108,8 +108,18 @@ def _append_log_in_session(
     return True
 
 
-def _start_task(session_factory: sessionmaker, task_id: int) -> bool:
-    """将排队任务原子地切换为执行中。"""
+class TaskLogContext(NamedTuple):
+    """保存后台任务日志需要的业务关联字段。"""
+
+    operation_type: str
+    source_batch: str
+    actor_user_id: Optional[int]
+
+
+def _start_task(
+    session_factory: sessionmaker, task_id: int
+) -> Optional[TaskLogContext]:
+    """将排队任务原子地切换为执行中并返回日志关联字段。"""
     with session_scope(session_factory) as session:
         with session.begin():
             result = session.execute(
@@ -118,9 +128,16 @@ def _start_task(session_factory: sessionmaker, task_id: int) -> bool:
                 .values(status="running", started_at=_now(), updated_at=_now())
             )
             if result.rowcount != 1:
-                return False
+                return None
+            task = session.get(Task, task_id)
+            if task is None:
+                return None
             session.add(TaskLog(task_id=task_id, message="任务开始执行"))
-            return True
+            return TaskLogContext(
+                operation_type=task.operation_type,
+                source_batch=task.source_batch,
+                actor_user_id=task.trigger_user_id,
+            )
 
 
 def _finish_task(
@@ -381,9 +398,32 @@ class TaskExecutor:
             self._session_factory,
             self.register_cancel_callback,
         )
-        try:
-            if not _start_task(self._session_factory, task_id):
+        with log_context(task_id=task_id):
+            try:
+                task_log_context = _start_task(self._session_factory, task_id)
+                if task_log_context is None:
+                    return
+            except Exception as exc:
+                self._log_task_failure(task_id, exc)
+                self._clear_cancel_callbacks(task_id)
                 return
+
+            with log_context(
+                operation_type=task_log_context.operation_type,
+                source_batch=task_log_context.source_batch,
+                actor_user_id=task_log_context.actor_user_id,
+            ):
+                self._run_started_task(task_id, function, context)
+
+    def _run_started_task(
+        self,
+        task_id: int,
+        function: TaskCallable,
+        context: TaskContext,
+    ) -> None:
+        """执行已进入 running 状态的任务并记录业务终态。"""
+        try:
+            logger.info("task_event action=started")
             result = function(context)
             context.check_cancelled()
             status = "success"
@@ -400,42 +440,53 @@ class TaskExecutor:
                 if result_tree is not None
                 else None
             )
-            _finish_task(
+            finished = _finish_task(
                 self._session_factory,
                 task_id,
                 status,
                 detail,
                 serialized,
             )
+            if finished:
+                logger.info("task_event action=finished result=%s", status)
         except TaskCancelled:
-            return
+            logger.info("task_event action=finished result=cancelled")
         except Exception as exc:
-            error_type = type(exc).__name__
-            log_exception(
-                logger,
-                "后台任务执行失败",
-                exc,
-                "task_id={}".format(task_id),
-            )
-            try:
-                _finish_task(
-                    self._session_factory,
-                    task_id,
-                    "failed",
-                    "任务执行失败（{}）".format(error_type),
-                    _serialize_result_tree(
-                        {"status": "failed", "error_type": error_type}
-                    ),
-                )
-            except Exception as finish_error:
-                log_exception(
-                    logger,
-                    "后台任务终态写入失败",
-                    finish_error,
-                    "task_id={}".format(task_id),
-                )
+            self._log_task_failure(task_id, exc)
         finally:
             self._clear_cancel_callbacks(task_id)
+
+    def _log_task_failure(self, task_id: int, exc: Exception) -> None:
+        """记录任务执行异常并尝试持久化失败终态。"""
+        error_type = type(exc).__name__
+        log_exception(
+            logger,
+            "后台任务执行失败",
+            exc,
+            "task_id={}".format(task_id),
+        )
+        try:
+            finished = _finish_task(
+                self._session_factory,
+                task_id,
+                "failed",
+                "任务执行失败（{}）".format(error_type),
+                _serialize_result_tree(
+                    {"status": "failed", "error_type": error_type}
+                ),
+            )
+            if finished:
+                logger.info(
+                    "task_event action=finished result=failed exception_type=%s",
+                    error_type,
+                )
+        except Exception as finish_error:
+            log_exception(
+                logger,
+                "后台任务终态写入失败",
+                finish_error,
+                "task_id={}".format(task_id),
+            )
 
 
 def create_task(

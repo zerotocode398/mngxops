@@ -138,7 +138,7 @@ export NGXOPS_HOME="$HOME/.local/share/ngxops"
 | `NGXOPS_PORT` | 开发环境 `8000`；冻结运行 `11993` | Uvicorn 监听端口 |
 | `NGXOPS_DEBUG` | 开发环境开启；冻结运行关闭 | FastAPI 调试模式 |
 | `NGXOPS_RELOAD` | 开发环境开启；冻结运行关闭 | Uvicorn 自动重载 |
-| `NGXOPS_LOG_LEVEL` | 随调试模式为 `debug` 或 `info` | Uvicorn 日志级别 |
+| `NGXOPS_LOG_LEVEL` | `info` | 运行日志级别，和调试模式分开配置 |
 | `NGXOPS_HOME` | 当前工作目录 | 可写数据目录，启动时自动创建；CLI 也可在子命令前使用 `--home` 指定 |
 | `NGXOPS_SECRET_KEY` | 自动生成并保存在数据目录 `.secret_key` | CSRF Cookie 签名密钥；多进程部署应共享固定密钥 |
 | `NGXOPS_HTTPS` | `0` | 启用 Secure 会话与 CSRF Cookie |

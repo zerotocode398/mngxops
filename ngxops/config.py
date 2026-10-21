@@ -137,7 +137,7 @@ def get_settings() -> Settings:
     debug = _read_bool("NGXOPS_DEBUG", debug_default)
     log_level = (_environment_value("NGXOPS_LOG_LEVEL") or "").strip().lower()
     if not log_level:
-        log_level = "debug" if debug else "info"
+        log_level = "info"
     if log_level not in _LOG_LEVELS:
         raise ValueError("NGXOPS_LOG_LEVEL 不是有效的日志级别")
 
