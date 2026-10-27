@@ -98,6 +98,12 @@
 .uninstall-preview-mode { flex: 0 0 auto; color: var(--gray-700); white-space: nowrap; }
 .uninstall-preview-heading .badge { flex: 0 0 auto; white-space: nowrap; }
 
+.uninstall-preview-loading { display: grid; gap: 8px; }
+.uninstall-preview-wait-list { display: grid; gap: 6px; }
+.uninstall-preview-wait-item { min-width: 0; padding: 8px 10px; border: 1px solid var(--gray-200); border-radius: 4px; }
+.uninstall-preview-wait-item strong { min-width: 0; overflow-wrap: anywhere; }
+.uninstall-preview-wait-status { flex: 0 0 auto; }
+
 .uninstall-progress-list {
     display: grid;
     gap: 8px;

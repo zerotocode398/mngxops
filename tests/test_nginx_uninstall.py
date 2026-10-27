@@ -283,6 +283,11 @@ def test_uninstall_home_and_center_follow_compact_lifecycle_layout(uninstall_cli
     assert 'checkbox.dataset.key === "nginx_modules"' in script.text
     assert '.uninstall-path-check[data-node="' in script.text
     assert 'getElementById("uninstallProgressRows").innerHTML = rows' in script.text
+    assert 'uninstallPreviewWaitBar' in script.text
+    assert 'Promise.all(ids.map(function (nodeId)' in script.text
+    assert 'node_ids: [nodeId]' in script.text
+    assert 'window.showConfirm(' in script.text
+    assert '确认删除非 Nginx 内容' in script.text
 
 
 def test_uninstall_project_cleanup_paths_are_independent_and_checked_by_default():
@@ -319,6 +324,31 @@ def test_uninstall_project_cleanup_paths_are_independent_and_checked_by_default(
         assert options[selected_flag] is True
         assert all(options[flag] is (flag == selected_flag) for flag in flags)
 
+    acknowledged = services._validate_run_options(
+        {
+            "install_origin": "source",
+            "prefix": "/data",
+            "acknowledged_foreign_prefix_paths": ["/data/nginx/other-app/cache"],
+        },
+        node,
+        "/tmp/nginx-upgrade",
+        "/opt/app/backups",
+    )
+    assert acknowledged["acknowledged_foreign_prefix_paths"] == [
+        "/data/nginx/other-app/cache"
+    ]
+    with pytest.raises(ValueError, match="确认路径与卸载范围不匹配"):
+        services._validate_run_options(
+            {
+                "install_origin": "source",
+                "prefix": "/data",
+                "acknowledged_foreign_prefix_paths": ["/var/other-app"],
+            },
+            node,
+            "/tmp/nginx-upgrade",
+            "/opt/app/backups",
+        )
+
 
 def test_uninstall_preview_key_error_is_logged_and_incomplete_metadata_fails_closed(
     uninstall_client, monkeypatch, caplog
@@ -354,6 +384,7 @@ def test_uninstall_preview_key_error_is_logged_and_incomplete_metadata_fails_clo
             "systemd": {"mode": "binary", "unit": "", "can_manage": False},
             "prefix": "/data/app/nginx",
             "running": False,
+            "foreign_prefix_paths": [],
             "paths": [{"key": "--conf-path"}],
         },
     )
@@ -374,6 +405,7 @@ def test_uninstall_preview_key_error_is_logged_and_incomplete_metadata_fails_clo
             "package": {"origin": "source", "manager": "", "package": ""},
             "systemd": {"mode": "binary", "unit": "", "can_manage": False},
             "prefix": "/data/app/nginx",
+            "foreign_prefix_paths": [],
             "paths": [],
         },
     )
@@ -386,6 +418,38 @@ def test_uninstall_preview_key_error_is_logged_and_incomplete_metadata_fails_clo
     )
     assert missing_runtime_state["eligible"] is False
     assert missing_runtime_state["gate_message"] == "远程预览数据不完整，请重新探测"
+
+
+def test_uninstall_preview_returns_foreign_prefix_paths(uninstall_client, monkeypatch):
+    """验证目录探测结果会返回待确认的 prefix 非 Nginx 子项。"""
+    from ngxops.nginx_uninstall import services
+
+    _client, app = uninstall_client
+    node_id = _client.get("/api/nginx/uninstall/nodes").json()["nodes"][0]["id"]
+    monkeypatch.setattr(
+        services,
+        "_inspect_target",
+        lambda _target: {
+            "package": {"origin": "source", "manager": "", "package": ""},
+            "systemd": {"mode": "binary", "unit": "", "can_manage": False},
+            "prefix": "/data",
+            "running": False,
+            "paths": [],
+            "foreign_prefix_paths": ["/data/other-app"],
+        },
+    )
+
+    preview = services._preview_target(
+        app.state.database.session_factory,
+        node_id,
+        app.state.credential_encryption_key,
+        "/tmp/nginx-upgrade",
+        "/opt/app/backups",
+    )
+
+    assert preview["eligible"] is True
+    assert preview["shallow_prefix"] is True
+    assert preview["foreign_prefix_paths"] == ["/data/other-app"]
 
 
 def test_configure_paths_keep_nested_nginx_locations():
@@ -406,6 +470,13 @@ def test_configure_paths_keep_nested_nginx_locations():
         "/data/app/nginx/conf/nginx.conf",
         "/data/app/nginx/sbin/nginx",
     }
+
+
+def test_uninstall_backup_directory_preserves_chinese_hostname():
+    """验证中文主机名不会被替换成下划线。"""
+    from ngxops.nginx_uninstall.services import _backup_path
+
+    assert _backup_path("麒麟66", "/tmp/nginx-upgrade/conf") == "/tmp/nginx-upgrade/conf/麒麟66"
 
 
 def test_uninstall_prefix_check_allows_nginx_tree_and_rejects_foreign_entries(monkeypatch):
@@ -440,6 +511,13 @@ def test_uninstall_prefix_check_allows_nginx_tree_and_rejects_foreign_entries(mo
     assert commands[-1].startswith("find ")
 
     listing = "/data/app/nginx/conf\n/data/app/nginx/payment-api\n"
+    foreign = services._find_foreign_prefix_entries(
+        object(),
+        "/data/app/nginx",
+        [{"key": "--conf-path", "path": "/data/app/nginx/conf/nginx.conf"}],
+        object(),
+    )
+    assert foreign == ["/data/app/nginx/payment-api"]
     with pytest.raises(ValueError, match="已阻止递归删除"):
         services._assert_nginx_prefix_contents(
             object(),
@@ -447,6 +525,66 @@ def test_uninstall_prefix_check_allows_nginx_tree_and_rejects_foreign_entries(mo
             [{"key": "--conf-path", "path": "/data/app/nginx/conf/nginx.conf"}],
             object(),
         )
+    assert services._assert_nginx_prefix_contents(
+        object(),
+        "/data/app/nginx",
+        [{"key": "--conf-path", "path": "/data/app/nginx/conf/nginx.conf"}],
+        object(),
+        ["/data/app/nginx/payment-api"],
+    ) == foreign
+
+    listing += "/data/app/nginx/new-foreign-item\n"
+    with pytest.raises(ValueError, match="已阻止递归删除"):
+        services._assert_nginx_prefix_contents(
+            object(),
+            "/data/app/nginx",
+            [{"key": "--conf-path", "path": "/data/app/nginx/conf/nginx.conf"}],
+            object(),
+            foreign,
+        )
+
+
+def test_uninstall_prefix_scan_finds_nested_foreign_entries(monkeypatch):
+    """验证 prefix 内 Nginx 路径的未知嵌套目录会被列为待确认内容。"""
+    from ngxops.nginx_uninstall import services
+
+    listings = {
+        "/data": "/data/nginx\n",
+        "/data/nginx": "/data/nginx/sbin\n/data/nginx/other-app\n",
+    }
+
+    def fake_run_command(_client, command, context=None, timeout=45):
+        """按被检查目录返回对应的远程子项。"""
+        if command.startswith("test -e ") or command.startswith("test -d "):
+            return 0, ""
+        if command.startswith("find "):
+            directory = command.split()[1]
+            return 0, listings.get(directory, "")
+        raise AssertionError("收到意外远程命令：{}".format(command))
+
+    monkeypatch.setattr(services, "_run_command", fake_run_command)
+    listings["/data/nginx"] = "/data/nginx/sbin\n"
+    assert services._find_foreign_prefix_entries(
+        object(),
+        "/data",
+        [{"key": "--sbin-path", "path": "/data/nginx/sbin/nginx", "kind": "file"}],
+        object(),
+    ) == []
+    listings["/data/nginx"] = "/data/nginx/sbin\n/data/nginx/other-app\n"
+    foreign = services._find_foreign_prefix_entries(
+        object(),
+        "/data",
+        [{"key": "--sbin-path", "path": "/data/nginx/sbin/nginx", "kind": "file"}],
+        object(),
+    )
+    assert foreign == ["/data/nginx/other-app"]
+    assert services._assert_nginx_prefix_contents(
+        object(),
+        "/data",
+        [{"key": "--sbin-path", "path": "/data/nginx/sbin/nginx", "kind": "file"}],
+        object(),
+        foreign,
+    ) == foreign
 
 
 def test_uninstall_aborts_when_live_nginx_v_cannot_be_read(monkeypatch):

@@ -33,6 +33,7 @@
         var selected = Object.create(null);
         var previewNodes = [];
         var previewRequestId = 0;
+        var acknowledgedForeignPaths = Object.create(null);
         var activeBatch = "";
         var pollTimer = 0;
         var canExecute = config.dataset.canExecute === "true";
@@ -174,30 +175,73 @@
             });
         }
 
+        function renderPreviewLoading(ids) {
+            var root = document.getElementById("uninstallPreviewNodes");
+            var items = ids.map(function (id) {
+                var node = selected[String(id)] || { name: "节点 " + id, ip: "" };
+                return '<div class="uninstall-preview-wait-item" id="uninstallPreviewWait' + id + '"><div class="d-flex justify-content-between align-items-center gap-2"><strong>' + escapeHtml(node.name) + ' (' + escapeHtml(node.ip) + ')</strong><span class="uninstall-preview-wait-status"><span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>SSH 探测中</span></div><div class="small text-muted mt-1">读取 Nginx 编译参数、安装来源和目录内容</div></div>';
+            }).join("");
+            root.innerHTML = '<div class="uninstall-preview-loading" aria-live="polite"><div class="d-flex justify-content-between align-items-center small mb-2"><strong>正在并发探测</strong><span id="uninstallPreviewWaitCount">0 / ' + ids.length + ' 台完成</span></div><div class="progress mb-2" style="height:6px" role="progressbar" aria-label="卸载范围探测进度" aria-valuemin="0" aria-valuemax="' + ids.length + '" aria-valuenow="0"><div class="progress-bar progress-bar-striped progress-bar-animated" id="uninstallPreviewWaitBar" style="width:0%"></div></div><div class="uninstall-preview-wait-list">' + items + '</div></div>';
+        }
+
+        function updatePreviewLoading(nodeId, node, completed, total) {
+            var item = document.getElementById("uninstallPreviewWait" + nodeId);
+            if (!item) return;
+            var status = item.querySelector(".uninstall-preview-wait-status");
+            var spinner = status.querySelector(".spinner-border");
+            if (spinner) spinner.remove();
+            status.className = "uninstall-preview-wait-status badge text-bg-" + (node.eligible ? "success" : "warning");
+            status.textContent = node.eligible ? "探测完成" : (node.gate_message || "未通过探测");
+            document.getElementById("uninstallPreviewWaitCount").textContent = completed + " / " + total + " 台完成";
+            var bar = document.getElementById("uninstallPreviewWaitBar");
+            var percent = Math.round(completed * 100 / total);
+            bar.style.width = percent + "%";
+            bar.parentElement.setAttribute("aria-valuenow", String(completed));
+        }
+
         function preview() {
             var ids = Object.keys(selected).map(Number);
             var requestId = ++previewRequestId;
-            var root = document.getElementById("uninstallPreviewNodes");
             document.getElementById("uninstallPreviewSummary").textContent = "正在探测";
             document.getElementById("uninstallToStep3").disabled = true;
-            root.innerHTML = '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>正在通过 SSH 探测卸载范围</div>';
+            acknowledgedForeignPaths = Object.create(null);
+            renderPreviewLoading(ids);
             setStep(2);
-            requestJson(config.dataset.previewUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
-                body: JSON.stringify({ node_ids: ids })
-            }).then(function (data) {
+            var results = Object.create(null);
+            var completed = 0;
+            Promise.all(ids.map(function (nodeId) {
+                return requestJson(config.dataset.previewUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
+                    body: JSON.stringify({ node_ids: [nodeId] })
+                }).then(function (data) {
+                    var node = (data.nodes || []).find(function (candidate) { return candidate.id === nodeId; });
+                    if (!node) throw new Error("预览响应缺少节点结果");
+                    return node;
+                }).catch(function (error) {
+                    var selectedNode = selected[String(nodeId)] || {};
+                    return {
+                        id: nodeId,
+                        hostname: selectedNode.name || "节点 " + nodeId,
+                        ip: selectedNode.ip || "",
+                        eligible: false,
+                        gate_message: "预览失败：" + error.message,
+                        paths: [],
+                        install_origin: "unknown",
+                        manage_mode: "unknown",
+                        foreign_prefix_paths: []
+                    };
+                }).then(function (node) {
+                    results[nodeId] = node;
+                    if (requestId === previewRequestId) {
+                        completed += 1;
+                        updatePreviewLoading(nodeId, node, completed, ids.length);
+                    }
+                });
+            })).then(function () {
                 if (requestId !== previewRequestId) return;
-                previewNodes = data.nodes;
+                previewNodes = ids.map(function (nodeId) { return results[nodeId]; });
                 renderPreview();
-            }).catch(function (error) {
-                if (requestId !== previewRequestId) return;
-                document.getElementById("uninstallPreviewSummary").textContent = "预览失败";
-                root.replaceChildren();
-                var message = document.createElement("div");
-                message.className = "alert alert-danger mb-0";
-                message.textContent = "预览失败：" + error.message;
-                root.appendChild(message);
             });
         }
 
@@ -227,7 +271,8 @@
                     pathHtml += '<div class="uninstall-path-row" data-node="' + node.id + '" data-path="' + escapeHtml(path.path) + '" data-kind="' + escapeHtml(path.kind) + '" data-required="' + (path.required ? "true" : "false") + '" data-package-owned="' + (path.package_owned ? "true" : "false") + '"><div class="form-check uninstall-path-toggle">' + (path.key === "prefix" ? '<span class="uninstall-path-required"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>' : input) + '<span class="uninstall-path-label">' + escapeHtml(path.label) + "</span>" + badge + '</div><code class="uninstall-path-code">' + (path.key === "prefix" ? input : escapeHtml(path.path)) + '</code></div>';
                 });
                 var settings = node.install_origin === "package" ? '<p class="small text-muted mt-2 mb-2">软件包文件由包管理器管理，路径项不会通过 rm 删除。</p>' : "";
-                var shallow = node.shallow_prefix ? '<div class="alert alert-warning py-2 small mt-2 mb-2">prefix 是一级目录，删除范围较大，可能包含 Nginx 以外的数据。</div>' : "";
+                var foreignPaths = node.foreign_prefix_paths || [];
+                var shallow = foreignPaths.length ? '<div class="alert alert-warning py-2 small mt-2 mb-2">prefix 中发现无法确认归属的内容：' + foreignPaths.map(function (path) { return '<code>' + escapeHtml(path) + '</code>'; }).join("、") + '。确认范围时将再次提示。</div>' : "";
                 var warning = node.running_error ? '<div class="small text-warning mt-1">' + escapeHtml(node.running_error) + "</div>" : "";
                 root.insertAdjacentHTML("beforeend", '<article class="uninstall-preview-node" data-node="' + node.id + '"><header class="uninstall-preview-header"><div class="uninstall-preview-header-content">' + heading + warning + '</div><button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" data-bs-toggle="collapse" data-bs-target="#uninstallPaths' + node.id + '" aria-expanded="true" aria-label="折叠路径"><i class="bi bi-chevron-up" aria-hidden="true"></i></button></header>' + shallow + settings + '<div class="collapse show" id="uninstallPaths' + node.id + '"><div class="uninstall-path-list">' + pathHtml + "</div></div></article>");
             });
@@ -295,9 +340,41 @@
                     remove_workdir: removeWorkdir,
                     remove_modules: removeModules,
                     stop_if_running: true,
-                    extra_paths: extra
+                    extra_paths: extra,
+                    acknowledged_foreign_prefix_paths: acknowledgedForeignPaths[String(node.id)] || []
                 };
             });
+        }
+
+        function continueToConfirmation() {
+            var riskyNodes = previewNodes.filter(function (node) {
+                return node.eligible && (node.foreign_prefix_paths || []).length > 0;
+            });
+            function showConfirmationStep() {
+                riskyNodes.forEach(function (node) {
+                    acknowledgedForeignPaths[String(node.id)] = node.foreign_prefix_paths.slice();
+                });
+                renderConfirmation();
+                setStep(3);
+            }
+            if (!riskyNodes.length) {
+                showConfirmationStep();
+                return;
+            }
+            var details = riskyNodes.map(function (node) {
+                var paths = node.foreign_prefix_paths.map(function (path) {
+                    return "<li><code>" + escapeHtml(path) + "</code></li>";
+                }).join("");
+                return "<li><strong>" + escapeHtml(node.hostname) + " (" + escapeHtml(node.ip) + ")</strong><div class='small text-muted'>prefix " + escapeHtml(node.prefix) + "</div><ul class='mb-2'>" + paths + "</ul></li>";
+            }).join("");
+            window.showConfirm(
+                "确认删除非 Nginx 内容",
+                "<p>以下目录项无法从 Nginx 编译参数或常见目录确认归属。继续后会随 prefix 一并删除：</p><ul class='mb-0'>" + details + "</ul>",
+                showConfirmationStep,
+                true,
+                "lg",
+                "确认范围并继续"
+            );
         }
 
         function renderConfirmation() {
@@ -391,8 +468,7 @@
             var eligible = previewNodes.some(function (node) { return node.eligible; });
             var badPrefix = selectedPayload().some(function (item) { return item.install_origin === "source" && !item.prefix; });
             if (!eligible || badPrefix) { window.showAlert("路径无效", "请检查 prefix 和节点预览结果。"); return; }
-            renderConfirmation();
-            setStep(3);
+            continueToConfirmation();
         });
         document.getElementById("uninstallPreviewNodes").addEventListener("change", function (event) {
             if (event.target.matches(".uninstall-path-check")) syncPathLocks();

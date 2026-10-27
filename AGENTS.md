@@ -826,3 +826,7 @@ Nginx 重启 · 49%
 288–292 实现：`templates/nginx_uninstall/center.html`、`static/js/nginx-uninstall.js`、`static/css/nginx-uninstall.css`、`ngxops/nginx_uninstall/services.py`；三类平台清理路径按节点生成并默认勾选，可分别取消。文档更新：`docs/nginx-uninstall.md`。新增页面与逐项选择断言：`tests/test_nginx_uninstall.py`。验证：卸载页面测试 11 passed；`python -m compileall -q ngxops`、`node --check static/js/nginx-uninstall.js`、`git diff --check` 通过。未启动服务或连接真实 SSH 节点。
 
 293. **已完成**：卸载中心右栏按 Nginx 升级中心比例布局，主栏 `1.45fr`、进度栏 `0.8fr` 且最小宽度 `290px`，991.98px 以下切换单栏；递增公共样式缓存版本。实现：`static/css/app.css`、`templates/base.html`；测试：`tests/test_nginx_uninstall.py`；文档：`docs/nginx-uninstall.md`。
+294. **已完成**：卸载范围 SSH 预览改为逐节点并行请求，路径页展示每台节点的等待/完成状态和整体完成数；单节点请求失败仅标记该节点失败。更新 `static/js/nginx-uninstall.js`、`static/css/nginx-uninstall.css` 和卸载中心缓存版本。
+295. **已完成**：发布备份路径清理规则保留 Unicode 主机名，修复“麒麟66”被清洗为“__66”；增加路径断言并更新卸载说明。
+296. **已完成**：源码 prefix 检查递归识别参数路径上的未知子项；只有发现未知归属内容时才提示，点击“确认范围”展示节点和路径告警。用户确认路径允许位于 prefix 任意层级，执行前重新扫描，新增未确认内容会阻止删除。实现：`ngxops/nginx_uninstall/services.py`、`ngxops/nginx_uninstall/routes.py`、`static/js/nginx-uninstall.js`；测试：`tests/test_nginx_uninstall.py`；文档：`docs/nginx-uninstall.md`。
+294–296 验证：`tests/test_nginx_uninstall.py` 为 14 passed；`python -m compileall -q ngxops`、`node --check static/js/nginx-uninstall.js` 和 `git diff --check` 通过。未启动服务或连接真实 SSH 节点。

@@ -233,7 +233,7 @@ def _prefix_fallback(session_factory: sessionmaker, node_id: int, nginx_path: st
 
 def _backup_path(hostname: str, backup_dir: str = _BACKUP_DIR) -> str:
     """按节点主机名生成发布备份目录。"""
-    safe_host = re.sub(r"[^A-Za-z0-9._-]", "_", hostname or "node")[:100]
+    safe_host = re.sub(r"[^\w.-]", "_", hostname or "node")[:100]
     return posixpath.join(backup_dir, safe_host)
 
 
@@ -328,43 +328,101 @@ def _configure_paths(output: str, prefix_fallback: str) -> Tuple[str, List[dict]
     return prefix, paths
 
 
-def _assert_nginx_prefix_contents(client, prefix: str, paths: List[dict], context: TaskContext) -> None:
-    """拒绝递归删除包含未识别应用内容的源码安装目录。"""
+def _find_foreign_prefix_entries(
+    client, prefix: str, paths: List[dict], context: Optional[TaskContext] = None
+) -> List[str]:
+    """递归检查已知 Nginx 路径的容器目录并列出无法确认归属的子项。"""
     normalized = normalize_remote_path(prefix)
     if is_dangerous_path(normalized):
         raise ValueError("禁止删除路径：{}".format(prefix))
     quoted = shlex.quote(normalized)
     exists, _ = _run_command(client, "test -e {}".format(quoted), context)
     if exists != 0:
-        return
+        return []
     is_directory, _ = _run_command(client, "test -d {}".format(quoted), context)
     if is_directory != 0:
         raise ValueError("Nginx prefix 不是目录，已阻止删除：{}".format(normalized))
-    status, output = _run_command(
-        client,
-        "find {} -mindepth 1 -maxdepth 1 -print".format(quoted),
-        context,
-    )
-    if status != 0:
-        raise ValueError("无法检查 Nginx prefix 内容，已阻止删除：{}".format(normalized))
-    allowed = set(_NGINX_PREFIX_CHILDREN)
+    expected_paths = []
+    expected_files = set()
+    expected_dirs = set()
     for item in paths:
         path = normalize_remote_path(item.get("path", ""))
-        if path.startswith(normalized.rstrip("/") + "/"):
-            allowed.add(path[len(normalized.rstrip("/")) + 1 :].split("/", 1)[0])
+        if not path.startswith(normalized.rstrip("/") + "/"):
+            continue
+        expected_paths.append(path)
+        if item.get("kind") == "file" or is_file_like_path(path):
+            expected_files.add(path)
+        elif path != normalized:
+            expected_dirs.add(path)
+
+    standard_roots = {posixpath.join(normalized, name) for name in _NGINX_PREFIX_CHILDREN}
+    for path in expected_paths:
+        relative = path[len(normalized.rstrip("/")) + 1 :]
+        parts = relative.split("/")
+        for index, part in enumerate(parts[:-1]):
+            if part == "nginx":
+                root = posixpath.join(normalized, *parts[: index + 1])
+                standard_roots.update(
+                    posixpath.join(root, name) for name in _NGINX_PREFIX_CHILDREN
+                )
+
     foreign = []
-    for entry in output.splitlines():
-        candidate = entry.rstrip("/")
-        if not candidate.startswith(normalized.rstrip("/") + "/"):
-            raise ValueError("远程目录检查返回了无效路径，已阻止删除")
-        name = candidate[len(normalized.rstrip("/")) + 1 :]
-        if name not in allowed:
-            foreign.append(name)
-    if foreign:
-        summary = ", ".join(foreign[:5])
-        raise ValueError(
-            "Nginx prefix 含有未识别内容（{}），已阻止递归删除".format(summary)
+    visited = set()
+
+    def scan(directory: str) -> None:
+        """检查作为已知路径容器的目录，并递归检查其中的未知分支。"""
+        if directory in visited:
+            return
+        visited.add(directory)
+        status, output = _run_command(
+            client,
+            "find {} -mindepth 1 -maxdepth 1 -print".format(shlex.quote(directory)),
+            context,
         )
+        if status != 0:
+            raise ValueError("无法检查 Nginx prefix 内容，已阻止删除：{}".format(directory))
+        for entry in output.splitlines():
+            candidate = normalize_remote_path(entry.rstrip("/"))
+            if not candidate or posixpath.dirname(candidate) != directory:
+                raise ValueError("远程目录检查返回了无效路径，已阻止删除")
+            if candidate in expected_files:
+                continue
+            if any(
+                candidate == root or candidate.startswith(root.rstrip("/") + "/")
+                for root in expected_dirs | standard_roots
+            ):
+                continue
+            if any(
+                candidate == path or path.startswith(candidate.rstrip("/") + "/")
+                for path in expected_paths
+            ):
+                scan(candidate)
+                continue
+            foreign.append(candidate)
+
+    scan(normalized)
+    return foreign
+
+
+def _assert_nginx_prefix_contents(
+    client,
+    prefix: str,
+    paths: List[dict],
+    context: TaskContext,
+    acknowledged_foreign_paths: Optional[List[str]] = None,
+) -> List[str]:
+    """仅允许删除预览时已明确确认的源码 prefix 非 Nginx 子项。"""
+    foreign = _find_foreign_prefix_entries(client, prefix, paths, context)
+    acknowledged = set(acknowledged_foreign_paths or [])
+    unexpected = [path for path in foreign if path not in acknowledged]
+    if unexpected:
+        summary = ", ".join(
+            path[len(prefix.rstrip("/")) + 1 :] for path in unexpected[:5]
+        )
+        raise ValueError(
+            "Nginx prefix 含有未确认的非 Nginx 内容（{}），已阻止递归删除".format(summary)
+        )
+    return foreign
 
 
 def _systemd_info(client, context: Optional[TaskContext] = None) -> dict:
@@ -410,6 +468,12 @@ def _inspect_target(target: dict, context: Optional[TaskContext] = None) -> dict
         )
         prefix, paths = _configure_paths(output if status == 0 else "", fallback)
         package = _package_origin(client, binary, context)
+        foreign_prefix_paths = []
+        if package["origin"] == "source" and prefix:
+            inspected_paths = paths + [{"path": binary}]
+            foreign_prefix_paths = _find_foreign_prefix_entries(
+                client, prefix, inspected_paths, context
+            )
         systemd = _systemd_info(client, context)
         if systemd["mode"] == "systemctl":
             running = systemd["running"]
@@ -424,6 +488,7 @@ def _inspect_target(target: dict, context: Optional[TaskContext] = None) -> dict
             "package": package,
             "systemd": systemd,
             "running": running,
+            "foreign_prefix_paths": foreign_prefix_paths,
             "version": parse_nginx_v_output(output or "").get("version", "") if status == 0 else "",
         }
     finally:
@@ -470,6 +535,7 @@ def _preview_target(
         "work_dir": work_dir,
         "modules_dir": posixpath.join(work_dir, "nginx-modules"),
         "shallow_prefix": False,
+        "foreign_prefix_paths": [],
     }
     if gate:
         return result
@@ -520,6 +586,7 @@ def _preview_target(
             "manage_unit": systemd.get("unit", ""),
             "can_manage_systemd": bool(systemd.get("can_manage", False)),
             "shallow_prefix": origin == "source" and len([part for part in prefix.split("/") if part]) == 1,
+            "foreign_prefix_paths": inspected.get("foreign_prefix_paths", []),
         }
     )
     return result
@@ -536,6 +603,10 @@ def _preview_data_is_complete(inspected: object) -> bool:
         return False
     if not isinstance(inspected.get("prefix"), str) or not isinstance(
         inspected.get("running"), bool
+    ):
+        return False
+    if not isinstance(inspected.get("foreign_prefix_paths"), list) or not all(
+        isinstance(path, str) for path in inspected["foreign_prefix_paths"]
     ):
         return False
     if not all(isinstance(package.get(key), str) for key in ("origin", "manager", "package")):
@@ -649,6 +720,20 @@ def _validate_run_options(
     selected = item.get("extra_paths") or []
     if not isinstance(selected, list) or len(selected) > 100:
         raise ValueError("额外路径选择无效")
+    acknowledged = item.get("acknowledged_foreign_prefix_paths") or []
+    if not isinstance(acknowledged, list) or len(acknowledged) > 100:
+        raise ValueError("prefix 风险确认路径无效")
+    acknowledged_paths = []
+    for value in acknowledged:
+        path = normalize_remote_path(value)
+        if (
+            origin != "source"
+            or not path
+            or not path.startswith(prefix.rstrip("/") + "/")
+        ):
+            raise ValueError("prefix 风险确认路径与卸载范围不匹配")
+        if path not in acknowledged_paths:
+            acknowledged_paths.append(path)
     extra_paths = []
     if origin == "source":
         for entry in selected:
@@ -677,6 +762,7 @@ def _validate_run_options(
         "remove_modules": bool(item.get("remove_modules")),
         "stop_if_running": bool(item.get("stop_if_running", True)),
         "extra_paths": extra_paths,
+        "acknowledged_foreign_prefix_paths": acknowledged_paths,
     }
 
 
@@ -974,7 +1060,11 @@ def _run_uninstall(
             if normalize_remote_path(snapshot["prefix"]) != inspected["prefix"]:
                 raise ValueError("Nginx prefix 与预览结果不同，请重新预览后再执行")
             _assert_nginx_prefix_contents(
-                client, inspected["prefix"], inspected["paths"], context
+                client,
+                inspected["prefix"],
+                inspected["paths"] + [{"path": target["nginx_path"]}],
+                context,
+                options.get("acknowledged_foreign_prefix_paths", []),
             )
         if inspected["running"]:
             if not options.get("stop_if_running", True):

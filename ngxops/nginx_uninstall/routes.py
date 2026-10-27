@@ -120,6 +120,7 @@ class PreviewNode(BaseModel):
     work_dir: str = ""
     modules_dir: str = ""
     shallow_prefix: bool = False
+    foreign_prefix_paths: List[str] = Field(default_factory=list)
 
 
 class PreviewResponse(BaseModel):
@@ -150,6 +151,7 @@ class UninstallNodeInput(BaseModel):
     remove_modules: bool = False
     stop_if_running: bool = True
     extra_paths: List[SelectedPath] = Field(default_factory=list, max_length=100)
+    acknowledged_foreign_prefix_paths: List[str] = Field(default_factory=list, max_length=100)
 
 
 class UninstallCreateRequest(BaseModel):
