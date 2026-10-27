@@ -573,9 +573,9 @@ def _preview_data_is_complete(inspected: object) -> bool:
 def _setting_paths(preview: dict) -> List[dict]:
     """追加发布备份和编译目录清理选项。"""
     return [
-        {"key": "release_backup", "label": "发布备份目录", "path": preview["backup_path"], "kind": "dir", "required": False, "checked": False, "editable": False},
-        {"key": "work_dir", "label": "编译工作目录", "path": preview["work_dir"], "kind": "dir", "required": False, "checked": False, "editable": False},
-        {"key": "nginx_modules", "label": "第三方模块源码目录", "path": preview["modules_dir"], "kind": "dir", "required": False, "checked": False, "editable": False},
+        {"key": "release_backup", "label": "发布备份目录", "path": preview["backup_path"], "kind": "dir", "required": False, "checked": True, "editable": False},
+        {"key": "work_dir", "label": "编译工作目录", "path": preview["work_dir"], "kind": "dir", "required": False, "checked": True, "editable": False},
+        {"key": "nginx_modules", "label": "第三方模块源码目录", "path": preview["modules_dir"], "kind": "dir", "required": False, "checked": True, "editable": False},
     ]
 
 

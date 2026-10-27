@@ -32,6 +32,7 @@
         var maxCount = Number(config.dataset.maxCount || 3);
         var selected = Object.create(null);
         var previewNodes = [];
+        var previewRequestId = 0;
         var activeBatch = "";
         var pollTimer = 0;
         var canExecute = config.dataset.canExecute === "true";
@@ -175,17 +176,28 @@
 
         function preview() {
             var ids = Object.keys(selected).map(Number);
-            document.getElementById("uninstallPreviewNodes").innerHTML = '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>正在通过 SSH 探测卸载范围</div>';
+            var requestId = ++previewRequestId;
+            var root = document.getElementById("uninstallPreviewNodes");
+            document.getElementById("uninstallPreviewSummary").textContent = "正在探测";
+            document.getElementById("uninstallToStep3").disabled = true;
+            root.innerHTML = '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>正在通过 SSH 探测卸载范围</div>';
+            setStep(2);
             requestJson(config.dataset.previewUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
                 body: JSON.stringify({ node_ids: ids })
             }).then(function (data) {
+                if (requestId !== previewRequestId) return;
                 previewNodes = data.nodes;
                 renderPreview();
-                setStep(2);
             }).catch(function (error) {
-                window.showAlert("预览失败", error.message);
+                if (requestId !== previewRequestId) return;
+                document.getElementById("uninstallPreviewSummary").textContent = "预览失败";
+                root.replaceChildren();
+                var message = document.createElement("div");
+                message.className = "alert alert-danger mb-0";
+                message.textContent = "预览失败：" + error.message;
+                root.appendChild(message);
             });
         }
 
@@ -195,29 +207,30 @@
             var root = document.getElementById("uninstallPreviewNodes");
             root.innerHTML = "";
             previewNodes.forEach(function (node) {
-                var origin = node.install_origin === "package" ? "系统包" : (node.install_origin === "source" ? "源码安装" : "未确认");
-                var mode = node.manage_mode === "systemctl" ? "systemctl · " + (node.manage_unit || "nginx") : "二进制启动";
+                var isSystemd = node.manage_mode === "systemctl";
+                var mode = isSystemd ? "systemctl 托管" : (node.manage_mode === "binary" ? "二进制启动" : "托管方式未知");
+                var installLabel = node.install_origin === "package"
+                    ? node.package_manager + ":" + node.package_name
+                    : (node.prefix || "prefix 未解析");
                 var summary = node.eligible ? (node.running ? '<span class="badge text-bg-warning">运行中</span>' : '<span class="badge text-bg-success">已停止</span>') : '<span class="badge text-bg-danger">' + escapeHtml(node.gate_message || "不可执行") + "</span>";
+                var heading = '<h3 class="uninstall-preview-heading"><span class="uninstall-preview-host">' + escapeHtml(node.hostname) + ' (' + escapeHtml(node.ip) + ')</span><span class="text-muted">-</span>';
+                if (!isSystemd) heading += '<code class="uninstall-preview-install">' + escapeHtml(installLabel) + '</code>';
+                heading += '<span class="uninstall-preview-mode">' + escapeHtml(mode) + '</span>' + summary + '</h3>';
                 var pathHtml = "";
                 (node.paths || []).forEach(function (path, index) {
                     var checked = path.checked ? " checked" : "";
-                    var disabled = path.required || path.package_owned || path.key === "prefix" ? " disabled" : "";
+                    var disabled = !canExecute || path.required || path.package_owned || path.key === "prefix" ? " disabled" : "";
                     var input = path.key === "prefix"
                         ? '<input class="form-control form-control-sm uninstall-prefix-input" value="' + escapeHtml(path.path) + '" data-node="' + node.id + '" aria-label="' + escapeHtml(node.hostname) + ' prefix" readonly>'
                         : '<input class="form-check-input uninstall-path-check" type="checkbox" data-node="' + node.id + '" data-path-index="' + index + '" data-key="' + escapeHtml(path.key) + '" data-path="' + escapeHtml(path.path) + '" data-kind="' + escapeHtml(path.kind) + '"' + checked + disabled + ' aria-label="选择删除路径 ' + escapeHtml(path.path) + '">';
                     var badge = path.package_owned ? '<span class="badge text-bg-info">包管理器处理</span>' : (path.required ? '<span class="badge text-bg-danger">必选</span>' : "");
-                    if (["release_backup", "work_dir", "nginx_modules"].indexOf(path.key) >= 0) {
-                        input = '<span class="badge text-bg-secondary">下方选项</span>';
-                    }
                     pathHtml += '<div class="uninstall-path-row" data-node="' + node.id + '" data-path="' + escapeHtml(path.path) + '" data-kind="' + escapeHtml(path.kind) + '" data-required="' + (path.required ? "true" : "false") + '" data-package-owned="' + (path.package_owned ? "true" : "false") + '"><div class="form-check uninstall-path-toggle">' + (path.key === "prefix" ? '<span class="uninstall-path-required"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>' : input) + '<span class="uninstall-path-label">' + escapeHtml(path.label) + "</span>" + badge + '</div><code class="uninstall-path-code">' + (path.key === "prefix" ? input : escapeHtml(path.path)) + '</code></div>';
                 });
                 var settings = node.install_origin === "package" ? '<p class="small text-muted mt-2 mb-2">软件包文件由包管理器管理，路径项不会通过 rm 删除。</p>' : "";
                 var shallow = node.shallow_prefix ? '<div class="alert alert-warning py-2 small mt-2 mb-2">prefix 是一级目录，删除范围较大，可能包含 Nginx 以外的数据。</div>' : "";
-                var pkg = node.install_origin === "package" ? '<span class="small">软件包：<code>' + escapeHtml(node.package_manager) + ":" + escapeHtml(node.package_name) + "</code></span>" : '<span class="small">prefix：<code>' + escapeHtml(node.prefix || "未解析") + "</code></span>";
                 var warning = node.running_error ? '<div class="small text-warning mt-1">' + escapeHtml(node.running_error) + "</div>" : "";
-                root.insertAdjacentHTML("beforeend", '<article class="uninstall-preview-node" data-node="' + node.id + '"><header class="d-flex justify-content-between align-items-start gap-2"><div><h3 class="h6 mb-1">' + escapeHtml(node.hostname) + ' <small class="text-muted">' + escapeHtml(node.ip) + '</small></h3><div class="d-flex flex-wrap gap-2 align-items-center">' + pkg + '<span class="small text-muted">托管：' + escapeHtml(mode) + "</span>" + summary + "</div>" + warning + '</div><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#uninstallPaths' + node.id + '" aria-expanded="true" aria-label="折叠路径"><i class="bi bi-chevron-up" aria-hidden="true"></i></button></header>' + shallow + settings + '<div class="collapse show" id="uninstallPaths' + node.id + '"><div class="uninstall-path-list">' + pathHtml + "</div></div></article>");
+                root.insertAdjacentHTML("beforeend", '<article class="uninstall-preview-node" data-node="' + node.id + '"><header class="uninstall-preview-header"><div class="uninstall-preview-header-content">' + heading + warning + '</div><button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" data-bs-toggle="collapse" data-bs-target="#uninstallPaths' + node.id + '" aria-expanded="true" aria-label="折叠路径"><i class="bi bi-chevron-up" aria-hidden="true"></i></button></header>' + shallow + settings + '<div class="collapse show" id="uninstallPaths' + node.id + '"><div class="uninstall-path-list">' + pathHtml + "</div></div></article>");
             });
-            root.insertAdjacentHTML("afterbegin", '<div class="row g-2 mb-3"><div class="col-12 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="removeBackup"><label class="form-check-label" for="removeBackup">同时清理发布备份</label><div class="small text-muted ms-4">' + escapeHtml(eligible[0] ? eligible[0].backup_path : "") + '</div></div></div><div class="col-12 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="removeWorkdir"><label class="form-check-label" for="removeWorkdir">同时清理编译工作目录</label></div></div><div class="col-12 col-lg-4"><div class="form-check"><input class="form-check-input" type="checkbox" id="removeModules"><label class="form-check-label" for="removeModules">同时清理第三方模块目录</label></div></div></div>');
             if (!eligible.length) {
                 document.getElementById("uninstallToStep3").disabled = true;
             } else {
@@ -239,7 +252,7 @@
                     });
                     if (prefixPath && path.indexOf(prefixPath + "/") === 0) parent = true;
                     var row = checkbox.closest(".uninstall-path-row");
-                    checkbox.disabled = row.dataset.required === "true" || row.dataset.packageOwned === "true" || parent;
+                    checkbox.disabled = !canExecute || row.dataset.required === "true" || row.dataset.packageOwned === "true" || parent;
                     if (parent && !checkbox.checked) {
                         checkbox.checked = true;
                         checkbox.dataset.inherited = "true";
@@ -260,22 +273,27 @@
             return previewNodes.filter(function (node) { return node.eligible; }).map(function (node) {
                 var prefixInput = document.querySelector('.uninstall-prefix-input[data-node="' + node.id + '"]');
                 var extra = [];
-                if (node.install_origin === "source") {
-                    document.querySelectorAll('.uninstall-path-check[data-node="' + node.id + '"]:checked').forEach(function (checkbox) {
-                        if (checkbox.dataset.key.indexOf("--") === 0 && !checkbox.disabled) {
-                            extra.push({ key: checkbox.dataset.key, path: checkbox.dataset.path });
-                        }
-                    });
-                }
+                var removeBackup = false;
+                var removeWorkdir = false;
+                var removeModules = false;
+                document.querySelectorAll('.uninstall-path-check[data-node="' + node.id + '"]:checked').forEach(function (checkbox) {
+                    if (checkbox.disabled) return;
+                    if (checkbox.dataset.key === "release_backup") removeBackup = true;
+                    else if (checkbox.dataset.key === "work_dir") removeWorkdir = true;
+                    else if (checkbox.dataset.key === "nginx_modules") removeModules = true;
+                    else if (node.install_origin === "source" && checkbox.dataset.key.indexOf("--") === 0) {
+                        extra.push({ key: checkbox.dataset.key, path: checkbox.dataset.path });
+                    }
+                });
                 return {
                     id: node.id,
                     install_origin: node.install_origin,
                     package_manager: node.package_manager,
                     package_name: node.package_name,
                     prefix: prefixInput ? prefixInput.value.trim() : node.prefix,
-                    remove_backup: document.getElementById("removeBackup").checked,
-                    remove_workdir: document.getElementById("removeWorkdir").checked,
-                    remove_modules: document.getElementById("removeModules").checked,
+                    remove_backup: removeBackup,
+                    remove_workdir: removeWorkdir,
+                    remove_modules: removeModules,
                     stop_if_running: true,
                     extra_paths: extra
                 };
@@ -338,16 +356,22 @@
             requestJson(config.dataset.batchUrlPrefix + encodeURIComponent(activeBatch)).then(function (data) {
                 var rows = data.tasks.map(function (task) {
                     var statusClass = task.status === "success" ? "success" : (task.status === "failed" ? "danger" : (task.status === "running" ? "info" : "secondary"));
-                    return '<tr><td><strong>' + escapeHtml(task.hostname) + '</strong><small class="d-block text-muted">' + escapeHtml(task.ip) + '</small></td><td>' + escapeHtml(task.detail || "-") + '</td><td><span class="badge text-bg-' + statusClass + '">' + escapeHtml(statusLabels[task.status] || task.status) + '</span></td><td>' + task.progress + '%</td><td><a class="btn btn-outline-primary btn-sm" href="/nginx/uninstall/task/' + task.task_id + '/log/" aria-label="查看完整日志" title="查看完整日志"><i class="bi bi-file-text" aria-hidden="true"></i></a></td></tr>';
+                    return '<article class="uninstall-progress-item"><div class="uninstall-progress-item-header"><div class="min-w-0"><strong>' + escapeHtml(task.hostname) + '</strong><small class="d-block text-muted">' + escapeHtml(task.ip) + '</small></div><span class="badge text-bg-' + statusClass + '">' + escapeHtml(statusLabels[task.status] || task.status) + '</span></div><div class="small text-muted text-break mb-2">' + escapeHtml(task.detail || "-") + '</div><div class="d-flex align-items-center gap-2"><div class="progress flex-grow-1" style="height:5px" role="progressbar" aria-label="' + escapeHtml(task.hostname) + ' 卸载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + task.progress + '"><div class="progress-bar' + (task.finished ? " bg-" + statusClass : " progress-bar-striped progress-bar-animated") + '" style="width:' + task.progress + '%"></div></div><small>' + task.progress + '%</small><a class="btn btn-outline-primary btn-sm" href="/nginx/uninstall/task/' + task.task_id + '/log/" aria-label="查看完整日志" title="查看完整日志"><i class="bi bi-file-text" aria-hidden="true"></i></a></div></article>';
                 }).join("");
                 document.getElementById("uninstallProgressRows").innerHTML = rows;
                 document.getElementById("uninstallProgressBar").style.width = data.progress + "%";
-                document.getElementById("uninstallProgressPercent").textContent = data.progress + "%";
+                document.getElementById("uninstallProgressBar").parentElement.setAttribute("aria-valuenow", String(data.progress));
+                var progressBadge = document.getElementById("uninstallProgressPercent");
+                progressBadge.classList.remove("d-none", "text-bg-secondary", "text-bg-success", "text-bg-warning");
+                progressBadge.textContent = data.progress + "%";
+                progressBadge.classList.add(data.finished ? (data.fail_count ? "text-bg-warning" : "text-bg-success") : "text-bg-secondary");
                 document.getElementById("uninstallProgressCounts").textContent = "完成 " + data.tasks.filter(function (task) { return task.finished; }).length + " / " + data.total + " · 成功 " + data.success_count + " · 失败 " + data.fail_count;
                 document.getElementById("uninstallCancel").classList.toggle("d-none", data.finished);
                 if (!data.finished) pollTimer = window.setTimeout(pollBatch, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
                 else {
-                    document.getElementById("uninstallProgressBar").classList.remove("progress-bar-animated");
+                    var progressBar = document.getElementById("uninstallProgressBar");
+                    progressBar.classList.remove("progress-bar-striped", "progress-bar-animated");
+                    progressBar.classList.add(data.fail_count ? "bg-warning" : "bg-success");
                     window.showToast("卸载批次已完成", data.fail_count ? "warning" : "success");
                 }
             }).catch(function (error) {
@@ -358,7 +382,10 @@
 
         bindNodePicker();
         document.getElementById("uninstallToStep2").addEventListener("click", preview);
-        document.getElementById("uninstallBackToStep1").addEventListener("click", function () { setStep(1); });
+        document.getElementById("uninstallBackToStep1").addEventListener("click", function () {
+            previewRequestId += 1;
+            setStep(1);
+        });
         document.getElementById("uninstallBackToStep2").addEventListener("click", function () { setStep(2); });
         document.getElementById("uninstallToStep3").addEventListener("click", function () {
             var eligible = previewNodes.some(function (node) { return node.eligible; });

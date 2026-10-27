@@ -70,8 +70,66 @@
     margin-bottom: 3px;
 }
 
+.uninstall-preview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.uninstall-preview-header-content { min-width: 0; }
+
+.uninstall-preview-heading {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 5px 8px;
+    min-width: 0;
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.uninstall-preview-host { flex: 0 0 auto; font-weight: 700; }
+.uninstall-preview-install { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uninstall-preview-mode { flex: 0 0 auto; color: var(--gray-700); white-space: nowrap; }
+.uninstall-preview-heading .badge { flex: 0 0 auto; white-space: nowrap; }
+
+.uninstall-progress-list {
+    display: grid;
+    gap: 8px;
+    max-height: min(58vh, 440px);
+    overflow: auto;
+}
+
+.uninstall-progress-item {
+    min-width: 0;
+    padding: 8px 9px;
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    background: #fff;
+}
+
+.uninstall-progress-item-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+.uninstall-progress-item-header > div { min-width: 0; overflow-wrap: anywhere; }
+.uninstall-progress-item-header .badge { flex: 0 0 auto; }
+.uninstall-progress-item .progress { min-width: 40px; }
+
 @media (max-width: 575.98px) {
     .uninstall-overview-toolbar .btn {
         flex: 1 1 auto;
     }
+
+    .uninstall-preview-heading { flex-wrap: wrap; gap: 4px 6px; font-size: 0.9rem; }
+    .uninstall-preview-install { white-space: normal; overflow-wrap: anywhere; }
 }

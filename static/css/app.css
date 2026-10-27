@@ -738,9 +738,9 @@ body {
 
 .uninstall-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+    grid-template-columns: minmax(0, 1.45fr) minmax(290px, 0.8fr);
     align-items: start;
-    gap: 1rem;
+    gap: 16px;
 }
 
 .uninstall-side {

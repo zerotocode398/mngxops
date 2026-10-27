@@ -3,7 +3,7 @@
 {% block page_title %}<i class="bi bi-trash3" aria-hidden="true"></i> Nginx 卸载中心{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-uninstall.css') }}?v=287-1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-uninstall.css') }}?v=292-1">
 {% endblock %}
 
 {% block content %}
@@ -48,12 +48,34 @@
             </div>
         </section>
 
-        <section class="card">
-            <div class="card-header"><h2 class="h6 mb-0">执行步骤</h2></div>
-            <div class="card-body" id="uninstallProgressBody"><div class="text-center text-muted py-3" id="uninstallProgressPlaceholder">提交卸载批次后显示真实执行进度</div><div id="uninstallProgress" class="d-none"><div class="d-flex justify-content-between small mb-1"><span id="uninstallBatchLabel"></span><span id="uninstallProgressPercent">0%</span></div><div class="progress mb-3" role="progressbar" aria-label="卸载批次进度"><div class="progress-bar progress-bar-striped progress-bar-animated" id="uninstallProgressBar" style="width:0%"></div></div><div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead class="table-light"><tr><th>节点</th><th>步骤</th><th>状态</th><th>进度</th><th>详情</th></tr></thead><tbody id="uninstallProgressRows"></tbody></table></div><div class="d-flex justify-content-between align-items-center mt-3"><span class="small text-muted" id="uninstallProgressCounts"></span><button type="button" class="btn btn-outline-danger btn-sm d-none" id="uninstallCancel"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>协作取消</button></div></div></div>
-        </section>
     </div>
-    <aside class="uninstall-side"><section class="card"><div class="card-header"><h2 class="h6 mb-0">卸载方式</h2></div><div class="card-body small"><p><strong>源码安装</strong>按确认的 prefix 和路径清理文件。</p><p><strong>系统包安装</strong>通过 dnf、yum 或 apt-get remove 卸载，不直接删除包管理的文件。</p><p class="mb-0">发布备份和编译目录由你在路径步骤中单独选择。</p></div></section></aside>
+    <aside class="uninstall-side upgrade-progress-column">
+        <section class="card upgrade-progress-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="h6 mb-0"><i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>卸载进度</h2>
+                <span class="badge text-bg-secondary d-none" id="uninstallProgressPercent">0%</span>
+            </div>
+            <div class="card-body">
+                <div class="text-center text-muted py-4" id="uninstallProgressPlaceholder">
+                    <i class="bi bi-hourglass fs-4" aria-hidden="true"></i>
+                    <p class="mb-0 mt-2 small">确认后显示任务进度</p>
+                </div>
+                <div class="d-none" id="uninstallProgress">
+                    <div class="small mb-2" id="uninstallBatchLabel"></div>
+                    <div class="progress mb-3" style="height:8px" role="progressbar" aria-label="卸载批次进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="uninstallProgressBar" style="width:0%"></div>
+                    </div>
+                    <p class="small text-muted mb-2" id="uninstallProgressCounts" aria-live="polite"></p>
+                    <div class="uninstall-progress-list" id="uninstallProgressRows" aria-live="polite"></div>
+                    <div class="d-flex justify-content-end mt-3">
+                        <button type="button" class="btn btn-outline-danger btn-sm d-none" id="uninstallCancel">
+                            <i class="bi bi-x-circle me-1" aria-hidden="true"></i>协作取消
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </aside>
 </div>
 
 <div class="modal fade" id="uninstallNodePickerModal" tabindex="-1" aria-labelledby="uninstallNodePickerTitle" aria-hidden="true">
@@ -102,4 +124,4 @@
 <div id="uninstallConfig" data-can-execute="{{ 'true' if can_execute else 'false' }}" data-max-count="{{ batch_max_count }}" data-preview-url="/api/nginx/uninstall/preview" data-create-url="/api/nginx/uninstall/tasks" data-batch-url-prefix="/api/nginx/uninstall/batches/" data-cancel-url-prefix="/api/tasks/" data-task-url-prefix="/api/nginx/uninstall/tasks/" hidden></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-uninstall.js') }}?v=287-1"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-uninstall.js') }}?v=292-1"></script>{% endblock %}

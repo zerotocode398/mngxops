@@ -817,3 +817,12 @@ Nginx 重启 · 49%
 285. **已完成**：卸载中心节点选择器改用升级页的摘要标签、弹窗、AND 查询标签、节点表格、分页和每页数量布局；节点列表只展示未删除、未锁定、SSH 在线、Nginx 已识别、凭证启用且没有活动卸载任务的节点。
 286. **已完成**：移除“已选 0 台 / 上限 N”计数文案，摘要区通过可移除节点标签展示选择；页面、预览与创建后端统一按系统设置 `node.batch_max_count` 限制，默认 3。
 287. **已完成**：根据用户日志确认 `KeyError: 'NAME'` 来自 Python `.format()` 误解析 RPM 查询格式 `%{NAME}`，与节点是否 RPM 安装无关。转义查询格式花括号；继续通过当前 Nginx 二进制路径检查 RPM、DPKG 归属，两种包管理器均不匹配时按源码/二进制安装处理。预览结果须包含来源、托管、运行状态及完整路径字段，否则拒绝执行；远程检查和并发预览异常记录节点编号、异常类型及堆栈位置。测试覆盖 RPM、DPKG、源码分支、KeyError 和不完整预览数据。实现：`ngxops/nginx_uninstall/services.py`、`tests/test_nginx_uninstall.py`、`docs/nginx-uninstall.md`。验证：卸载与启停测试 15 passed；Python `compileall`、`git diff --check` 通过，卸载脚本 `node --check` 于本轮之前通过。
+288. **已完成**：删除卸载中心“执行步骤”说明卡，减少与操作流程无关的内容。
+289. **已完成**：点击“探测卸载范围”立即进入路径页并展示加载状态；SSH 预览仍异步请求，旧请求结果会被忽略，错误显示在当前页。
+290. **已完成**：发布备份、编译工作目录和第三方模块源码目录改为逐节点独立复选框，默认勾选且可逐节点取消；确认摘要和卸载请求分别保留各节点的选择。
+291. **已完成**：节点来源与运行态改为加粗子标题，展示“主机名 (IP) - systemctl 托管/二进制启动 - 状态”；桌面宽度保持单行，窄屏允许换行，长 prefix 在标题中截断且完整路径仍列在路径清单。
+292. **已完成**：右栏“卸载方式”替换为对齐升级中心的“卸载进度”，展示批次总进度、逐节点状态/步骤/进度、完整日志入口和协作取消。
+
+288–292 实现：`templates/nginx_uninstall/center.html`、`static/js/nginx-uninstall.js`、`static/css/nginx-uninstall.css`、`ngxops/nginx_uninstall/services.py`；三类平台清理路径按节点生成并默认勾选，可分别取消。文档更新：`docs/nginx-uninstall.md`。新增页面与逐项选择断言：`tests/test_nginx_uninstall.py`。验证：卸载页面测试 11 passed；`python -m compileall -q ngxops`、`node --check static/js/nginx-uninstall.js`、`git diff --check` 通过。未启动服务或连接真实 SSH 节点。
+
+293. **已完成**：卸载中心右栏按 Nginx 升级中心比例布局，主栏 `1.45fr`、进度栏 `0.8fr` 且最小宽度 `290px`，991.98px 以下切换单栏；递增公共样式缓存版本。实现：`static/css/app.css`、`templates/base.html`；测试：`tests/test_nginx_uninstall.py`；文档：`docs/nginx-uninstall.md`。

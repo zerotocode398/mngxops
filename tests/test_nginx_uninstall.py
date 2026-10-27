@@ -240,6 +240,15 @@ def test_uninstall_home_and_center_follow_compact_lifecycle_layout(uninstall_cli
     assert 'data-query-tags' in center.text
     assert "已选 0 台 / 上限 3" not in center.text
     assert "1. 选择节点" not in center.text
+    assert "执行步骤" not in center.text
+    assert "卸载方式" not in center.text
+    assert "卸载进度" in center.text
+    assert 'class="uninstall-side upgrade-progress-column"' in center.text
+    assert 'id="uninstallProgressRows"' in center.text
+    assert "/static/css/app.css?v=20" in center.text
+    layout_css = client.get("/static/css/app.css")
+    assert layout_css.status_code == 200
+    assert "grid-template-columns: minmax(0, 1.45fr) minmax(290px, 0.8fr)" in layout_css.text
     assert "nginx-live" in center.text
     assert "nginx-offline" not in center.text
     assert "nginx-unknown" not in center.text
@@ -259,6 +268,56 @@ def test_uninstall_home_and_center_follow_compact_lifecycle_layout(uninstall_cli
     assert limited.status_code == 200, limited.text
     assert 'data-max-count="2"' in limited.text
     assert "最多 2 台" in limited.text
+
+    script = client.get("/static/js/nginx-uninstall.js")
+    assert script.status_code == 200
+    preview_code = script.text.split("function preview()", 1)[1].split(
+        "function renderPreview()", 1
+    )[0]
+    assert preview_code.index("setStep(2);") < preview_code.index("requestJson(")
+    assert 'getElementById("removeBackup")' not in script.text
+    assert 'getElementById("removeWorkdir")' not in script.text
+    assert 'getElementById("removeModules")' not in script.text
+    assert 'checkbox.dataset.key === "release_backup"' in script.text
+    assert 'checkbox.dataset.key === "work_dir"' in script.text
+    assert 'checkbox.dataset.key === "nginx_modules"' in script.text
+    assert '.uninstall-path-check[data-node="' in script.text
+    assert 'getElementById("uninstallProgressRows").innerHTML = rows' in script.text
+
+
+def test_uninstall_project_cleanup_paths_are_independent_and_checked_by_default():
+    """验证平台清理路径默认勾选且可按节点独立保存。"""
+    from ngxops.nginx_uninstall import services
+
+    paths = services._setting_paths(
+        {
+            "backup_path": "/opt/app/backups/nginx-a",
+            "work_dir": "/tmp/nginx-upgrade",
+            "modules_dir": "/tmp/nginx-upgrade/nginx-modules",
+        }
+    )
+    assert {item["key"] for item in paths} == {
+        "release_backup",
+        "work_dir",
+        "nginx_modules",
+    }
+    assert all(item["checked"] is True for item in paths)
+
+    node = Node(hostname="nginx-a", ip="198.51.100.20", port=22)
+    flags = ("remove_backup", "remove_workdir", "remove_modules")
+    for selected_flag in flags:
+        options = services._validate_run_options(
+            {
+                "install_origin": "source",
+                "prefix": "/opt/nginx",
+                selected_flag: True,
+            },
+            node,
+            "/tmp/nginx-upgrade",
+            "/opt/app/backups",
+        )
+        assert options[selected_flag] is True
+        assert all(options[flag] is (flag == selected_flag) for flag in flags)
 
 
 def test_uninstall_preview_key_error_is_logged_and_incomplete_metadata_fails_closed(
