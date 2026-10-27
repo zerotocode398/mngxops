@@ -1,22 +1,35 @@
 .service-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.8fr) minmax(290px, 1fr);
-    gap: 1rem;
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
 }
 
+.service-main { min-width: 0; }
+
 .service-selection {
-    min-height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 48px;
     border: 1px solid var(--gray-200, #e3e6e8);
     border-radius: 4px;
-    padding: 0.65rem 0.75rem;
+    padding: 7px 9px;
     background: #fff;
 }
 
 .service-chips {
     display: flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
     gap: 0.4rem;
+    min-width: 0;
+}
+
+.service-selection-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
 }
 
 .service-chip {
@@ -43,8 +56,7 @@
 }
 
 .service-picker-table {
-    min-height: 220px;
-    max-height: 52vh;
+    max-height: min(46vh, 420px);
     overflow: auto;
 }
 
@@ -101,16 +113,10 @@
     line-height: 1.55;
 }
 
-@media (max-width: 900px) {
-    .service-layout {
-        grid-template-columns: minmax(0, 1fr);
-    }
+.service-full-log .upgrade-log-line[hidden] { display: none; }
 
-    .service-progress-column {
-        position: static;
-    }
+.service-full-log .upgrade-log-empty[data-filter-empty][hidden] { display: none; }
 
-    .service-progress-panel {
-        max-height: none;
-    }
+@media (max-width: 575.98px) {
+    .service-full-log .upgrade-log-line { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }

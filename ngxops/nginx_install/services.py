@@ -8,7 +8,7 @@ import shlex
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, selectinload, sessionmaker
@@ -19,14 +19,18 @@ from ngxops.logging_setup import log_exception
 from ngxops.nginx_install.models import NginxInstallRun
 from ngxops.nodes.models import Node, NodeSyncSetting
 from ngxops.settings.service import read_setting
-from ngxops.tasks.executor import TaskCancelled, TaskContext, TaskOutcome
+from ngxops.tasks.executor import (
+    TaskCancelled,
+    TaskContext,
+    TaskOutcome,
+    append_nginx_operation_logs,
+)
 from ngxops.tasks.models import Task, TaskLog
 from ngxops.upgrade.builtin_modules import BUILTIN_ADD_MODULES
 from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage
 from ngxops.upgrade.services import (
     _BATCH_LOCK as _PACKAGE_BATCH_LOCK,
     UpgradeTaskError,
-    _append_command_output,
     _connect_target,
     _file_md5,
     _prepare_module,
@@ -264,30 +268,39 @@ def _systemd_unit_content(nginx_path: str, user: str, group: str) -> str:
     )
 
 
-def _systemd_capability(client) -> Tuple[bool, bool, str]:
+def _systemd_capability(
+    client, context: Optional[TaskContext] = None
+) -> Tuple[bool, bool, str]:
     """检查 systemctl、unit 写权限和免密 sudo 能力。"""
     status, _output = _run_remote_command(
-        client, "command -v systemctl >/dev/null 2>&1", timeout=20
+        client, "command -v systemctl >/dev/null 2>&1", timeout=20, context=context
     )
     if status != 0:
         return False, False, "未找到 systemctl"
     status, _output = _run_remote_command(
-        client, "test -w /etc/systemd/system", timeout=20
+        client, "test -w /etc/systemd/system", timeout=20, context=context
     )
     if status == 0:
         return True, False, "当前用户可写 systemd unit 目录"
     status, _output = _run_remote_command(
-        client, "sudo -n true >/dev/null 2>&1", timeout=20
+        client, "sudo -n true >/dev/null 2>&1", timeout=20, context=context
     )
     if status == 0:
         return True, True, "免密 sudo 可用"
     return False, False, "unit 目录不可写且免密 sudo 不可用"
 
 
-def _run_systemd(client, command: str, use_sudo: bool) -> Tuple[int, str]:
+def _run_systemd(
+    client,
+    command: str,
+    use_sudo: bool,
+    context: Optional[TaskContext] = None,
+) -> Tuple[int, str]:
     """按探测结果通过直接权限或免密 sudo 执行 systemd 命令。"""
     prefix = "sudo -n " if use_sudo else ""
-    return _run_remote_command(client, prefix + command, timeout=120)
+    return _run_remote_command(
+        client, prefix + command, timeout=120, context=context
+    )
 
 
 def _register_systemd_unit(
@@ -309,13 +322,13 @@ def _register_systemd_unit(
         command = "printf %s {} > /etc/systemd/system/nginx.service".format(
             quoted_content
         )
-    _require_remote_success(client, command, "注册 systemd unit 失败")
+    _require_remote_success(client, command, "注册 systemd unit 失败", context)
     context.append_log("已写入 /etc/systemd/system/nginx.service")
     for command, message in (
         ("systemctl daemon-reload", "systemd daemon-reload 失败"),
         ("systemctl enable nginx", "systemctl enable nginx 失败"),
     ):
-        status, _output = _run_systemd(client, command, use_sudo)
+        status, _output = _run_systemd(client, command, use_sudo, context)
         if status != 0:
             raise UpgradeTaskError(message)
         context.append_log("执行 {} 成功".format(command))
@@ -336,7 +349,10 @@ def _apply_listen_port(client, conf_path: str, listen_port: int, context: TaskCo
         "print('CHANGED:%d'%(n1+n2) if n1+n2 else 'NO_CHANGE')\n"
     ).format(conf_path, listen_port)
     status, output = _run_remote_command(
-        client, "python3 -c {}".format(shlex.quote(script)), timeout=30
+        client,
+        "python3 -c {}".format(shlex.quote(script)),
+        timeout=30,
+        context=context,
     )
     if status == 0:
         context.append_log(
@@ -353,7 +369,9 @@ def _apply_listen_port(client, conf_path: str, listen_port: int, context: TaskCo
         "-e 's/(listen[[:space:]]+\\[::\\]:)80([[:space:];])/\\1{port}\\2/g' "
         "{path}"
     ).format(path=quoted, port=listen_port)
-    status, _output = _run_remote_command(client, fallback, timeout=30)
+    status, _output = _run_remote_command(
+        client, fallback, timeout=30, context=context
+    )
     if status != 0:
         raise UpgradeTaskError("写入 Nginx 监听端口失败")
     context.append_log("已通过 sed 将主配置 listen 改为 {}".format(listen_port))
@@ -507,6 +525,7 @@ def _run_install(
             client,
             "command -v gcc >/dev/null 2>&1 && command -v make >/dev/null 2>&1",
             "目标节点缺少 gcc 或 make 编译工具",
+            context,
         )
         context.append_log("gcc 与 make 检查通过")
         context.check_cancelled()
@@ -516,10 +535,13 @@ def _run_install(
             client,
             "mkdir -p -- {}".format(shlex.quote(work_dir)),
             "创建远程编译工作目录失败",
+            context,
         )
         _phase(session_factory, task_id, context, "uploading_package", 15, "上传 Nginx 源码包")
         _upload_file(client, package["local_path"], remote_package, context, 15, 27)
-        _verify_remote_md5(client, remote_package, package["file_md5"], "源码包")
+        _verify_remote_md5(
+            client, remote_package, package["file_md5"], "源码包", context
+        )
         context.append_log("源码包传输校验通过")
         context.check_cancelled()
 
@@ -530,8 +552,9 @@ def _run_install(
                 shlex.quote(remote_package), shlex.quote(work_dir)
             ),
             "解压 Nginx 源码包失败",
+            context,
         )
-        source_root = _read_archive_root(client, remote_package)
+        source_root = _read_archive_root(client, remote_package, context)
         source_dir = posixpath.join(work_dir, source_root)
         context.append_log("源码包解压完成：{}".format(source_root))
         context.check_cancelled()
@@ -570,7 +593,6 @@ def _run_install(
             timeout=1800,
             context=context,
         )
-        _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError("configure 失败：\n{}".format(_tail_output(output)))
         context.append_log("configure 执行完成")
@@ -592,7 +614,6 @@ def _run_install(
             timeout=7200,
             context=context,
         )
-        _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError("make 编译失败：\n{}".format(_tail_output(output)))
         context.append_log("make 编译完成")
@@ -605,7 +626,6 @@ def _run_install(
             timeout=1800,
             context=context,
         )
-        _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError("make install 失败：\n{}".format(_tail_output(output)))
         context.append_log("make install 完成")
@@ -619,15 +639,15 @@ def _run_install(
             client,
             "{} -t 2>&1".format(shlex.quote(paths["nginx_path"])),
             timeout=120,
+            context=context,
         )
-        _append_command_output(context, output)
         if status != 0:
             raise UpgradeTaskError(_listen_error(output))
         context.append_log("nginx -t 检查通过")
         context.check_cancelled()
 
         _phase(session_factory, task_id, context, "starting", 88, "探测 systemd 管理能力")
-        use_systemd, use_sudo, capability = _systemd_capability(client)
+        use_systemd, use_sudo, capability = _systemd_capability(client, context)
         context.append_log(
             "启动策略：{}（{}）".format(
                 "systemd 托管" if use_systemd else "直接二进制启动", capability
@@ -642,17 +662,20 @@ def _run_install(
                 use_sudo,
                 context,
             )
-            status, output = _run_systemd(client, "systemctl start nginx", use_sudo)
+            status, output = _run_systemd(
+                client, "systemctl start nginx", use_sudo, context
+            )
             if status != 0:
                 raise UpgradeTaskError("systemctl start nginx 失败")
         else:
             status, output = run_remote(
-                client, "{} 2>&1".format(shlex.quote(paths["nginx_path"])), timeout=60
+                client,
+                "{} 2>&1".format(shlex.quote(paths["nginx_path"])),
+                timeout=60,
+                context=context,
             )
             if status != 0:
                 raise UpgradeTaskError("Nginx 二进制启动失败：\n{}".format(_tail_output(output)))
-        if output:
-            _append_command_output(context, output)
         context.append_log("Nginx 启动完成")
 
         _phase(session_factory, task_id, context, "verifying", 92, "读取安装后的 Nginx 版本")
@@ -660,6 +683,7 @@ def _run_install(
             client,
             "{} -v 2>&1".format(shlex.quote(paths["nginx_path"])),
             timeout=30,
+            context=context,
         )
         match = re.search(r"nginx/([0-9]+(?:\.[0-9]+){1,3})", output or "")
         version = match.group(1) if status == 0 and match else package["version"]
@@ -769,6 +793,23 @@ def create_install_runner(
     """为统一任务执行器创建绑定安装任务 ID 的回调。"""
     def run(context: TaskContext) -> TaskOutcome:
         """执行单节点安装并返回结构化业务结果。"""
+        with session_scope(session_factory) as session:
+            node_id = session.scalar(
+                select(NginxInstallRun.node_id).where(
+                    NginxInstallRun.task_id == task_id
+                )
+            )
+        context.set_detail_log_sink(
+            lambda messages, level: append_nginx_operation_logs(
+                session_factory,
+                task_id,
+                "nginx_install",
+                messages,
+                level,
+                node_id=node_id,
+            )
+        )
+        context.append_detail_log("安装任务开始执行")
         return _run_install(
             session_factory, encryption_key, package_dir, task_id, context
         )

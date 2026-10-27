@@ -46,12 +46,12 @@
 {% endif %}
 
 <section class="card">
-    <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0">完整执行日志</h2><span class="small text-muted" id="logLiveLabel" aria-live="polite">{% if task.status in ['pending', 'running'] %}实时更新中{% else %}执行已结束{% endif %}</span></div>
-    <div class="card-body"><div class="upgrade-log-output" id="upgradeLog" data-after-log-id="{{ logs[-1].id if logs else 0 }}" aria-live="polite">
-        {% for item in logs %}<div class="upgrade-log-line log-{{ item.level }}"><time title="UTC+8">{{ format_task_datetime(item.created_at) }}</time><span class="upgrade-log-message">{{ item.message }}</span></div>
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><h2 class="h6 mb-0">完整执行日志</h2><div class="d-flex align-items-center gap-2">{% if targets|length > 1 %}<label class="small text-muted mb-0" for="upgradeLogNodeFilter">目标节点</label><select class="form-select form-select-sm task-log-filter-select" id="upgradeLogNodeFilter"><option value="">全部节点</option>{% for target in targets %}<option value="{{ target.task_id }}">{{ target.hostname }}{% if target.ip %} ({{ target.ip }}){% endif %}</option>{% endfor %}</select>{% endif %}<span class="small text-muted" id="logLiveLabel" aria-live="polite">{% if batch_active %}实时更新中{% else %}执行已结束{% endif %}</span></div></div>
+    <div class="card-body"><div class="upgrade-log-output" id="upgradeLog" data-after-log-id="{{ log_cursor }}" data-batch-active="{{ 'true' if batch_active else 'false' }}" aria-live="polite">
+        {% for item in logs %}<div class="upgrade-log-line log-{{ item.level }}" data-task-id="{{ item.task_id }}"><time title="UTC+8">{{ format_task_datetime(item.created_at) }}</time><span class="upgrade-log-message">{{ item.message }}</span></div>
         {% else %}<div class="upgrade-log-empty">暂无日志</div>{% endfor %}
     </div></div>
 </section>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=9"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=10"></script>{% endblock %}

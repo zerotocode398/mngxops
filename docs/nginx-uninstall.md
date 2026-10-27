@@ -5,7 +5,7 @@
 - `/nginx/uninstall/` 显示近 7 天成功/失败、进行中任务和最近卸载记录。
 - `/nginx/uninstall/center/` 提供选择节点、探测删除范围、确认执行三步向导。批量上限由 `node.batch_max_count` 控制，默认 3；保存设置后，刷新页面更新选择上限，创建时由后端按最新值校验。
 - `/nginx/uninstall/history/` 支持节点、IP、批次、prefix、包名和状态筛选/分页。
-- `/nginx/uninstall/task/{task_id}/log/` 展示卸载快照、结果树及可轮询的完整日志。
+- `/nginx/uninstall/task/{task_id}/log/` 展示卸载快照、结果树及同批次完整远程操作日志；批次涉及多个节点时可按节点筛选。
 - 页面/历史使用 `nginx_uninstall.read`；预览和执行使用 `nginx_uninstall.execute`。迁移 v12 将既有 `nodes.read` 授权复制为卸载查看，将 `nodes.update` 复制为卸载执行，适配原项目的授权迁移策略。
 
 ## API
@@ -34,6 +34,6 @@
 
 ## 持久化
 
-统一任务类型为 `nginx_uninstall`，每个节点单独记录任务，共享 `UN-YYMMDD-NNNN` 批次号。迁移 v12 新增 `ngxops_nginx_uninstall_runs` 保存节点身份、来源、包名、prefix、清理选项和创建时间；实际进度、结果树、触发人和脱敏日志保存在 `ngxops_tasks`/`ngxops_task_logs`。快照不保存 SSH 凭证明文。取消是协作式的，已执行的远程命令不会被强制终止，也不提供卸载回滚。
+统一任务类型为 `nginx_uninstall`，每个节点单独记录任务，共享 `UN-YYMMDD-NNNN` 批次号。迁移 v12 新增 `ngxops_nginx_uninstall_runs` 保存节点身份、来源、包名、prefix、清理选项和创建时间；迁移 v19 新增 `ngxops_nginx_operation_logs` 按节点保存脱敏远程输出。任务中心的 `ngxops_task_logs` 只保存核心操作，卸载专用详情聚合同批次远程日志。快照不保存 SSH 凭证明文。取消是协作式的，已执行的远程命令不会被强制终止，也不提供卸载回滚。
 
-部署时备份数据库和密钥后显式执行 `python -m ngxops.database upgrade` 应用 v12。
+部署时备份数据库和密钥后显式执行 `python -m ngxops.database upgrade` 应用未执行迁移。

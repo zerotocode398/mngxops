@@ -5,7 +5,7 @@
 业务模块调用 `ngxops.tasks.executor.create_task` 持久化任务并提交可调用函数。可调用函数接收 `TaskContext`，通过以下方法报告执行过程：
 
 - `update_progress(progress, detail)` 更新 0 到 99 的单调进度和当前步骤说明；终态统一写为 100。
-- `append_log(message, level)` 追加一条脱敏日志。
+- `append_log(message, level, node_id=None)` 追加一条脱敏日志；可选节点 ID 用于按目标筛选多节点执行日志。
 - `set_result_tree(value)` 持久化 JSON 结果树。
 - `check_cancelled()` 在安全检查点查询取消状态；收到取消时抛出 `TaskCancelled`。
 - `register_cancel_callback(callback)` 登记关闭本地 SSH 客户端等资源的回调；取消时执行器会调用已登记回调。
@@ -28,13 +28,13 @@
 | 方法与路径 | 行为 |
 |---|---|
 | `GET /api/tasks` | 分页查询可见任务；支持 `status`、`operation_type`、`source_batch`、逗号分隔 `search`、`page`、`page_size`。每个 search 词按批次号/主机名/IP/目标配置名做 OR，词与词之间做 AND。 |
-| `GET /api/tasks/{task_id}` | 读取进度、结果树与日志；以 `after_log_id` 和 `log_limit` 增量读取日志，响应的 `next_log_id` 可供下次轮询。升级/回滚详情可增加 `log_view=upgrade_full` 读取专属逐行日志。 |
+| `GET /api/tasks/{task_id}` | 读取进度、结果树与日志；以 `after_log_id` 和 `log_limit` 增量读取日志，响应的 `next_log_id` 可供下次轮询。通用任务中心日志记录核心操作，可带 `node_id` 供多节点任务筛选；升级/回滚专用详情使用 `log_view=upgrade_full`，安装专用详情使用 `log_view=install_full`，读取同批次逐行远程操作日志。 |
 | `POST /api/tasks/{task_id}/cancel` | 协作式取消活跃任务；终态返回 400，取消期间状态竞态返回 409。 |
 
 ## 任务中心页面
 
 - `GET /tasks/` 提供统一任务列表，支持按批次号、主机名、IP、配置文件名的多关键词搜索，支持任务类型/状态筛选、每页 10/15/30/50 条和分页；筛选项自动提交，创建时间按 UTC+8 显示。
-- `GET /tasks/{task_id}/` 展示触发人、批次、目标、进度、结构化结果树及持久化日志。活跃任务每 2 秒轮询状态、结果和增量日志；首屏载入 50 条日志，超过首屏日志量时可继续读取。节点结果摘要单行省略，展开后查看完整数据；日志把目标 IP 显示为“主机名 (IP)”，不显示日志级别。
+- `GET /tasks/{task_id}/` 展示触发人、批次、目标、进度、结构化结果树及核心操作日志，不承载专用历史页的全部远程输出。活跃任务每 2 秒轮询状态、结果和增量日志；首屏载入 50 条日志，超过首屏日志量时可继续读取。节点结果摘要单行省略，展开后查看完整数据；所有任务类型使用同一终端文本样式且不显示日志级别，多节点任务可按节点筛选。
 - 目标节点默认显示前三台，更多目标可展开；节点列表 SSH 操作完成提示可直接跳转到对应任务详情。
 - `releases.read` 和超级管理员可查看全部任务。其他具备相关业务权限的用户仅查看自己触发且操作类型匹配的任务；详情和取消均隐藏不可见任务。
 - 任务列表和详情中的发布/回滚批次号仅作摘要；发布历史中的批次号跳转到对应任务详情。其他任务批次可回到任务中心按批次搜索。
@@ -50,10 +50,10 @@ NX-040 发布使用 `release_publish` 任务。具备 `releases.publish` 的触�
 
 节点探测任务类型为 `node_ssh_test`、`node_batch_test`、`node_system_info` 和 `node_nginx_version`。具备 `nodes.ssh_test` 权限的用户可轮询本人创建的这些任务；解锁后自动创建的 `node_batch_test` 也允许 `nodes.unlock` 用户轮询本人任务。结果树只包含节点标识、SSH/Nginx 状态、系统信息及摘要，不包含凭证明文或私钥。NX-040 发布任务使用 `release_publish` 类型；详情见 [releases.md](releases.md)。
 
-NX-050 升级和二进制回滚分别使用 `nginx_upgrade`、`nginx_rollback`。具备 `upgrade.execute` 的触发人可轮询本人任务，`upgrade.read` 可读取全部升级任务。任务中心的 `ngxops_task_logs` 只记录阶段摘要；`GET /api/tasks/{task_id}?log_view=upgrade_full` 从专属日志表逐行返回远程命令输出和阶段消息，升级详情为每行显示 UTC+8 时间。取消限升级任务的参数获取和源码包上传阶段，回滚任务不可取消；升级记录、配置差异与回滚入口见 [upgrade.md](upgrade.md)。
+NX-050 升级和二进制回滚分别使用 `nginx_upgrade`、`nginx_rollback`。具备 `upgrade.execute` 的触发人可轮询本人任务，`upgrade.read` 可读取全部升级任务。任务中心的 `ngxops_task_logs` 只记录核心阶段摘要；`GET /api/tasks/{task_id}?log_view=upgrade_full` 从专属日志表逐行返回远程命令输出和操作消息，批次详情可按节点筛选，升级详情为每行显示 UTC+8 时间。取消限升级任务的参数获取和源码包上传阶段，回滚任务不可取消；升级记录、配置差异与回滚入口见 [upgrade.md](upgrade.md)。
 
-NX-051 全新安装使用 `nginx_install` 任务，但权限与编译升级共用 `upgrade.*`。具备 `upgrade.execute` 的触发人可轮询和取消本人安装任务，具备 `upgrade.read` 的用户可查看安装历史和全部安装批次；取消仅允许 pending、工具检查、源码上传、解压和模块准备阶段。任务保留安装阶段、configure 参数及启动模式结果；SSH 凭证不进入参数、日志或结果树。安装成功后的完整配置同步作为同一任务的后续阶段运行，失败摘要单独保存且不改变安装成功状态。详情见 [nginx-install.md](nginx-install.md)。
+NX-051 全新安装使用 `nginx_install` 任务，但权限与编译升级共用 `upgrade.*`。具备 `upgrade.execute` 的触发人可轮询和取消本人安装任务，具备 `upgrade.read` 的用户可查看安装历史和全部安装批次；取消仅允许 pending、工具检查、源码上传、解压和模块准备阶段。任务保留安装阶段、configure 参数及启动模式结果；SSH 凭证不进入参数、日志或结果树。安装成功后的完整配置同步作为同一任务的后续阶段运行，失败摘要单独保存且不改变安装成功状态。任务中心记录核心操作，专用安装详情逐行显示批次内各节点的远程操作日志。详情见 [nginx-install.md](nginx-install.md)。
 
-NX-052 启停使用 `nginx_service_control` 任务，记录动作、`OP-YYMMDD-NNNN` 批次、目标摘要、逐节点状态、真实进度、结果树和增量日志。触发人通过启停操作台查看任务，`nginx_service.read` 可查看历史和任务日志，`nginx_service.operate` 可创建批次；统一任务中心也按启停操作权限控制本人任务。任务只保留非敏感节点信息，不保存 SSH 密码或私钥。远程动作遵守协作式取消边界。详情见 [nginx-service.md](nginx-service.md)。
+NX-052 启停使用 `nginx_service_control` 任务，记录动作、`OP-YYMMDD-NNNN` 批次、目标摘要、逐节点状态、真实进度、结果树和核心操作日志。迁移 v19 的 `ngxops_nginx_operation_logs` 按节点保存完整远程输出，供启停历史详情筛选；统一任务中心只展示核心操作，远程操作输出在专用详情按双列终端样式显示 UTC+8 时间和原文。触发人通过启停操作台查看任务，`nginx_service.read` 可查看历史和任务日志，`nginx_service.operate` 可创建批次；统一任务中心也按启停操作权限控制本人任务。任务只保留非敏感节点信息，不保存 SSH 密码或私钥。远程动作遵守协作式取消边界。详情见 [nginx-service.md](nginx-service.md)。
 
-NX-053 卸载使用 `nginx_uninstall` 任务，每节点独立任务、同批次号，结果树记录来源、删除范围和摘要，不保存凭证。具备 `nginx_uninstall.read` 的用户可查看历史，具备 `nginx_uninstall.execute` 的触发人可轮询和取消本人任务；取消关闭本地 SSH 客户端并在安全检查点退出，不强制中断远程命令。卸载主程序后即使可选目录或 systemd 清理失败，也会回写节点 Nginx 不可用和配置绑定 orphaned。详情见 [nginx-uninstall.md](nginx-uninstall.md)。
+NX-053 卸载使用 `nginx_uninstall` 任务，每节点独立任务、同批次号，结果树记录来源、删除范围和摘要，不保存凭证。具备 `nginx_uninstall.read` 的用户可查看历史，具备 `nginx_uninstall.execute` 的触发人可轮询和取消本人任务；取消关闭本地 SSH 客户端并在安全检查点退出，不强制中断远程命令。任务中心只展示核心操作；专用详情聚合同批次节点的完整远程输出并支持节点筛选。卸载主程序后即使可选目录或 systemd 清理失败，也会回写节点 Nginx 不可用和配置绑定 orphaned。详情见 [nginx-uninstall.md](nginx-uninstall.md)。

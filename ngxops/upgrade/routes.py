@@ -1067,15 +1067,35 @@ def upgrade_task_detail(
         raise HTTPException(status_code=404, detail="升级任务不存在")
     task = run.task
     backup_binary_path = resolve_backup_binary_path(run, task)
+    batch_runs = session.scalars(
+        select(NginxUpgradeRun)
+        .join(Task, Task.id == NginxUpgradeRun.task_id)
+        .options(joinedload(NginxUpgradeRun.task))
+        .where(
+            NginxUpgradeRun.batch_number == run.batch_number,
+            Task.operation_type == task.operation_type,
+        )
+        .order_by(NginxUpgradeRun.task_id.asc())
+    ).all()
+    batch_task_ids = [item.task_id for item in batch_runs]
+    targets = [
+        {
+            "task_id": item.task_id,
+            "hostname": item.node_hostname,
+            "ip": item.node_ip,
+        }
+        for item in batch_runs
+    ]
+    batch_active = any(item.task.status in ("pending", "running") for item in batch_runs)
     logs = session.scalars(
         select(NginxUpgradeLog)
-        .where(NginxUpgradeLog.task_id == task.id)
+        .where(NginxUpgradeLog.task_id.in_(batch_task_ids))
         .order_by(NginxUpgradeLog.id.asc())
     ).all()
-    if not logs:
+    if not logs and not batch_active:
         logs = session.scalars(
             select(TaskLog)
-            .where(TaskLog.task_id == task.id)
+            .where(TaskLog.task_id.in_(batch_task_ids))
             .order_by(TaskLog.id.asc())
         ).all()
     current = tokenize_configure_args(run.current_configure_opts)
@@ -1083,7 +1103,10 @@ def upgrade_task_detail(
     context = {
         "run": run,
         "task": task,
+        "targets": targets,
+        "batch_active": batch_active,
         "logs": logs,
+        "log_cursor": max((item.id for item in logs), default=0),
         "format_task_datetime": format_task_datetime,
         "current_params": current,
         "target_params": target,

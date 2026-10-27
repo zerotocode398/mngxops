@@ -480,6 +480,87 @@
         }
     }
 
+    function showTaskProgressToast(key, title, message, progress, action, status) {
+        var kinds = {
+            pending: {kind: "info", icon: "bi-hourglass-split"},
+            running: {kind: "info", icon: "bi-arrow-repeat"},
+            success: {kind: "success", icon: "bi-check-circle-fill"},
+            failed: {kind: "danger", icon: "bi-x-circle-fill"},
+            cancelled: {kind: "warning", icon: "bi-slash-circle-fill"}
+        };
+        var state = kinds[status] || kinds.running;
+        var taskKey = String(key || "task");
+        var toast = Array.prototype.find.call(
+            document.querySelectorAll(".toast-task-progress"),
+            function (item) { return item.dataset.taskKey === taskKey; }
+        );
+        var $toast = toast ? $(toast) : null;
+        var timerKey = "task-toast-" + taskKey;
+        if (window[timerKey]) {
+            window.clearTimeout(window[timerKey]);
+            window[timerKey] = null;
+        }
+        if (!$toast) {
+            $toast = $("<div>", {
+                "class": "toast-item toast-info toast-task-progress",
+                role: "status"
+            }).attr("data-task-key", taskKey);
+            $("<i>", {"class": "bi bi-arrow-repeat toast-task-icon", "aria-hidden": "true"}).appendTo($toast);
+            var $content = $("<div>", {"class": "toast-content"});
+            $("<strong>", {"class": "toast-task-title"}).appendTo($content);
+            $("<span>", {"class": "toast-task-message"}).appendTo($content);
+            var $action = $("<a>", {"class": "toast-action toast-task-action"}).appendTo($content);
+            var $track = $("<div>", {"class": "toast-task-track", "aria-hidden": "true"});
+            $("<span>", {"class": "toast-task-track-value"}).appendTo($track);
+            $content.append($track).appendTo($toast);
+            var $close = $("<button>", {
+                "class": "toast-close",
+                type: "button",
+                title: "关闭提示",
+                "aria-label": "关闭提示"
+            });
+            $("<i>", {"class": "bi bi-x-lg", "aria-hidden": "true"}).appendTo($close);
+            $close.appendTo($toast);
+            $("#toastContainer").append($toast);
+        }
+        $toast.removeClass("toast-info toast-success toast-danger toast-warning removing")
+            .addClass("toast-" + state.kind);
+        $toast.find(".toast-task-icon").attr("class", "bi " + state.icon + " toast-task-icon");
+        $toast.find(".toast-task-title").text(title || "任务进度");
+        $toast.find(".toast-task-message").text(message || "");
+        var percent = Math.max(0, Math.min(100, Number(progress) || 0));
+        $toast.find(".toast-task-track-value").css("width", percent + "%");
+        var $action = $toast.find(".toast-task-action");
+        if (action && action.href && action.label) {
+            $action.attr("href", action.href).text(action.label).prop("hidden", false);
+            if (action.target === "_blank") $action.attr({target: "_blank", rel: "noopener noreferrer"});
+            else $action.removeAttr("target rel");
+        } else {
+            $action.prop("hidden", true);
+        }
+        if (["success", "failed", "cancelled"].indexOf(status) >= 0) {
+            window[timerKey] = window.setTimeout(function () {
+                if (!$toast.parent().length) return;
+                $toast.addClass("removing");
+                window.setTimeout(function () { $toast.remove(); }, 220);
+                window[timerKey] = null;
+            }, 10000);
+            $toast.off("mouseenter.taskProgress mouseleave.taskProgress")
+                .on("mouseenter.taskProgress", function () {
+                    if (window[timerKey]) window.clearTimeout(window[timerKey]);
+                })
+                .on("mouseleave.taskProgress", function () {
+                    window[timerKey] = window.setTimeout(function () {
+                        if ($toast.parent().length) $toast.addClass("removing");
+                        window.setTimeout(function () { $toast.remove(); }, 220);
+                        window[timerKey] = null;
+                    }, 10000);
+                });
+        } else {
+            $toast.off("mouseenter.taskProgress mouseleave.taskProgress");
+        }
+    }
+
     function formatUtc8DateTime(value) {
         if (!value) return "-";
         var timestamp = String(value).trim().replace(" ", "T");
@@ -629,6 +710,7 @@
     });
 
     window.showToast = showToast;
+    window.showTaskProgressToast = showTaskProgressToast;
     window.formatUtc8DateTime = formatUtc8DateTime;
     window.showAlert = showAlert;
     window.showConfirm = function (title, message, onConfirm, asHtml, size, confirmLabel) {

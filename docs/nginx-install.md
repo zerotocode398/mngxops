@@ -3,7 +3,7 @@
 ## 页面与权限
 
 - `/nginx-install/` 展示安装统计和最近任务；`/nginx-install/center/` 提供三步安装向导。
-- `/nginx-install/history/` 支持节点、IP、版本、安装路径、批次关键词和状态筛选；`/nginx-install/task/{task_id}/log/` 展示参数快照、增量日志和任务状态。
+- `/nginx-install/history/` 支持逗号分隔的节点、IP、版本、安装路径、批次关键词（词间 AND）和状态筛选，使用升级历史相同的查询标签和分页控件；`/nginx-install/task/{task_id}/log/` 聚合同批次逐节点的完整远程操作日志，支持按节点筛选，并展示参数快照、增量日志和任务状态，不提供任务中心跳转按钮。
 - 安装与升级共用 `upgrade.read/create/delete/execute` 权限：查看历史及下载包使用 `read`，上传源码/模块包使用 `create`，删除包使用 `delete`，安装或升级任务的执行与取消使用 `execute`。两个向导页面都允许 `read` 或 `execute` 进入；只读用户不能提交安装任务。安装页和 API 不再定义独立的 `nginx_install.*` 授权。
 - 任务批次与统一任务中心仍使用 `nginx_install` 操作类型，以区分具体工作流。`upgrade.execute` 可读取和取消本人安装任务；`upgrade.read` 可查看安装历史和全部安装批次。
 
@@ -23,14 +23,14 @@
 - 有 `systemctl` 且当前 SSH 身份可写 systemd unit 目录或使用免密 sudo 时，写入 `/etc/systemd/system/nginx.service`，执行 daemon-reload、enable 和 start。unit 的 `User`/`Group` 使用向导值；注册、启用或启动失败会使安装失败，不静默改用二进制启动。
 - 无 systemd 管理能力时直接启动编译出的 Nginx 二进制，并在任务日志记录分流原因。
 - 成功后写回节点在线/Nginx 可用状态、版本、二进制路径和主配置路径，并更新节点导入导出路径与配置同步路径。随后复用安装阶段的 SSH 连接执行完整配置发现/同步；配置同步失败单独记录，不回滚或否定已启动的安装。
-- 任务进度、阶段、日志、结果树和配置同步摘要持久化。取消仅允许 pending、工具检查、源码上传、解压和模块准备阶段；取消为协作式操作，已发出的远程命令可能运行到当前检查点。
+- 任务进度、阶段、核心日志、完整远程输出、结果树和配置同步摘要持久化。迁移 v19 新增专用完整日志表；任务中心只显示核心操作，安装历史详情聚合同批次全部节点的远程操作记录，并可选择节点查看。取消仅允许 pending、工具检查、源码上传、解压和模块准备阶段；取消为协作式操作，已发出的远程命令可能运行到当前检查点。
 
 ## JSON API
 
 - `POST /api/nginx-install/configure-preview`：校验参数并返回 configure 字符串和目标路径；需要 `upgrade.read` 或 `upgrade.execute` 与 CSRF。
 - `POST /api/nginx-install/tasks`：全量复核包、参数和节点，创建每节点 `nginx_install` 任务及批次；需要 `upgrade.execute` 与 CSRF。
 - `GET /api/nginx-install/batches/{batch_number}`：读取有权查看的批次进度、节点任务和日志入口；`upgrade.execute` 仅能读取本人批次，`upgrade.read` 可读取全部批次。
-- 任务增量日志与协作取消使用通用 `GET /api/tasks/{task_id}`、`POST /api/tasks/{task_id}/cancel`；取消使用 `upgrade.execute` 并额外检查安装阶段。任务中心详情提供安装专用日志入口；通用详情以终端样式增量显示安装日志。
+- 安装专用详情通过 `GET /api/tasks/{task_id}?log_view=install_full` 逐行读取同批次完整远程日志；任务中心默认读取核心操作日志。协作取消使用 `POST /api/tasks/{task_id}/cancel`，要求 `upgrade.execute` 并额外检查安装阶段。
 
 成功响应模型、状态码和认证方案登记在 [api.md](api.md)。参数快照、任务结果和日志不保存 SSH 密码或私钥。执行器和包锁目前位于单进程内，部署限制为单个 Uvicorn worker。最大节点数由 `node.batch_max_count` 设置控制，默认 3。
 

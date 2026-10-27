@@ -1585,6 +1585,7 @@
             if (empty) empty.remove();
             var line = document.createElement("div");
             line.className = "upgrade-log-line log-" + (entry.level || "info");
+            line.dataset.taskId = entry.task_id == null ? "" : String(entry.task_id);
             var time = document.createElement("time");
             time.textContent = entry.created_at
                 ? window.formatUtc8DateTime(entry.created_at)
@@ -1598,6 +1599,15 @@
         });
         log.dataset.afterLogId = String(task.next_log_id || log.dataset.afterLogId || 0);
         log.scrollTop = log.scrollHeight;
+    }
+
+    function applyUpgradeLogFilter() {
+        var filter = document.getElementById("upgradeLogNodeFilter");
+        var log = document.getElementById("upgradeLog");
+        if (!filter || !log) return;
+        log.querySelectorAll(".upgrade-log-line").forEach(function (line) {
+            line.hidden = !!filter.value && line.dataset.taskId !== filter.value;
+        });
     }
 
     function updateDetailActions(task) {
@@ -1663,6 +1673,7 @@
         requestJson("GET", "/api/tasks/" + taskId + "?log_view=upgrade_full&after_log_id=" + log.dataset.afterLogId + "&log_limit=200")
             .done(function (task) {
                 appendLogs(task, log);
+                applyUpgradeLogFilter();
                 document.getElementById("taskProgress").style.width = task.progress + "%";
                 document.getElementById("taskProgressLabel").textContent = task.progress + "% · " + task.detail;
                 document.getElementById("taskStatus").textContent = ({ pending: "等待执行", running: "执行中", success: "升级成功", failed: "升级失败", cancelled: "已取消" })[task.status] || task.status;
@@ -1675,7 +1686,8 @@
                 }
                 detail.dataset.taskStatus = task.status;
                 updateDetailActions(task);
-                if (["pending", "running"].indexOf(task.status) >= 0 || task.has_more_logs) {
+                log.dataset.batchActive = task.batch_active ? "true" : "false";
+                if (["pending", "running"].indexOf(task.status) >= 0 || task.batch_active || task.has_more_logs) {
                     document.getElementById("logLiveLabel").textContent =
                         task.has_more_logs && ["pending", "running"].indexOf(task.status) < 0
                             ? "正在载入剩余日志"
@@ -1691,10 +1703,14 @@
             });
     }
 
-    if (detail && ["pending", "running"].indexOf(detail.dataset.taskStatus) >= 0) {
+    var initialUpgradeLog = document.getElementById("upgradeLog");
+    if (detail && (["pending", "running"].indexOf(detail.dataset.taskStatus) >= 0 || (initialUpgradeLog && initialUpgradeLog.dataset.batchActive === "true"))) {
         pollDetail();
     }
     if (detail) {
+        var upgradeLogFilter = document.getElementById("upgradeLogNodeFilter");
+        if (upgradeLogFilter) upgradeLogFilter.addEventListener("change", applyUpgradeLogFilter);
+        applyUpgradeLogFilter();
         detail.addEventListener("click", function (event) {
             if (event.target.closest("#cancelUpgrade")) cancelCurrentUpgrade();
             if (event.target.closest("#rollbackUpgrade")) rollbackCurrentUpgrade();

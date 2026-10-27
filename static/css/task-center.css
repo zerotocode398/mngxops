@@ -249,10 +249,6 @@
     white-space: pre-wrap;
 }
 
-.task-log-filter-select {
-    width: min(320px, 100%);
-}
-
 .task-log-row[hidden] {
     display: none !important;
 }
@@ -275,6 +271,8 @@
 .task-log-plain-line {
     display: block;
 }
+
+.task-log-plain-line[hidden] { display: none !important; }
 
 .task-log-plain-line.log-level-warning { color: #ffd166; }
 .task-log-plain-line.log-level-error { color: #ff8a8a; }

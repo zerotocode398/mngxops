@@ -52,12 +52,15 @@
     function initHome() {
         if (!homeConfig) return;
         var canOperate = homeConfig.dataset.canOperate === "true";
-        var maxCount = Number(homeConfig.dataset.maxCount || 3);
+        var maxCount = Number(homeConfig.dataset.maxCount) || 1;
         var selected = {};
         var draft = {};
+        var allNodes = [];
+        var nodesLoaded = false;
         var nodeRows = document.getElementById("nodePickerRows");
         var searchInput = document.getElementById("nodeSearch");
-        var searchTimer = null;
+        var pageSizeInput = document.getElementById("serviceNodePageSize");
+        var page = 1;
         var pollTimer = null;
         var activeTaskId = 0;
         var logCursor = 0;
@@ -78,9 +81,23 @@
             chips.replaceChildren();
             ids.forEach(function (id) {
                 var node = selected[id];
-                var chip = document.createElement("span");
-                chip.className = "service-chip";
-                chip.textContent = node.hostname + " · " + node.ip;
+                var chip = document.createElement("div");
+                chip.className = "upgrade-selected-chip";
+                var label = document.createElement("span");
+                label.textContent = node.hostname + " (" + node.ip + ")";
+                var remove = document.createElement("button");
+                remove.type = "button";
+                remove.className = "upgrade-chip-remove";
+                remove.title = "移除节点";
+                remove.setAttribute("aria-label", "移除节点 " + node.hostname);
+                remove.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
+                remove.addEventListener("click", function () {
+                    delete selected[id];
+                    delete draft[id];
+                    renderSelected();
+                    renderNodePage();
+                });
+                chip.append(label, remove);
                 chips.appendChild(chip);
             });
             document.getElementById("selectNodeLabel").textContent = ids.length
@@ -89,70 +106,125 @@
             updateActionButtons();
         }
 
-        function syncDraftCount() {
-            document.getElementById("nodePickerCount").textContent =
-                "共 " + nodeRows.querySelectorAll("tr[data-node-id]").length + " 台 · 已选 " + Object.keys(draft).length + " 台";
+        function searchTerms() {
+            var value = window.getQueryTagValue
+                ? window.getQueryTagValue("#nodeSearch")
+                : searchInput.value;
+            return value.split(/[,，]/).map(function (term) {
+                return term.trim().toLocaleLowerCase();
+            }).filter(Boolean);
         }
 
-        function renderNodeRows(nodes, total) {
+        function matchingNodes() {
+            var terms = searchTerms();
+            return allNodes.filter(function (node) {
+                var searchable = [node.hostname, node.ip, node.groups.join(" ")]
+                    .join(" ").toLocaleLowerCase();
+                return terms.every(function (term) { return searchable.indexOf(term) >= 0; });
+            });
+        }
+
+        function renderNodePage() {
+            var matches = matchingNodes();
+            var pageSize = Number(pageSizeInput.value) || 10;
+            var pages = Math.max(1, Math.ceil(matches.length / pageSize));
+            page = Math.min(page, pages);
+            var start = (page - 1) * pageSize;
+            var visibleNodes = matches.slice(start, start + pageSize);
             nodeRows.replaceChildren();
-            if (!nodes.length) {
+            if (!visibleNodes.length) {
                 var emptyRow = document.createElement("tr");
-                emptyRow.innerHTML = '<td colspan="5" class="text-center text-muted py-4">没有匹配的节点</td>';
+                emptyRow.innerHTML = '<td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>没有满足启停条件的节点</p></div></td>';
                 nodeRows.appendChild(emptyRow);
             }
-            nodes.forEach(function (node) {
+            visibleNodes.forEach(function (node) {
                 var row = document.createElement("tr");
                 row.dataset.nodeId = node.id;
-                if (!node.can_select) row.className = "text-muted";
+                row.className = "upgrade-node-row";
                 var checked = !!draft[String(node.id)];
-                var disabled = !node.can_select || (!checked && Object.keys(draft).length >= maxCount);
-                var nginxStatus = node.nginx_available === true
-                    ? (node.nginx_version || "已检测")
-                    : "未检测到";
-                var state = node.can_select ? "可操作" : node.disabled_reason;
+                var disabled = !checked && Object.keys(draft).length >= maxCount;
+                var environment = { dev: "开发", test: "测试", prod: "生产" }[node.environment] || node.environment;
                 row.innerHTML =
-                    '<td class="text-center"><input type="checkbox" class="form-check-input service-node-checkbox" data-id="' + node.id + '"' +
+                    '<td class="text-center"><input class="form-check-input upgrade-node-check service-node-checkbox" type="checkbox" value="' + node.id + '"' +
                     (checked ? " checked" : "") + (disabled ? " disabled" : "") + ' aria-label="选择 ' + escapeHtml(node.hostname) + '"></td>' +
-                    '<td><span class="service-picker-node">' + escapeHtml(node.hostname) + '<small>' + escapeHtml(node.ip) + ':' + node.port + '</small></span></td>' +
-                    '<td>' + escapeHtml((node.groups || []).join(", ") || "-") + '</td>' +
-                    '<td>' + escapeHtml(nginxStatus) + '</td>' +
-                    '<td><span class="badge text-bg-' + (node.can_select ? "success" : "secondary") + '" title="' + escapeHtml(state) + '">' + escapeHtml(state) + '</span></td>';
+                    '<td><span class="upgrade-node-name-address" title="' + escapeHtml(node.hostname + " " + node.ip + ":" + node.port) + '"><span class="upgrade-node-hostname">' + escapeHtml(node.hostname) + '</span><small class="text-muted ms-2 upgrade-node-address">' + escapeHtml(node.ip + ":" + node.port) + '</small></span></td>' +
+                    '<td class="text-nowrap">' + escapeHtml(environment) + '</td>' +
+                    '<td class="text-nowrap"><span class="badge text-bg-success">' + escapeHtml(node.nginx_version || "已检测") + '</span></td>' +
+                    '<td><small class="upgrade-node-groups" title="' + escapeHtml(node.groups.join("、") || "-") + '">' + escapeHtml(node.groups.join("、") || "-") + '</small></td>';
                 row.dataset.node = JSON.stringify(node);
+                row.dataset.search = [node.hostname, node.ip, node.groups.join(" ")].join(" ").toLocaleLowerCase();
+                row.addEventListener("click", function (event) {
+                    if (event.target.closest("input, button, a, label, select")) return;
+                    var checkbox = row.querySelector(".service-node-checkbox");
+                    if (checkbox.disabled && !checkbox.checked) return;
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+                });
                 nodeRows.appendChild(row);
             });
-            document.getElementById("nodePickerLimit").textContent =
-                "最多 " + maxCount + " 台" + (total > nodes.length ? " · 当前显示 " + nodes.length + " / " + total : "");
-            syncDraftCount();
+            document.getElementById("serviceNodeResultCount").textContent =
+                "共 " + matches.length + " 条 · 已选 " + Object.keys(draft).length + " 台";
+            document.getElementById("nodePickerLimit").textContent = "最多 " + maxCount + " 台";
+            document.getElementById("serviceNodePageLabel").textContent = page + " / " + pages;
+            document.getElementById("serviceNodePageFirst").disabled = page <= 1;
+            document.getElementById("serviceNodePagePrevious").disabled = page <= 1;
+            document.getElementById("serviceNodePageNext").disabled = page >= pages;
+            document.getElementById("serviceNodePageLast").disabled = page >= pages;
             var enabledBoxes = nodeRows.querySelectorAll(".service-node-checkbox:not(:disabled)");
             document.getElementById("selectVisible").checked = enabledBoxes.length > 0 &&
                 Array.prototype.every.call(enabledBoxes, function (box) { return box.checked; });
         }
 
         function loadNodes() {
-            var url = new URL(homeConfig.dataset.nodesUrl, window.location.origin);
-            if (searchInput.value.trim()) url.searchParams.set("search", searchInput.value.trim());
             nodeRows.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">正在加载节点</td></tr>';
-            fetch(url.toString(), { headers: { Accept: "application/json" } })
+            fetch(homeConfig.dataset.nodesUrl, { headers: { Accept: "application/json" } })
                 .then(function (response) { return response.json().then(function (data) { return { response: response, data: data }; }); })
                 .then(function (result) {
                     if (!result.response.ok || !result.data.success) {
                         showError(result.data, "无法读取节点");
                         return;
                     }
-                    renderNodeRows(result.data.data || [], result.data.total || 0);
+                    allNodes = (result.data.data || []).map(function (node) {
+                        node.groups = node.groups || [];
+                        return node;
+                    });
+                    maxCount = Number(result.data.batch_max_count) || maxCount;
+                    homeConfig.dataset.maxCount = String(maxCount);
+                    nodesLoaded = true;
+                    page = 1;
+                    renderNodePage();
                 })
                 .catch(function () { showError(null, "网络错误，无法读取节点"); });
         }
 
         document.getElementById("nodePickerModal").addEventListener("show.bs.modal", function () {
             draft = Object.assign({}, selected);
-            searchInput.value = "";
-            loadNodes();
+            if (searchInput.__ngxopsQueryTags) searchInput.__ngxopsQueryTags.clear();
+            else searchInput.value = "";
+            page = 1;
+            if (nodesLoaded) renderNodePage();
+            else loadNodes();
         });
-        searchInput.addEventListener("input", function () {
-            clearTimeout(searchTimer);
-            searchTimer = setTimeout(loadNodes, 250);
+        searchInput.addEventListener("keydown", function (event) {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            if (window.commitQueryTagValue) window.commitQueryTagValue("#nodeSearch");
+            page = 1;
+            renderNodePage();
+        });
+        if (window.jQuery) {
+            window.jQuery(searchInput).on("querytags:change", function () {
+                page = 1;
+                renderNodePage();
+            });
+        }
+        pageSizeInput.addEventListener("change", function () { page = 1; renderNodePage(); });
+        document.getElementById("serviceNodePageFirst").addEventListener("click", function () { page = 1; renderNodePage(); });
+        document.getElementById("serviceNodePagePrevious").addEventListener("click", function () { page = Math.max(1, page - 1); renderNodePage(); });
+        document.getElementById("serviceNodePageNext").addEventListener("click", function () { page += 1; renderNodePage(); });
+        document.getElementById("serviceNodePageLast").addEventListener("click", function () {
+            page = Math.max(1, Math.ceil(matchingNodes().length / (Number(pageSizeInput.value) || 10)));
+            renderNodePage();
         });
         nodeRows.addEventListener("change", function (event) {
             var checkbox = event.target.closest(".service-node-checkbox");
@@ -169,12 +241,7 @@
             } else {
                 delete draft[String(node.id)];
             }
-            renderNodeRows(
-                Array.prototype.map.call(nodeRows.querySelectorAll("tr[data-node-id]"), function (item) {
-                    return JSON.parse(item.dataset.node);
-                }),
-                nodeRows.querySelectorAll("tr[data-node-id]").length
-            );
+            renderNodePage();
         });
         document.getElementById("selectVisible").addEventListener("change", function (event) {
             var boxes = nodeRows.querySelectorAll(".service-node-checkbox:not(:disabled)");
@@ -189,12 +256,7 @@
                     checkbox.checked = false;
                 }
             });
-            renderNodeRows(
-                Array.prototype.map.call(nodeRows.querySelectorAll("tr[data-node-id]"), function (item) {
-                    return JSON.parse(item.dataset.node);
-                }),
-                nodeRows.querySelectorAll("tr[data-node-id]").length
-            );
+            renderNodePage();
         });
         document.getElementById("confirmNodeSelection").addEventListener("click", function () {
             selected = Object.assign({}, draft);
@@ -203,56 +265,43 @@
         });
         document.getElementById("clearSelection").addEventListener("click", function () {
             selected = {};
+            draft = {};
             renderSelected();
+            renderNodePage();
         });
 
         function renderProgress(data) {
-            document.getElementById("progressPlaceholder").classList.add("d-none");
-            document.getElementById("progressLive").classList.remove("d-none");
-            document.getElementById("batchNumberLabel").textContent = "批次 " + data.batch_number;
             var progress = Number(data.progress || 0);
-            var badge = document.getElementById("progressPercent");
-            badge.textContent = progress + "%";
-            badge.className = "badge text-bg-" + statusClass(data.status) + (terminal[data.status] ? "" : "");
-            var bar = document.getElementById("progressBar");
-            bar.style.width = progress + "%";
-            bar.classList.toggle("progress-bar-animated", !terminal[data.status]);
-            bar.classList.toggle("bg-danger", data.status === "failed");
-            bar.classList.toggle("bg-success", data.status === "success");
-            document.getElementById("progressDetail").textContent = data.detail || "";
-            document.getElementById("taskLogLink").href = "/nginx/service/task/" + data.task_id + "/log/";
-            var container = document.getElementById("serviceNodesProgress");
-            container.replaceChildren();
-            var nodes = data.result_tree && data.result_tree.nodes ? data.result_tree.nodes : [];
-            nodes.forEach(function (node) {
-                var item = document.createElement("div");
-                item.className = "service-node-item";
-                var header = document.createElement("div");
-                header.className = "service-node-item-header";
-                var identity = document.createElement("strong");
-                identity.className = "small";
-                identity.textContent = node.hostname + (node.ip ? " (" + node.ip + ")" : "");
-                var badgeNode = document.createElement("span");
-                badgeNode.className = "badge text-bg-" + statusClass(node.status);
-                badgeNode.textContent = statusLabel(node.status);
-                var message = document.createElement("span");
-                message.className = "service-node-message";
-                message.textContent = node.message || "";
-                header.appendChild(identity);
-                header.appendChild(badgeNode);
-                item.appendChild(header);
-                item.appendChild(message);
-                container.appendChild(item);
-            });
+            if (!window.showTaskProgressToast) return;
+            window.showTaskProgressToast(
+                "nginx-service-" + data.task_id,
+                "Nginx " + (data.action_label || "启停") + " · " + progress + "%",
+                (data.batch_number ? "批次 " + data.batch_number + " · " : "") + (data.detail || ""),
+                progress,
+                {
+                    href: "/nginx/service/task/" + data.task_id + "/log/",
+                    label: "查看完整日志",
+                },
+                data.status
+            );
         }
 
         function pollTask(taskId, batchNumber) {
             activeTaskId = taskId;
             logCursor = 0;
-            document.getElementById("progressPlaceholder").classList.add("d-none");
-            document.getElementById("progressLive").classList.remove("d-none");
-            document.getElementById("batchNumberLabel").textContent = "批次 " + batchNumber;
-            document.getElementById("taskLogLink").href = "/nginx/service/task/" + taskId + "/log/";
+            if (batchNumber && window.showTaskProgressToast) {
+                window.showTaskProgressToast(
+                    "nginx-service-" + taskId,
+                    "Nginx 启停 · 0%",
+                    "批次 " + batchNumber + " · 等待执行",
+                    0,
+                    {
+                        href: "/nginx/service/task/" + taskId + "/log/",
+                        label: "查看完整日志",
+                    },
+                    "pending"
+                );
+            }
             function poll() {
                 if (activeTaskId !== taskId) return;
                 var url = homeConfig.dataset.taskUrlPrefix + taskId + "?after_log_id=" + logCursor;
@@ -262,7 +311,11 @@
                         if (!result.response.ok || !result.data.success) return;
                         renderProgress(result.data);
                         logCursor = result.data.next_log_id || logCursor;
-                        if (!terminal[result.data.status]) pollTimer = setTimeout(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
+                        if (!terminal[result.data.status]) {
+                            pollTimer = setTimeout(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
+                        } else {
+                            updateActionButtons();
+                        }
                     })
                     .catch(function () { pollTimer = setTimeout(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000); });
             }
@@ -315,7 +368,7 @@
             button.addEventListener("click", function () { submitAction(button.dataset.serviceAction); });
         });
         renderSelected();
-        var activeTask = document.getElementById("progressLive").dataset.taskId;
+        var activeTask = homeConfig.dataset.activeTaskId;
         if (activeTask) pollTask(Number(activeTask), "");
     }
 
@@ -324,14 +377,49 @@
         var cursor = Number(taskConfig.dataset.logCursor || 0);
         var timer = null;
         var log = document.getElementById("serviceLog");
+        var logFilter = document.getElementById("serviceLogHostFilter");
         var url = taskConfig.dataset.url;
+        function renderLog(entry) {
+            var empty = log.querySelector("[data-empty-log]");
+            if (empty) empty.remove();
+            var row = document.createElement("div");
+            row.className = "upgrade-log-line log-" + (entry.level || "info");
+            row.dataset.nodeId = entry.node_id == null ? "" : String(entry.node_id);
+            var time = document.createElement("time");
+            time.textContent = entry.created_at ? window.formatUtc8DateTime(entry.created_at) : "";
+            var message = document.createElement("span");
+            message.className = "upgrade-log-message";
+            message.textContent = entry.message || "";
+            row.append(time, message);
+            log.appendChild(row);
+        }
+        function applyLogFilter() {
+            if (!logFilter) return;
+            var selected = logFilter.value;
+            var rows = log.querySelectorAll(".upgrade-log-line");
+            var visibleCount = 0;
+            rows.forEach(function (row) {
+                var visible = !selected || row.dataset.nodeId === selected;
+                row.hidden = !visible;
+                if (visible) visibleCount += 1;
+            });
+            var empty = log.querySelector("[data-filter-empty]");
+            if (!empty) {
+                empty = document.createElement("div");
+                empty.className = "upgrade-log-empty";
+                empty.dataset.filterEmpty = "";
+                empty.textContent = "所选节点暂无执行日志";
+                log.appendChild(empty);
+            }
+            empty.hidden = !selected || visibleCount > 0;
+        }
         function renderResultTree(tree) {
             var tbody = document.getElementById("taskNodeResults");
             if (!tree || !tree.nodes || !tree.nodes.length) return;
             tbody.replaceChildren();
             tree.nodes.forEach(function (node) {
                 var row = document.createElement("tr");
-                [node.hostname, node.ip, statusLabel(node.status), node.message].forEach(function (value, index) {
+                [node.hostname, node.ip, node.message].forEach(function (value, index) {
                     var cell = document.createElement("td");
                     cell.textContent = value || "";
                     if (index === 1) cell.className = "font-monospace";
@@ -340,6 +428,7 @@
                 tbody.appendChild(row);
             });
         }
+        if (logFilter) logFilter.addEventListener("change", applyLogFilter);
         function poll() {
             var pollUrl = url + "?after_log_id=" + cursor;
             fetch(pollUrl, { headers: { Accept: "application/json" } })
@@ -350,15 +439,19 @@
                     var status = document.getElementById("taskStatus");
                     status.className = "badge text-bg-" + statusClass(data.status);
                     status.textContent = statusLabel(data.status);
+                    var progressBar = document.getElementById("taskProgressBar");
+                    progressBar.style.width = data.progress + "%";
+                    progressBar.parentElement.setAttribute("aria-valuenow", String(data.progress));
+                    progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
+                    if (terminal[data.status]) progressBar.classList.add("bg-" + statusClass(data.status));
                     document.getElementById("taskProgress").textContent = data.progress + "%";
-                    document.getElementById("taskProgress").classList.toggle("d-none", !!terminal[data.status]);
                     document.getElementById("taskDetail").textContent = data.detail || "";
+                    document.getElementById("taskProgressLabel").textContent = data.progress + "% · " + (data.detail || "");
+                    if (data.started_at) document.getElementById("startedAt").textContent = window.formatUtc8DateTime(data.started_at);
+                    if (data.finished_at) document.getElementById("finishedAt").textContent = window.formatUtc8DateTime(data.finished_at);
                     renderResultTree(data.result_tree);
-                    (data.logs || []).forEach(function (entry) {
-                        if (log.textContent === "暂无日志") log.textContent = "";
-                        var stamp = entry.created_at ? entry.created_at.slice(11, 19) : "--:--:--";
-                        log.textContent += "[" + stamp + "] " + entry.message + "\n";
-                    });
+                    (data.logs || []).forEach(renderLog);
+                    applyLogFilter();
                     cursor = data.next_log_id || cursor;
                     taskConfig.dataset.status = data.status;
                     if (!terminal[data.status]) timer = setTimeout(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000);

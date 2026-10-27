@@ -748,3 +748,17 @@ e9707275226af0ee7d70a97142da9a93
 255. **已完成**：安装任务日志保留原有持久化阶段记录和远端命令输出，并明确记录编译工具检查、源码解压、configure、make、make install、`nginx -t`、安装版本回读及回退版本说明等核心步骤；详情页实时追加日志并显示当前进度说明。实现：`ngxops/nginx_install/services.py`、`templates/nginx_install/task_log.html`、`static/js/nginx-install.js`。复用统一 `TaskLog`，无数据库迁移；`git diff --check` 通过。未启动服务或运行测试，待用户页面验证。
 256. **已完成**：安装中心“最近安装任务”的目标节点中，主机名和 IP 使用与升级中心相同的单行 flex 布局；长文本截断省略显示。实现：`templates/nginx_install/index.html`、`static/css/nginx-install.css`，样式缓存参数统一递增至 `255-2`。未启动服务或运行测试，待用户页面验证。
 257. **已完成**：修正 Nginx 全新安装在任务中心的详情跳转：任务中心任务行、编号和详情按钮进入统一任务详情；统一详情中的安装批次号新窗口打开 Nginx 安装详情。实现与行为记录见 254。未启动服务或运行测试，待用户页面验证。
+258. **已完成**：专用 Nginx 安装任务详情移除“任务中心”跳转入口，保留历史、安装中心、可取消任务及原有状态/日志轮询。实现：`templates/nginx_install/task_log.html`；静态资源版本更新为 `258-1`。
+259. **已完成**：启停节点选择器复用升级目标节点弹窗的搜索标签、表格、分页和每页数量布局。默认仅展示 SSH 在线、Nginx 已识别、凭证启用且未锁定节点；前端和执行接口均从 `node.batch_max_count` 读取选择上限，创建任务时重新校验。实现：`ngxops/nginx_service/routes.py`、`templates/nginx_service/index.html`、`static/js/nginx-service.js`、`static/css/nginx-service.css`；未新增硬编码节点上限。
+260. **已完成**：启停任务详情移除“任务中心”按钮和直达链接，保留历史及启停操作台入口。实现：`templates/nginx_service/task_log.html`。
+261. **已完成**：启停详情按升级任务详情的紧凑任务信息、状态、进度和终端日志布局展示，并补齐开始/完成时间。实现：`templates/nginx_service/task_log.html`、`ngxops/nginx_service/routes.py`、`static/js/nginx-service.js`。
+262. **已完成**：节点结果表保留主机名、IP 和结果，移除冗余状态列。实现：`templates/nginx_service/task_log.html`、`static/js/nginx-service.js`。
+263. **已完成**：完整执行日志按原始远端输出逐行记录和展示，时间、输出分列；任务上下文写入节点归属。迁移 v18 为 `ngxops_task_logs` 增加可空 `node_id` 和筛选索引。实现：`ngxops/nginx_service/services.py`、`ngxops/tasks/executor.py`、`ngxops/tasks/models.py`、`ngxops/database/migrations/v0018_task_log_node_scope.py`、`templates/nginx_service/task_log.html`。
+264. **已完成**：任务中心的 Nginx 服务启停详情兼容 v18 前没有 `node_id` 的历史日志；前端从每节点“开始 Nginx”日志行识别归属，将后续原始输出归入该节点，并按节点筛选。新日志仍使用持久化 `node_id`。实现：`static/js/task-center.js`、`templates/tasks/detail.html`。未运行自动化测试或浏览器验证，待页面验证。
+264. **已完成**：启停详情和统一任务详情均可按目标节点筛选日志，保留日志增量读取。实现：`ngxops/tasks/api.py`、`ngxops/tasks/routes.py`、`ngxops/nginx_service/routes.py`、`templates/tasks/detail.html`、`static/js/task-center.js`、`static/js/nginx-service.js`。
+265. **已完成**：启停批次进度使用全局右上角任务通知，显示实时进度和状态，提供“查看完整日志”跳转。实现：`static/js/app.js`、`static/js/nginx-service.js`、`static/css/app.css`、`templates/base.html`。
+266. **已完成**：统一任务详情中的启停来源批次链接改为新窗口打开对应 Nginx 启停历史筛选结果。实现：`templates/tasks/detail.html`。
+267. **已完成**：统一任务详情的所有任务类型使用相同的纯文本终端日志布局；启停日志显示原始内容并按节点 ID 过滤。实现：`templates/tasks/detail.html`、`static/js/task-center.js`、`static/css/task-center.css`。
+268. **已完成**：Nginx 安装与启停历史对齐升级历史的查询标签、多关键词 AND 搜索、状态自动筛选、清空条件、UTC+8 时间和公共分页布局；修正启停“进行中”状态筛选。实现：`ngxops/nginx_install/routes.py`、`ngxops/nginx_service/routes.py`、`templates/nginx_install/history.html`、`templates/nginx_service/history.html`。
+269. **已完成**：统一任务详情的多节点日志归属兼容 `node_id`/`id` 与主机身份匹配，避免并发结果顺序导致节点筛选错配；所有多节点任务可按节点过滤，旧启停日志继续通过节点开始标记补归属。清除终端模板及增量日志的首尾换行，避免首尾空行。实现：`ngxops/tasks/routes.py`、`templates/tasks/detail.html`、`static/js/task-center.js`。未运行自动化测试或浏览器验证。
+270. **已完成**：Nginx 安装、卸载、启停和升级/回滚的多节点历史详情可按节点筛选完整远程操作日志。任务中心仍展示核心操作日志；安装、卸载、启停远程输出改存 v19 `ngxops_nginx_operation_logs`，升级/回滚继续使用 v17 专属日志表。旧启停任务的通用日志在专用详情页按节点开始记录推断归属；安装和卸载按批次任务归属筛选。节点筛选样式提升为全局共享，更新对应资源缓存版本与模块文档。实现：`ngxops/tasks/api.py`、`ngxops/tasks/executor.py`、`ngxops/tasks/models.py`、`ngxops/database/migrations/v0019_nginx_operation_logs.py`、Nginx 安装/卸载/启停/升级路由、服务、模板、脚本及 `docs/`。未运行自动化测试或浏览器验证；部署需备份后显式执行 `python -m ngxops.database upgrade` 应用 v19。

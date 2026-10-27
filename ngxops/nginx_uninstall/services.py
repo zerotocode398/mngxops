@@ -19,7 +19,12 @@ from ngxops.nginx_install.models import NginxInstallRun
 from ngxops.nginx_uninstall.models import NginxUninstallRun
 from ngxops.nodes.models import Node
 from ngxops.settings.service import read_setting
-from ngxops.tasks.executor import TaskCancelled, TaskContext, TaskOutcome
+from ngxops.tasks.executor import (
+    TaskCancelled,
+    TaskContext,
+    TaskOutcome,
+    append_nginx_operation_logs,
+)
 from ngxops.tasks.models import ACTIVE_STATUSES, Task, TaskLog
 from ngxops.upgrade.services import _connect_target, _run_remote_command, parse_nginx_v_output
 
@@ -960,6 +965,7 @@ def _run_uninstall(
         message = str(exc) if isinstance(exc, ValueError) else "卸载失败（{}）".format(type(exc).__name__)
         result["message"] = message[:1000]
         context.append_log(message[:1000], "error")
+        context.append_detail_log(message[:1000], "error")
         return TaskOutcome("failed", message[:2000], {"nodes": [result]})
     finally:
         if client is not None:
@@ -986,6 +992,23 @@ def create_uninstall_runner(session_factory, encryption_key: bytes, task_id: int
     """构造绑定卸载任务 ID 的统一异步执行回调。"""
     def run(context: TaskContext) -> TaskOutcome:
         """执行一个节点的卸载流水线。"""
+        with session_scope(session_factory) as session:
+            node_id = session.scalar(
+                select(NginxUninstallRun.node_id).where(
+                    NginxUninstallRun.task_id == task_id
+                )
+            )
+        context.set_detail_log_sink(
+            lambda messages, level: append_nginx_operation_logs(
+                session_factory,
+                task_id,
+                "nginx_uninstall",
+                messages,
+                level,
+                node_id=node_id,
+            )
+        )
+        context.append_detail_log("卸载任务开始执行")
         return _run_uninstall(session_factory, encryption_key, task_id, context)
 
     return run

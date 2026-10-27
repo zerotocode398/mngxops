@@ -25,7 +25,7 @@ from ngxops.nodes.models import Node
 from ngxops.security.dependencies import require_authenticated_user, require_permission
 from ngxops.security.errors import PermissionDenied
 from ngxops.settings.service import read_setting
-from ngxops.tasks.models import Task, TaskLog
+from ngxops.tasks.models import NginxOperationLog, Task, TaskLog
 from ngxops.ui import render_page
 
 
@@ -197,6 +197,7 @@ class UninstallLogItem(BaseModel):
     """描述卸载任务日志的一行。"""
 
     id: int
+    task_id: int
     level: str
     message: str
     created_at: str
@@ -214,6 +215,7 @@ class UninstallTaskDetailResponse(BaseModel):
     logs: List[UninstallLogItem]
     next_log_id: int
     has_more_logs: bool
+    batch_active: bool = False
 
 
 def _has_permission(request: Request, session: Session, user: User, action: str) -> bool:
@@ -259,17 +261,54 @@ def _search_terms(value: str) -> List[str]:
     return [term.strip()[:100] for term in re.split(r"[,，]", value or "") if term.strip()]
 
 
-def _read_task(task_id: int, after_log_id: int, session: Session) -> Optional[dict]:
+def _read_task(
+    task_id: int,
+    after_log_id: int,
+    session: Session,
+    owner_user_id: Optional[int] = None,
+) -> Optional[dict]:
     """读取任务状态、结果树和游标之后的日志。"""
     task = session.get(Task, task_id)
     if task is None or task.operation_type != "nginx_uninstall":
         return None
-    rows = session.scalars(
-        select(TaskLog)
-        .where(TaskLog.task_id == task_id, TaskLog.id > after_log_id)
-        .order_by(TaskLog.id.asc())
-        .limit(201)
-    ).all()
+    run = session.scalar(
+        select(NginxUninstallRun).where(NginxUninstallRun.task_id == task_id)
+    )
+    task_ids = [task_id]
+    if run is not None:
+        task_query = (
+            select(NginxUninstallRun.task_id)
+            .join(Task, Task.id == NginxUninstallRun.task_id)
+            .where(
+                NginxUninstallRun.batch_number == run.batch_number,
+                Task.operation_type == task.operation_type,
+            )
+        )
+        if owner_user_id is not None:
+            task_query = task_query.where(Task.trigger_user_id == owner_user_id)
+        task_ids = sorted(set(session.scalars(task_query).all()) | {task_id})
+    batch_active = bool(
+        session.scalar(
+            select(func.count())
+            .select_from(Task)
+            .where(Task.id.in_(task_ids), Task.status.in_(("pending", "running")))
+        )
+    )
+    has_detail_logs = session.scalar(
+        select(func.count())
+        .select_from(NginxOperationLog)
+        .where(
+            NginxOperationLog.operation_type == "nginx_uninstall",
+            NginxOperationLog.task_id.in_(task_ids),
+        )
+    )
+    log_model = NginxOperationLog if has_detail_logs or batch_active else TaskLog
+    query = select(log_model).where(
+        log_model.task_id.in_(task_ids), log_model.id > after_log_id
+    )
+    if log_model is NginxOperationLog:
+        query = query.where(log_model.operation_type == "nginx_uninstall")
+    rows = session.scalars(query.order_by(log_model.id.asc()).limit(201)).all()
     has_more = len(rows) > 200
     logs = rows[:200]
     try:
@@ -286,6 +325,8 @@ def _read_task(task_id: int, after_log_id: int, session: Session) -> Optional[di
         "logs": [
             {
                 "id": row.id,
+                "task_id": row.task_id,
+                "node_id": getattr(row, "node_id", None),
                 "level": row.level,
                 "message": row.message,
                 "created_at": row.created_at.isoformat() if row.created_at else "",
@@ -294,6 +335,7 @@ def _read_task(task_id: int, after_log_id: int, session: Session) -> Optional[di
         ],
         "next_log_id": logs[-1].id if logs else after_log_id,
         "has_more_logs": has_more,
+        "batch_active": batch_active,
     }
 
 
@@ -441,9 +483,37 @@ def nginx_uninstall_task_log(
     can_execute = _has_permission(request, session, user, "execute")
     if not can_read and not (can_execute and run.task.trigger_user_id == user.id):
         raise PermissionDenied("无访问权限", "当前账号没有查看该卸载任务的权限。")
+    batch_query = (
+        select(NginxUninstallRun)
+        .join(Task, Task.id == NginxUninstallRun.task_id)
+        .options(joinedload(NginxUninstallRun.task))
+        .where(
+            NginxUninstallRun.batch_number == run.batch_number,
+            Task.operation_type == run.task.operation_type,
+        )
+        .order_by(NginxUninstallRun.task_id.asc())
+    )
+    if not can_read:
+        batch_query = batch_query.where(Task.trigger_user_id == user.id)
+    batch_runs = session.scalars(batch_query).all()
+    batch_task_ids = [item.task_id for item in batch_runs]
+    batch_active = any(
+        item.task.status in ("pending", "running") for item in batch_runs
+    )
     logs = session.scalars(
-        select(TaskLog).where(TaskLog.task_id == task_id).order_by(TaskLog.id.asc()).limit(1000)
+        select(NginxOperationLog)
+        .where(
+            NginxOperationLog.operation_type == "nginx_uninstall",
+            NginxOperationLog.task_id.in_(batch_task_ids),
+        )
+        .order_by(NginxOperationLog.id.asc())
     ).all()
+    if not logs and not batch_active:
+        logs = session.scalars(
+            select(TaskLog)
+            .where(TaskLog.task_id.in_(batch_task_ids))
+            .order_by(TaskLog.id.asc())
+        ).all()
     try:
         result_tree = json.loads(run.task.result_tree_json) if run.task.result_tree_json else None
     except (TypeError, ValueError):
@@ -455,7 +525,10 @@ def nginx_uninstall_task_log(
         {
             "run": run,
             "task": run.task,
+            "batch_runs": batch_runs,
+            "batch_active": batch_active,
             "logs": logs,
+            "log_cursor": max((item.id for item in logs), default=0),
             "result_tree": result_tree,
             "options": options,
             "status_label": _STATUS_LABELS.get(run.task.status, run.task.status),
@@ -654,12 +727,19 @@ def get_uninstall_task_detail(
     session: Session = Depends(get_session),
 ) -> UninstallTaskDetailResponse:
     """读取任务详情并按卸载查看权限限制访问范围。"""
-    detail = _read_task(task_id, after_log_id, session)
-    if detail is None:
-        raise HTTPException(status_code=404, detail="卸载任务不存在")
     task = session.get(Task, task_id)
+    if task is None or task.operation_type != "nginx_uninstall":
+        raise HTTPException(status_code=404, detail="卸载任务不存在")
     can_read = _has_permission(request, session, user, "read")
     can_execute = _has_permission(request, session, user, "execute")
     if not can_read and not (can_execute and task.trigger_user_id == user.id):
         raise PermissionDenied("无访问权限", "当前账号没有查看该卸载任务的权限。")
+    detail = _read_task(
+        task_id,
+        after_log_id,
+        session,
+        owner_user_id=None if can_read else user.id,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="卸载任务不存在")
     return UninstallTaskDetailResponse(**detail)

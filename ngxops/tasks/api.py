@@ -16,7 +16,7 @@ from ngxops.database.session import get_session
 from ngxops.security.dependencies import require_authenticated_user
 from ngxops.security.errors import PermissionDenied
 from ngxops.tasks.executor import cancel_task
-from ngxops.tasks.models import OPERATION_TYPES, Task, TaskLog
+from ngxops.tasks.models import NginxOperationLog, OPERATION_TYPES, Task, TaskLog
 from ngxops.tasks.presentation import task_search_filters
 
 
@@ -67,6 +67,8 @@ class TaskLogResponse(BaseModel):
     """描述单条持久化任务日志。"""
 
     id: int
+    task_id: Optional[int] = None
+    node_id: Optional[int] = None
     level: str
     message: str
     created_at: datetime
@@ -89,6 +91,7 @@ class TaskDetailResponse(TaskListItem):
     logs: List[TaskLogResponse]
     next_log_id: int
     has_more_logs: bool
+    batch_active: bool = False
 
 
 class TaskCancelResponse(BaseModel):
@@ -188,6 +191,41 @@ def _visible_task_query(
     return session.scalars(query).one_or_none()
 
 
+def _batch_detail_task_ids(
+    session: Session,
+    task: Task,
+    log_view: str,
+    owner_user_id: Optional[int],
+) -> List[int]:
+    """读取同批次同类型的专用详情任务 ID。"""
+    if log_view == "upgrade_full":
+        from ngxops.upgrade.models import NginxUpgradeRun
+
+        run_model = NginxUpgradeRun
+    else:
+        from ngxops.nginx_install.models import NginxInstallRun
+
+        run_model = NginxInstallRun
+    run = session.scalar(
+        select(run_model).where(run_model.task_id == task.id)
+    )
+    if run is None:
+        return [task.id]
+    query = (
+        select(run_model.task_id)
+        .join(Task, Task.id == run_model.task_id)
+        .where(
+            run_model.batch_number == run.batch_number,
+            Task.operation_type == task.operation_type,
+        )
+    )
+    if owner_user_id is not None:
+        query = query.where(Task.trigger_user_id == owner_user_id)
+    task_ids = set(session.scalars(query).all())
+    task_ids.add(task.id)
+    return sorted(task_ids)
+
+
 @router.get(
     "",
     response_model=TaskListResponse,
@@ -261,7 +299,8 @@ def list_tasks(
     description=(
         "返回任务当前状态及结构化结果树。日志按自增 ID 游标读取；"
         "后续轮询将 next_log_id 作为 after_log_id。Nginx 升级详情可传 log_view=upgrade_full "
-        "读取独立的逐行完整执行日志；默认日志仍为任务中心摘要。"
+        "读取同批次逐行完整远程日志；Nginx 安装详情可传 log_view=install_full 读取同批次完整远程日志；"
+        "默认日志仍为当前任务的任务中心日志。"
     ),
     responses=api_error_responses((401, 403, 404, 422, 500)),
 )
@@ -270,9 +309,9 @@ def get_task(
     task_id: int = Path(..., ge=1),
     after_log_id: int = Query(0, ge=0),
     log_limit: int = Query(200, ge=1, le=500),
-    log_view: Literal["summary", "upgrade_full"] = Query(
+    log_view: Literal["summary", "upgrade_full", "install_full"] = Query(
         "summary",
-        description="upgrade_full 仅适用于 Nginx 升级/回滚详情，返回逐行完整执行日志。",
+        description="upgrade_full 和 install_full 仅用于对应模块的专用详情页，返回同批次完整日志。",
     ),
     user: User = Depends(require_authenticated_user),
     session: Session = Depends(get_session),
@@ -283,7 +322,7 @@ def get_task(
     )
     if not has_access:
         raise PermissionDenied("无访问权限", "当前账号没有查看任务的权限。")
-    if log_view == "upgrade_full":
+    if log_view in ("upgrade_full", "install_full"):
         can_read_all_upgrades = user.is_superuser or _has_permission(
             request, session, user, "upgrade", "read"
         )
@@ -292,13 +331,14 @@ def get_task(
         )
         if not can_read_all_upgrades and not can_execute_upgrade:
             raise PermissionDenied(
-                "无访问权限", "当前账号没有查看 Nginx 升级完整日志的权限。"
+                "无访问权限", "当前账号没有查看 Nginx 专用任务日志的权限。"
             )
+        allowed_operation = (
+            "nginx_upgrade", "nginx_rollback"
+        ) if log_view == "upgrade_full" else ("nginx_install",)
         query = select(Task).where(
             Task.id == task_id,
-            Task.operation_type.in_(
-                ("nginx_upgrade", "nginx_rollback")
-            ),
+            Task.operation_type.in_(allowed_operation),
         )
         if not can_read_all_upgrades:
             query = query.where(Task.trigger_user_id == user.id)
@@ -310,6 +350,26 @@ def get_task(
     if task is None:
         return _api_error(404, "任务不存在或无权查看")
 
+    log_task_ids = [task.id]
+    batch_active = False
+    if log_view in ("upgrade_full", "install_full"):
+        log_task_ids = _batch_detail_task_ids(
+            session,
+            task,
+            log_view,
+            None if can_read_all_upgrades else user.id,
+        )
+        batch_active = bool(
+            session.scalar(
+                select(func.count())
+                .select_from(Task)
+                .where(
+                    Task.id.in_(log_task_ids),
+                    Task.status.in_(("pending", "running")),
+                )
+            )
+        )
+
     log_model = TaskLog
     if log_view == "upgrade_full":
         from ngxops.upgrade.models import NginxUpgradeLog
@@ -317,13 +377,24 @@ def get_task(
         has_full_logs = session.scalar(
             select(func.count())
             .select_from(NginxUpgradeLog)
-            .where(NginxUpgradeLog.task_id == task_id)
+            .where(NginxUpgradeLog.task_id.in_(log_task_ids))
         )
-        if has_full_logs:
+        if has_full_logs or batch_active:
             log_model = NginxUpgradeLog
+    elif log_view == "install_full":
+        has_full_logs = session.scalar(
+            select(func.count())
+            .select_from(NginxOperationLog)
+            .where(
+                NginxOperationLog.operation_type == "nginx_install",
+                NginxOperationLog.task_id.in_(log_task_ids),
+            )
+        )
+        if has_full_logs or batch_active:
+            log_model = NginxOperationLog
     log_rows = session.scalars(
         select(log_model)
-        .where(log_model.task_id == task_id, log_model.id > after_log_id)
+        .where(log_model.task_id.in_(log_task_ids), log_model.id > after_log_id)
         .order_by(log_model.id.asc())
         .limit(log_limit + 1)
     ).all()
@@ -337,6 +408,8 @@ def get_task(
             "logs": [
                 TaskLogResponse(
                     id=row.id,
+                    task_id=row.task_id,
+                    node_id=getattr(row, "node_id", None),
                     level=row.level,
                     message=row.message,
                     created_at=row.created_at,
@@ -345,6 +418,7 @@ def get_task(
             ],
             "next_log_id": next_log_id,
             "has_more_logs": has_more,
+            "batch_active": batch_active,
         }
     )
     return TaskDetailResponse(**response)

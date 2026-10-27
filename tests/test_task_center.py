@@ -382,7 +382,8 @@ def test_task_detail_displays_task_times_in_utc_plus_eight(task_center_client):
     assert '<span data-task-started>2026-10-12 08:01:02</span>' in detail.text
     assert '<span data-task-finished>2026-10-12 08:03:04</span>' in detail.text
     assert '<span data-task-created>2026-10-12 08:00:05</span>' in detail.text
-    assert "<time>2026-10-12 08:00:06</time>" in detail.text
+    assert 'data-log-mode="plain-text"' in detail.text
+    assert "2026-10-12 08:00:06" in detail.text
     task_script = (Path(__file__).parents[1] / "static/js/task-center.js").read_text(
         encoding="utf-8"
     )

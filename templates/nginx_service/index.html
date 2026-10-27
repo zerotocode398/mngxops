@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Nginx 启停 - ngxops{% endblock %}
 {% block page_title %}<i class="bi bi-power" aria-hidden="true"></i> Nginx 启停{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-service.css') }}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17"><link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-service.css') }}?v=268-2">{% endblock %}
 
 {% block content %}
 <div class="service-layout">
@@ -12,15 +12,15 @@
         <section class="card mb-3">
             <div class="card-header"><h2 class="h6 mb-0"><i class="bi bi-server me-1" aria-hidden="true"></i>目标节点</h2></div>
             <div class="card-body">
-                <div class="service-selection" id="selectedNodes">
-                    <span class="text-muted small" id="emptySelection">选择在线且已检测到 Nginx 的节点，最多 {{ batch_max_count }} 台</span>
-                    <div class="service-chips" id="selectedChips"></div>
-                </div>
-                <div class="d-flex flex-wrap gap-2 mt-2">
-                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#nodePickerModal">
-                        <i class="bi bi-search me-1" aria-hidden="true"></i><span id="selectNodeLabel">选择节点</span>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelection" disabled title="清空已选节点" aria-label="清空已选节点"><i class="bi bi-x-circle" aria-hidden="true"></i></button>
+                <div class="service-selection upgrade-selected-targets" id="selectedNodes">
+                    <span class="text-muted small" id="emptySelection">尚未选择节点</span>
+                    <div class="service-chips upgrade-selected-summary" id="selectedChips"></div>
+                    <div class="service-selection-actions">
+                        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#nodePickerModal">
+                            <i class="bi bi-search me-1" aria-hidden="true"></i><span id="selectNodeLabel">选择节点</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelection" disabled title="清空已选节点" aria-label="清空已选节点"><i class="bi bi-x-circle" aria-hidden="true"></i></button>
+                    </div>
                 </div>
             </div>
         </section>
@@ -65,27 +65,6 @@
             </div>
         </section>
     </section>
-
-    <aside class="service-progress-column">
-        <section class="card service-progress-panel">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h2 class="h6 mb-0"><i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>执行进度</h2>
-                <span class="badge text-bg-secondary d-none" id="progressPercent">0%</span>
-            </div>
-            <div class="card-body">
-                <div id="progressPlaceholder" class="text-center text-muted py-4">
-                    <i class="bi bi-hourglass" aria-hidden="true"></i><p class="small mb-0 mt-2">批次提交后显示实时进度</p>
-                </div>
-                <div id="progressLive" class="d-none" {% if active_task %}data-task-id="{{ active_task.id }}"{% endif %}>
-                    <div class="small mb-2" id="batchNumberLabel"></div>
-                    <div class="progress mb-2" role="progressbar" aria-label="任务进度"><div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" style="width:0%"></div></div>
-                    <p class="small text-muted mb-2" id="progressDetail"></p>
-                    <div class="service-node-progress" id="serviceNodesProgress"></div>
-                    <a class="btn btn-outline-secondary btn-sm mt-2" id="taskLogLink" href="#"><i class="bi bi-file-text me-1" aria-hidden="true"></i>查看完整日志</a>
-                </div>
-            </div>
-        </section>
-    </aside>
 </div>
 
 <div class="modal fade" id="nodePickerModal" tabindex="-1" aria-labelledby="nodePickerTitle" aria-hidden="true">
@@ -93,21 +72,32 @@
         <div class="modal-content">
             <div class="modal-header"><h2 class="modal-title fs-6" id="nodePickerTitle">选择目标节点</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
             <div class="modal-body">
-                <label class="visually-hidden" for="nodeSearch">搜索主机名、IP 或节点组名称</label>
-                <input class="form-control form-control-sm mb-2" id="nodeSearch" type="search" placeholder="主机名、IP 或节点组名称" autocomplete="off">
-                <div class="table-responsive service-picker-table">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead class="table-light"><tr><th class="text-center"><input type="checkbox" class="form-check-input" id="selectVisible" aria-label="选择当前可操作节点"></th><th>主机名 / IP</th><th>节点组</th><th>Nginx</th><th>状态</th></tr></thead>
+                <label class="visually-hidden" for="nodeSearch">搜索主机名、IP 或节点组</label>
+                <div class="upgrade-query-field"><input class="form-control form-control-sm" id="nodeSearch" data-query-tags aria-label="搜索主机名、IP 或节点组" placeholder="搜索主机名、IP 或节点组"></div>
+                <div class="table-responsive upgrade-node-table-wrap service-picker-table">
+                    <table class="table table-sm table-hover align-middle mb-0 upgrade-node-table" id="serviceNodeTable">
+                        <thead class="table-light"><tr><th class="text-center"><input type="checkbox" class="form-check-input" id="selectVisible" aria-label="选择当前可见节点"></th><th>主机名 / IP</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
                         <tbody id="nodePickerRows"><tr><td colspan="5" class="text-center text-muted py-4">正在加载节点</td></tr></tbody>
                     </table>
                 </div>
-                <div class="small text-muted mt-2 d-flex justify-content-between"><span id="nodePickerCount">共 0 台</span><span id="nodePickerLimit">最多 {{ batch_max_count }} 台</span></div>
+                <div class="upgrade-selector-footer">
+                    <small class="text-muted" id="serviceNodeResultCount"></small>
+                    <nav aria-label="节点分页"><ul class="pagination pagination-sm mb-0">
+                        <li class="page-item"><button class="page-link" type="button" id="serviceNodePageFirst" aria-label="首页" title="首页"><i class="bi bi-chevron-double-left" aria-hidden="true"></i></button></li>
+                        <li class="page-item"><button class="page-link" type="button" id="serviceNodePagePrevious" aria-label="上一页" title="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button></li>
+                        <li class="page-item disabled"><span class="page-link page-count" id="serviceNodePageLabel"></span></li>
+                        <li class="page-item"><button class="page-link" type="button" id="serviceNodePageNext" aria-label="下一页" title="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button></li>
+                        <li class="page-item"><button class="page-link" type="button" id="serviceNodePageLast" aria-label="末页" title="末页"><i class="bi bi-chevron-double-right" aria-hidden="true"></i></button></li>
+                    </ul></nav>
+                    <div class="upgrade-selector-page-size"><label class="small text-muted mb-0" for="serviceNodePageSize">每页</label><select class="form-select form-select-sm" id="serviceNodePageSize" aria-label="每页节点数"><option value="10" selected>10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></div>
+                    <span class="small text-muted" id="nodePickerLimit">最多 {{ batch_max_count }} 台</span>
+                </div>
             </div>
-            <div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-primary btn-sm" id="confirmNodeSelection"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>确认选择</button></div>
+            <div class="modal-footer"><span class="small text-muted me-auto">仅展示 SSH 在线、凭证启用且 Nginx 已识别的未锁定节点</span><button type="button" class="btn btn-primary btn-sm" id="confirmNodeSelection"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>完成选择</button></div>
         </div>
     </div>
 </div>
-<div id="serviceConfig" data-can-operate="{{ 'true' if can_operate else 'false' }}" data-max-count="{{ batch_max_count }}" data-nodes-url="/api/nginx/service/nodes" data-execute-url="/api/nginx/service/execute" data-task-url-prefix="/api/nginx/service/tasks/" hidden></div>
+<div id="serviceConfig" data-can-operate="{{ 'true' if can_operate else 'false' }}" data-max-count="{{ batch_max_count }}" data-nodes-url="/api/nginx/service/nodes" data-execute-url="/api/nginx/service/execute" data-task-url-prefix="/api/nginx/service/tasks/" data-active-task-id="{{ active_task.id if active_task else '' }}" hidden></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-service.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-service.js') }}?v=268-1"></script>{% endblock %}

@@ -680,6 +680,12 @@ body {
     text-underline-offset: 2px;
 }
 
+.toast-task-progress .toast-task-title { line-height: 1.35; }
+.toast-task-progress .toast-task-message { overflow-wrap: anywhere; font-size: 0.82rem; line-height: 1.4; }
+.toast-task-progress .toast-task-action[hidden] { display: none; }
+.toast-task-track { height: 4px; overflow: hidden; border-radius: 2px; background: rgba(20, 24, 28, 0.28); }
+.toast-task-track-value { display: block; height: 100%; background: rgba(255, 255, 255, 0.88); transition: width 180ms ease; }
+
 .toast-close {
     position: absolute;
     top: 0.35rem;
@@ -786,6 +792,10 @@ body {
 @media (max-width: 991.98px) {
     .uninstall-layout { grid-template-columns: minmax(0, 1fr); }
     .uninstall-side { position: static; }
+}
+
+.task-log-filter-select {
+    width: min(320px, 100%);
 }
 
 @media (max-width: 575.98px) {

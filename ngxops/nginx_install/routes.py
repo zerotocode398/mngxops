@@ -34,16 +34,16 @@ from ngxops.security.dependencies import (
 )
 from ngxops.security.errors import PermissionDenied
 from ngxops.settings.service import read_setting
-from ngxops.tasks.models import Task, TaskLog
-from ngxops.tasks.presentation import format_task_datetime
+from ngxops.tasks.models import NginxOperationLog, Task, TaskLog
+from ngxops.tasks.presentation import format_task_datetime, format_task_datetime_iso
 from ngxops.ui import render_page
 from ngxops.upgrade.builtin_modules import BUILTIN_ADD_MODULES
 from ngxops.upgrade.models import NginxModulePackage, NginxSourcePackage
 
 
 router = APIRouter(tags=["nginx_install"])
-_PAGE_SIZE_OPTIONS = (10, 15, 30, 50)
-_DEFAULT_PAGE_SIZE = 15
+_PAGE_SIZE_OPTIONS = (10, 25, 50, 100)
+_DEFAULT_PAGE_SIZE = 10
 _STATUS_LABELS = {
     "pending": "等待执行",
     "running": "执行中",
@@ -446,7 +446,7 @@ def nginx_install_history(
     search: str = Query("", max_length=300),
     status: str = Query("", max_length=20),
     page: int = Query(1, ge=1),
-    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=50),
+    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=100),
     user: User = Depends(require_permission("upgrade", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
@@ -474,6 +474,11 @@ def nginx_install_history(
         )
     result = _page_context(query, session, page, per_page)
     runs = result.pop("items")
+    for run in runs:
+        run.created_at_display = format_task_datetime(
+            run.created_at, include_seconds=False
+        )
+        run.created_at_iso = format_task_datetime_iso(run.created_at)
     user_ids = {
         run.task.trigger_user_id
         for run in runs
@@ -523,19 +528,53 @@ def nginx_install_task_log(
     can_execute = _has_upgrade_permission(request, session, user, "execute")
     if not can_read and not (can_execute and task.trigger_user_id == user.id):
         raise PermissionDenied(PERM_DENIED_TITLE, PERM_DENIED_MESSAGE)
+    batch_query = (
+        select(NginxInstallRun)
+        .join(Task, Task.id == NginxInstallRun.task_id)
+        .options(joinedload(NginxInstallRun.task))
+        .where(
+            NginxInstallRun.batch_number == run.batch_number,
+            Task.operation_type == task.operation_type,
+        )
+        .order_by(NginxInstallRun.task_id.asc())
+    )
+    if not can_read:
+        batch_query = batch_query.where(Task.trigger_user_id == user.id)
+    batch_runs = session.scalars(batch_query).all()
+    batch_task_ids = [item.task_id for item in batch_runs]
+    batch_active = any(item.task.status in ("pending", "running") for item in batch_runs)
     logs = session.scalars(
-        select(TaskLog)
-        .where(TaskLog.task_id == task_id)
-        .order_by(TaskLog.id.asc())
-        .limit(1000)
+        select(NginxOperationLog)
+        .where(
+            NginxOperationLog.operation_type == "nginx_install",
+            NginxOperationLog.task_id.in_(batch_task_ids),
+        )
+        .order_by(NginxOperationLog.id.asc())
     ).all()
+    if not logs and not batch_active:
+        logs = session.scalars(
+            select(TaskLog)
+            .where(TaskLog.task_id.in_(batch_task_ids))
+            .order_by(TaskLog.id.asc())
+        ).all()
+    targets = [
+        {
+            "task_id": item.task_id,
+            "hostname": item.node_hostname,
+            "ip": item.node_ip,
+        }
+        for item in batch_runs
+    ]
     return render_page(
         request,
         "nginx_install/task_log.html",
         {
             "run": run,
             "task": task,
+            "targets": targets,
+            "batch_active": batch_active,
             "logs": logs,
+            "log_cursor": max((item.id for item in logs), default=0),
             "phase_label": _PHASE_LABELS.get(run.phase, run.phase),
             "status_context": _status_context(task),
             "format_task_datetime": format_task_datetime,

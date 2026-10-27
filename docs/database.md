@@ -12,7 +12,7 @@
 ## 初始化与升级
 
 - 初始化/升级入口：`python -m ngxops.database upgrade`。Web 启动绝不自动迁移；执行升级前应停止服务并备份数据库。
-- 迁移通过 `ngxops_schema_migrations` 记录版本，使用 `BEGIN IMMEDIATE` 串行化升级，并在同一事务内执行迁移及写入版本记录。迁移版本 16 将源码包身份改为上传人、名称和版本组合；该表重建迁移在事务期间临时关闭外键检查，并在提交前运行 `foreign_key_check`。迁移版本 17 为 Nginx 升级/回滚新增专属逐行日志表。
+- 迁移通过 `ngxops_schema_migrations` 记录版本，使用 `BEGIN IMMEDIATE` 串行化升级，并在同一事务内执行迁移及写入版本记录。迁移版本 16 将源码包身份改为上传人、名称和版本组合；该表重建迁移在事务期间临时关闭外键检查，并在提交前运行 `foreign_key_check`。迁移版本 17 为 Nginx 升级/回滚新增专属逐行日志表，版本 19 为安装、卸载和启停新增完整远程操作日志表。
 - 禁止 `metadata.create_all()`、自动重建表、删除库或启动时批量改写数据。表结构变化必须加入有序迁移，保留旧数据并给出回滚/备份说明。
 - 若数据库含有业务表但没有本项目的迁移台账，升级命令拒绝写入。特别是原 `mngxops` SQLite 文件不会被自动接管；需要先对照完整 schema 并显式登记兼容基线。空库与已有库路径不得混用。
 - 原迁移计划引用的 `mngxops/docs/fastapi-migration-baseline.md` 当前不存在，因此本项目以 `mngxops/apps/*/models.py`、全部 Django migrations 和模块文档交叉确认，不把缺失报告视为已经核实的 schema。
@@ -47,7 +47,7 @@
 ## 统一任务表
 
 - `ngxops_tasks` 保存操作类型、`pending/running/success/failed/cancelled` 状态、进度、步骤说明、JSON 结果树、批次、目标摘要、触发人及开始/完成时间。状态和进度由 SQLite `CHECK` 约束；触发用户删除时置空。
-- `ngxops_task_logs` 按任务追加日志，以 `(task_id, id)` 支持增量轮询；删除任务时级联删除日志。任务结果树上限 1 MiB，单条日志上限 4,000 字符。
+- `ngxops_task_logs` 按任务追加日志，以 `(task_id, id)` 支持增量轮询；迁移 v18 后可选关联节点并以 `(task_id, node_id, id)` 筛选；删除任务时级联删除日志，物理删除节点时仅清空节点归属。任务结果树上限 1 MiB，单条日志上限 4,000 字符。
 - 数据库只保存状态与业务结果，不保存执行函数或执行参数。业务模块通过 `ngxops.tasks.executor.create_task` 注册可调用任务；后台执行函数必须使用 `TaskContext` 更新进度、结果、日志，并在可取消的业务检查点调用 `check_cancelled()`。
 - 任务启动和每次写入使用独立 SQLAlchemy Session。应用启动只在数据库文件已存在时检查任务表；有表时将遗留 `pending/running` 任务标成 `failed` 并记为进程重启中断，不会自动重跑，也不会伪报成功。数据库未初始化或仅升级到版本 1 时不创建表、不执行迁移。
 - SQLAlchemy 迁移版本 2 使用 `ngxops_schema_migrations` 管理；使用前仍须显式执行 `python -m ngxops.database upgrade`。
@@ -82,7 +82,9 @@
 - 迁移版本 15 合并 Nginx 安装权限：`nginx_install.read` 授权迁移到 `upgrade.read`，`nginx_install.create` 授权迁移到 `upgrade.execute`，覆盖角色和用户直授权限后删除旧权限项。安装和升级从此共用 `upgrade.*` RBAC 资源，任务操作类型仍分开保存。
 - 迁移版本 16 重建 `ngxops_nginx_source_packages` 并保留原记录及 ID，将唯一约束改为 `(name, version, created_by)`，增加 MD5 查询索引；源码包和模块包均先按上传人、名称、版本判重，未命中时才按 MD5 判重。
 - 迁移版本 17 创建 `ngxops_nginx_upgrade_logs`，按任务逐行保存 Nginx 升级/回滚的完整执行日志，并以 `(task_id, id)` 支持增量游标读取；任务删除时级联清理。通用 `ngxops_task_logs` 继续只保存任务中心所需的阶段摘要。
-- NX-052 启停批次直接复用 `ngxops_tasks` 与 `ngxops_task_logs`，不新增业务表或迁移；动作存放在 `target_configs`，`source_batch` 保存批次号，目标摘要和结构化结果分别存放在任务摘要字段与结果树中。
+- 迁移版本 18 为 `ngxops_task_logs` 增加可空 `node_id` 外键与 `(task_id, node_id, id)` 索引；节点硬删除时仅清空归属，日志正文保留。Nginx 启停核心操作日志可用该字段筛选目标节点，完整远程输出由 v19 专用表保存。
+- 迁移版本 19 创建 `ngxops_nginx_operation_logs`，按操作类型、任务、节点和自增 ID 保存 Nginx 安装、卸载及启停的脱敏远程输出；任务删除时级联清理，节点硬删除时仅清空节点归属。专用历史详情读取完整远程日志，统一任务中心仍读取核心阶段日志。
+- NX-052 启停批次复用 `ngxops_tasks` 与 `ngxops_task_logs` 保存状态和核心操作，并通过 `ngxops_nginx_operation_logs` 保存完整远程输出；动作存放在 `target_configs`，`source_batch` 保存批次号，目标摘要和结构化结果分别存放在任务摘要字段与结果树中。
 - 凭证迁移不会读取或接管 mngxops 数据库中的旧记录。升级仍须显式停止服务、备份后执行 `python -m ngxops.database upgrade`。
 
 SQLite 兼容时还需保留原表名、列名、整数主键、空值语义、布尔整数和 Django 日期时间文本格式。完整字段及关系以 `mngxops/apps/*/models.py` 与对应 `migrations/` 为准；本文件只列跨模块关键约束。

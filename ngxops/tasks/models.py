@@ -123,11 +123,22 @@ class TaskLog(Base):
     """保存与任务关联、按 ID 游标读取的日志行。"""
 
     __tablename__ = "ngxops_task_logs"
-    __table_args__ = (Index("ix_ngxops_task_logs_task_id_id", "task_id", "id"),)
+    __table_args__ = (
+        Index("ix_ngxops_task_logs_task_id_id", "task_id", "id"),
+        Index(
+            "ix_ngxops_task_logs_task_node_id_id",
+            "task_id",
+            "node_id",
+            "id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[int] = mapped_column(
         ForeignKey("ngxops_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    node_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ngxops_nodes.id", ondelete="SET NULL"), nullable=True
     )
     level: Mapped[str] = mapped_column(
         String(10), nullable=False, default="info", server_default="info"
@@ -140,3 +151,45 @@ class TaskLog(Base):
         server_default=func.current_timestamp(),
     )
     task: Mapped[Task] = relationship(back_populates="logs")
+
+
+class NginxOperationLog(Base):
+    """保存安装、卸载和启停任务的完整远程操作日志。"""
+
+    __tablename__ = "ngxops_nginx_operation_logs"
+    __table_args__ = (
+        CheckConstraint(
+            "operation_type IN ('nginx_install', 'nginx_uninstall', 'nginx_service_control')",
+            name="ck_ngxops_nginx_operation_logs_type",
+        ),
+        CheckConstraint(
+            "level IN ('debug', 'info', 'warning', 'error')",
+            name="ck_ngxops_nginx_operation_logs_level",
+        ),
+        Index(
+            "ix_ngxops_nginx_operation_logs_type_task_id",
+            "operation_type",
+            "task_id",
+            "id",
+        ),
+        Index(
+            "ix_ngxops_nginx_operation_logs_task_node_id",
+            "task_id",
+            "node_id",
+            "id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    operation_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("ngxops_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    node_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ngxops_nodes.id", ondelete="SET NULL"), nullable=True
+    )
+    level: Mapped[str] = mapped_column(String(20), nullable=False, default="info")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.current_timestamp()
+    )

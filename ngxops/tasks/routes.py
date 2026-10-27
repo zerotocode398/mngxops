@@ -248,8 +248,9 @@ def task_detail(
     has_more_logs = len(log_rows) > 50
     logs = log_rows[:50]
     targets = _target_nodes(task.target_hostnames, task.target_ips)
+    result_nodes = result_tree.get("nodes", []) if isinstance(result_tree, dict) else []
     log_target_map = _task_log_target_map(
-        task.target_hostnames, task.target_ips
+        task.target_hostnames, task.target_ips, result_nodes
     )
     target_configs = [
         item.strip()
@@ -313,6 +314,7 @@ def task_detail(
             "is_upgrade_type": task.operation_type
             in ("nginx_upgrade", "nginx_rollback"),
             "is_install_type": task.operation_type == "nginx_install",
+            "is_service_type": task.operation_type == "nginx_service_control",
             "can_read_upgrade": can_read_upgrade,
             "is_config_sync_type": task.operation_type == "config_batch_sync",
             "can_cancel": _can_cancel_task(
@@ -338,16 +340,64 @@ def _target_nodes(hostnames: str, ips: str) -> list:
     return targets
 
 
-def _task_log_target_map(hostnames: str, ips: str) -> list:
-    """配对任务目标的主机名和 IP，供日志展示使用。"""
+def _task_log_target_map(hostnames: str, ips: str, result_nodes=None) -> list:
+    """按主机身份关联结果节点 ID，供日志筛选使用。"""
     names = [item.strip() for item in (hostnames or "").split(",")]
     addresses = [item.strip() for item in (ips or "").split(",")]
-    return [
-        {
-            "hostname": names[index] if index < len(names) else "",
-            "ip": addresses[index] if index < len(addresses) else "",
-        }
-        for index in range(max(len(names), len(addresses)))
-        if (names[index] if index < len(names) else "")
-        or (addresses[index] if index < len(addresses) else "")
+    result_nodes = [
+        item for item in (result_nodes or []) if isinstance(item, dict)
     ]
+    target_count = max(len(names), len(addresses))
+    if not target_count:
+        return [
+            {
+                "hostname": str(item.get("hostname") or "").strip(),
+                "ip": str(item.get("ip") or "").strip(),
+                "node_id": item.get("node_id") or item.get("id"),
+            }
+            for item in result_nodes
+            if item.get("hostname") or item.get("ip")
+        ]
+
+    targets = []
+    for index in range(target_count):
+        hostname = names[index] if index < len(names) else ""
+        ip = addresses[index] if index < len(addresses) else ""
+        if not hostname and not ip:
+            continue
+        result_node = next(
+            (
+                item
+                for item in result_nodes
+                if (
+                    hostname
+                    and str(item.get("hostname") or "").strip().casefold()
+                    == hostname.casefold()
+                )
+                or (
+                    ip
+                    and str(item.get("ip") or "").strip().casefold()
+                    == ip.casefold()
+                )
+            ),
+            None,
+        )
+        if result_node is None and index < len(result_nodes):
+            candidate = result_nodes[index]
+            if not candidate.get("hostname") and not candidate.get("ip"):
+                result_node = candidate
+        if result_node:
+            hostname = hostname or str(result_node.get("hostname") or "").strip()
+            ip = ip or str(result_node.get("ip") or "").strip()
+        targets.append(
+            {
+                "hostname": hostname,
+                "ip": ip,
+                "node_id": (
+                    result_node.get("node_id") or result_node.get("id")
+                    if result_node
+                    else None
+                ),
+            }
+        )
+    return targets

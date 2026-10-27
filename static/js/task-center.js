@@ -396,17 +396,87 @@
                 return fallbackIp;
             }
         }
+        var targetsByIpLength = logTargetMap.slice().sort(function (left, right) {
+            return String(right.ip || "").length - String(left.ip || "").length;
+        });
+        for (var ipIndex = 0; ipIndex < targetsByIpLength.length; ipIndex += 1) {
+            var targetIp = String(targetsByIpLength[ipIndex].ip || "").trim();
+            if (!targetIp) continue;
+            var position = formatted.indexOf(targetIp);
+            while (position >= 0) {
+                var previous = position > 0 ? formatted.charAt(position - 1) : "";
+                var next = formatted.charAt(position + targetIp.length);
+                if (!/[0-9.]/.test(previous) && !/[0-9.]/.test(next)) return targetIp;
+                position = formatted.indexOf(targetIp, position + 1);
+            }
+        }
         return "";
     }
 
+    function findServiceLogStartNodeId(message) {
+        var text = String(message || "");
+        for (var index = 0; index < logTargetMap.length; index += 1) {
+            var target = logTargetMap[index];
+            if (target.node_id == null) continue;
+            var hostname = String(target.hostname || "").trim();
+            var ip = String(target.ip || "").trim();
+            var identity = hostname && ip ? hostname + " (" + ip + ")" : hostname || ip;
+            if (identity && text.indexOf(identity + " \u5f00\u59cb Nginx") >= 0) {
+                return String(target.node_id);
+            }
+        }
+        return "";
+    }
+
+    function findLogTarget(message) {
+        var text = String(message || "");
+        var hostIp = findLogHostIp(message);
+        for (var index = 0; index < logTargetMap.length; index += 1) {
+            var target = logTargetMap[index];
+            if (hostIp && String(target.ip || "").trim() === hostIp) return target;
+            var hostname = String(target.hostname || "").trim();
+            if (hostname && text.indexOf("节点 " + hostname) >= 0) return target;
+        }
+        return null;
+    }
+
+    function annotateTaskLogNodeIds(detail, logList) {
+        var inheritLegacyServiceLogs = detail.dataset.isServiceType === "true";
+        var currentNodeId = "";
+        Array.prototype.slice.call(
+            logList.querySelectorAll(".task-log-plain-line, .task-log-row")
+        ).forEach(function (row) {
+            var message = row.querySelector(".task-log-message");
+            var text = message ? message.textContent : row.textContent;
+            var target = findLogTarget(text);
+            var legacyNodeId = inheritLegacyServiceLogs
+                ? findServiceLogStartNodeId(text)
+                : "";
+            var nodeId = row.dataset.logNodeId ||
+                legacyNodeId ||
+                (target && target.node_id != null ? String(target.node_id) : "");
+            if (target && target.ip) row.dataset.logHostIp = String(target.ip);
+            if (nodeId) {
+                currentNodeId = nodeId;
+                row.dataset.logNodeId = nodeId;
+            } else if (inheritLegacyServiceLogs && currentNodeId) {
+                row.dataset.logNodeId = currentNodeId;
+            }
+        });
+    }
+
     function renderLog(log) {
-        var formattedMessage = formatLogMessage(log.message);
+        var detail = document.getElementById("taskDetail");
+        var rawServiceLog = detail && detail.dataset.isServiceType === "true";
+        var formattedMessage = rawServiceLog ? String(log.message || "") : formatLogMessage(log.message);
         var logMode = document.getElementById("taskLogList").dataset.logMode;
         if (logMode === "plain-text") {
             var line = document.createElement("span");
             line.className = "task-log-plain-line log-level-" + (log.level || "info");
+            line.dataset.logNodeId = log.node_id == null ? "" : String(log.node_id);
+            line.dataset.logHostIp = findLogHostIp(formattedMessage);
             var timestamp = log.created_at ? window.formatUtc8DateTime(log.created_at) : "";
-            line.textContent = timestamp + " " + formattedMessage + "\n";
+            line.textContent = timestamp + " " + formattedMessage;
             return line;
         }
         var row = document.createElement("div");
@@ -548,21 +618,30 @@
             message.textContent = formatLogMessage(message.textContent);
             row.dataset.logHostIp = findLogHostIp(message.textContent);
         });
+        logList.querySelectorAll(".task-log-plain-line").forEach(function (line) {
+            line.dataset.logHostIp = findLogHostIp(line.textContent);
+        });
+        annotateTaskLogNodeIds(detail, logList);
 
         function applyLogHostFilter() {
             if (!isHostScopedLogTask || !logHostFilter) return;
             var selectedIp = logHostFilter.value;
-            var rows = Array.prototype.slice.call(logList.querySelectorAll(".task-log-row"));
+            var selectedOption = logHostFilter.options[logHostFilter.selectedIndex];
+            var selectedNodeId = selectedOption ? selectedOption.dataset.nodeId : "";
+            var rows = Array.prototype.slice.call(logList.querySelectorAll(".task-log-plain-line, .task-log-row"));
             var visibleCount = 0;
             rows.forEach(function (row) {
-                var visible = !selectedIp || row.dataset.logHostIp === selectedIp;
+                var rowNodeId = row.dataset.logNodeId || "";
+                var visible = !selectedIp || (selectedNodeId && rowNodeId
+                    ? rowNodeId === selectedNodeId
+                    : row.dataset.logHostIp === selectedIp);
                 row.hidden = !visible;
                 if (visible) visibleCount += 1;
             });
             var filterEmpty = logList.querySelector("[data-filter-empty]");
             if (!filterEmpty) {
-                filterEmpty = document.createElement("p");
-                filterEmpty.className = "small mb-0 task-log-filter-empty";
+                filterEmpty = document.createElement("span");
+                filterEmpty.className = "task-log-filter-empty";
                 filterEmpty.setAttribute("data-filter-empty", "");
                 filterEmpty.textContent = "所选主机暂无执行日志";
                 logList.appendChild(filterEmpty);
@@ -624,6 +703,7 @@
                     logList.appendChild(renderLog(log));
                     cursor = Math.max(cursor, Number(log.id) || 0);
                 });
+                annotateTaskLogNodeIds(detail, logList);
                 if (logHostFilter) applyLogHostFilter();
                 if (isHostScopedLogTask && (payload.logs || []).length) {
                     logList.scrollTop = logList.scrollHeight;
@@ -631,10 +711,7 @@
                 cursor = Math.max(cursor, Number(payload.next_log_id) || 0);
                 detail.setAttribute("data-log-cursor", String(cursor));
                 if (logCount && !logHostFilter) {
-                    var logSelector = logList.dataset.logMode === "plain-text"
-                        ? ".task-log-plain-line"
-                        : ".task-log-row";
-                    logCount.textContent = logList.querySelectorAll(logSelector).length + " 条";
+                    logCount.textContent = logList.querySelectorAll(".task-log-plain-line").length + " 条";
                 }
                 if (loadMoreLogs) {
                     loadMoreLogs.hidden = !payload.has_more_logs;

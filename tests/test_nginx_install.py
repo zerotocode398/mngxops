@@ -195,8 +195,8 @@ def test_install_batch_history_package_guard_and_path_sync(install_client, monke
     assert 'id="installNodePickerModal"' in center.text
     assert 'id="nodePageSize"' in center.text
     assert 'id="selectedNodeSummary"' in center.text
-    assert "nginx-install.js?v=243-1" in center.text
-    assert "nginx-install.css?v=243-1" in center.text
+    assert "nginx-install.js?v=255-1" in center.text
+    assert "nginx-install.css?v=255-2" in center.text
     assert "每行一项编译参数；反斜杠表示同一条命令续行。" not in center.text
     assert 'id="targetPrefix" value="/opt/app"' in center.text
     assert 'id="nginxUser" value="root"' in center.text
@@ -216,6 +216,11 @@ def test_install_batch_history_package_guard_and_path_sync(install_client, monke
     detail = client.get("/nginx-install/task/{}/log/".format(task_id))
     assert detail.status_code == 200, detail.text
     assert 'id="cancelInstallTask"' in detail.text
+    detail_toolbar = detail.text.split(
+        '<div class="d-flex flex-wrap gap-2 mb-3">', 1
+    )[1].split("</div>", 1)[0]
+    assert 'href="/tasks/"' not in detail_toolbar
+    assert "任务中心" not in detail_toolbar
 
     task_center_detail = client.get("/tasks/{}/".format(task_id))
     assert task_center_detail.status_code == 200, task_center_detail.text
@@ -227,9 +232,15 @@ def test_install_batch_history_package_guard_and_path_sync(install_client, monke
     assert progress.json()["tasks"][0]["task_id"] == task_id
     assert progress.json()["tasks"][0]["status"] == "pending"
 
-    history = client.get("/nginx-install/history/?status=running")
+    history = client.get(
+        "/nginx-install/history/?search=install-node%2C1.26.1&status=running&per_page=25"
+    )
     assert history.status_code == 200, history.text
     assert "install-node" in history.text
+    assert 'data-query-tags' in history.text
+    assert 'name="per_page" value="25"' in history.text
+    assert 'id="perPageSelect"' in history.text
+    assert "筛选" not in history.text
 
     with session_scope(app.state.database.session_factory) as session:
         assert _package_active_task_ids(session, package_id, "source") == [task_id]
@@ -401,9 +412,9 @@ def test_install_frontend_warns_for_non_root_privileged_listen_ports():
     assert "values.listen_port === 80" not in script
     assert "isPrivilegedListenPort(values.listen_port)" in script
     assert "buildPortRiskMessage(riskNodes, values.listen_port)" in script
-    assert 'true, "lg", "继续到确认页"' in script
+    assert 'true, "lg", "继续"' in script
     assert "riskConfirmed" not in script
-    assert "主机名 / IP" in script
+    assert "节点</th>" in script
     assert "SSH 用户</th>" in script
     assert "install-risk-node-wrap" in script
     assert '"/api/nginx-install/path-permissions"' in script

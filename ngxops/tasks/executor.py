@@ -16,7 +16,13 @@ from ngxops.audit.service import prepare_audit_session
 from ngxops.audit.service import write_audit_log
 from ngxops.logging_setup import log_context, log_exception
 from ngxops.database.session import session_scope
-from ngxops.tasks.models import ACTIVE_STATUSES, OPERATION_TYPES, Task, TaskLog
+from ngxops.tasks.models import (
+    ACTIVE_STATUSES,
+    OPERATION_TYPES,
+    NginxOperationLog,
+    Task,
+    TaskLog,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +56,45 @@ def _redact_text(value: str) -> str:
     """移除日志和结果文本中的凭证明文及私钥片段。"""
     redacted = _PRIVATE_KEY_BLOCK.sub("[已隐藏私钥]", value)
     return _SENSITIVE_ASSIGNMENT.sub(r"\1[已隐藏]", redacted)
+
+
+def append_nginx_operation_logs(
+    session_factory: sessionmaker,
+    task_id: int,
+    operation_type: str,
+    messages: Sequence[str],
+    level: str,
+    node_id: Optional[int] = None,
+) -> bool:
+    """将脱敏后的 Nginx 远程操作日志写入专用日志表。"""
+    if not messages:
+        return False
+    with session_scope(session_factory) as session:
+        with session.begin():
+            task_exists = session.scalar(
+                select(Task.id).where(
+                    Task.id == task_id,
+                    Task.operation_type == operation_type,
+                )
+            )
+            if task_exists is None:
+                return False
+            session.add_all(
+                NginxOperationLog(
+                    operation_type=operation_type,
+                    task_id=task_id,
+                    node_id=node_id,
+                    level=level,
+                    message=message,
+                )
+                for message in messages
+            )
+            session.execute(
+                update(Task)
+                .where(Task.id == task_id)
+                .values(updated_at=datetime.utcnow())
+            )
+    return True
 
 
 def _redact_value(value: Any, depth: int = 0) -> Any:
@@ -90,6 +135,7 @@ def _append_log_in_session(
     task_id: int,
     message: str,
     level: str = "info",
+    node_id: Optional[int] = None,
 ) -> bool:
     """仅在任务仍活跃时追加一条已脱敏日志。"""
     active = session.scalar(
@@ -101,7 +147,14 @@ def _append_log_in_session(
     if active is None:
         return False
     safe_message = _redact_text(str(message))[:MAX_LOG_LENGTH]
-    session.add(TaskLog(task_id=task_id, level=level, message=safe_message))
+    session.add(
+        TaskLog(
+            task_id=task_id,
+            node_id=node_id,
+            level=level,
+            message=safe_message,
+        )
+    )
     session.execute(
         update(Task).where(Task.id == task_id).values(updated_at=_now())
     )
@@ -259,14 +312,19 @@ class TaskContext:
                 )
                 return result.rowcount == 1
 
-    def append_log(self, message: str, level: str = "info") -> bool:
+    def append_log(
+        self,
+        message: str,
+        level: str = "info",
+        node_id: Optional[int] = None,
+    ) -> bool:
         """为活跃任务追加一条持久化且脱敏的日志。"""
         if level not in ("debug", "info", "warning", "error"):
             raise ValueError("任务日志级别无效")
         with session_scope(self._session_factory) as session:
             with session.begin():
                 return _append_log_in_session(
-                    session, self.task_id, message, level
+                    session, self.task_id, message, level, node_id
                 )
 
     def set_result_tree(self, result_tree: Any) -> bool:

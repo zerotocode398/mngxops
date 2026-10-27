@@ -348,26 +348,53 @@
         var taskId = config.dataset.taskId;
         var cursor = Number(config.dataset.logCursor || 0);
         var canCancel = config.dataset.canCancel === "true";
+        var logs = document.getElementById("uninstallTaskLogs");
+        var logFilter = document.getElementById("uninstallLogNodeFilter");
         var statusLabels = { pending: "等待执行", running: "执行中", success: "卸载成功", failed: "卸载失败", cancelled: "已取消" };
+
+        function applyLogFilter() {
+            if (!logFilter) return;
+            logs.querySelectorAll(".upgrade-log-line").forEach(function (line) {
+                line.hidden = !!logFilter.value && line.dataset.taskId !== logFilter.value;
+            });
+        }
+
+        function appendLog(entry) {
+            var empty = logs.querySelector("[data-empty-log]");
+            if (empty) empty.remove();
+            var line = document.createElement("div");
+            line.className = "upgrade-log-line log-" + (entry.level || "info");
+            line.dataset.taskId = entry.task_id == null ? "" : String(entry.task_id);
+            var time = document.createElement("time");
+            time.textContent = entry.created_at ? window.formatUtc8DateTime(entry.created_at) : "";
+            var message = document.createElement("span");
+            message.className = "upgrade-log-message";
+            message.textContent = entry.message || "";
+            line.append(time, message);
+            logs.appendChild(line);
+        }
+
+        if (logFilter) logFilter.addEventListener("change", applyLogFilter);
+        applyLogFilter();
 
         function poll() {
             requestJson(config.dataset.taskUrlPrefix + taskId + "?after_log_id=" + cursor).then(function (data) {
                 document.getElementById("uninstallTaskStatus").textContent = statusLabels[data.status] || data.status;
                 document.getElementById("uninstallTaskProgress").textContent = data.progress + "%";
                 document.getElementById("uninstallTaskDetail").textContent = data.detail;
-                document.getElementById("uninstallLogState").textContent = data.status === "pending" || data.status === "running" ? "实时更新中" : "执行完成";
-                var logs = document.getElementById("uninstallTaskLogs");
+                config.dataset.batchActive = data.batch_active ? "true" : "false";
                 data.logs.forEach(function (entry) {
-                    logs.textContent += "[" + (entry.created_at ? entry.created_at.slice(11, 19) : "") + "] " + entry.message + "\n";
+                    appendLog(entry);
                     cursor = Math.max(cursor, entry.id);
                 });
+                applyLogFilter();
+                var stillRunning = data.status === "pending" || data.status === "running" || data.batch_active;
+                document.getElementById("uninstallLogState").textContent = data.has_more_logs ? "正在载入剩余日志" : (stillRunning ? "实时更新中" : "执行完成");
                 logs.scrollTop = logs.scrollHeight;
                 if (data.result_tree) document.getElementById("uninstallTaskResult").textContent = JSON.stringify(data.result_tree, null, 2);
-                if (data.status === "pending" || data.status === "running") window.setTimeout(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
-                else {
-                    var cancel = document.getElementById("uninstallTaskCancel");
-                    if (cancel) cancel.remove();
-                }
+                if (stillRunning || data.has_more_logs) window.setTimeout(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
+                var cancel = document.getElementById("uninstallTaskCancel");
+                if (cancel && data.status !== "pending" && data.status !== "running") cancel.remove();
             }).catch(function () { window.setTimeout(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000); });
         }
 
@@ -383,6 +410,6 @@
                 }, false, "md", "确认取消");
             });
         }
-        if (document.getElementById("uninstallTaskStatus").textContent === "等待执行" || document.getElementById("uninstallTaskStatus").textContent === "执行中") poll();
+        if (config.dataset.batchActive === "true" || document.getElementById("uninstallTaskStatus").textContent === "等待执行" || document.getElementById("uninstallTaskStatus").textContent === "执行中") poll();
     }
 })();

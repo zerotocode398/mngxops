@@ -1,13 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Nginx 安装任务 {{ task.id }} - ngxops{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> Nginx 安装任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=255-2"><link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=258-1"><link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17">{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-wrap gap-2 mb-3">
     <a class="btn btn-outline-secondary btn-sm" href="/nginx-install/history/?search={{ run.batch_number|urlencode }}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回历史</a>
     <a class="btn btn-outline-primary btn-sm" href="/nginx-install/center/"><i class="bi bi-download me-1" aria-hidden="true"></i>安装中心</a>
-    <a class="btn btn-outline-secondary btn-sm" href="/tasks/"><i class="bi bi-list-task me-1" aria-hidden="true"></i>任务中心</a>
 </div>
 
 <section class="card mb-3" id="installTaskDetail" data-task-id="{{ task.id }}" data-task-status="{{ task.status }}">
@@ -40,10 +39,10 @@
 </section>
 
 <section class="card">
-    <div class="card-header d-flex justify-content-between align-items-center gap-2"><h2 class="h6 mb-0">完整执行日志</h2><span class="small text-muted" id="installLogState" aria-live="polite">{% if task.status in ["pending", "running"] %}实时更新中{% else %}执行已结束{% endif %}</span></div>
-    <div class="card-body"><div class="upgrade-log-output" id="installLogOutput" data-after-log-id="{{ logs[-1].id if logs else 0 }}" aria-live="polite">{% for log in logs %}<div class="upgrade-log-line log-{{ log.level }}"><time>{{ format_task_datetime(log.created_at) }}</time><span class="upgrade-log-message">{{ log.message }}</span></div>{% else %}<div class="upgrade-log-empty" data-empty-log>暂无日志</div>{% endfor %}</div></div>
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><h2 class="h6 mb-0">完整执行日志</h2><div class="d-flex align-items-center gap-2">{% if targets|length > 1 %}<label class="small text-muted mb-0" for="installLogNodeFilter">目标节点</label><select class="form-select form-select-sm task-log-filter-select" id="installLogNodeFilter"><option value="">全部节点</option>{% for target in targets %}<option value="{{ target.task_id }}">{{ target.hostname }}{% if target.ip %} ({{ target.ip }}){% endif %}</option>{% endfor %}</select>{% endif %}<span class="small text-muted" id="installLogState" aria-live="polite">{% if batch_active %}实时更新中{% else %}执行已结束{% endif %}</span></div></div>
+    <div class="card-body"><div class="upgrade-log-output" id="installLogOutput" data-after-log-id="{{ log_cursor }}" aria-live="polite">{% for log in logs %}<div class="upgrade-log-line log-{{ log.level }}" data-task-id="{{ log.task_id }}"><time>{{ format_task_datetime(log.created_at) }}</time><span class="upgrade-log-message">{{ log.message }}</span></div>{% else %}<div class="upgrade-log-empty" data-empty-log>暂无日志</div>{% endfor %}</div></div>
 </section>
-<div id="installTaskDetailData" data-task-id="{{ task.id }}" data-batch="{{ run.batch_number }}"></div>
+<div id="installTaskDetailData" data-task-id="{{ task.id }}" data-batch="{{ run.batch_number }}" data-batch-active="{{ 'true' if batch_active else 'false' }}"></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=255-1"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=258-2"></script>{% endblock %}

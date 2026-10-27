@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
+from ngxops.credentials.models import Credential
 from ngxops.database.session import get_session
 from ngxops.nginx_service.services import (
     ACTION_LABELS,
@@ -22,14 +23,15 @@ from ngxops.nginx_service.services import (
 from ngxops.nodes.models import Node, NodeGroup
 from ngxops.security.dependencies import require_permission
 from ngxops.settings.service import read_setting
-from ngxops.tasks.models import Task, TaskLog
+from ngxops.tasks.models import NginxOperationLog, Task, TaskLog
+from ngxops.tasks.presentation import format_task_datetime, format_task_datetime_iso
 from ngxops.ui import render_page
 
 
 router = APIRouter(tags=["nginx_service"])
 _BATCH_MAX_COUNT = 3
-_PAGE_SIZES = (10, 15, 30, 50)
-_DEFAULT_PAGE_SIZE = 15
+_PAGE_SIZES = (10, 25, 50, 100)
+_DEFAULT_PAGE_SIZE = 10
 _STATUS_LABELS = {
     "pending": "等待执行",
     "running": "执行中",
@@ -53,6 +55,7 @@ class ServiceNodeItem(BaseModel):
     hostname: str
     ip: str
     port: int
+    environment: str
     status: str
     locked: bool
     nginx_available: Optional[bool]
@@ -103,6 +106,7 @@ class ServiceTaskLogItem(BaseModel):
     """描述启停任务的一条增量日志。"""
 
     id: int
+    node_id: Optional[int] = None
     level: str
     message: str
     created_at: datetime
@@ -116,6 +120,8 @@ class ServiceTaskProgressResponse(BaseModel):
     status: Literal["pending", "running", "success", "failed", "cancelled"]
     progress: int
     detail: str
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
     action: str
     action_label: str
     batch_number: str
@@ -153,6 +159,7 @@ def _node_item(node: Node) -> ServiceNodeItem:
         hostname=node.hostname,
         ip=node.ip,
         port=node.port,
+        environment=node.environment,
         status=node.status,
         locked=node.is_locked,
         nginx_available=node.nginx_available,
@@ -169,7 +176,7 @@ def _history_query(search: str, status: str):
     """构造启停任务历史的状态和关键词查询。"""
     query = select(Task).where(Task.operation_type == "nginx_service_control")
     if status == "running":
-        query = query.where(Task.status.in__(("pending", "running")))
+        query = query.where(Task.status.in_(("pending", "running")))
     elif status in _STATUS_LABELS:
         query = query.where(Task.status == status)
     for term in _search_terms(search):
@@ -224,6 +231,59 @@ def _read_result_tree(value: Optional[str]) -> Any:
         return None
 
 
+def _legacy_service_log_node_ids(
+    session: Session, task: Task, logs: List[TaskLog]
+) -> dict:
+    """根据历史启停日志中的节点开始记录恢复日志归属。"""
+    if not logs:
+        return {}
+    result_tree = _read_result_tree(task.result_tree_json)
+    nodes = result_tree.get("nodes", []) if isinstance(result_tree, dict) else []
+
+    def started_node_id(message: str) -> Optional[int]:
+        """从节点开始日志中识别节点 ID。"""
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_id = node.get("node_id") or node.get("id")
+            identity = str(node.get("hostname") or node.get("ip") or "").strip()
+            ip = str(node.get("ip") or "").strip()
+            if not identity or node_id is None:
+                continue
+            if ip:
+                identity = "{} ({})".format(identity, ip)
+            if message.startswith(identity + " 开始 Nginx "):
+                try:
+                    return int(node_id)
+                except (TypeError, ValueError):
+                    continue
+        return None
+
+    first_log_id = min(log.id for log in logs)
+    previous_start = session.scalar(
+        select(TaskLog)
+        .where(
+            TaskLog.task_id == task.id,
+            TaskLog.id < first_log_id,
+            TaskLog.message.like("%开始 Nginx %"),
+        )
+        .order_by(TaskLog.id.desc())
+        .limit(1)
+    )
+    current_node_id = (
+        started_node_id(previous_start.message) if previous_start is not None else None
+    )
+    assignments = {}
+    for log in sorted(logs, key=lambda item: item.id):
+        explicit_node_id = getattr(log, "node_id", None)
+        if explicit_node_id is not None:
+            current_node_id = explicit_node_id
+        else:
+            current_node_id = started_node_id(log.message) or current_node_id
+        assignments[log.id] = explicit_node_id or current_node_id
+    return assignments
+
+
 @router.get("/nginx/service/", include_in_schema=False)
 def nginx_service_home(
     request: Request,
@@ -270,13 +330,18 @@ def nginx_service_history(
     search: str = Query("", max_length=300),
     status: str = Query("", max_length=20),
     page: int = Query(1, ge=1),
-    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=50),
+    per_page: int = Query(_DEFAULT_PAGE_SIZE, ge=1, le=100),
     user: User = Depends(require_permission("nginx_service", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
     """渲染支持搜索、状态筛选和分页的启停历史。"""
     result = _page_items(session, _history_query(search, status), page, per_page)
     tasks = result.pop("items")
+    for task in tasks:
+        task.created_at_display = format_task_datetime(
+            task.created_at, include_seconds=False
+        )
+        task.created_at_iso = format_task_datetime_iso(task.created_at)
     result.update(
         {
             "tasks": tasks,
@@ -315,15 +380,50 @@ def nginx_service_task_log(
     if task is None:
         raise HTTPException(status_code=404, detail="启停任务不存在")
     logs = session.scalars(
-        select(TaskLog).where(TaskLog.task_id == task.id).order_by(TaskLog.id.asc())
+        select(NginxOperationLog)
+        .where(
+            NginxOperationLog.operation_type == "nginx_service_control",
+            NginxOperationLog.task_id == task.id,
+        )
+        .order_by(NginxOperationLog.id.asc())
     ).all()
+    if not logs and task.status not in ("pending", "running"):
+        logs = session.scalars(
+            select(TaskLog)
+            .where(TaskLog.task_id == task.id)
+            .order_by(TaskLog.id.asc())
+        ).all()
+    legacy_log_node_ids = (
+        _legacy_service_log_node_ids(session, task, logs)
+        if logs and isinstance(logs[0], TaskLog)
+        else {}
+    )
     result_tree = _read_result_tree(task.result_tree_json)
     targets = []
     names = [part.strip() for part in task.target_hostnames.split(",") if part.strip()]
     ips = [part.strip() for part in task.target_ips.split(",") if part.strip()]
-    for index, hostname in enumerate(names):
+    result_nodes = result_tree.get("nodes", []) if isinstance(result_tree, dict) else []
+    for index in range(max(len(names), len(ips), len(result_nodes))):
+        result_node = (
+            result_nodes[index]
+            if index < len(result_nodes) and isinstance(result_nodes[index], dict)
+            else {}
+        )
+        hostname = (
+            names[index]
+            if index < len(names)
+            else str(result_node.get("hostname") or "")
+        )
         ip = ips[index] if index < len(ips) else ""
-        targets.append("{} ({})".format(hostname, ip) if ip else hostname)
+        ip = ip or str(result_node.get("ip") or "")
+        if hostname or ip:
+            targets.append(
+                {
+                    "id": result_node.get("id"),
+                    "hostname": hostname,
+                    "ip": ip,
+                }
+            )
     return render_page(
         request,
         "nginx_service/task_log.html",
@@ -338,14 +438,12 @@ def nginx_service_task_log(
                 "failed": "danger",
                 "cancelled": "secondary",
             }.get(task.status, "secondary"),
-            "can_view_task_center": user.is_superuser
-            or request.app.state.permission_checker(
-                session, user, "nginx_service", "operate"
-            ),
             "targets": targets,
             "result_tree": result_tree,
             "logs": logs,
+            "log_node_ids": legacy_log_node_ids,
             "log_cursor": max((entry.id for entry in logs), default=0),
+            "format_task_datetime": format_task_datetime,
         },
         user,
         session,
@@ -368,7 +466,13 @@ def list_service_nodes(
     query = (
         select(Node)
         .options(joinedload(Node.credential), joinedload(Node.groups))
-        .where(Node.is_deleted.is_(False))
+        .where(
+            Node.is_deleted.is_(False),
+            Node.is_locked.is_(False),
+            Node.status == "online",
+            Node.nginx_available.is_(True),
+            Node.credential.has(Credential.is_enabled.is_(True)),
+        )
         .order_by(Node.hostname.asc(), Node.id.asc())
     )
     for term in _search_terms(search):
@@ -380,7 +484,7 @@ def list_service_nodes(
                 Node.groups.any(NodeGroup.name.ilike(pattern)),
             )
         )
-    nodes = session.scalars(query.limit(500)).unique().all()
+    nodes = session.scalars(query).unique().all()
     total = int(session.scalar(select(func.count()).select_from(query.subquery())) or 0)
     return ServiceNodeListResponse(
         data=[_node_item(node) for node in nodes],
@@ -501,18 +605,42 @@ def get_service_task_progress(
     )
     if task is None:
         raise HTTPException(status_code=404, detail="启停任务不存在")
+    has_detail_logs = session.scalar(
+        select(func.count())
+        .select_from(NginxOperationLog)
+        .where(
+            NginxOperationLog.operation_type == "nginx_service_control",
+            NginxOperationLog.task_id == task_id,
+        )
+    )
+    log_model = (
+        NginxOperationLog
+        if has_detail_logs or task.status in ("pending", "running")
+        else TaskLog
+    )
+    log_query = select(log_model).where(
+        log_model.task_id == task_id, log_model.id > after_log_id
+    )
+    if log_model is NginxOperationLog:
+        log_query = log_query.where(
+            log_model.operation_type == "nginx_service_control"
+        )
     rows = session.scalars(
-        select(TaskLog)
-        .where(TaskLog.task_id == task_id, TaskLog.id > after_log_id)
-        .order_by(TaskLog.id.asc())
-        .limit(log_limit + 1)
+        log_query.order_by(log_model.id.asc()).limit(log_limit + 1)
     ).all()
     selected_logs = rows[:log_limit]
+    legacy_log_node_ids = (
+        _legacy_service_log_node_ids(session, task, selected_logs)
+        if log_model is TaskLog
+        else {}
+    )
     return ServiceTaskProgressResponse(
         task_id=task.id,
         status=task.status,
         progress=task.progress,
         detail=task.detail,
+        started_at=task.started_at,
+        finished_at=task.finished_at,
         action=task.target_configs,
         action_label=ACTION_LABELS.get(task.target_configs, task.target_configs),
         batch_number=task.source_batch,
@@ -520,6 +648,7 @@ def get_service_task_progress(
         logs=[
             ServiceTaskLogItem(
                 id=row.id,
+                node_id=row.node_id or legacy_log_node_ids.get(row.id),
                 level=row.level,
                 message=row.message,
                 created_at=row.created_at,

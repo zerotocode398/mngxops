@@ -1,6 +1,7 @@
 """执行 Nginx 启停批次并持久化节点级结果。"""
 
 import logging
+import json
 import shlex
 import threading
 from datetime import datetime
@@ -14,7 +15,12 @@ from ngxops.database.session import session_scope
 from ngxops.logging_setup import log_exception
 from ngxops.nodes.models import Node
 from ngxops.settings.service import read_setting
-from ngxops.tasks.executor import TaskCancelled, TaskContext, TaskOutcome
+from ngxops.tasks.executor import (
+    TaskCancelled,
+    TaskContext,
+    TaskOutcome,
+    append_nginx_operation_logs,
+)
 from ngxops.tasks.models import Task, TaskLog
 from ngxops.upgrade.services import _connect_target, _run_remote_command
 
@@ -29,6 +35,25 @@ ACTION_LABELS = {
 }
 _ACTIVE_SYSTEMD_STATES = frozenset(("active", "activating", "reloading"))
 _ENABLED_SYSTEMD_STATES = frozenset(("enabled", "enabled-runtime", "static"))
+
+
+class _NodeTaskContext:
+    """为单节点日志补充结构化节点归属。"""
+
+    def __init__(self, context: TaskContext, node_id: int) -> None:
+        """绑定原任务上下文和本轮节点 ID。"""
+        self._context = context
+        self._node_id = node_id
+
+    def append_log(self, message: str, level: str = "info") -> bool:
+        """以节点归属写入脱敏任务日志。"""
+        saved = self._context.append_log(message, level, node_id=self._node_id)
+        self._context.append_detail_log(message, level)
+        return saved
+
+    def __getattr__(self, name: str):
+        """将进度、取消和资源管理调用交给原任务上下文。"""
+        return getattr(self._context, name)
 
 
 def _next_batch_number(session, now: datetime) -> str:
@@ -76,6 +101,27 @@ def create_service_task(
                     target_configs=action,
                     subject_type="nginx_service_batch",
                     trigger_user_id=trigger_user_id,
+                    result_tree_json=json.dumps(
+                        {
+                            "summary": {
+                                "success": 0,
+                                "failed": 0,
+                                "total": len(node_ids),
+                            },
+                            "nodes": [
+                                {
+                                    "id": node_id,
+                                    "hostname": hostnames[index],
+                                    "ip": ips[index],
+                                    "status": "pending",
+                                    "message": "等待执行",
+                                }
+                                for index, node_id in enumerate(node_ids)
+                            ],
+                        },
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
                 )
                 session.add(task)
                 session.flush()
@@ -295,6 +341,18 @@ def _run_service_batch(
 
     for index, item in enumerate(nodes, start=1):
         context.check_cancelled()
+        node_context = _NodeTaskContext(context, int(item["id"]))
+        service_node_id = int(item["id"])
+        node_context.set_detail_log_sink(
+            lambda messages, level, node_id=service_node_id: append_nginx_operation_logs(
+                session_factory,
+                context.task_id,
+                "nginx_service_control",
+                messages,
+                level,
+                node_id,
+            )
+        )
         hostname = item["hostname"] or item["ip"]
         context.update_progress(
             min(98, int((index - 1) * 99 / max(total, 1))),
@@ -305,15 +363,17 @@ def _run_service_batch(
         item["status"] = "running"
         item["message"] = "正在执行 Nginx {}".format(action_label)
         context.set_result_tree(results)
-        context.append_log("{} ({}) 开始 Nginx {}".format(hostname, item["ip"], action_label))
+        node_context.append_log(
+            "{} ({}) 开始 Nginx {}".format(hostname, item["ip"], action_label)
+        )
         target, error = _load_target(session_factory, int(item["id"]), encryption_key)
         ok = False
         message = error
         if target is not None:
             client = None
             try:
-                client = _connect_target(target, context)
-                ok, message = _run_action(client, target, action, context)
+                client = _connect_target(target, node_context)
+                ok, message = _run_action(client, target, action, node_context)
             except TaskCancelled:
                 raise
             except Exception as exc:
@@ -339,7 +399,7 @@ def _run_service_batch(
             "total": total,
         }
         context.set_result_tree(results)
-        context.append_log(
+        node_context.append_log(
             "{} ({}) Nginx {}{}".format(
                 hostname,
                 item["ip"],

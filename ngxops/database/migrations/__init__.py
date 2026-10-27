@@ -30,6 +30,12 @@ from ngxops.database.migrations.v0016_source_package_identity import (
 from ngxops.database.migrations.v0017_nginx_upgrade_logs import (
     MIGRATION as NGINX_UPGRADE_LOGS,
 )
+from ngxops.database.migrations.v0018_task_log_node_scope import (
+    MIGRATION as TASK_LOG_NODE_SCOPE,
+)
+from ngxops.database.migrations.v0019_nginx_operation_logs import (
+    MIGRATION as NGINX_OPERATION_LOGS,
+)
 
 
 MIGRATIONS: Tuple[Migration, ...] = (
@@ -50,4 +56,6 @@ MIGRATIONS: Tuple[Migration, ...] = (
     SHARED_NGINX_INSTALL_PERMISSIONS,
     SOURCE_PACKAGE_IDENTITY,
     NGINX_UPGRADE_LOGS,
+    TASK_LOG_NODE_SCOPE,
+    NGINX_OPERATION_LOGS,
 )

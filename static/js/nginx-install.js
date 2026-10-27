@@ -1045,20 +1045,32 @@
         var terminal = ["success", "failed", "cancelled"];
         var state = document.getElementById("installLogState");
         var cancel = document.getElementById("cancelInstallTask");
+        var logFilter = document.getElementById("installLogNodeFilter");
         var timer = null;
+
+        function applyLogFilter() {
+            if (!logFilter) return;
+            logOutput.querySelectorAll(".upgrade-log-line").forEach(function (line) {
+                line.hidden = !!logFilter.value && line.dataset.taskId !== logFilter.value;
+            });
+        }
+
+        if (logFilter) logFilter.addEventListener("change", applyLogFilter);
 
         function poll() {
             Promise.all([
-                requestJson("/api/tasks/" + taskId + "?after_log_id=" + afterLogId),
+                requestJson("/api/tasks/" + taskId + "?log_view=install_full&after_log_id=" + afterLogId),
                 requestJson("/api/nginx-install/batches/" + encodeURIComponent(batch))
             ]).then(function (results) {
                 var task = results[0];
                 var batchTask = results[1].tasks.find(function (item) { return item.task_id === taskId; });
                 update(task, batchTask);
-                if (terminal.indexOf(task.status) >= 0) {
+                if (terminal.indexOf(task.status) >= 0 && !task.batch_active && !task.has_more_logs) {
                     if (timer) window.clearInterval(timer);
                     timer = null;
                     state.textContent = "任务已结束";
+                } else {
+                    state.textContent = task.has_more_logs ? "正在载入剩余日志" : "实时更新中";
                 }
             }).catch(function () {
                 state.textContent = "暂时无法读取最新状态，将自动重试";
@@ -1088,6 +1100,7 @@
                 if (empty) empty.remove();
                 var line = document.createElement("div");
                 line.className = "upgrade-log-line log-" + item.level;
+                line.dataset.taskId = item.task_id == null ? "" : String(item.task_id);
                 var time = document.createElement("time");
                 time.textContent = new Date(item.created_at).toLocaleString();
                 var message = document.createElement("span");
@@ -1100,6 +1113,7 @@
                 if (atBottom) logOutput.scrollTop = logOutput.scrollHeight;
             });
             afterLogId = task.next_log_id;
+            applyLogFilter();
         }
 
         if (cancel) {

@@ -14,7 +14,8 @@
          data-task-status="{{ task.status }}" data-task-progress="{{ task.progress }}"
          data-is-config-sync="{{ 'true' if is_config_sync_type else 'false' }}"
          data-is-release-type="{{ 'true' if is_release_type else 'false' }}"
-         data-is-upgrade-type="{{ 'true' if is_upgrade_type else 'false' }}">
+         data-is-upgrade-type="{{ 'true' if is_upgrade_type else 'false' }}"
+         data-is-service-type="{{ 'true' if is_service_type else 'false' }}">
     <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
         <h2 class="h6 mb-0"><i class="bi bi-card-text me-1" aria-hidden="true"></i>任务详情 #{{ task.id }}</h2>
         <div class="d-flex flex-wrap gap-2">
@@ -47,6 +48,7 @@
                 {% if task.source_batch %}
                     {% if is_upgrade_type %}{% if can_read_upgrade %}<a href="/upgrade/history/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener"><code class="task-batch-code">{{ task.source_batch }}</code></a>{% else %}<code class="task-batch-code">{{ task.source_batch }}</code>{% endif %}
                     {% elif is_install_type %}<a href="/nginx-install/task/{{ task.id }}/log/" target="_blank" rel="noopener"><code class="task-batch-code">{{ task.source_batch }}</code></a>
+                    {% elif is_service_type %}<a href="/nginx/service/history/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener"><code class="task-batch-code">{{ task.source_batch }}</code></a>
                     {% elif is_release_type %}<code class="task-batch-code">{{ task.source_batch }}</code>
                     {% else %}<a href="/tasks/?search={{ task.source_batch|urlencode }}"><code class="task-batch-code">{{ task.source_batch }}</code></a>{% endif %}
                 {% else %}<span>-</span>{% endif %}
@@ -122,19 +124,12 @@
                 <label class="small text-muted mb-0" for="taskLogHostFilter">目标主机</label>
                 <select class="form-select form-select-sm task-log-filter-select" id="taskLogHostFilter" aria-label="按主机筛选执行日志">
                     <option value="">全部主机</option>
-                    {% for target in log_target_map %}<option value="{{ target.ip }}">{{ target.hostname }} ({{ target.ip }})</option>{% endfor %}
+                    {% for target in log_target_map %}<option value="{{ target.ip }}" data-node-id="{{ target.node_id if target.node_id is not none else '' }}">{{ target.hostname }} ({{ target.ip }})</option>{% endfor %}
                 </select>
             </div>
             {% endif %}
-            {% if is_upgrade_type or is_install_type %}
-            <pre class="task-log-list task-log-list-terminal task-log-list-plain" id="taskLogList" data-log-mode="plain-text" aria-live="polite">{% for log in logs %}<span class="task-log-plain-line log-level-{{ log.level }}">{{ format_task_datetime(log.created_at) }} {{ format_task_log_message(log.message, log_target_map) }}
-</span>{% else %}<span class="task-log-plain-empty" data-empty-logs>暂无执行日志</span>{% endfor %}</pre>
-            {% else %}
-            <div class="task-log-list task-log-list-terminal" id="taskLogList" data-log-mode="rows" aria-live="polite">
-                {% for log in logs %}<div class="task-log-row log-level-{{ log.level }}"><time>{{ format_task_datetime(log.created_at) }}</time><span class="task-log-message">{{ format_task_log_message(log.message, log_target_map) }}</span></div>
-                {% else %}<p class="small text-muted mb-0" data-empty-logs>暂无执行日志</p>{% endfor %}
+            <div class="task-log-list task-log-list-terminal task-log-list-plain" id="taskLogList" data-log-mode="plain-text" aria-live="polite">{% for log in logs %}<span class="task-log-plain-line log-level-{{ log.level }}" data-log-node-id="{{ log.node_id if log.node_id is not none else '' }}">{{ format_task_datetime(log.created_at) }} {% if is_service_type %}{{ log.message }}{% else %}{{ format_task_log_message(log.message, log_target_map) }}{% endif %}</span>{% else %}<span class="task-log-plain-empty" data-empty-logs>暂无执行日志</span>{% endfor %}</div>
             </div>
-            {% endif %}
             <button class="btn btn-outline-secondary btn-sm mt-2" type="button" id="taskLoadMoreLogs"
                     data-has-more="{{ 'true' if has_more_logs else 'false' }}"{% if not has_more_logs %} hidden{% endif %}>
                 <i class="bi bi-arrow-down-circle me-1" aria-hidden="true"></i>加载更多日志
@@ -145,5 +140,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=9"></script>
+<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=11"></script>
 {% endblock %}
