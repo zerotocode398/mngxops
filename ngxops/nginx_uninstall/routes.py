@@ -261,6 +261,22 @@ def _search_terms(value: str) -> List[str]:
     return [term.strip()[:100] for term in re.split(r"[,，]", value or "") if term.strip()]
 
 
+def _operator_names(session: Session, runs: List[NginxUninstallRun]) -> dict:
+    """批量读取卸载任务的操作人名称。"""
+    user_ids = {
+        run.task.trigger_user_id
+        for run in runs
+        if run.task and run.task.trigger_user_id is not None
+    }
+    if not user_ids:
+        return {}
+    return dict(
+        session.execute(
+            select(User.id, User.username).where(User.id.in_(user_ids))
+        ).all()
+    )
+
+
 def _read_task(
     task_id: int,
     after_log_id: int,
@@ -342,6 +358,7 @@ def _read_task(
 @router.get("/nginx/uninstall/", include_in_schema=False)
 def nginx_uninstall_home(
     request: Request,
+    search: str = Query("", max_length=300),
     user: User = Depends(require_authenticated_user),
     session: Session = Depends(get_session),
 ) -> Response:
@@ -349,12 +366,27 @@ def nginx_uninstall_home(
     if not _has_permission(request, session, user, "read"):
         raise PermissionDenied("无访问权限", "当前账号没有查看 Nginx 卸载的权限。")
     since = func.datetime("now", "-7 days")
-    recent_runs = session.scalars(
+    recent_query = (
         select(NginxUninstallRun)
         .join(Task, Task.id == NginxUninstallRun.task_id)
+        .outerjoin(User, User.id == Task.trigger_user_id)
         .options(joinedload(NginxUninstallRun.task))
         .order_by(NginxUninstallRun.created_at.desc(), NginxUninstallRun.id.desc())
-        .limit(read_setting(session, "dashboard.recent_tasks_count", 20))
+    )
+    for term in _search_terms(search):
+        pattern = "%{}%".format(term)
+        recent_query = recent_query.where(
+            or_(
+                NginxUninstallRun.node_hostname.ilike(pattern),
+                NginxUninstallRun.node_ip.ilike(pattern),
+                NginxUninstallRun.batch_number.ilike(pattern),
+                NginxUninstallRun.resolved_prefix.ilike(pattern),
+                NginxUninstallRun.package_name.ilike(pattern),
+                User.username.ilike(pattern),
+            )
+        )
+    recent_runs = session.scalars(
+        recent_query.limit(read_setting(session, "dashboard.recent_tasks_count", 20))
     ).all()
     running_count = int(
         session.scalar(
@@ -377,14 +409,25 @@ def nginx_uninstall_home(
             )
         ) or 0
     )
+    total_count = int(
+        session.scalar(
+            select(func.count()).select_from(Task).where(
+                Task.operation_type == "nginx_uninstall"
+            )
+        )
+        or 0
+    )
     return render_page(
         request,
         "nginx_uninstall/index.html",
         {
             "recent_runs": recent_runs,
+            "operator_names": _operator_names(session, recent_runs),
+            "search": search,
             "running_count": running_count,
             "success_7d_count": success_count,
             "failed_7d_count": failed_count,
+            "total_count": total_count,
             "can_execute": _has_permission(request, session, user, "execute"),
         },
         user,
@@ -427,6 +470,7 @@ def nginx_uninstall_history(
     query = (
         select(NginxUninstallRun)
         .join(Task, Task.id == NginxUninstallRun.task_id)
+        .outerjoin(User, User.id == Task.trigger_user_id)
         .options(joinedload(NginxUninstallRun.task))
         .order_by(NginxUninstallRun.created_at.desc(), NginxUninstallRun.id.desc())
     )
@@ -443,6 +487,7 @@ def nginx_uninstall_history(
                 NginxUninstallRun.resolved_prefix.ilike(pattern),
                 NginxUninstallRun.package_name.ilike(pattern),
                 NginxUninstallRun.batch_number.ilike(pattern),
+                User.username.ilike(pattern),
             )
         )
     result = _page_context(query, session, page, per_page)
@@ -455,6 +500,7 @@ def nginx_uninstall_history(
     result.update(
         {
             "runs": runs,
+            "operator_names": _operator_names(session, runs),
             "search": search,
             "status_filter": status,
             "status_choices": [("", "全部状态"), ("running", "进行中")]
@@ -556,7 +602,11 @@ def list_uninstall_nodes(
     query = (
         select(Node)
         .options(joinedload(Node.credential), selectinload(Node.groups))
-        .where(Node.is_deleted.is_(False))
+        .where(
+            Node.is_deleted.is_(False),
+            Node.status == "online",
+            Node.nginx_available.is_(True),
+        )
         .order_by(Node.hostname.asc(), Node.id.asc())
     )
     term = search.strip()[:200]
@@ -643,7 +693,9 @@ def create_uninstall_tasks(
     session: Session = Depends(get_session),
 ) -> UninstallCreateResponse:
     """校验卸载目标和路径后创建异步任务。"""
-    batch_limit = read_setting(session, "node.batch_max_count", _BATCH_LIMIT)
+    batch_limit = max(
+        1, int(read_setting(session, "node.batch_max_count", _BATCH_LIMIT))
+    )
     if len(payload.nodes) > batch_limit:
         raise HTTPException(status_code=400, detail="单次最多选择 {} 台节点".format(batch_limit))
     session.rollback()

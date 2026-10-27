@@ -2,8 +2,8 @@
 
 ## 页面与权限
 
-- `/nginx-install/` 展示安装统计和最近任务；`/nginx-install/center/` 提供三步安装向导。
-- `/nginx-install/history/` 支持逗号分隔的节点、IP、版本、安装路径、批次关键词（词间 AND）和状态筛选，使用升级历史相同的查询标签和分页控件；`/nginx-install/task/{task_id}/log/` 聚合同批次逐节点的完整远程操作日志，支持按节点筛选，并展示参数快照、增量日志和任务状态，不提供任务中心跳转按钮。
+- `/nginx-install/` 展示安装统计和最近任务，任务表显示操作人；`/nginx-install/center/` 提供三步安装向导。
+- `/nginx-install/history/` 支持逗号分隔的节点、IP、版本、安装路径、批次、操作人关键词（词间 AND）和状态筛选，使用升级历史相同的查询标签和分页控件；`/nginx-install/task/{task_id}/log/` 聚合同批次逐节点的完整远程操作日志，支持按节点筛选，并展示参数快照、增量日志和任务状态，不提供任务中心跳转按钮。
 - 安装与升级共用 `upgrade.read/create/delete/execute` 权限：查看历史及下载包使用 `read`，上传源码/模块包使用 `create`，删除包使用 `delete`，安装或升级任务的执行与取消使用 `execute`。两个向导页面都允许 `read` 或 `execute` 进入；只读用户不能提交安装任务。安装页和 API 不再定义独立的 `nginx_install.*` 授权。
 - 任务批次与统一任务中心仍使用 `nginx_install` 操作类型，以区分具体工作流。`upgrade.execute` 可读取和取消本人安装任务；`upgrade.read` 可查看安装历史和全部安装批次。
 

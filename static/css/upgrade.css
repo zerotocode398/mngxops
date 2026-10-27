@@ -25,14 +25,15 @@
 .upgrade-overview-progress { width: 100%; min-width: 0; height: 6px; margin-bottom: 3px; }
 .upgrade-history-table-wrap { overflow-x: hidden; }
 .upgrade-history-table { width: 100%; table-layout: fixed; }
-.upgrade-history-col-node { width: 26%; }
-.upgrade-history-col-current-version { width: 10%; }
-.upgrade-history-col-target-version { width: 10%; }
-.upgrade-history-col-batch { width: 17%; }
-.upgrade-history-col-status { width: 9%; }
+.upgrade-history-col-node { width: 23%; }
+.upgrade-history-col-current-version { width: 9%; }
+.upgrade-history-col-target-version { width: 9%; }
+.upgrade-history-col-batch { width: 15%; }
+.upgrade-history-col-status { width: 8%; }
 .upgrade-history-col-progress { width: 7%; }
-.upgrade-history-col-time { width: 14%; }
-.upgrade-history-col-detail { width: 7%; }
+.upgrade-history-col-operator { width: 9%; }
+.upgrade-history-col-time { width: 12%; }
+.upgrade-history-col-detail { width: 8%; }
 .upgrade-history-table > :not(caption) > * > *:first-child { padding-left: 0.5rem; }
 .upgrade-history-table > :not(caption) > * > *:last-child { padding-right: 0.5rem; }
 .upgrade-history-node { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.2rem; min-width: 0; white-space: nowrap; }

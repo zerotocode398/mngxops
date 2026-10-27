@@ -53,7 +53,7 @@
                         var nginx = node.nginx_available === true ? '<span class="badge text-bg-success">可用</span>' : (node.nginx_available === false ? '<span class="badge text-bg-secondary">不可用</span>' : '<span class="badge text-bg-warning">未知</span>');
                         body.insertAdjacentHTML("beforeend", '<tr class="' + (disabled ? "text-muted" : "") + '"><td class="text-center"><input class="form-check-input uninstall-node-check" type="checkbox" value="' + node.id + '"' + checked + disabled + ' aria-label="选择 ' + escapeHtml(node.hostname) + '"></td><td><strong>' + escapeHtml(node.hostname) + '</strong><small class="d-block">' + escapeHtml(node.ip) + ':' + node.port + "</small>" + reason + '</td><td>' + groups + '</td><td>' + nginx + (node.nginx_version ? ' <code>' + escapeHtml(node.nginx_version) + "</code>" : "") + '</td><td><span class="badge text-bg-' + (node.status === "online" ? "success" : "secondary") + '">' + escapeHtml(node.status) + "</span></td></tr>");
                     });
-                    if (!data.nodes.length) body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">没有匹配的节点</td></tr>';
+                    if (!data.nodes.length) body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">没有匹配的 SSH 在线且已识别 Nginx 的节点</td></tr>';
                     updateSelectedCount();
                     updateSelectVisible();
                 })
@@ -112,8 +112,8 @@
                 (node.paths || []).forEach(function (path, index) {
                     var checked = path.checked ? " checked" : "";
                     var disabled = path.required || path.package_owned || path.key === "prefix" ? " disabled" : "";
-                    var input = path.key === "prefix" && path.editable
-                        ? '<input class="form-control form-control-sm uninstall-prefix-input" value="' + escapeHtml(path.path) + '" data-node="' + node.id + '" aria-label="' + escapeHtml(node.hostname) + ' prefix">'
+                    var input = path.key === "prefix"
+                        ? '<input class="form-control form-control-sm uninstall-prefix-input" value="' + escapeHtml(path.path) + '" data-node="' + node.id + '" aria-label="' + escapeHtml(node.hostname) + ' prefix" readonly>'
                         : '<input class="form-check-input uninstall-path-check" type="checkbox" data-node="' + node.id + '" data-path-index="' + index + '" data-key="' + escapeHtml(path.key) + '" data-path="' + escapeHtml(path.path) + '" data-kind="' + escapeHtml(path.kind) + '"' + checked + disabled + ' aria-label="选择删除路径 ' + escapeHtml(path.path) + '">';
                     var badge = path.package_owned ? '<span class="badge text-bg-info">包管理器处理</span>' : (path.required ? '<span class="badge text-bg-danger">必选</span>' : "");
                     if (["release_backup", "work_dir", "nginx_modules"].indexOf(path.key) >= 0) {

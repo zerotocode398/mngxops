@@ -993,6 +993,7 @@ def upgrade_history(
     query = (
         select(NginxUpgradeRun)
         .join(Task, Task.id == NginxUpgradeRun.task_id)
+        .outerjoin(User, User.id == Task.trigger_user_id)
         .options(joinedload(NginxUpgradeRun.task))
         .order_by(NginxUpgradeRun.created_at.desc(), NginxUpgradeRun.id.desc())
     )
@@ -1008,10 +1009,25 @@ def upgrade_history(
                 NginxUpgradeRun.target_version.ilike("%{}%".format(term)),
                 NginxUpgradeRun.current_version.ilike("%{}%".format(term)),
                 NginxUpgradeRun.batch_number.ilike("%{}%".format(term)),
+                User.username.ilike("%{}%".format(term)),
             )
         )
     result = _page_context(request, session, query, page, per_page)
     history_runs = result.pop("items")
+    user_ids = {
+        run.task.trigger_user_id
+        for run in history_runs
+        if run.task and run.task.trigger_user_id is not None
+    }
+    operator_names = (
+        dict(
+            session.execute(
+                select(User.id, User.username).where(User.id.in_(user_ids))
+            ).all()
+        )
+        if user_ids
+        else {}
+    )
     result.update(
         {
             "runs": [
@@ -1024,6 +1040,7 @@ def upgrade_history(
                 }
                 for run in history_runs
             ],
+            "operator_names": operator_names,
             "search": search,
             "status_filter": status,
             "status_choices": list(_STATUS_LABELS.items()),

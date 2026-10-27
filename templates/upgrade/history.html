@@ -11,7 +11,7 @@
     </div>
     <div class="card-body border-bottom">
         <form method="get" class="row g-2 align-items-center" data-query-submit-on-enter data-preserve-query-focus>
-            <div class="col-12 col-md-7"><label class="visually-hidden" for="upgradeSearch">搜索节点、IP、版本或批次</label><input class="form-control form-control-sm" id="upgradeSearch" name="search" data-query-tags value="{{ search }}" placeholder="搜索节点、IP、版本或批次"></div>
+            <div class="col-12 col-md-7"><label class="visually-hidden" for="upgradeSearch">搜索节点、IP、版本、批次或操作人</label><input class="form-control form-control-sm" id="upgradeSearch" name="search" data-query-tags value="{{ search }}" placeholder="搜索节点、IP、版本、批次或操作人"></div>
             <div class="col-8 col-md-3"><label class="visually-hidden" for="upgradeStatus">升级状态</label><select class="form-select form-select-sm" id="upgradeStatus" name="status" onchange="this.form.requestSubmit()"><option value="">全部状态</option>{% for value, label in status_choices %}<option value="{{ value }}"{% if status_filter == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
             {% if search or status_filter %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/upgrade/history/?per_page={{ pagination.per_page }}" title="清空查询条件" aria-label="清空查询条件"><i class="bi bi-x-lg" aria-hidden="true"></i></a></div>{% endif %}
@@ -26,10 +26,11 @@
                 <col class="upgrade-history-col-batch">
                 <col class="upgrade-history-col-status">
                 <col class="upgrade-history-col-progress">
+                <col class="upgrade-history-col-operator">
                 <col class="upgrade-history-col-time">
                 <col class="upgrade-history-col-detail">
             </colgroup>
-            <thead class="table-light"><tr><th class="upgrade-history-col-node">目标节点</th><th class="upgrade-history-col-current-version">当前版本</th><th class="upgrade-history-col-target-version">目标版本</th><th class="upgrade-history-col-batch">批次</th><th class="upgrade-history-col-status">状态</th><th class="upgrade-history-col-progress">进度</th><th class="upgrade-history-col-time">创建时间</th><th class="upgrade-history-col-detail text-end">详情</th></tr></thead>
+            <thead class="table-light"><tr><th class="upgrade-history-col-node">目标节点</th><th class="upgrade-history-col-current-version">当前版本</th><th class="upgrade-history-col-target-version">目标版本</th><th class="upgrade-history-col-batch">批次</th><th class="upgrade-history-col-status">状态</th><th class="upgrade-history-col-progress">进度</th><th>操作人</th><th class="upgrade-history-col-time">创建时间</th><th class="upgrade-history-col-detail text-end">详情</th></tr></thead>
             <tbody>
             {% for row in runs %}
                 {% set run = row.run %}
@@ -41,10 +42,11 @@
                     <td><code class="upgrade-history-batch" title="{{ run.batch_number }}">{{ run.batch_number }}</code>{% if run.rolled_back_at %}<small class="text-warning-emphasis d-block">已回滚 · {{ run.rolled_back_at.strftime("%Y-%m-%d %H:%M") }}</small>{% endif %}</td>
                     <td><span class="badge text-bg-{{ 'success' if task.status == 'success' else ('danger' if task.status == 'failed' else ('info' if task.status == 'running' else 'secondary')) }}">{{ {"pending":"等待执行","running":"执行中","success":"升级成功","failed":"升级失败","cancelled":"已取消"}.get(task.status, task.status) }}</span></td>
                     <td><div class="progress upgrade-history-progress"><div class="progress-bar" style="width:{{ task.progress }}%"></div></div><small>{{ task.progress }}%</small></td>
+                    <td class="text-truncate" title="{{ operator_names.get(task.trigger_user_id, '-') }}">{{ operator_names.get(task.trigger_user_id, "-") }}</td>
                     <td><time datetime="{{ row.created_at_iso }}">{{ row.created_at_display }}</time></td>
                     <td class="text-end"><a class="btn btn-outline-primary btn-sm" href="/upgrade/tasks/{{ task.id }}/" title="查看任务详情" aria-label="查看任务详情"><i class="bi bi-file-text" aria-hidden="true"></i></a></td>
                 </tr>
-            {% else %}<tr><td colspan="8">{% set message = "暂无升级记录" %}{% include "includes/empty_state.html" %}</td></tr>{% endfor %}
+            {% else %}<tr><td colspan="9">{% set message = "暂无升级记录" %}{% include "includes/empty_state.html" %}</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>

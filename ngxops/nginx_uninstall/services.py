@@ -61,6 +61,24 @@ _FORBIDDEN_PATHS = frozenset(
 _PACKAGE_NAME = re.compile(r"^[A-Za-z0-9._+-]+$")
 _PATH_KEY = re.compile(r"^--[A-Za-z0-9-]*-path$")
 _TERMINAL = ("success", "failed", "cancelled")
+_NGINX_PREFIX_CHILDREN = frozenset(
+    (
+        "CHANGES",
+        "LICENSE",
+        "README",
+        "conf",
+        "html",
+        "logs",
+        "man",
+        "modules",
+        "sbin",
+        "client_body_temp",
+        "fastcgi_temp",
+        "proxy_temp",
+        "scgi_temp",
+        "uwsgi_temp",
+    )
+)
 
 
 def normalize_remote_path(value: str) -> str:
@@ -252,8 +270,7 @@ def _package_origin(client, binary: str, context: Optional[TaskContext] = None) 
 def _configure_paths(output: str, prefix_fallback: str) -> Tuple[str, List[dict]]:
     """解析 nginx -V 的 prefix 和可选绝对路径。"""
     parsed = parse_nginx_v_output(output or "")
-    paths = []
-    seen = set()
+    parameters = []
     prefix = ""
     for token in parsed.get("params", []):
         if not isinstance(token, str) or "=" not in token:
@@ -263,45 +280,88 @@ def _configure_paths(output: str, prefix_fallback: str) -> Tuple[str, List[dict]
         path = normalize_remote_path(raw_path.strip().strip("'\""))
         if not path or (key != "--prefix" and not _PATH_KEY.fullmatch(key)):
             continue
-        required = key == "--prefix"
-        path = path if required else resolve_nginx_tree_path(path)
+        if key == "--prefix":
+            prefix = path
+        parameters.append((key, path))
+    if not prefix and parsed.get("configure_opts"):
+        prefix = normalize_remote_path(parsed.get("prefix", ""))
+    prefix = prefix or normalize_remote_path(prefix_fallback)
+
+    paths = []
+    seen = set()
+    if prefix:
+        paths.append(
+            {
+                "key": "prefix",
+                "label": "--prefix",
+                "path": prefix,
+                "kind": "dir",
+                "required": True,
+                "checked": True,
+                "editable": False,
+            }
+        )
+        seen.add(prefix)
+    for key, raw_path in parameters:
+        if key == "--prefix":
+            continue
+        path = raw_path
+        if not (prefix and path.startswith(prefix.rstrip("/") + "/")):
+            path = resolve_nginx_tree_path(path)
         if path in seen:
             continue
         seen.add(path)
-        if required:
-            prefix = path
         paths.append(
             {
-                "key": "prefix" if required else key,
-                "label": "--prefix" if required else key,
+                "key": key,
+                "label": key,
                 "path": path,
-                "kind": "dir" if required or not is_file_like_path(path) else "file",
-                "required": required,
-                "checked": required or key in ("--sbin-path", "--modules-path", "--conf-path", "--pid-path"),
-                "editable": required,
+                "kind": "file" if is_file_like_path(path) else "dir",
+                "required": False,
+                "checked": key in ("--sbin-path", "--modules-path", "--conf-path", "--pid-path"),
+                "editable": False,
             }
         )
-    if not prefix:
-        parsed_prefix = (
-            normalize_remote_path(parsed.get("prefix", ""))
-            if parsed.get("configure_opts")
-            else ""
-        )
-        prefix = parsed_prefix or prefix_fallback
-        if prefix:
-            paths.insert(
-                0,
-                {
-                    "key": "prefix",
-                    "label": "--prefix",
-                    "path": prefix,
-                    "kind": "dir",
-                    "required": True,
-                    "checked": True,
-                    "editable": True,
-                },
-            )
     return prefix, paths
+
+
+def _assert_nginx_prefix_contents(client, prefix: str, paths: List[dict], context: TaskContext) -> None:
+    """拒绝递归删除包含未识别应用内容的源码安装目录。"""
+    normalized = normalize_remote_path(prefix)
+    if is_dangerous_path(normalized):
+        raise ValueError("禁止删除路径：{}".format(prefix))
+    quoted = shlex.quote(normalized)
+    exists, _ = _run_command(client, "test -e {}".format(quoted), context)
+    if exists != 0:
+        return
+    is_directory, _ = _run_command(client, "test -d {}".format(quoted), context)
+    if is_directory != 0:
+        raise ValueError("Nginx prefix 不是目录，已阻止删除：{}".format(normalized))
+    status, output = _run_command(
+        client,
+        "find {} -mindepth 1 -maxdepth 1 -print".format(quoted),
+        context,
+    )
+    if status != 0:
+        raise ValueError("无法检查 Nginx prefix 内容，已阻止删除：{}".format(normalized))
+    allowed = set(_NGINX_PREFIX_CHILDREN)
+    for item in paths:
+        path = normalize_remote_path(item.get("path", ""))
+        if path.startswith(normalized.rstrip("/") + "/"):
+            allowed.add(path[len(normalized.rstrip("/")) + 1 :].split("/", 1)[0])
+    foreign = []
+    for entry in output.splitlines():
+        candidate = entry.rstrip("/")
+        if not candidate.startswith(normalized.rstrip("/") + "/"):
+            raise ValueError("远程目录检查返回了无效路径，已阻止删除")
+        name = candidate[len(normalized.rstrip("/")) + 1 :]
+        if name not in allowed:
+            foreign.append(name)
+    if foreign:
+        summary = ", ".join(foreign[:5])
+        raise ValueError(
+            "Nginx prefix 含有未识别内容（{}），已阻止递归删除".format(summary)
+        )
 
 
 def _systemd_info(client, context: Optional[TaskContext] = None) -> dict:
@@ -833,6 +893,14 @@ def _run_uninstall(
             raise ValueError("安装来源与预览结果不同，请重新预览后再执行")
         if snapshot["origin"] == "package" and inspected["package"]["package"] != snapshot["package"]:
             raise ValueError("软件包归属已变化，请重新预览后再执行")
+        if snapshot["origin"] == "source":
+            if not inspected["nginx_v_ok"]:
+                raise ValueError("无法读取当前 nginx -V 编译参数，已阻止删除")
+            if normalize_remote_path(snapshot["prefix"]) != inspected["prefix"]:
+                raise ValueError("Nginx prefix 与预览结果不同，请重新预览后再执行")
+            _assert_nginx_prefix_contents(
+                client, inspected["prefix"], inspected["paths"], context
+            )
         if inspected["running"]:
             if not options.get("stop_if_running", True):
                 raise ValueError("Nginx 仍在运行，请确认先停止服务后再卸载")
@@ -974,6 +1042,7 @@ def _inspect_client(client, target: dict, context: Optional[TaskContext] = None)
     fallback = normalize_remote_path(target.get("resolved_prefix", ""))
     binary = target["nginx_path"] or "nginx"
     status, output = _run_command(client, "{} -V 2>&1".format(shlex.quote(binary)), context)
+    parsed = parse_nginx_v_output(output or "")
     prefix, paths = _configure_paths(output if status == 0 else "", fallback)
     package = _package_origin(client, binary, context)
     systemd = _systemd_info(client, context)
@@ -982,7 +1051,15 @@ def _inspect_client(client, target: dict, context: Optional[TaskContext] = None)
     else:
         run_status, _ = _run_command(client, "pgrep -x nginx >/dev/null 2>&1", context)
         running = run_status == 0
-    return {"prefix": prefix, "paths": paths, "package": package, "systemd": systemd, "running": running}
+    return {
+        "prefix": prefix,
+        "paths": paths,
+        "package": package,
+        "systemd": systemd,
+        "running": running,
+        "nginx_v_ok": status == 0,
+        "configure_opts": parsed.get("configure_opts", ""),
+    }
 
 
 def create_uninstall_runner(session_factory, encryption_key: bytes, task_id: int):

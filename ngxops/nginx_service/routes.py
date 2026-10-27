@@ -174,7 +174,11 @@ def _node_item(node: Node) -> ServiceNodeItem:
 
 def _history_query(search: str, status: str):
     """构造启停任务历史的状态和关键词查询。"""
-    query = select(Task).where(Task.operation_type == "nginx_service_control")
+    query = (
+        select(Task)
+        .outerjoin(User, User.id == Task.trigger_user_id)
+        .where(Task.operation_type == "nginx_service_control")
+    )
     if status == "running":
         query = query.where(Task.status.in_(("pending", "running")))
     elif status in _STATUS_LABELS:
@@ -188,6 +192,7 @@ def _history_query(search: str, status: str):
                 Task.target_configs.ilike(pattern),
                 Task.detail.ilike(pattern),
                 Task.source_batch.ilike(pattern),
+                User.username.ilike(pattern),
             )
         )
     return query
@@ -507,7 +512,9 @@ def execute_service_action(
     session: Session = Depends(get_session),
 ) -> ServiceExecuteResponse:
     """校验目标节点后异步创建启停任务。"""
-    batch_limit = read_setting(session, "node.batch_max_count", _BATCH_MAX_COUNT)
+    batch_limit = max(
+        1, int(read_setting(session, "node.batch_max_count", _BATCH_MAX_COUNT))
+    )
     if len(payload.node_ids) > batch_limit:
         raise HTTPException(status_code=400, detail="单次最多选择 {} 台节点".format(batch_limit))
     if len(set(payload.node_ids)) != len(payload.node_ids):

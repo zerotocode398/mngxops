@@ -806,3 +806,14 @@ Nginx 重启 · 49%
 
 ```
 276. **已完成**：启停详情摘要（批次号、动作、目标节点、时间和执行摘要）沿用全局正文 `var(--fs-base)`，并继承升级详情相同的代码、小字及展开按钮字号；目标节点默认显示前 3 台，超出部分通过“展开详情/收起详情”按钮切换显示，并同步维护 `aria-expanded` 和箭头图标。详情页 CSS/JS 缓存版本更新至 `276-2`。实现：`templates/nginx_service/task_log.html`、`static/css/nginx-service.css`、`static/js/nginx-service.js`、`tests/test_nginx_service.py`。验证：此前 `tests/test_nginx_service.py` 为 5 passed，`node --check static/js/nginx-service.js` 通过；本次仅调整字号及缓存版本，未重跑测试。
+277. **已完成**：卸载首页使用与安装/升级/启停一致的统计卡片和最近任务布局，最近任务表补充操作人及节点、IP、批次搜索，“查看全部”进入历史页。实现：卸载首页模板和专用样式，保留 dashboard 公共样式。
+278. **已完成**：卸载最近任务与历史按逗号分隔关键词 AND 搜索节点、IP、批次和操作人；历史页补充操作人列，首页入口文案统一为“查看全部”。
+279. **已完成**：安装首页最近任务增加操作人；安装、升级、启停、卸载历史查询均支持操作人用户名。更新对应路由查询、模板及管理文档。
+280. **已完成**：卸载节点选择默认仅返回 SSH 在线且 Nginx 已识别的活动节点。源码卸载使用执行时读取的 `nginx -V` 参数；prefix 改为只读并在执行前复核，参数路径保留 prefix 内的目录层级，父路径选择自动勾选子路径。递归删除前检查 prefix 直接子项，只允许常见 Nginx 安装目录和编译参数声明的子路径；发现未识别项或检查失败时拒绝删除。实现：`ngxops/nginx_uninstall/{routes.py,services.py}`、`static/js/nginx-uninstall.js`、`templates/nginx_uninstall/`。验证：相关 pytest 共 36 passed；Python `compileall`、卸载脚本 `node --check` 及 `git diff --check` 通过。未连接真实 SSH 主机或进行浏览器视觉验证。
+281. Nginx 启停，右上角的“历史”删掉。
+282. Nginx 卸载，打开卸载中心文案调整为开始卸载。
+283. Nginx 卸载，首页最近卸载任务不需要查询框。
+284. Nginx 卸载，1.选择节点、探测路径、确认卸载 这个文案可以删了，卸载可以不需要引导标题，而是一步一步操作自主引导即可。
+285. Nginx 卸载，选择目标节点，参考 Nginx 升级进行调整。
+286. Nginx 卸载，“已选 0 台 / 上限 3”文案删掉，同时也受限于“系统设置批量操作最大节点数”。
+287. Nginx 卸载，“安装来源与删除路径” 报错“远程预览失败（KeyError）远程预览失败（KeyError）”。

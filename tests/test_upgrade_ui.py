@@ -964,6 +964,10 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     assert 'data-query-tags' in history.text
     assert 'id="upgradeStatus"' in history.text
     assert "筛选</button>" not in history.text
+    operator_history = client.get("/upgrade/history/?search=upgrade-admin")
+    assert operator_history.status_code == 200
+    assert "edge-prod" in operator_history.text
+    assert "upgrade-admin" in operator_history.text
 
     center = client.get("/upgrade/center/")
     assert center.status_code == 200

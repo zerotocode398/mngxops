@@ -6,15 +6,16 @@
 .install-overview-stats .dashboard-stat-card { min-height: 82px; }
 .install-overview-recent { min-width: 0; overflow: hidden; }
 .install-overview-table { overflow-x: auto; }
-.install-overview-table table { width: 100%; min-width: 940px; table-layout: fixed; }
-.install-overview-table th:nth-child(1) { width: 15%; }
-.install-overview-table th:nth-child(2) { width: 18%; }
-.install-overview-table th:nth-child(3) { width: 9%; }
-.install-overview-table th:nth-child(4) { width: 20%; }
-.install-overview-table th:nth-child(5) { width: 11%; }
-.install-overview-table th:nth-child(6) { width: 10%; }
+.install-overview-table table { width: 100%; min-width: 1020px; table-layout: fixed; }
+.install-overview-table th:nth-child(1) { width: 13%; }
+.install-overview-table th:nth-child(2) { width: 16%; }
+.install-overview-table th:nth-child(3) { width: 8%; }
+.install-overview-table th:nth-child(4) { width: 18%; }
+.install-overview-table th:nth-child(5) { width: 10%; }
+.install-overview-table th:nth-child(6) { width: 9%; }
 .install-overview-table th:nth-child(7) { width: 10%; }
-.install-overview-table th:nth-child(8) { width: 7%; }
+.install-overview-table th:nth-child(8) { width: 9%; }
+.install-overview-table th:nth-child(9) { width: 7%; }
 .install-overview-batch, .install-overview-value { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .install-overview-node { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.2rem; min-width: 0; white-space: nowrap; }
 .install-overview-node-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

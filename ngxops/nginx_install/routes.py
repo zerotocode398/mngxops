@@ -318,6 +318,20 @@ def nginx_install_home(
         recent_query = recent_query.where(Task.trigger_user_id == user.id)
     recent_limit = read_setting(session, "dashboard.recent_tasks_count", 20)
     recent_runs = session.scalars(recent_query.limit(recent_limit)).all()
+    recent_user_ids = {
+        run.task.trigger_user_id
+        for run in recent_runs
+        if run.task and run.task.trigger_user_id is not None
+    }
+    recent_operator_names = (
+        dict(
+            session.execute(
+                select(User.id, User.username).where(User.id.in_(recent_user_ids))
+            ).all()
+        )
+        if recent_user_ids
+        else {}
+    )
     running_query = select(func.count()).select_from(Task).where(
         Task.operation_type == "nginx_install",
         Task.status.in_(("pending", "running")),
@@ -340,6 +354,7 @@ def nginx_install_home(
         "running_count": int(session.scalar(running_query) or 0),
         "failed_7d_count": int(session.scalar(failed_query) or 0),
         "recent_runs": recent_runs,
+        "operator_names": recent_operator_names,
         "can_execute": can_execute,
         "can_read": can_read,
     }
@@ -454,6 +469,7 @@ def nginx_install_history(
     query = (
         select(NginxInstallRun)
         .join(Task, Task.id == NginxInstallRun.task_id)
+        .outerjoin(User, User.id == Task.trigger_user_id)
         .options(joinedload(NginxInstallRun.task))
         .order_by(NginxInstallRun.created_at.desc(), NginxInstallRun.id.desc())
     )
@@ -470,6 +486,7 @@ def nginx_install_history(
                 NginxInstallRun.target_version.ilike(pattern),
                 NginxInstallRun.target_prefix.ilike(pattern),
                 NginxInstallRun.batch_number.ilike(pattern),
+                User.username.ilike(pattern),
             )
         )
     result = _page_context(query, session, page, per_page)

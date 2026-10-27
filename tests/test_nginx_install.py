@@ -184,6 +184,8 @@ def test_install_batch_history_package_guard_and_path_sync(install_client, monke
 
     home = client.get("/nginx-install/")
     assert home.status_code == 200, home.text
+    assert "操作人" in home.text
+    assert "install-admin" in home.text
     center = client.get("/nginx-install/center/")
     assert center.status_code == 200, center.text
     assert '"nginx_available": true' in center.text
@@ -241,6 +243,9 @@ def test_install_batch_history_package_guard_and_path_sync(install_client, monke
     assert 'name="per_page" value="25"' in history.text
     assert 'id="perPageSelect"' in history.text
     assert "筛选" not in history.text
+    operator_history = client.get("/nginx-install/history/?search=install-admin")
+    assert operator_history.status_code == 200
+    assert "install-node" in operator_history.text
 
     with session_scope(app.state.database.session_factory) as session:
         assert _package_active_task_ids(session, package_id, "source") == [task_id]

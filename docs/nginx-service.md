@@ -3,7 +3,7 @@
 ## 页面与权限
 
 - `/nginx/service/` 提供节点选择、start/stop/reload/restart、最近任务和真实执行进度；新任务通过全局进度通知显示状态，并可直接打开完整日志。
-- `/nginx/service/history/` 支持逗号分隔的主机名、IP、动作、批次关键词（词间 AND）、任务状态筛选和公共分页控件，创建时间按 UTC+8 显示。
+- `/nginx/service/history/` 支持逗号分隔的主机名、IP、动作、批次、操作人关键词（词间 AND）、任务状态筛选和公共分页控件，创建时间按 UTC+8 显示。
 - `/nginx/service/task/{task_id}/log/` 展示批次目标、逐节点结果、完整执行日志和多节点日志筛选；不提供任务中心跳转。
 - 页面、选择器、历史和日志需要 `nginx_service.read`；创建批次需要 `nginx_service.operate`。
 - 选择器沿用升级页的搜索标签、节点表格、分页和每页数量布局，默认只返回 SSH 在线、凭证启用、Nginx 已识别且未锁定的节点。批量上限由 `node.batch_max_count` 控制，默认 3；页面选择上限和后端校验一致。

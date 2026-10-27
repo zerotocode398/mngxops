@@ -255,6 +255,10 @@ def test_service_selector_batch_limit_and_node_scoped_task_logs(service_client):
     assert 'id="perPageSelect"' in history.text
     assert "筛选" not in history.text
     assert "2026-" in history.text
+    operator_history = client.get("/nginx/service/history/?search=service-admin")
+    assert operator_history.status_code == 200
+    assert created.json()["batch_number"] in operator_history.text
+    assert "service-admin" in operator_history.text
 
 
 def test_service_terminal_detail_initializes_node_log_filter():
