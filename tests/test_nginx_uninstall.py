@@ -16,6 +16,7 @@ from ngxops.credentials.models import Credential
 from ngxops.database.migration_runner import upgrade_database
 from ngxops.database.session import session_scope
 from ngxops.nginx_uninstall.models import NginxUninstallRun
+from ngxops.settings.models import SystemSetting
 from ngxops.nodes.models import Node
 from ngxops.tasks.models import Task
 
@@ -166,6 +167,39 @@ def test_uninstall_systemd_probe_checks_nginx_service_once(monkeypatch):
     ]
 
 
+@pytest.mark.parametrize(
+    "rpm_result, dpkg_result, expected",
+    [
+        ((0, "nginx\n"), (1, ""), ("package", "rpm", "nginx")),
+        ((1, ""), (0, "nginx: /usr/sbin/nginx\n"), ("package", "deb", "nginx")),
+        ((1, ""), (1, ""), ("source", "", "")),
+    ],
+)
+def test_package_origin_uses_nginx_binary_for_detection(
+    monkeypatch, rpm_result, dpkg_result, expected
+):
+    """验证二进制路径可识别 RPM、DPKG 归属或源码安装。"""
+    from ngxops.nginx_uninstall import services
+
+    commands = []
+
+    def run_command(_client, command, context=None, timeout=45):
+        """记录包归属查询并返回预设结果。"""
+        commands.append(command)
+        if command.startswith("rpm -qf"):
+            return rpm_result
+        if command.startswith("dpkg -S"):
+            return dpkg_result
+        raise AssertionError("收到意外查询命令：{}".format(command))
+
+    monkeypatch.setattr(services, "_run_command", run_command)
+    result = services._package_origin(object(), "/usr/sbin/nginx")
+
+    assert commands[0] == "rpm -qf --queryformat '%{NAME}' /usr/sbin/nginx 2>/dev/null"
+    assert result["binary"] == "/usr/sbin/nginx"
+    assert (result["origin"], result["manager"], result["package"]) == expected
+
+
 def test_uninstall_home_history_search_and_default_node_filter(uninstall_client):
     """验证卸载页面按操作人搜索并默认仅列在线且识别 Nginx 的节点。"""
     client, _app = uninstall_client
@@ -186,6 +220,113 @@ def test_uninstall_home_history_search_and_default_node_filter(uninstall_client)
     nodes = client.get("/api/nginx/uninstall/nodes")
     assert nodes.status_code == 200, nodes.text
     assert [item["hostname"] for item in nodes.json()["nodes"]] == ["nginx-live"]
+
+
+def test_uninstall_home_and_center_follow_compact_lifecycle_layout(uninstall_client):
+    """验证卸载首页简化操作入口，中心使用升级风格的节点选择器。"""
+    client, app = uninstall_client
+
+    home = client.get("/nginx/uninstall/?search=does-not-match")
+    assert home.status_code == 200, home.text
+    assert "开始卸载" in home.text
+    assert "UN-261027-0001" in home.text
+    assert "uninstallRecentSearch" not in home.text
+
+    center = client.get("/nginx/uninstall/center/")
+    assert center.status_code == 200, center.text
+    assert 'data-max-count="3"' in center.text
+    assert 'id="uninstallNodePickerModal"' in center.text
+    assert 'id="uninstallNodePageSize"' in center.text
+    assert 'data-query-tags' in center.text
+    assert "已选 0 台 / 上限 3" not in center.text
+    assert "1. 选择节点" not in center.text
+    assert "nginx-live" in center.text
+    assert "nginx-offline" not in center.text
+    assert "nginx-unknown" not in center.text
+
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            session.add(
+                SystemSetting(
+                    key="node.batch_max_count",
+                    value="2",
+                    value_type="integer",
+                    group_name="节点管理",
+                    label="批量操作最大节点数",
+                )
+            )
+    limited = client.get("/nginx/uninstall/center/")
+    assert limited.status_code == 200, limited.text
+    assert 'data-max-count="2"' in limited.text
+    assert "最多 2 台" in limited.text
+
+
+def test_uninstall_preview_key_error_is_logged_and_incomplete_metadata_fails_closed(
+    uninstall_client, monkeypatch, caplog
+):
+    """验证预览异常可按节点定位，缺失检查字段时不会放行卸载。"""
+    from ngxops.nginx_uninstall import services
+
+    client, app = uninstall_client
+    node_response = client.get("/api/nginx/uninstall/nodes")
+    node_id = node_response.json()["nodes"][0]["id"]
+
+    def raise_key_error(_target):
+        """模拟远程检查中出现的字段访问异常。"""
+        raise KeyError("missing inspection field")
+
+    monkeypatch.setattr(services, "_inspect_target", raise_key_error)
+    result = services._preview_target(
+        app.state.database.session_factory,
+        node_id,
+        app.state.credential_encryption_key,
+        "/tmp/nginx-upgrade",
+        "/opt/app/mngxops",
+    )
+    assert result["eligible"] is False
+    assert result["gate_message"] == "远程预览失败（KeyError）"
+    assert "node_id={}".format(node_id) in caplog.text
+
+    monkeypatch.setattr(
+        services,
+        "_inspect_target",
+        lambda _target: {
+            "package": {"origin": "source", "manager": "", "package": ""},
+            "systemd": {"mode": "binary", "unit": "", "can_manage": False},
+            "prefix": "/data/app/nginx",
+            "running": False,
+            "paths": [{"key": "--conf-path"}],
+        },
+    )
+    incomplete = services._preview_target(
+        app.state.database.session_factory,
+        node_id,
+        app.state.credential_encryption_key,
+        "/tmp/nginx-upgrade",
+        "/opt/app/mngxops",
+    )
+    assert incomplete["eligible"] is False
+    assert incomplete["gate_message"] == "远程预览数据不完整，请重新探测"
+
+    monkeypatch.setattr(
+        services,
+        "_inspect_target",
+        lambda _target: {
+            "package": {"origin": "source", "manager": "", "package": ""},
+            "systemd": {"mode": "binary", "unit": "", "can_manage": False},
+            "prefix": "/data/app/nginx",
+            "paths": [],
+        },
+    )
+    missing_runtime_state = services._preview_target(
+        app.state.database.session_factory,
+        node_id,
+        app.state.credential_encryption_key,
+        "/tmp/nginx-upgrade",
+        "/opt/app/mngxops",
+    )
+    assert missing_runtime_state["eligible"] is False
+    assert missing_runtime_state["gate_message"] == "远程预览数据不完整，请重新探测"
 
 
 def test_configure_paths_keep_nested_nginx_locations():

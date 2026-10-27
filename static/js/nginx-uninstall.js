@@ -34,52 +34,142 @@
         var previewNodes = [];
         var activeBatch = "";
         var pollTimer = 0;
-        var searchTimer = 0;
         var canExecute = config.dataset.canExecute === "true";
         var statusLabels = { pending: "等待执行", running: "执行中", success: "卸载成功", failed: "卸载失败", cancelled: "已取消" };
+        var nodeRows = Array.prototype.slice.call(document.querySelectorAll(".uninstall-node-row"));
+        var nodeSearch = document.getElementById("uninstallNodeSearch");
+        var nodePageSize = document.getElementById("uninstallNodePageSize");
+        var nodePage = 1;
 
-        function loadNodes() {
-            var search = document.getElementById("uninstallNodeSearch").value.trim();
-            var body = document.getElementById("uninstallNodeRows");
-            body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">正在加载节点</td></tr>';
-            requestJson(config.dataset.nodesUrl + "?search=" + encodeURIComponent(search))
-                .then(function (data) {
-                    body.innerHTML = "";
-                    data.nodes.forEach(function (node) {
-                        var checked = selected[String(node.id)] ? " checked" : "";
-                        var disabled = !canExecute || !node.can_select ? " disabled" : "";
-                        var reason = node.disabled_reason ? '<span class="text-muted"> · ' + escapeHtml(node.disabled_reason) + "</span>" : "";
-                        var groups = node.groups.length ? node.groups.map(escapeHtml).join("、") : "-";
-                        var nginx = node.nginx_available === true ? '<span class="badge text-bg-success">可用</span>' : (node.nginx_available === false ? '<span class="badge text-bg-secondary">不可用</span>' : '<span class="badge text-bg-warning">未知</span>');
-                        body.insertAdjacentHTML("beforeend", '<tr class="' + (disabled ? "text-muted" : "") + '"><td class="text-center"><input class="form-check-input uninstall-node-check" type="checkbox" value="' + node.id + '"' + checked + disabled + ' aria-label="选择 ' + escapeHtml(node.hostname) + '"></td><td><strong>' + escapeHtml(node.hostname) + '</strong><small class="d-block">' + escapeHtml(node.ip) + ':' + node.port + "</small>" + reason + '</td><td>' + groups + '</td><td>' + nginx + (node.nginx_version ? ' <code>' + escapeHtml(node.nginx_version) + "</code>" : "") + '</td><td><span class="badge text-bg-' + (node.status === "online" ? "success" : "secondary") + '">' + escapeHtml(node.status) + "</span></td></tr>");
-                    });
-                    if (!data.nodes.length) body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">没有匹配的 SSH 在线且已识别 Nginx 的节点</td></tr>';
-                    updateSelectedCount();
-                    updateSelectVisible();
-                })
-                .catch(function (error) {
-                    body.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">' + escapeHtml(error.message) + "</td></tr>";
+        function selectedNodeIds() {
+            return Object.keys(selected);
+        }
+
+        function renderSelectionSummary() {
+            var summary = document.getElementById("selectedNodes");
+            var empty = document.getElementById("emptySelection");
+            var ids = selectedNodeIds();
+            summary.replaceChildren();
+            empty.classList.toggle("d-none", ids.length > 0);
+            ids.forEach(function (id) {
+                var item = selected[id];
+                var chip = document.createElement("span");
+                chip.className = "upgrade-selected-chip";
+                var label = document.createElement("span");
+                label.textContent = item.name + " (" + item.ip + ")";
+                var remove = document.createElement("button");
+                remove.type = "button";
+                remove.className = "upgrade-chip-remove";
+                remove.title = "移除节点";
+                remove.setAttribute("aria-label", "移除节点 " + item.name);
+                remove.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
+                remove.addEventListener("click", function () {
+                    var checkbox = document.querySelector(".uninstall-node-check[value='" + id + "']");
+                    if (checkbox) checkbox.checked = false;
+                    delete selected[id];
+                    updateSelection();
+                    renderNodePage();
                 });
+                chip.append(label, remove);
+                summary.appendChild(chip);
+            });
         }
 
-        function updateSelectedCount() {
-            var count = Object.keys(selected).length;
-            document.getElementById("uninstallSelectedCount").textContent = "已选 " + count + " 台 / 上限 " + maxCount;
+        function updateSelection() {
+            var count = selectedNodeIds().length;
+            document.querySelectorAll(".uninstall-node-check").forEach(function (checkbox) {
+                var isSelected = Boolean(selected[String(checkbox.value)]);
+                checkbox.checked = isSelected;
+                checkbox.disabled = !canExecute || (!isSelected && count >= maxCount);
+            });
             document.getElementById("uninstallToStep2").disabled = !canExecute || count === 0 || count > maxCount;
+            renderSelectionSummary();
         }
 
-        function updateSelectVisible() {
-            var checkboxes = Array.prototype.slice.call(document.querySelectorAll(".uninstall-node-check:not(:disabled)"));
-            document.getElementById("uninstallSelectVisible").checked = checkboxes.length > 0 && checkboxes.every(function (item) { return item.checked; });
+        function matchingNodeRows() {
+            var terms = window.getQueryTagValue("#uninstallNodeSearch")
+                .split(/[,，]/).map(function (term) { return term.trim().toLocaleLowerCase(); })
+                .filter(Boolean);
+            return nodeRows.filter(function (row) {
+                var text = (row.dataset.search || "").toLocaleLowerCase();
+                return terms.every(function (term) { return text.includes(term); });
+            });
+        }
+
+        function renderNodePage() {
+            var matching = matchingNodeRows();
+            var size = Number(nodePageSize.value) || 10;
+            var pages = Math.max(1, Math.ceil(matching.length / size));
+            nodePage = Math.min(nodePage, pages);
+            var start = (nodePage - 1) * size;
+            nodeRows.forEach(function (row) { row.classList.add("d-none"); });
+            matching.slice(start, start + size).forEach(function (row) { row.classList.remove("d-none"); });
+            var noResults = document.getElementById("uninstallNodeNoResults");
+            if (noResults) noResults.classList.toggle("d-none", matching.length > 0);
+            document.getElementById("uninstallNodeResultCount").textContent = "共 " + matching.length + " 台";
+            document.getElementById("uninstallNodePageLabel").textContent = nodePage + " / " + pages;
+            document.getElementById("uninstallNodePageFirst").disabled = nodePage <= 1;
+            document.getElementById("uninstallNodePagePrevious").disabled = nodePage <= 1;
+            document.getElementById("uninstallNodePageNext").disabled = nodePage >= pages;
+            document.getElementById("uninstallNodePageLast").disabled = nodePage >= pages;
+            updateSelection();
+        }
+
+        function bindNodePicker() {
+            var first = document.getElementById("uninstallNodePageFirst");
+            var previous = document.getElementById("uninstallNodePagePrevious");
+            var next = document.getElementById("uninstallNodePageNext");
+            var last = document.getElementById("uninstallNodePageLast");
+            nodeSearch.addEventListener("keydown", function (event) {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                window.commitQueryTagValue("#uninstallNodeSearch");
+                nodePage = 1;
+                renderNodePage();
+            });
+            $(nodeSearch).on("querytags:change", function () {
+                nodePage = 1;
+                renderNodePage();
+            });
+            nodePageSize.addEventListener("change", function () { nodePage = 1; renderNodePage(); });
+            first.addEventListener("click", function () { nodePage = 1; renderNodePage(); });
+            previous.addEventListener("click", function () { nodePage = Math.max(1, nodePage - 1); renderNodePage(); });
+            next.addEventListener("click", function () { nodePage += 1; renderNodePage(); });
+            last.addEventListener("click", function () {
+                nodePage = Math.max(1, Math.ceil(matchingNodeRows().length / (Number(nodePageSize.value) || 10)));
+                renderNodePage();
+            });
+            document.getElementById("uninstallNodeRows").addEventListener("change", function (event) {
+                if (!event.target.matches(".uninstall-node-check")) return;
+                var row = event.target.closest(".uninstall-node-row");
+                var id = String(event.target.value);
+                if (event.target.checked && !selected[id] && selectedNodeIds().length >= maxCount) {
+                    event.target.checked = false;
+                    window.showAlert("已达到上限", "单次最多选择 " + maxCount + " 台节点。");
+                    return;
+                }
+                if (event.target.checked) {
+                    selected[id] = { name: row.dataset.name, ip: row.dataset.ip };
+                } else {
+                    delete selected[id];
+                }
+                updateSelection();
+            });
+            nodeRows.forEach(function (row) {
+                row.addEventListener("click", function (event) {
+                    if (event.target.closest("input, button, a, label, select")) return;
+                    var checkbox = row.querySelector(".uninstall-node-check");
+                    if (!checkbox || checkbox.disabled) return;
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+                });
+            });
+            renderNodePage();
         }
 
         function setStep(step) {
             [1, 2, 3].forEach(function (number) {
                 document.getElementById("uninstallStep" + number).classList.toggle("d-none", number !== step);
-                var button = document.querySelector('[data-step-nav="' + number + '"]');
-                button.classList.toggle("btn-primary", number === step);
-                button.classList.toggle("btn-outline-secondary", number !== step);
-                button.disabled = number > (previewNodes.length ? 3 : 1);
             });
         }
 
@@ -266,42 +356,7 @@
             });
         }
 
-        document.getElementById("uninstallNodeRefresh").addEventListener("click", loadNodes);
-        document.getElementById("uninstallNodeSearch").addEventListener("input", function () {
-            window.clearTimeout(searchTimer);
-            searchTimer = window.setTimeout(loadNodes, 250);
-        });
-        document.getElementById("uninstallNodeSearch").addEventListener("keydown", function (event) {
-            if (event.key === "Enter") { event.preventDefault(); loadNodes(); }
-        });
-        document.getElementById("uninstallNodeRows").addEventListener("change", function (event) {
-            if (!event.target.matches(".uninstall-node-check")) return;
-            var id = String(event.target.value);
-            if (event.target.checked && !selected[id] && Object.keys(selected).length >= maxCount) {
-                event.target.checked = false;
-                window.showAlert("已达到上限", "单次最多选择 " + maxCount + " 台节点。");
-                return;
-            }
-            if (event.target.checked) selected[id] = true;
-            else delete selected[id];
-            updateSelectedCount();
-            updateSelectVisible();
-        });
-        document.getElementById("uninstallSelectVisible").addEventListener("change", function (event) {
-            var checks = Array.prototype.slice.call(document.querySelectorAll(".uninstall-node-check:not(:disabled)"));
-            if (!event.target.checked) {
-                checks.forEach(function (item) { item.checked = false; delete selected[String(item.value)]; });
-            } else {
-                checks.some(function (item) {
-                    if (Object.keys(selected).length >= maxCount) return true;
-                    item.checked = true;
-                    selected[String(item.value)] = true;
-                    return false;
-                });
-            }
-            updateSelectedCount();
-            updateSelectVisible();
-        });
+        bindNodePicker();
         document.getElementById("uninstallToStep2").addEventListener("click", preview);
         document.getElementById("uninstallBackToStep1").addEventListener("click", function () { setStep(1); });
         document.getElementById("uninstallBackToStep2").addEventListener("click", function () { setStep(2); });
@@ -321,12 +376,6 @@
         });
         document.getElementById("uninstallStart").addEventListener("click", start);
         document.getElementById("uninstallCancel").addEventListener("click", cancelBatch);
-        document.querySelectorAll("[data-step-nav]").forEach(function (button) {
-            button.addEventListener("click", function () {
-                if (!button.disabled) setStep(Number(button.dataset.stepNav));
-            });
-        });
-
         function cancelBatch() {
             if (!activeBatch) return;
             requestJson(config.dataset.batchUrlPrefix + encodeURIComponent(activeBatch)).then(function (data) {
@@ -341,7 +390,6 @@
         }
 
         setStep(1);
-        loadNodes();
     }
 
     function initTaskDetail(config) {

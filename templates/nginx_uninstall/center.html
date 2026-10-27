@@ -1,26 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Nginx 卸载中心 - ngxops{% endblock %}
 {% block page_title %}<i class="bi bi-trash3" aria-hidden="true"></i> Nginx 卸载中心{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-uninstall.css') }}?v=287-1">
+{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-    <div class="btn-group btn-group-sm" role="group" aria-label="卸载向导步骤" id="uninstallWizardSteps">
-        <button type="button" class="btn btn-primary" data-step-nav="1">1. 选择节点</button>
-        <button type="button" class="btn btn-outline-secondary" data-step-nav="2" disabled>2. 探测路径</button>
-        <button type="button" class="btn btn-outline-secondary" data-step-nav="3" disabled>3. 确认卸载</button>
-    </div>
+<div class="d-flex justify-content-end mb-3">
     <a class="btn btn-outline-secondary btn-sm" href="/nginx/uninstall/history/"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>卸载历史</a>
 </div>
 
 <div class="uninstall-layout">
     <div class="uninstall-main">
         <section class="card mb-3 uninstall-step" id="uninstallStep1">
-            <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h6 mb-0">选择目标节点</h2><span class="small text-muted">最多 {{ batch_max_count }} 台</span></div>
+            <div class="card-header d-flex justify-content-between align-items-center gap-2">
+                <h2 class="h6 mb-0"><i class="bi bi-server me-1" aria-hidden="true"></i>目标节点</h2>
+                <span class="small text-muted">最多 {{ batch_max_count }} 台</span>
+            </div>
             <div class="card-body">
-                <div class="row g-2 align-items-end mb-3"><div class="col-12 col-md-8"><label class="form-label small" for="uninstallNodeSearch">主机名或 IP</label><input class="form-control form-control-sm" id="uninstallNodeSearch" type="search" autocomplete="off" placeholder="搜索主机名或 IP"></div><div class="col-auto"><button type="button" class="btn btn-outline-primary btn-sm" id="uninstallNodeRefresh"><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>刷新</button></div><div class="col-auto"><span class="small text-muted" id="uninstallSelectedCount">已选 0 台</span></div></div>
-                <div class="table-responsive"><table class="table table-sm table-hover align-middle data-table mb-0"><thead class="table-light"><tr><th class="text-center" style="width:44px"><input class="form-check-input" type="checkbox" id="uninstallSelectVisible" aria-label="选择当前可操作节点"></th><th>节点</th><th>节点组</th><th>Nginx</th><th>SSH</th></tr></thead><tbody id="uninstallNodeRows"><tr><td colspan="5" class="text-center text-muted py-4">正在加载节点</td></tr></tbody></table></div>
-                {% if not can_execute %}<p class="small text-muted mt-3 mb-0">当前账号没有卸载执行权限。</p>{% endif %}
-                <div class="d-flex justify-content-end mt-3"><button type="button" class="btn btn-primary btn-sm" id="uninstallToStep2"{% if not can_execute %} disabled{% endif %}><i class="bi bi-arrow-right me-1" aria-hidden="true"></i>探测卸载范围</button></div>
+                <div class="upgrade-selected-targets">
+                    <span class="text-muted small" id="emptySelection">尚未选择节点</span>
+                    <div class="upgrade-selected-summary" id="selectedNodes" aria-live="polite"></div>
+                    <button class="btn btn-outline-primary btn-sm flex-shrink-0" type="button" data-bs-toggle="modal" data-bs-target="#uninstallNodePickerModal">
+                        <i class="bi bi-search me-1" aria-hidden="true"></i>选择节点
+                    </button>
+                </div>
+                <div class="small text-muted mt-1">仅显示 SSH 在线、凭证已启用且 Nginx 已识别的未锁定节点。</div>
+                {% if not can_execute %}<p class="small text-muted mt-2 mb-0">当前账号没有卸载执行权限。</p>{% endif %}
+                <div class="d-flex justify-content-end mt-3"><button type="button" class="btn btn-primary btn-sm" id="uninstallToStep2"{% if not can_execute %} disabled{% endif %}>探测卸载范围<i class="bi bi-chevron-right ms-1" aria-hidden="true"></i></button></div>
             </div>
         </section>
 
@@ -47,7 +55,51 @@
     </div>
     <aside class="uninstall-side"><section class="card"><div class="card-header"><h2 class="h6 mb-0">卸载方式</h2></div><div class="card-body small"><p><strong>源码安装</strong>按确认的 prefix 和路径清理文件。</p><p><strong>系统包安装</strong>通过 dnf、yum 或 apt-get remove 卸载，不直接删除包管理的文件。</p><p class="mb-0">发布备份和编译目录由你在路径步骤中单独选择。</p></div></section></aside>
 </div>
-<div id="uninstallConfig" data-can-execute="{{ 'true' if can_execute else 'false' }}" data-max-count="{{ batch_max_count }}" data-nodes-url="/api/nginx/uninstall/nodes" data-preview-url="/api/nginx/uninstall/preview" data-create-url="/api/nginx/uninstall/tasks" data-batch-url-prefix="/api/nginx/uninstall/batches/" data-cancel-url-prefix="/api/tasks/" data-task-url-prefix="/api/nginx/uninstall/tasks/" hidden></div>
+
+<div class="modal fade" id="uninstallNodePickerModal" tabindex="-1" aria-labelledby="uninstallNodePickerTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header"><h2 class="modal-title h6" id="uninstallNodePickerTitle"><i class="bi bi-server me-1" aria-hidden="true"></i>选择目标节点</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button></div>
+            <div class="modal-body">
+                <label class="visually-hidden" for="uninstallNodeSearch">搜索主机名、IP 或节点组</label>
+                <div class="upgrade-query-field"><input class="form-control form-control-sm" id="uninstallNodeSearch" data-query-tags aria-label="搜索主机名、IP 或节点组" placeholder="搜索主机名、IP 或节点组"></div>
+                <div class="table-responsive upgrade-node-table-wrap">
+                    <table class="table table-sm table-hover align-middle mb-0 upgrade-node-table" id="uninstallNodeTable">
+                        <thead class="table-light"><tr><th></th><th>主机名 / IP</th><th>环境</th><th>Nginx</th><th>节点组</th></tr></thead>
+                        <tbody id="uninstallNodeRows">
+                        {% for node in nodes %}
+                            {% set groups = node.groups|map(attribute='name')|join(' ') %}
+                            <tr class="uninstall-node-row" data-node-id="{{ node.id }}" data-ip="{{ node.ip }}" data-name="{{ node.hostname }}" data-environment="{{ node.environment }}" data-search="{{ (node.hostname ~ ' ' ~ node.ip ~ ' ' ~ groups)|lower }}">
+                                <td><input class="form-check-input uninstall-node-check" type="checkbox" value="{{ node.id }}" aria-label="选择 {{ node.hostname }}"{% if not can_execute %} disabled{% endif %}></td>
+                                <td><span class="upgrade-node-name-address" title="{{ node.hostname }} {{ node.ip }}:{{ node.port }}"><span class="upgrade-node-hostname">{{ node.hostname }}</span><small class="text-muted ms-2 upgrade-node-address">{{ node.ip }}:{{ node.port }}</small></span></td>
+                                <td class="text-nowrap">{{ {"dev":"开发","test":"测试","prod":"生产"}.get(node.environment, node.environment) }}</td>
+                                <td class="text-nowrap"><span class="badge text-bg-success">{{ node.nginx_version or "已检测" }}</span></td>
+                                <td><small class="upgrade-node-groups" title="{{ node.groups|map(attribute='name')|join('、') or '-' }}">{{ node.groups|map(attribute='name')|join('、') or "-" }}</small></td>
+                            </tr>
+                        {% else %}<tr data-selector-empty><td colspan="5"><div class="empty-state py-3"><i class="bi bi-inbox" aria-hidden="true"></i><p>没有满足卸载条件的节点</p></div></td>{% endfor %}
+                        {% if nodes %}<tr id="uninstallNodeNoResults" class="d-none"><td colspan="5"><div class="empty-state py-3"><i class="bi bi-search" aria-hidden="true"></i><p>没有匹配的节点</p></div></td></tr>{% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="upgrade-selector-footer">
+                    <small class="text-muted" id="uninstallNodeResultCount"></small>
+                    <nav aria-label="节点分页"><ul class="pagination pagination-sm mb-0">
+                        <li class="page-item"><button class="page-link" type="button" id="uninstallNodePageFirst" aria-label="首页" title="首页"><i class="bi bi-chevron-double-left" aria-hidden="true"></i></button></li>
+                        <li class="page-item"><button class="page-link" type="button" id="uninstallNodePagePrevious" aria-label="上一页" title="上一页"><i class="bi bi-chevron-left" aria-hidden="true"></i></button></li>
+                        <li class="page-item disabled"><span class="page-link page-count" id="uninstallNodePageLabel"></span></li>
+                        <li class="page-item"><button class="page-link" type="button" id="uninstallNodePageNext" aria-label="下一页" title="下一页"><i class="bi bi-chevron-right" aria-hidden="true"></i></button></li>
+                        <li class="page-item"><button class="page-link" type="button" id="uninstallNodePageLast" aria-label="末页" title="末页"><i class="bi bi-chevron-double-right" aria-hidden="true"></i></button></li>
+                    </ul></nav>
+                    <div class="upgrade-selector-page-size"><label class="small text-muted mb-0" for="uninstallNodePageSize">每页</label><select class="form-select form-select-sm" id="uninstallNodePageSize" aria-label="每页节点数"><option value="10" selected>10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></div>
+                    <span class="small text-muted">最多 {{ batch_max_count }} 台</span>
+                </div>
+            </div>
+            <div class="modal-footer"><span class="small text-muted me-auto">仅展示 SSH 在线、凭证启用且 Nginx 已识别的未锁定节点</span><button class="btn btn-primary btn-sm" type="button" data-bs-dismiss="modal"><i class="bi bi-check-lg me-1" aria-hidden="true"></i>完成选择</button></div>
+        </div>
+    </div>
+</div>
+
+<div id="uninstallConfig" data-can-execute="{{ 'true' if can_execute else 'false' }}" data-max-count="{{ batch_max_count }}" data-preview-url="/api/nginx/uninstall/preview" data-create-url="/api/nginx/uninstall/tasks" data-batch-url-prefix="/api/nginx/uninstall/batches/" data-cancel-url-prefix="/api/tasks/" data-task-url-prefix="/api/nginx/uninstall/tasks/" hidden></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-uninstall.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-uninstall.js') }}?v=287-1"></script>{% endblock %}

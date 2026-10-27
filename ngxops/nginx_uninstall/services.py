@@ -1,6 +1,7 @@
 """探测卸载范围并通过统一任务执行器移除 Nginx。"""
 
 import json
+import logging
 import posixpath
 import re
 import shlex
@@ -15,6 +16,7 @@ from sqlalchemy.orm import joinedload, sessionmaker
 from ngxops.configs.services import mark_node_bindings_orphaned
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.database.session import session_scope
+from ngxops.logging_setup import log_exception
 from ngxops.nginx_install.models import NginxInstallRun
 from ngxops.nginx_uninstall.models import NginxUninstallRun
 from ngxops.nodes.models import Node
@@ -61,6 +63,7 @@ _FORBIDDEN_PATHS = frozenset(
 _PACKAGE_NAME = re.compile(r"^[A-Za-z0-9._+-]+$")
 _PATH_KEY = re.compile(r"^--[A-Za-z0-9-]*-path$")
 _TERMINAL = ("success", "failed", "cancelled")
+logger = logging.getLogger(__name__)
 _NGINX_PREFIX_CHILDREN = frozenset(
     (
         "CHANGES",
@@ -252,7 +255,7 @@ def _package_origin(client, binary: str, context: Optional[TaskContext] = None) 
     quoted = shlex.quote(path)
     status, output = _run_command(
         client,
-        "rpm -qf --queryformat '%{NAME}' {} 2>/dev/null".format(quoted),
+        "rpm -qf --queryformat '%{{NAME}}' {} 2>/dev/null".format(quoted),
         context,
     )
     name = output.strip().splitlines()[-1].strip() if output.strip() else ""
@@ -475,13 +478,30 @@ def _preview_target(
     try:
         inspected = _inspect_target(target)
     except Exception as exc:
+        log_exception(
+            logger,
+            "Nginx 卸载远程预览失败",
+            exc,
+            "node_id={}".format(node_id),
+        )
         result["gate_message"] = "远程预览失败（{}）".format(type(exc).__name__)
         result["running_error"] = result["gate_message"]
         return result
-    package = inspected["package"]
-    prefix = inspected["prefix"]
-    origin = package["origin"]
-    paths = inspected["paths"]
+    if not _preview_data_is_complete(inspected):
+        result["gate_message"] = "远程预览数据不完整，请重新探测"
+        return result
+    package = inspected.get("package") if isinstance(inspected, dict) else None
+    systemd = inspected.get("systemd") if isinstance(inspected, dict) else None
+    prefix = (
+        normalize_remote_path(inspected.get("prefix", ""))
+        if isinstance(inspected, dict)
+        else ""
+    )
+    paths = inspected.get("paths") if isinstance(inspected, dict) else None
+    origin = package.get("origin", "unknown")
+    if origin not in ("source", "package"):
+        result["gate_message"] = "无法识别 Nginx 安装来源，请重新探测"
+        return result
     if origin == "package":
         for item in paths:
             item.update({"checked": True, "required": True, "editable": False, "package_owned": True})
@@ -492,17 +512,62 @@ def _preview_target(
             "prefix": prefix,
             "prefix_source": "nginx -V" if prefix else "",
             "paths": paths + _setting_paths(result),
-            "running": inspected["running"],
+            "running": bool(inspected.get("running", False)),
             "install_origin": origin,
-            "package_manager": package["manager"],
-            "package_name": package["package"],
-            "manage_mode": inspected["systemd"]["mode"],
-            "manage_unit": inspected["systemd"]["unit"],
-            "can_manage_systemd": inspected["systemd"]["can_manage"],
+            "package_manager": package.get("manager", ""),
+            "package_name": package.get("package", ""),
+            "manage_mode": systemd.get("mode", "unknown"),
+            "manage_unit": systemd.get("unit", ""),
+            "can_manage_systemd": bool(systemd.get("can_manage", False)),
             "shallow_prefix": origin == "source" and len([part for part in prefix.split("/") if part]) == 1,
         }
     )
     return result
+
+
+def _preview_data_is_complete(inspected: object) -> bool:
+    """确认远程预览结构包含页面、响应模型和卸载门禁所需字段。"""
+    if not isinstance(inspected, dict):
+        return False
+    package = inspected.get("package")
+    systemd = inspected.get("systemd")
+    paths = inspected.get("paths")
+    if not isinstance(package, dict) or not isinstance(systemd, dict):
+        return False
+    if not isinstance(inspected.get("prefix"), str) or not isinstance(
+        inspected.get("running"), bool
+    ):
+        return False
+    if not all(isinstance(package.get(key), str) for key in ("origin", "manager", "package")):
+        return False
+    if not all(
+        isinstance(systemd.get(key), str) for key in ("mode", "unit")
+    ) or not isinstance(systemd.get("can_manage"), bool):
+        return False
+    if systemd["mode"] not in ("binary", "systemctl"):
+        return False
+    if not isinstance(paths, list):
+        return False
+    for path in paths:
+        if not isinstance(path, dict):
+            return False
+        if not all(
+            isinstance(path.get(key), str) and path[key]
+            for key in ("key", "label", "path")
+        ):
+            return False
+        if path.get("kind") not in ("dir", "file"):
+            return False
+        if not all(
+            isinstance(path.get(key), bool)
+            for key in ("required", "checked", "editable")
+        ):
+            return False
+    if package["origin"] == "package":
+        return package["manager"] in ("rpm", "deb") and is_valid_package_name(
+            package["package"]
+        )
+    return True
 
 
 def _setting_paths(preview: dict) -> List[dict]:
@@ -523,6 +588,10 @@ def preview_nodes(
     backup_dir: str = _BACKUP_DIR,
 ) -> dict:
     """并发预览选中节点的卸载来源、路径、托管方式和运行态。"""
+    try:
+        batch_limit = min(50, max(1, int(batch_limit)))
+    except (TypeError, ValueError):
+        batch_limit = _BATCH_LIMIT
     unique_ids = list(dict.fromkeys(node_ids))
     if not unique_ids:
         raise ValueError("请选择至少一个目标节点")
@@ -546,6 +615,12 @@ def preview_nodes(
             try:
                 results[node_id] = future.result()
             except Exception as exc:
+                log_exception(
+                    logger,
+                    "Nginx 卸载预览处理失败",
+                    exc,
+                    "node_id={}".format(node_id),
+                )
                 results[node_id] = {
                     "id": node_id,
                     "eligible": False,

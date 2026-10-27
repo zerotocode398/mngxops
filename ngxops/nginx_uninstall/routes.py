@@ -41,6 +41,15 @@ _STATUS_LABELS = {
 }
 
 
+def _batch_limit(session: Session) -> int:
+    """读取并规范化系统设置中的批量节点上限。"""
+    try:
+        value = int(read_setting(session, "node.batch_max_count", _BATCH_LIMIT))
+        return min(50, max(1, value))
+    except (TypeError, ValueError):
+        return _BATCH_LIMIT
+
+
 class UninstallNodeItem(BaseModel):
     """描述卸载向导节点选择器中的一项。"""
 
@@ -358,7 +367,6 @@ def _read_task(
 @router.get("/nginx/uninstall/", include_in_schema=False)
 def nginx_uninstall_home(
     request: Request,
-    search: str = Query("", max_length=300),
     user: User = Depends(require_authenticated_user),
     session: Session = Depends(get_session),
 ) -> Response:
@@ -369,22 +377,9 @@ def nginx_uninstall_home(
     recent_query = (
         select(NginxUninstallRun)
         .join(Task, Task.id == NginxUninstallRun.task_id)
-        .outerjoin(User, User.id == Task.trigger_user_id)
         .options(joinedload(NginxUninstallRun.task))
         .order_by(NginxUninstallRun.created_at.desc(), NginxUninstallRun.id.desc())
     )
-    for term in _search_terms(search):
-        pattern = "%{}%".format(term)
-        recent_query = recent_query.where(
-            or_(
-                NginxUninstallRun.node_hostname.ilike(pattern),
-                NginxUninstallRun.node_ip.ilike(pattern),
-                NginxUninstallRun.batch_number.ilike(pattern),
-                NginxUninstallRun.resolved_prefix.ilike(pattern),
-                NginxUninstallRun.package_name.ilike(pattern),
-                User.username.ilike(pattern),
-            )
-        )
     recent_runs = session.scalars(
         recent_query.limit(read_setting(session, "dashboard.recent_tasks_count", 20))
     ).all()
@@ -423,7 +418,6 @@ def nginx_uninstall_home(
         {
             "recent_runs": recent_runs,
             "operator_names": _operator_names(session, recent_runs),
-            "search": search,
             "running_count": running_count,
             "success_7d_count": success_count,
             "failed_7d_count": failed_count,
@@ -444,11 +438,36 @@ def nginx_uninstall_center(
     """渲染 Nginx 卸载三步向导和近期任务。"""
     if not _has_permission(request, session, user, "read"):
         raise PermissionDenied("无访问权限", "当前账号没有查看 Nginx 卸载的权限。")
+    active_node_ids = set(
+        session.scalars(
+            select(NginxUninstallRun.node_id)
+            .join(Task, Task.id == NginxUninstallRun.task_id)
+            .where(Task.status.in_(("pending", "running")))
+        ).all()
+    )
+    candidate_nodes = session.scalars(
+        select(Node)
+        .options(joinedload(Node.credential), selectinload(Node.groups))
+        .where(
+            Node.is_deleted.is_(False),
+            Node.is_locked.is_(False),
+            Node.status == "online",
+            Node.nginx_available.is_(True),
+        )
+        .order_by(Node.hostname.asc(), Node.id.asc())
+    ).unique().all()
+    nodes = [
+        node for node in candidate_nodes
+        if node.credential is not None
+        and node.credential.is_enabled
+        and node.id not in active_node_ids
+    ]
     return render_page(
         request,
         "nginx_uninstall/center.html",
         {
-            "batch_max_count": read_setting(session, "node.batch_max_count", _BATCH_LIMIT),
+            "nodes": nodes,
+            "batch_max_count": _batch_limit(session),
             "can_execute": _has_permission(request, session, user, "execute"),
         },
         user,
@@ -642,7 +661,7 @@ def list_uninstall_nodes(
     return UninstallNodesResponse(
         nodes=items,
         total=len(items),
-        batch_max_count=read_setting(session, "node.batch_max_count", _BATCH_LIMIT),
+        batch_max_count=_batch_limit(session),
     )
 
 
@@ -665,7 +684,7 @@ def preview_uninstall(
             request.app.state.database.session_factory,
             request.app.state.credential_encryption_key,
             payload.node_ids,
-            read_setting(session, "node.batch_max_count", _BATCH_LIMIT),
+            _batch_limit(session),
             read_setting(session, "upgrade.default_work_dir", "/tmp/nginx-upgrade"),
             read_setting(
                 session,
@@ -693,9 +712,7 @@ def create_uninstall_tasks(
     session: Session = Depends(get_session),
 ) -> UninstallCreateResponse:
     """校验卸载目标和路径后创建异步任务。"""
-    batch_limit = max(
-        1, int(read_setting(session, "node.batch_max_count", _BATCH_LIMIT))
-    )
+    batch_limit = _batch_limit(session)
     if len(payload.nodes) > batch_limit:
         raise HTTPException(status_code=400, detail="单次最多选择 {} 台节点".format(batch_limit))
     session.rollback()

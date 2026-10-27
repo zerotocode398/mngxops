@@ -155,6 +155,8 @@ def test_service_selector_batch_limit_and_node_scoped_task_logs(service_client):
     ).json()["total"] == 1
 
     home = client.get("/nginx/service/")
+    assert '<a class="btn btn-outline-secondary btn-sm" href="/nginx/service/history/">' not in home.text
+    assert "查看全部" in home.text
     assert 'data-max-count="2"' in home.text
     assert 'data-query-tags' in home.text
     assert 'id="serviceNodePageFirst"' in home.text
