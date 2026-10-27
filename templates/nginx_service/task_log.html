@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}启停任务详情 - {{ task.source_batch }}{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> 启停任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17"><link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-service.css') }}?v=268-1">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17"><link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-service.css') }}?v=276-2">{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-wrap gap-2 mb-3">
@@ -14,10 +14,10 @@
         <div class="d-flex align-items-center gap-2"><span class="badge text-bg-{{ status_class }}" id="taskStatus">{{ status_label }}</span><span class="badge text-bg-primary{% if task.status in ('success', 'failed', 'cancelled') %} d-none{% endif %}" id="taskProgress">{{ task.progress }}%</span></div>
     </div>
     <div class="card-body">
-        <div class="row g-2 small mb-3">
+        <div class="row g-2 service-task-meta mb-3">
             <div class="col-12 col-md-6"><span class="text-muted">批次号：</span><a href="/nginx/service/history/?search={{ task.source_batch|urlencode }}"><code>{{ task.source_batch }}</code></a></div>
             <div class="col-12 col-md-6"><span class="text-muted">操作：</span>{{ action_label }}</div>
-            <div class="col-12"><span class="text-muted">目标节点：</span>{% for target in targets %}<span class="me-2">{{ target.hostname }}{% if target.ip %} <small class="text-muted">({{ target.ip }})</small>{% endif %}</span>{% else %}-{% endfor %}</div>
+            <div class="col-12 service-task-target-row"><span class="text-muted">目标节点：</span><span class="service-task-target-list" id="serviceTaskTargets">{% for target in targets %}<span class="service-task-target"{% if loop.index > 3 %} data-service-extra-target hidden{% endif %}>{{ target.hostname }}{% if target.ip %} <small class="text-muted">({{ target.ip }})</small>{% endif %}</span>{% else %}-{% endfor %}</span>{% if targets|length > 3 %}<button type="button" class="btn btn-link btn-sm service-target-toggle p-0" id="serviceTargetToggle" data-extra-count="{{ targets|length - 3 }}" aria-expanded="false" aria-controls="serviceTaskTargets"><span data-target-toggle-label>展开详情（还有 {{ targets|length - 3 }} 台）</span><i class="bi bi-chevron-down ms-1" aria-hidden="true"></i></button>{% endif %}</div>
             <div class="col-12 col-md-6"><span class="text-muted">创建时间：</span>{{ format_task_datetime(task.created_at) }}</div>
             <div class="col-12 col-md-6"><span class="text-muted">开始时间：</span><span id="startedAt">{{ format_task_datetime(task.started_at) }}</span></div>
             <div class="col-12 col-md-6"><span class="text-muted">完成时间：</span><span id="finishedAt">{{ format_task_datetime(task.finished_at) }}</span></div>
@@ -34,9 +34,12 @@
     </tbody></table></div>
 </section>
 <section class="card">
-    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2"><h2 class="h6 mb-0">完整执行日志</h2>{% if targets|length > 1 %}<div class="d-flex align-items-center gap-2"><label class="small text-muted mb-0" for="serviceLogHostFilter">目标节点</label><select class="form-select form-select-sm task-log-filter-select" id="serviceLogHostFilter"><option value="">全部节点</option>{% for target in targets %}<option value="{{ target.id }}">{{ target.hostname }}{% if target.ip %} ({{ target.ip }}){% endif %}</option>{% endfor %}</select></div>{% endif %}</div>
-    <div class="card-body"><div class="upgrade-log-output service-full-log" id="serviceLog" data-after-log-id="{{ logs[-1].id if logs else 0 }}" aria-live="polite">{% for entry in logs %}<div class="upgrade-log-line log-{{ entry.level }}" data-node-id="{{ entry.node_id if entry.node_id is not none else log_node_ids.get(entry.id, '') }}"><time title="UTC+8">{{ format_task_datetime(entry.created_at) }}</time><span class="upgrade-log-message">{{ entry.message }}</span></div>{% else %}<div class="upgrade-log-empty" data-empty-log>暂无日志</div>{% endfor %}</div></div>
+    <div class="card-header"><h2 class="h6 mb-0">完整执行日志</h2></div>
+    <div class="card-body">
+        {% if targets|length > 1 %}<div class="d-flex align-items-center gap-2 mb-2"><label class="small text-muted mb-0" for="serviceLogHostFilter">目标节点</label><select class="form-select form-select-sm task-log-filter-select" id="serviceLogHostFilter"><option value="">全部节点</option>{% for target in targets %}<option value="{{ target.id }}">{{ target.hostname }}{% if target.ip %} ({{ target.ip }}){% endif %}</option>{% endfor %}</select></div>{% endif %}
+        <div class="upgrade-log-output service-full-log" id="serviceLog" data-after-log-id="{{ logs[-1].id if logs else 0 }}" aria-live="polite">{% for entry in logs %}<div class="upgrade-log-line log-{{ entry.level }}" data-node-id="{{ entry.node_id if entry.node_id is not none else log_node_ids.get(entry.id, '') }}"><time title="UTC+8">{{ format_task_datetime(entry.created_at) }}</time><span class="upgrade-log-message">{{ entry.message }}</span></div>{% else %}<div class="upgrade-log-empty" data-empty-log>暂无日志</div>{% endfor %}</div>
+    </div>
 </section>
 <div id="serviceTaskConfig" data-task-id="{{ task.id }}" data-url="/api/nginx/service/tasks/{{ task.id }}" data-log-cursor="{{ log_cursor }}" data-status="{{ task.status }}" hidden></div>
 {% endblock %}
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-service.js') }}?v=268-2"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-service.js') }}?v=276-2"></script>{% endblock %}

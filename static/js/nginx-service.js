@@ -270,38 +270,9 @@
             renderNodePage();
         });
 
-        function renderProgress(data) {
-            var progress = Number(data.progress || 0);
-            if (!window.showTaskProgressToast) return;
-            window.showTaskProgressToast(
-                "nginx-service-" + data.task_id,
-                "Nginx " + (data.action_label || "启停") + " · " + progress + "%",
-                (data.batch_number ? "批次 " + data.batch_number + " · " : "") + (data.detail || ""),
-                progress,
-                {
-                    href: "/nginx/service/task/" + data.task_id + "/log/",
-                    label: "查看完整日志",
-                },
-                data.status
-            );
-        }
-
-        function pollTask(taskId, batchNumber) {
+        function pollTask(taskId) {
             activeTaskId = taskId;
             logCursor = 0;
-            if (batchNumber && window.showTaskProgressToast) {
-                window.showTaskProgressToast(
-                    "nginx-service-" + taskId,
-                    "Nginx 启停 · 0%",
-                    "批次 " + batchNumber + " · 等待执行",
-                    0,
-                    {
-                        href: "/nginx/service/task/" + taskId + "/log/",
-                        label: "查看完整日志",
-                    },
-                    "pending"
-                );
-            }
             function poll() {
                 if (activeTaskId !== taskId) return;
                 var url = homeConfig.dataset.taskUrlPrefix + taskId + "?after_log_id=" + logCursor;
@@ -309,7 +280,6 @@
                     .then(function (response) { return response.json().then(function (data) { return { response: response, data: data }; }); })
                     .then(function (result) {
                         if (!result.response.ok || !result.data.success) return;
-                        renderProgress(result.data);
                         logCursor = result.data.next_log_id || logCursor;
                         if (!terminal[result.data.status]) {
                             pollTimer = setTimeout(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
@@ -350,15 +320,19 @@
                             updateActionButtons();
                             return;
                         }
-                        if (result.data.skipped && result.data.skipped.length) {
-                            var skipped = result.data.skipped.map(function (node) {
-                                return (node.hostname || ("节点 " + node.id)) + "：" + node.reason;
-                            }).join("\n");
-                            if (window.showToast) window.showToast(result.data.message + "\n" + skipped, "warning");
-                        } else if (window.showToast) {
-                            window.showToast(result.data.message, "success");
+                        if (window.showToast) {
+                            window.showToast(
+                                "Nginx " + labels[action] + "任务已创建",
+                                "success",
+                                6000,
+                                {
+                                    href: "/nginx/service/task/" + result.data.task_id + "/log/",
+                                    label: "查看完整日志",
+                                    target: "_blank",
+                                }
+                            );
                         }
-                        pollTask(result.data.task_id, result.data.batch_number);
+                        pollTask(result.data.task_id);
                     })
                     .catch(function () { showError(null, "网络错误，无法创建启停任务"); updateActionButtons(); });
             }, true, risky ? "md" : "sm");
@@ -372,8 +346,26 @@
         if (activeTask) pollTask(Number(activeTask), "");
     }
 
+    function initServiceTargetToggle() {
+        var toggle = document.getElementById("serviceTargetToggle");
+        if (!toggle) return;
+        var extras = document.querySelectorAll("[data-service-extra-target]");
+        var label = toggle.querySelector("[data-target-toggle-label]");
+        var icon = toggle.querySelector("i");
+        toggle.addEventListener("click", function () {
+            var expanded = toggle.getAttribute("aria-expanded") !== "true";
+            extras.forEach(function (target) { target.hidden = !expanded; });
+            toggle.setAttribute("aria-expanded", String(expanded));
+            label.textContent = expanded
+                ? "收起详情"
+                : "展开详情（还有 " + toggle.dataset.extraCount + " 台）";
+            icon.classList.toggle("bi-chevron-down", !expanded);
+            icon.classList.toggle("bi-chevron-up", expanded);
+        });
+    }
+
     function initTaskDetail() {
-        if (!taskConfig || terminal[taskConfig.dataset.status]) return;
+        if (!taskConfig) return;
         var cursor = Number(taskConfig.dataset.logCursor || 0);
         var timer = null;
         var log = document.getElementById("serviceLog");
@@ -429,6 +421,8 @@
             });
         }
         if (logFilter) logFilter.addEventListener("change", applyLogFilter);
+        applyLogFilter();
+        if (terminal[taskConfig.dataset.status]) return;
         function poll() {
             var pollUrl = url + "?after_log_id=" + cursor;
             fetch(pollUrl, { headers: { Accept: "application/json" } })
@@ -463,5 +457,6 @@
     }
 
     initHome();
+    initServiceTargetToggle();
     initTaskDetail();
 })();

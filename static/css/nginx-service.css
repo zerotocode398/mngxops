@@ -117,6 +117,26 @@
 
 .service-full-log .upgrade-log-empty[data-filter-empty][hidden] { display: none; }
 
+.service-task-meta {
+    font-size: var(--fs-base);
+    line-height: 1.55;
+}
+
+.service-task-target {
+    display: inline-block;
+    margin-right: 0.75rem;
+    margin-bottom: 0.25rem;
+}
+
+.service-task-target[hidden] {
+    display: none !important;
+}
+
+.service-target-toggle {
+    font: inherit;
+    white-space: nowrap;
+}
+
 @media (max-width: 575.98px) {
     .service-full-log .upgrade-log-line { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }

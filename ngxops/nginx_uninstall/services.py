@@ -310,24 +310,21 @@ def _systemd_info(client, context: Optional[TaskContext] = None) -> dict:
     info = {"mode": "binary", "unit": "", "running": False, "can_manage": False, "use_sudo": False}
     if status != 0:
         return info
-    unit = ""
-    running = False
-    for candidate in ("nginx", "nginx.service"):
+    unit = "nginx.service"
+    _status, output = _run_command(
+        client, "systemctl is-active {} 2>/dev/null || true".format(shlex.quote(unit)), context
+    )
+    state = output.strip().splitlines()[-1] if output.strip() else ""
+    running = state in ("active", "activating", "reloading")
+    if running:
+        info.update({"mode": "systemctl", "unit": unit, "running": True})
+    else:
         _status, output = _run_command(
-            client, "systemctl is-active {} 2>/dev/null || true".format(shlex.quote(candidate)), context
-        )
-        state = output.strip().splitlines()[-1] if output.strip() else ""
-        if state in ("active", "activating", "reloading"):
-            unit, running = candidate, True
-            break
-        _status, output = _run_command(
-            client, "systemctl is-enabled {} 2>/dev/null || true".format(shlex.quote(candidate)), context
+            client, "systemctl is-enabled {} 2>/dev/null || true".format(shlex.quote(unit)), context
         )
         state = output.strip().splitlines()[-1] if output.strip() else ""
         if state in ("enabled", "enabled-runtime", "static"):
-            unit = candidate
-    if unit:
-        info.update({"mode": "systemctl", "unit": unit, "running": running})
+            info.update({"mode": "systemctl", "unit": unit, "running": False})
     status, _ = _run_command(client, "test -w /etc/systemd/system", context)
     if status == 0:
         info.update({"can_manage": True, "use_sudo": False})

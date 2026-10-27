@@ -159,6 +159,8 @@ def test_service_selector_batch_limit_and_node_scoped_task_logs(service_client):
     assert 'data-query-tags' in home.text
     assert 'id="serviceNodePageFirst"' in home.text
     assert 'id="serviceNodePageSize"' in home.text
+    assert '<th>时间</th><th>详情</th>' in home.text
+    assert '<th>时间</th><th></th>' not in home.text
     assert "progressLive" not in home.text
 
     too_many = client.post(
@@ -224,10 +226,17 @@ def test_service_selector_batch_limit_and_node_scoped_task_logs(service_client):
     assert "任务中心" not in toolbar
     assert 'id="serviceLogHostFilter"' in detail.text
     assert "master process started" in detail.text
+    assert detail.text.index("完整执行日志") < detail.text.index('for="serviceLogHostFilter"')
+    assert detail.text.index('for="serviceLogHostFilter"') < detail.text.index('id="serviceLog"')
+    assert 'data-node-id="{}"'.format(node_ids[0]) in detail.text
     result_table = detail.text.split('id="taskNodeResults"', 1)[0].rsplit("<thead", 1)[1]
     assert "状态" not in result_table
     assert "upgrade-log-output" in detail.text
     assert 'href="/tasks/{}/"'.format(task_id) not in toolbar
+
+    recent_tasks = client.get("/nginx/service/")
+    assert '<th>时间</th><th>详情</th>' in recent_tasks.text
+    assert 'href="/nginx/service/task/{}/log/"'.format(task_id) in recent_tasks.text
 
     task_center = client.get("/tasks/{}/".format(task_id))
     assert task_center.status_code == 200, task_center.text
@@ -246,3 +255,119 @@ def test_service_selector_batch_limit_and_node_scoped_task_logs(service_client):
     assert 'id="perPageSelect"' in history.text
     assert "筛选" not in history.text
     assert "2026-" in history.text
+
+
+def test_service_terminal_detail_initializes_node_log_filter():
+    """验证终态详情仍绑定节点筛选并应用初始过滤。"""
+    script = (Path(__file__).parents[1] / "static/js/nginx-service.js").read_text(
+        encoding="utf-8"
+    )
+    detail_setup = script.split("function initTaskDetail()", 1)[1].split(
+        "function poll()", 1
+    )[0]
+
+    assert detail_setup.index("logFilter.addEventListener(\"change\"") < detail_setup.index(
+        "applyLogFilter();"
+    )
+    assert detail_setup.index("applyLogFilter();") < detail_setup.index(
+        "if (terminal[taskConfig.dataset.status]) return;"
+    )
+
+
+def test_service_task_creation_uses_simple_toast_without_progress_details():
+    """验证启停任务仅显示简短创建提示，不显示批次、节点和进度信息。"""
+    script = (Path(__file__).parents[1] / "static/js/nginx-service.js").read_text(
+        encoding="utf-8"
+    )
+    service_template = (Path(__file__).parents[1] / "templates/nginx_service/index.html").read_text(
+        encoding="utf-8"
+    )
+    submit_action = script.split("function submitAction(action)", 1)[1].split(
+        '\n        document.querySelectorAll("[data-service-action]").forEach(function (button)',
+        1,
+    )[0]
+
+    assert '"Nginx " + labels[action] + "任务已创建"' in submit_action
+    assert '"/nginx/service/task/" + result.data.task_id + "/log/"' in submit_action
+    assert 'label: "查看完整日志"' in submit_action
+    assert 'target: "_blank"' in submit_action
+    assert '"success",\n                                6000,' in submit_action
+    assert "pollTask(result.data.task_id);" in submit_action
+    assert "showTaskProgressToast" not in script
+    assert "skippedNotice" not in script
+    assert "path='js/nginx-service.js') }}?v=275-3" in service_template
+
+
+def test_service_task_detail_collapses_targets_after_three(service_client):
+    """验证启停详情默认仅展示三台节点，并可展开或收起其余节点。"""
+    client, app, _csrf, _executor, _node_ids, user_id, _monkeypatch = service_client
+    hostnames = ["service-detail-{}".format(index) for index in range(1, 6)]
+    ips = ["198.51.100.{}".format(index) for index in range(1, 6)]
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task = Task(
+                operation_type="nginx_service_control",
+                status="success",
+                detail="任务已完成",
+                progress=100,
+                source_batch="OP-TEST-0001",
+                target_hostnames=", ".join(hostnames),
+                target_ips=", ".join(ips),
+                target_configs="reload",
+                trigger_user_id=user_id,
+            )
+            session.add(task)
+            session.flush()
+            task_id = task.id
+
+    detail = client.get("/nginx/service/task/{}/log/".format(task_id))
+    assert detail.status_code == 200, detail.text
+    assert detail.text.count('class="service-task-target">') == 3
+    assert detail.text.count(
+        'class="service-task-target" data-service-extra-target hidden'
+    ) == 2
+    assert 'id="serviceTargetToggle"' in detail.text
+    assert 'data-extra-count="2"' in detail.text
+
+    script = (Path(__file__).parents[1] / "static/js/nginx-service.js").read_text(
+        encoding="utf-8"
+    )
+    toggle_setup = script.split("function initServiceTargetToggle()", 1)[1].split(
+        "function initTaskDetail()", 1
+    )[0]
+    assert 'toggle.addEventListener("click"' in toggle_setup
+    assert "target.hidden = !expanded" in toggle_setup
+    assert 'toggle.setAttribute("aria-expanded", String(expanded))' in toggle_setup
+
+
+def test_systemd_probe_checks_nginx_service_once(monkeypatch):
+    """验证启停探测不重复查询 nginx 的等价 unit 名称。"""
+    from ngxops.nginx_service import services
+
+    commands = []
+
+    class Context:
+        """收集探测过程中的摘要日志。"""
+
+        def append_log(self, _message, _level="info"):
+            """接收一次节点级摘要。"""
+            return True
+
+    def fake_run_remote_command(_client, command, timeout=20, context=None):
+        """返回未运行且未启用的 systemd 状态。"""
+        commands.append(command)
+        if command == "command -v systemctl >/dev/null 2>&1":
+            return 0, ""
+        if command.startswith("systemctl is-active"):
+            return 3, "inactive"
+        if command.startswith("systemctl is-enabled"):
+            return 1, "disabled"
+        raise AssertionError("收到意外探测命令：{}".format(command))
+
+    monkeypatch.setattr(services, "_run_remote_command", fake_run_remote_command)
+    assert services._systemd_unit(object(), Context()) == ""
+    assert commands == [
+        "command -v systemctl >/dev/null 2>&1",
+        "systemctl is-active nginx.service 2>/dev/null || true",
+        "systemctl is-enabled nginx.service 2>/dev/null || true",
+    ]

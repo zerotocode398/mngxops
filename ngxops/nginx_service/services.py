@@ -211,27 +211,27 @@ def _systemd_unit(client, context: TaskContext) -> str:
     if status != 0:
         context.append_log("未检测到 systemctl，使用 Nginx 二进制管理")
         return ""
-    for unit in ("nginx", "nginx.service"):
-        _status, active_output = _run_remote_command(
-            client,
-            "systemctl is-active {} 2>/dev/null || true".format(shlex.quote(unit)),
-            timeout=20,
-            context=context,
-        )
-        active_state = active_output.strip().splitlines()[-1] if active_output else ""
-        if active_state in _ACTIVE_SYSTEMD_STATES:
-            context.append_log("检测到 systemd 管理 unit {}".format(unit))
-            return unit
-        _status, enabled_output = _run_remote_command(
-            client,
-            "systemctl is-enabled {} 2>/dev/null || true".format(shlex.quote(unit)),
-            timeout=20,
-            context=context,
-        )
-        enabled_state = enabled_output.strip().splitlines()[-1] if enabled_output else ""
-        if enabled_state in _ENABLED_SYSTEMD_STATES:
-            context.append_log("检测到已启用的 systemd unit {}".format(unit))
-            return unit
+    unit = "nginx.service"
+    _status, active_output = _run_remote_command(
+        client,
+        "systemctl is-active {} 2>/dev/null || true".format(shlex.quote(unit)),
+        timeout=20,
+        context=context,
+    )
+    active_state = active_output.strip().splitlines()[-1] if active_output else ""
+    if active_state in _ACTIVE_SYSTEMD_STATES:
+        context.append_log("检测到 systemd 管理 unit {}".format(unit))
+        return unit
+    _status, enabled_output = _run_remote_command(
+        client,
+        "systemctl is-enabled {} 2>/dev/null || true".format(shlex.quote(unit)),
+        timeout=20,
+        context=context,
+    )
+    enabled_state = enabled_output.strip().splitlines()[-1] if enabled_output else ""
+    if enabled_state in _ENABLED_SYSTEMD_STATES:
+        context.append_log("检测到已启用的 systemd unit {}".format(unit))
+        return unit
     context.append_log("未检测到托管中的 nginx unit，使用 Nginx 二进制管理")
     return ""
 

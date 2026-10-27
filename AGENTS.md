@@ -762,3 +762,47 @@ e9707275226af0ee7d70a97142da9a93
 268. **已完成**：Nginx 安装与启停历史对齐升级历史的查询标签、多关键词 AND 搜索、状态自动筛选、清空条件、UTC+8 时间和公共分页布局；修正启停“进行中”状态筛选。实现：`ngxops/nginx_install/routes.py`、`ngxops/nginx_service/routes.py`、`templates/nginx_install/history.html`、`templates/nginx_service/history.html`。
 269. **已完成**：统一任务详情的多节点日志归属兼容 `node_id`/`id` 与主机身份匹配，避免并发结果顺序导致节点筛选错配；所有多节点任务可按节点过滤，旧启停日志继续通过节点开始标记补归属。清除终端模板及增量日志的首尾换行，避免首尾空行。实现：`ngxops/tasks/routes.py`、`templates/tasks/detail.html`、`static/js/task-center.js`。未运行自动化测试或浏览器验证。
 270. **已完成**：Nginx 安装、卸载、启停和升级/回滚的多节点历史详情可按节点筛选完整远程操作日志。任务中心仍展示核心操作日志；安装、卸载、启停远程输出改存 v19 `ngxops_nginx_operation_logs`，升级/回滚继续使用 v17 专属日志表。旧启停任务的通用日志在专用详情页按节点开始记录推断归属；安装和卸载按批次任务归属筛选。节点筛选样式提升为全局共享，更新对应资源缓存版本与模块文档。实现：`ngxops/tasks/api.py`、`ngxops/tasks/executor.py`、`ngxops/tasks/models.py`、`ngxops/database/migrations/v0019_nginx_operation_logs.py`、Nginx 安装/卸载/启停/升级路由、服务、模板、脚本及 `docs/`。未运行自动化测试或浏览器验证；部署需备份后显式执行 `python -m ngxops.database upgrade` 应用 v19。
+271. **已完成**：最近启停任务操作列标题改为“详情”。实现：`templates/nginx_service/index.html`、`tests/test_nginx_service.py`。
+272. **已完成**：启停详情把“目标节点”筛选放到完整执行日志标题下方；终态详情也初始化筛选事件并立即按当前选择过滤已加载日志。检查升级、安装和卸载详情：升级/卸载在页面加载时绑定并应用筛选，安装绑定筛选并在轮询更新后应用，未发现同类终态提前返回问题。实现：`templates/nginx_service/task_log.html`、`static/js/nginx-service.js`、`tests/test_nginx_service.py`。
+273. **已完成**：启停任务创建后统一使用按任务 ID 更新的全局进度 toast，移除并发显示的创建成功 toast；跳过节点原因保留在同一进度提示中，并保留完整日志入口。实现：`static/js/nginx-service.js`、`tests/test_nginx_service.py`。
+274. **已完成**：查明启停完整执行日志重复出现 `inactive`/`disabled` 是因为分别探测 `nginx` 与 `nginx.service`，而 systemd 将它们解析为同一服务；启停和卸载现在只探测 `nginx.service`，保留运行/启用时走 systemd、否则走二进制的判断。检查安装流程只探测 `systemctl` 可用性并写入、启用 `nginx.service`，升级/回滚没有同类别名状态探测，未发现相同重复输出来源。实现：`ngxops/nginx_service/services.py`、`ngxops/nginx_uninstall/services.py`；回归覆盖：`tests/test_nginx_service.py`、`tests/test_nginx_uninstall.py`。验证：相关安装/升级/卸载/启停用例共 31 passed；12 条现有 Pydantic 字段弃用警告来自升级路由。
+```text
+2026-10-27 11:29:54
+麒麟66 (10.10.77.66) 开始 Nginx 重载
+2026-10-27 11:29:55
+inactive
+2026-10-27 11:29:55
+inactive
+2026-10-27 11:29:56
+未检测到托管中的 nginx unit，使用 Nginx 二进制管理
+2026-10-27 11:29:56
+执行: /home/umpay/ums/nginx/sbin/nginx -s reload
+2026-10-27 11:29:56
+麒麟66 (10.10.77.66) Nginx 重载成功: 重载 Nginx成功
+2026-10-27 11:29:56
+铜牛102 (10.10.77.102) 开始 Nginx 重载
+2026-10-27 11:29:58
+inactive
+2026-10-27 11:29:58
+disabled
+2026-10-27 11:29:58
+inactive
+2026-10-27 11:29:59
+disabled
+2026-10-27 11:29:59
+未检测到托管中的 nginx unit，使用 Nginx 二进制管理
+2026-10-27 11:29:59
+执行: /usr/sbin/nginx -s reload
+2026-10-27 11:29:59
+nginx: [error] open() "/run/nginx.pid" failed (2: No such file or directory)
+2026-10-27 11:29:59
+铜牛102 (10.10.77.102) Nginx 重载失败: 重载 Nginx失败：nginx: [error] open() "/run/nginx.pid" failed (2: No such file or directory)
+```
+275. **已完成**：启停任务创建后使用全局右上角普通 Toast，仅显示“Nginx {操作}任务已创建”，并提供“查看完整日志”跳转，在新窗口打开；移除百分比、批次号、节点/步骤及跳过原因。任务状态轮询仍用于恢复操作按钮，不更新全局弹窗。启停脚本缓存版本递增至 v275-3，确保浏览器加载包含日志跳转按钮的脚本。实现：`static/js/nginx-service.js`、`templates/nginx_service/index.html`、`tests/test_nginx_service.py`。验证：`tests/test_nginx_service.py` 为 4 passed；`node --check static/js/nginx-service.js` 和 `git diff --check` 通过。
+```text
+Nginx 重启 · 49%
+批次 OP-261027-0004 · 正在对 dgftp 执行 Nginx 重启（2/2）
+查看完整日志
+
+```
+276. **已完成**：启停详情摘要（批次号、动作、目标节点、时间和执行摘要）沿用全局正文 `var(--fs-base)`，并继承升级详情相同的代码、小字及展开按钮字号；目标节点默认显示前 3 台，超出部分通过“展开详情/收起详情”按钮切换显示，并同步维护 `aria-expanded` 和箭头图标。详情页 CSS/JS 缓存版本更新至 `276-2`。实现：`templates/nginx_service/task_log.html`、`static/css/nginx-service.css`、`static/js/nginx-service.js`、`tests/test_nginx_service.py`。验证：此前 `tests/test_nginx_service.py` 为 5 passed，`node --check static/js/nginx-service.js` 通过；本次仅调整字号及缓存版本，未重跑测试。
