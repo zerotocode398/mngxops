@@ -331,7 +331,7 @@ def _configure_paths(output: str, prefix_fallback: str) -> Tuple[str, List[dict]
 def _find_foreign_prefix_entries(
     client, prefix: str, paths: List[dict], context: Optional[TaskContext] = None
 ) -> List[str]:
-    """递归检查已知 Nginx 路径的容器目录并列出无法确认归属的子项。"""
+    """检查 prefix 根及未声明路径容器中的未知子项。"""
     normalized = normalize_remote_path(prefix)
     if is_dangerous_path(normalized):
         raise ValueError("禁止删除路径：{}".format(prefix))
@@ -352,6 +352,9 @@ def _find_foreign_prefix_entries(
         expected_paths.append(path)
         if item.get("kind") == "file" or is_file_like_path(path):
             expected_files.add(path)
+            parent = posixpath.dirname(path)
+            if parent != normalized:
+                expected_dirs.add(parent)
         elif path != normalized:
             expected_dirs.add(path)
 

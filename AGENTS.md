@@ -830,3 +830,23 @@ Nginx 重启 · 49%
 295. **已完成**：发布备份路径清理规则保留 Unicode 主机名，修复“麒麟66”被清洗为“__66”；增加路径断言并更新卸载说明。
 296. **已完成**：源码 prefix 检查递归识别参数路径上的未知子项；只有发现未知归属内容时才提示，点击“确认范围”展示节点和路径告警。用户确认路径允许位于 prefix 任意层级，执行前重新扫描，新增未确认内容会阻止删除。实现：`ngxops/nginx_uninstall/services.py`、`ngxops/nginx_uninstall/routes.py`、`static/js/nginx-uninstall.js`；测试：`tests/test_nginx_uninstall.py`；文档：`docs/nginx-uninstall.md`。
 294–296 验证：`tests/test_nginx_uninstall.py` 为 14 passed；`python -m compileall -q ngxops`、`node --check static/js/nginx-uninstall.js` 和 `git diff --check` 通过。未启动服务或连接真实 SSH 节点。
+297. **已完成**：源码卸载的递归删除边界固定为实时 `nginx -V` 的 `--prefix` 本身；例如 `/opt/app/nginx` 只删除该目录并保留 `/opt/app`，预览明确提示 prefix 内全部内容都会删除。`nginx -V` 声明文件的直接父目录作为路径容器，避免把配置备份、日志等同一目录内容误报为未知项；prefix 根下未被参数路径覆盖的未知项仍要求二次确认。增加精确删除目标和配置/日志目录识别测试，更新 `docs/nginx-uninstall.md`。
+```text
+prefix 中发现无法确认归属的内容：/opt/app/nginx/log/access、/opt/app/nginx/etc/nginx.conf.old、/opt/app/nginx/etc/uwsgi_params.default、/opt/app/nginx/etc/mime.types、/opt/app/nginx/etc/uwsgi_params、/opt/app/nginx/etc/koi-utf、/opt/app/nginx/etc/koi-win、/opt/app/nginx/etc/fastcgi.conf.default、/opt/app/nginx/etc/mime.types.default、/opt/app/nginx/etc/scgi_params、/opt/app/nginx/etc/nginx.conf.default、/opt/app/nginx/etc/conf.d、/opt/app/nginx/etc/nginx.conf_bak_yx、/opt/app/nginx/etc/nginx.conf-250318、/opt/app/nginx/etc/scgi_params.default、/opt/app/nginx/etc/fastcgi.conf、/opt/app/nginx/etc/win-utf、/opt/app/nginx/etc/fastcgi_params、/opt/app/nginx/etc/fastcgi_params.default。确认范围时将再次提示。
+
+后台核实编译参数为
+[mas@JumpServer ~]$ which nginx
+/opt/app/nginx/sbin/nginx
+[mas@JumpServer ~]$ nginx -V
+nginx version: nginx/1.30.3
+built by gcc 8.5.0 20210514 (Anolis 8.5.0-10.0.1) (GCC)
+built with OpenSSL 1.1.1k  FIPS 25 Mar 2021
+TLS SNI support enabled
+configure arguments: --prefix=/opt/app/nginx --conf-path=/opt/app/nginx/etc/nginx.conf --user=mas --group=dev --error-log-path=/opt/app/nginx/log/error.log --http-log-path=/opt/app/nginx/log/access.log --pid-path=/opt/app/nginx/nginx.pid --lock-path=/opt/app/nginx/nginx.lock --with-debug --with-http_stub_status_module --with-stream --with-http_ssl_module --with-http_realip_module
+
+```
+298. **已完成**：卸载路径预览按 `node.batch_max_count` 使用固定数量 worker 并发逐节点请求，保留逐节点结果与总完成数；等待文案改为“正在获取删除路径”，去除节点状态转圈图标并循环显示最多三个省略号。更新卸载中心 CSS/JS 缓存版本；`tests/test_nginx_uninstall.py` 增加并发上限、加载文案和省略号样式断言。
+297–298 静态验证：Python `py_compile`、卸载脚本 `node --check`、`git diff --check` 通过；未运行 pytest、连接真实 SSH 或进行浏览器视觉验证。
+299. **已完成**：节点组新增/编辑页的成员选择表复用公共行点击切换逻辑，点击可选节点行可勾选/取消；达到 3 个节点组上限的禁用行不响应。可选行显示指针反馈。更新 `templates/nodes/group_form.html`、`static/js/node-groups.js`、`static/css/node-groups.css`、`tests/test_nodes.py` 和 `docs/nodes.md`，递增页面静态资源版本至 `v=3`。
+299 验证：节点组脚本 `node --check`、Python `py_compile` 和 `git diff --check` 通过；未运行 pytest 或浏览器视觉验证。
+300. **已完成**：卸载范围预览与二次确认中的 prefix 未知归属路径改为默认收起的列表，摘要显示路径数量；展开后每行显示一条路径，长路径可换行。更新 `static/js/nginx-uninstall.js`、`static/css/nginx-uninstall.css`、`templates/nginx_uninstall/center.html`，静态资源版本更新至 `v=300-1`。未运行自动化测试或浏览器验证。

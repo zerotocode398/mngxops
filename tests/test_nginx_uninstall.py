@@ -284,10 +284,19 @@ def test_uninstall_home_and_center_follow_compact_lifecycle_layout(uninstall_cli
     assert '.uninstall-path-check[data-node="' in script.text
     assert 'getElementById("uninstallProgressRows").innerHTML = rows' in script.text
     assert 'uninstallPreviewWaitBar' in script.text
-    assert 'Promise.all(ids.map(function (nodeId)' in script.text
+    assert 'var workerCount = Math.min(ids.length, Math.max(1, maxCount));' in script.text
+    assert 'Promise.all(workers)' in script.text
     assert 'node_ids: [nodeId]' in script.text
+    assert "正在获取删除路径" in script.text
+    assert "SSH 探测中" not in script.text
+    assert "spinner-border spinner-border-sm" not in script.text
+    assert "源码删除边界" in script.text
     assert 'window.showConfirm(' in script.text
     assert '确认删除非 Nginx 内容' in script.text
+    uninstall_css = client.get("/static/css/nginx-uninstall.css")
+    assert uninstall_css.status_code == 200
+    assert "@keyframes uninstall-preview-dots" in uninstall_css.text
+    assert 'animation: uninstall-preview-dots 1.2s steps(1, end) infinite' in uninstall_css.text
 
 
 def test_uninstall_project_cleanup_paths_are_independent_and_checked_by_default():
@@ -585,6 +594,56 @@ def test_uninstall_prefix_scan_finds_nested_foreign_entries(monkeypatch):
         object(),
         foreign,
     ) == foreign
+
+
+def test_uninstall_prefix_boundary_preserves_parent_and_trusts_config_path_containers(
+    monkeypatch,
+):
+    """验证源码卸载只删除 prefix 本身，配置文件父目录不触发误报。"""
+    from ngxops.nginx_uninstall import services
+
+    commands = []
+    listing = (
+        "/opt/app/nginx/etc\n"
+        "/opt/app/nginx/log\n"
+        "/opt/app/nginx/sbin\n"
+        "/opt/app/nginx/local-cache\n"
+    )
+
+    def fake_run_command(_client, command, context=None, timeout=45):
+        """模拟 prefix 内容扫描和最终目录删除。"""
+        commands.append(command)
+        if command.startswith("test -e ") or command.startswith("test -d "):
+            return 0, ""
+        if command.startswith("find "):
+            return 0, listing
+        if command.startswith("rm -rf "):
+            return 0, ""
+        raise AssertionError("收到意外远程命令：{}".format(command))
+
+    class FakeContext:
+        """收集删除操作日志。"""
+
+        def append_log(self, _message):
+            """忽略测试中的日志写入。"""
+            return None
+
+    monkeypatch.setattr(services, "_run_command", fake_run_command)
+    paths = [
+        {"key": "--conf-path", "path": "/opt/app/nginx/etc/nginx.conf", "kind": "file"},
+        {"key": "--error-log-path", "path": "/opt/app/nginx/log/error.log", "kind": "file"},
+        {"key": "--http-log-path", "path": "/opt/app/nginx/log/access.log", "kind": "file"},
+        {"key": "--sbin-path", "path": "/opt/app/nginx/sbin/nginx", "kind": "file"},
+    ]
+
+    assert services._find_foreign_prefix_entries(
+        object(), "/opt/app/nginx", paths, object()
+    ) == ["/opt/app/nginx/local-cache"]
+    assert services._delete_remote_path(
+        object(), "/opt/app/nginx", "dir", FakeContext()
+    ) == "removed"
+    assert "rm -rf /opt/app/nginx" in commands
+    assert "rm -rf /opt/app" not in commands
 
 
 def test_uninstall_aborts_when_live_nginx_v_cannot_be_read(monkeypatch):

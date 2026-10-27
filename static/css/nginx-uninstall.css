@@ -98,11 +98,38 @@
 .uninstall-preview-mode { flex: 0 0 auto; color: var(--gray-700); white-space: nowrap; }
 .uninstall-preview-heading .badge { flex: 0 0 auto; white-space: nowrap; }
 
+.uninstall-foreign-path-details > summary { cursor: pointer; }
+.uninstall-foreign-path-list {
+    display: grid;
+    gap: 2px;
+    margin: 6px 0 0;
+    padding-left: 1.25rem;
+}
+.uninstall-foreign-path-list li { min-width: 0; overflow-wrap: anywhere; }
+.uninstall-foreign-path-list code { white-space: normal; overflow-wrap: anywhere; }
+
 .uninstall-preview-loading { display: grid; gap: 8px; }
 .uninstall-preview-wait-list { display: grid; gap: 6px; }
 .uninstall-preview-wait-item { min-width: 0; padding: 8px 10px; border: 1px solid var(--gray-200); border-radius: 4px; }
 .uninstall-preview-wait-item strong { min-width: 0; overflow-wrap: anywhere; }
 .uninstall-preview-wait-status { flex: 0 0 auto; }
+.uninstall-preview-pending::after {
+    display: inline-block;
+    width: 1.25em;
+    text-align: left;
+    content: ".";
+    animation: uninstall-preview-dots 1.2s steps(1, end) infinite;
+}
+
+@keyframes uninstall-preview-dots {
+    0% { content: "."; }
+    33% { content: ".."; }
+    66%, 100% { content: "..."; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .uninstall-preview-pending::after { animation: none; content: "..."; }
+}
 
 .uninstall-progress-list {
     display: grid;

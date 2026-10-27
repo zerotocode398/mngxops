@@ -4,7 +4,7 @@
 {% block page_title %}{% if group %}编辑节点组{% else %}新增节点组{% endif %}{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/node-groups.css') }}?v=2">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/node-groups.css') }}?v=3">
 {% endblock %}
 
 {% block content %}
@@ -94,7 +94,7 @@
                                     {% for node in nodes %}
                                     {% set already_in_group = group and group in node.groups %}
                                     {% set can_add = already_in_group or node.groups|length < 3 %}
-                                    <tr data-node-row data-hostname="{{ node.hostname }}" data-ip="{{ node.ip }}" data-search-text="{{ (node.hostname ~ ' ' ~ node.ip)|lower }}">
+                                    <tr data-node-row data-node-selectable="{{ 'true' if can_add else 'false' }}" data-hostname="{{ node.hostname }}" data-ip="{{ node.ip }}" data-search-text="{{ (node.hostname ~ ' ' ~ node.ip)|lower }}">
                                         <td class="node-group-check-column">
                                             <input class="form-check-input" type="checkbox" form="nodeGroupForm" name="node_ids" value="{{ node.id }}" {% if node.id in selected_ids %}checked{% endif %} {% if not can_add %}disabled title="该节点已加入 3 个节点组"{% endif %} aria-label="选择 {{ node.hostname }}" data-node-checkbox>
                                         </td>
@@ -136,5 +136,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/node-groups.js') }}?v=2"></script>
+<script src="{{ request.url_for('static', path='js/node-groups.js') }}?v=3"></script>
 {% endblock %}

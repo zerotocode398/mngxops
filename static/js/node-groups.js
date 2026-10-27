@@ -102,6 +102,9 @@
             updateSelection();
         });
         $rows.on("change", "[data-node-checkbox]", updateSelection);
+        if (window.bindModalTableRowToggle) {
+            window.bindModalTableRowToggle($rows.closest("tbody"), "[data-node-checkbox]");
+        }
         $selectedNodes.on("click", "[data-remove-node]", function () {
             var nodeId = this.getAttribute("data-remove-node");
             $rows.find("[data-node-checkbox]").filter(function () {

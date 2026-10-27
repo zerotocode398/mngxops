@@ -89,6 +89,16 @@ def test_node_crud_restore_groups_and_lock_gate(node_client):
         assert node.is_deleted is False
         assert node.status == "unknown"
 
+    group_form = client.get("/nodes/groups/create/")
+    assert group_form.status_code == 200, group_form.text
+    assert 'data-node-selectable="true"' in group_form.text
+    assert 'id="nodeGroupPickerModal"' in group_form.text
+    assert "/static/css/node-groups.css?v=3" in group_form.text
+    assert "/static/js/node-groups.js?v=3" in group_form.text
+    node_group_script = client.get("/static/js/node-groups.js")
+    assert node_group_script.status_code == 200
+    assert 'window.bindModalTableRowToggle($rows.closest("tbody"), "[data-node-checkbox]")' in node_group_script.text
+
     group_create = client.post(
         "/nodes/groups/create/",
         data={"csrf_token": csrf_token, "name": "production", "node_ids": [str(node_id)]},

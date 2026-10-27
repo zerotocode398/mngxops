@@ -236,6 +236,10 @@
     vertical-align: middle;
 }
 
+.node-group-modal-table tbody tr[data-node-selectable="true"] {
+    cursor: pointer;
+}
+
 .node-group-hostname {
     overflow-wrap: anywhere;
 }
