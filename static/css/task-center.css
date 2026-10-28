@@ -180,6 +180,16 @@
     -webkit-line-clamp: 2;
 }
 
+.task-node-result-reason .task-node-result-reason-text.is-expanded {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
+}
+
+.task-node-result-reason-toggle {
+    display: block;
+}
+
 #taskTargetOverflow[hidden] {
     display: none !important;
 }

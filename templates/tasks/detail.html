@@ -4,7 +4,7 @@
 {% block page_title %}任务详情 #{{ task.id }}{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=8">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/task-center.css') }}?v=9">
 {% endblock %}
 
 {% block content %}
@@ -15,7 +15,8 @@
          data-is-config-sync="{{ 'true' if is_config_sync_type else 'false' }}"
          data-is-release-type="{{ 'true' if is_release_type else 'false' }}"
          data-is-upgrade-type="{{ 'true' if is_upgrade_type else 'false' }}"
-         data-is-service-type="{{ 'true' if is_service_type else 'false' }}">
+         data-is-service-type="{{ 'true' if is_service_type else 'false' }}"
+         data-is-uninstall-type="{{ 'true' if is_uninstall_type else 'false' }}">
     <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
         <h2 class="h6 mb-0"><i class="bi bi-card-text me-1" aria-hidden="true"></i>任务详情 #{{ task.id }}</h2>
         <div class="d-flex flex-wrap gap-2">
@@ -49,6 +50,7 @@
                     {% if is_upgrade_type %}{% if can_read_upgrade %}<a href="/upgrade/history/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener"><code class="task-batch-code">{{ task.source_batch }}</code></a>{% else %}<code class="task-batch-code">{{ task.source_batch }}</code>{% endif %}
                     {% elif is_install_type %}<a href="/nginx-install/task/{{ task.id }}/log/" target="_blank" rel="noopener"><code class="task-batch-code">{{ task.source_batch }}</code></a>
                     {% elif is_service_type %}<a href="/nginx/service/history/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener"><code class="task-batch-code">{{ task.source_batch }}</code></a>
+                    {% elif is_uninstall_type %}{% if can_read_uninstall %}<a href="/nginx/uninstall/history/?search={{ task.source_batch|urlencode }}" target="_blank" rel="noopener"><code class="task-batch-code">{{ task.source_batch }}</code></a>{% else %}<code class="task-batch-code">{{ task.source_batch }}</code>{% endif %}
                     {% elif is_release_type %}<code class="task-batch-code">{{ task.source_batch }}</code>
                     {% else %}<a href="/tasks/?search={{ task.source_batch|urlencode }}"><code class="task-batch-code">{{ task.source_batch }}</code></a>{% endif %}
                 {% else %}<span>-</span>{% endif %}
@@ -64,7 +66,7 @@
         <div class="task-progress-track mb-3" role="progressbar" aria-label="任务进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ task.progress }}">
             <div class="progress-bar" data-task-progress-bar style="width:{{ task.progress }}%"></div>
         </div>
-        {% if task.detail %}<p class="small text-muted mb-3" data-task-detail>{{ task.detail }}</p>{% else %}<p class="small text-muted mb-3" data-task-detail></p>{% endif %}
+        {% if not is_uninstall_type %}{% if task.detail %}<p class="small text-muted mb-3" data-task-detail>{{ task.detail }}</p>{% else %}<p class="small text-muted mb-3" data-task-detail></p>{% endif %}{% endif %}
 
         {% if targets %}
         <div class="mb-3">
@@ -83,7 +85,7 @@
             {% endif %}
         </div>
         {% endif %}
-        {% if target_configs %}
+        {% if target_configs and not is_uninstall_type %}
         <div class="mb-3">
             <h3 class="h6 mb-2"><i class="bi bi-file-earmark-code me-1" aria-hidden="true"></i>{% if task.operation_type == 'credential_enable_test' %}目标凭证{% else %}目标配置{% endif %}（{{ target_config_count }}）</h3>
             <div class="d-flex flex-wrap gap-1">
@@ -140,5 +142,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=11"></script>
+<script src="{{ request.url_for('static', path='js/task-center.js') }}?v=12"></script>
 {% endblock %}

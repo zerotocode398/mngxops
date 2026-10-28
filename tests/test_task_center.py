@@ -203,6 +203,68 @@ def test_upgrade_task_source_batch_links_to_upgrade_history(task_center_client):
     assert 'href="/tasks/?search=UG-261014-0001"' not in detail.text
 
 
+def test_uninstall_task_detail_hides_legacy_summary_and_config_and_links_history(
+    task_center_client,
+):
+    """卸载任务详情隐藏旧错误摘要和目标配置，并链接卸载历史。"""
+    client, app, _token, admin_id, _operator_id, *_rest = task_center_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task_id = _create_task(
+                session,
+                "nginx_uninstall",
+                admin_id,
+                batch="UN-261027-0301",
+                hosts="uninstall-node",
+                ips="192.0.2.61",
+                configs="source:/home/umpay/ums/nginx",
+                detail="LEGACY_UNINSTALL_ERROR_SUMMARY",
+                status="failed",
+            )
+
+    detail = client.get("/tasks/{}/".format(task_id))
+
+    assert detail.status_code == 200
+    assert "LEGACY_UNINSTALL_ERROR_SUMMARY" not in detail.text
+    assert "source:/home/umpay/ums/nginx" not in detail.text
+    assert "目标配置" not in detail.text
+    assert (
+        'href="/nginx/uninstall/history/?search=UN-261027-0301" target="_blank" '
+        'rel="noopener"><code class="task-batch-code">UN-261027-0301</code></a>'
+    ) in detail.text
+    assert 'data-is-uninstall-type="true"' in detail.text
+    assert "task-center.js?v=12" in detail.text
+
+
+def test_uninstall_batch_is_not_a_link_without_uninstall_read_permission(
+    task_center_client,
+):
+    """只有卸载读取权限才能从任务详情进入卸载历史。"""
+    client, app, _token, _admin_id, operator_id, *_rest = task_center_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            task_id = _create_task(
+                session,
+                "nginx_uninstall",
+                operator_id,
+                batch="UN-261027-0302",
+                hosts="uninstall-owned-node",
+            )
+
+    app.state.permission_checker = lambda _session, user, resource, action: (
+        user.id == operator_id
+        and resource == "nginx_uninstall"
+        and action == "execute"
+    )
+    client.cookies.clear()
+    _login(client, "task-operator", "task-operator-password-123")
+    detail = client.get("/tasks/{}/".format(task_id))
+
+    assert detail.status_code == 200
+    assert '<code class="task-batch-code">UN-261027-0302</code>' in detail.text
+    assert "/nginx/uninstall/history/?search=UN-261027-0302" not in detail.text
+
+
 def test_upgrade_task_result_and_logs_use_shared_host_identity(task_center_client):
     """验证升级单节点结果与日志使用共享的主机名/IP 展示。"""
     client, app, _token, admin_id, _operator_id, *_rest = task_center_client

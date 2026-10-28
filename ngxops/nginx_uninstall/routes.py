@@ -3,6 +3,7 @@
 import json
 import re
 from math import ceil
+from types import SimpleNamespace
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -26,6 +27,7 @@ from ngxops.security.dependencies import require_authenticated_user, require_per
 from ngxops.security.errors import PermissionDenied
 from ngxops.settings.service import read_setting
 from ngxops.tasks.models import NginxOperationLog, Task, TaskLog
+from ngxops.tasks.presentation import format_task_datetime
 from ngxops.ui import render_page
 
 
@@ -586,6 +588,13 @@ def nginx_uninstall_task_log(
     except (TypeError, ValueError):
         result_tree = None
     options = json.loads(run.options_json or "{}")
+    page_user = SimpleNamespace(
+        id=user.id,
+        username=user.username,
+        is_active=user.is_active,
+        is_superuser=user.is_superuser,
+        is_staff=user.is_staff,
+    )
     return render_page(
         request,
         "nginx_uninstall/task_log.html",
@@ -598,10 +607,11 @@ def nginx_uninstall_task_log(
             "log_cursor": max((item.id for item in logs), default=0),
             "result_tree": result_tree,
             "options": options,
+            "format_task_datetime": format_task_datetime,
             "status_label": _STATUS_LABELS.get(run.task.status, run.task.status),
             "can_cancel": can_execute and run.task.status in ("pending", "running"),
         },
-        user,
+        page_user,
         session,
     )
 

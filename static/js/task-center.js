@@ -13,6 +13,7 @@
     var terminalStatuses = ["success", "failed", "cancelled"];
     var currentTaskStatus = "";
     var currentTaskDetail = "";
+    var expandedNodeReasons = {};
 
     function statusBadge(status) {
         var badge = document.createElement("span");
@@ -188,6 +189,8 @@
 
     function renderNodeResults(root, nodes) {
         var previousScroll = root.querySelector(".task-node-result-scroll");
+        var taskDetail = root.closest("#taskDetail");
+        var isUninstall = taskDetail && taskDetail.dataset.isUninstallType === "true";
         var scrollTop = previousScroll ? previousScroll.scrollTop : 0;
         var scrollLeft = previousScroll ? previousScroll.scrollLeft : 0;
         root.replaceChildren();
@@ -241,9 +244,28 @@
             reasonCell.className = "task-node-result-reason";
             var reason = nodeResultReason(result);
             var reasonText = document.createElement("span");
+            reasonText.className = "task-node-result-reason-text";
             reasonText.textContent = reason;
             reasonText.title = reason;
             reasonCell.appendChild(reasonText);
+            if (isUninstall && reason.length > 160) {
+                var reasonKey = String(result.node_id || result.hostname || result.ip || index);
+                var expanded = expandedNodeReasons[reasonKey] === true;
+                var toggle = document.createElement("button");
+                reasonText.classList.toggle("is-expanded", expanded);
+                toggle.type = "button";
+                toggle.className = "btn btn-link btn-sm p-0 task-node-result-reason-toggle";
+                toggle.textContent = expanded ? "收起" : "展开";
+                toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+                toggle.addEventListener("click", function () {
+                    expandedNodeReasons[reasonKey] = !expandedNodeReasons[reasonKey];
+                    var nextExpanded = expandedNodeReasons[reasonKey];
+                    reasonText.classList.toggle("is-expanded", nextExpanded);
+                    toggle.textContent = nextExpanded ? "收起" : "展开";
+                    toggle.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+                });
+                reasonCell.appendChild(toggle);
+            }
             row.append(nodeCell, statusCell, reasonCell);
             body.appendChild(row);
         });

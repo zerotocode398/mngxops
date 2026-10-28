@@ -850,3 +850,45 @@ configure arguments: --prefix=/opt/app/nginx --conf-path=/opt/app/nginx/etc/ngin
 299. **已完成**：节点组新增/编辑页的成员选择表复用公共行点击切换逻辑，点击可选节点行可勾选/取消；达到 3 个节点组上限的禁用行不响应。可选行显示指针反馈。更新 `templates/nodes/group_form.html`、`static/js/node-groups.js`、`static/css/node-groups.css`、`tests/test_nodes.py` 和 `docs/nodes.md`，递增页面静态资源版本至 `v=3`。
 299 验证：节点组脚本 `node --check`、Python `py_compile` 和 `git diff --check` 通过；未运行 pytest 或浏览器视觉验证。
 300. **已完成**：卸载范围预览与二次确认中的 prefix 未知归属路径改为默认收起的列表，摘要显示路径数量；展开后每行显示一条路径，长路径可换行。更新 `static/js/nginx-uninstall.js`、`static/css/nginx-uninstall.css`、`templates/nginx_uninstall/center.html`，静态资源版本更新至 `v=300-1`。未运行自动化测试或浏览器验证。
+301. Nginx 卸载，“已创建 1 个卸载任务，批次 UN-261027-0001”，参考 Nginx 升级的右上角弹窗提示，点击“查看完整日志”时新建浏览器窗口；同时卸载进度布局和样式参考 Nginx 升级的升级进度。
+302. 任务中心任务类型为Nginx 卸载，为什么目标节点上方会显示“删除路径 /home/umpay/ums/nginx失败：rm: 无法删除 '/home/umpay/ums/nginx/lweim/1': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/2': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/3': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/4': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/5': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/6': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/7': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/8': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/9': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/10': 权限不够”，我理解不需要展示。
+303. 任务中心任务类型为Nginx 卸载，目标配置（1） source:/home/umpay/ums/nginx，可以删了，我觉得没必要。
+304. 任务中心任务类型为Nginx 卸载，来源批次 UN-261027-0001应该是跳转到 Nginx 卸载历史。
+305. 任务中心任务类型为Nginx 卸载，执行结果原因“删除路径 /home/umpay/ums/nginx失败：rm: 无法删除 '/home/umpay/ums/nginx/lweim/1': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/2': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/3': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/4': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/5': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/6': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/7': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/8': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/9': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/10': 权限不够” 太多了，我理解可以默认显示几个字符串，点击后可以收缩/开展。
+306. 任务中心任务类型为Nginx 卸载执行日志体现核心步骤就可。
+307. Nginx 卸载历史进入详情报错。
+```text
+    value = self._fire_loader_callables(state, key, passive)
+  File "D:\PyCharm\联动优势\works\django-labs\ngxops\venv\lib\site-packages\sqlalchemy\orm\attributes.py", line 1126, in _fire_loader_callables
+    return state._load_expired(state, passive)
+  File "D:\PyCharm\联动优势\works\django-labs\ngxops\venv\lib\site-packages\sqlalchemy\orm\state.py", line 828, in _load_expired
+    self.manager.expired_attribute_loader(self, toload, passive)
+  File "D:\PyCharm\联动优势\works\django-labs\ngxops\venv\lib\site-packages\sqlalchemy\orm\loading.py", line 1607, in load_scalar_attributes
+    raise orm_exc.DetachedInstanceError(
+sqlalchemy.orm.exc.DetachedInstanceError: Instance <User at 0x1d3987c8b50> is not bound to a Session; attribute refresh operation cannot proceed (Background on this error at: https://sqlalche.me/e/20/bhk3)
+```
+308. Nginx 卸载历史，完整日志应该是记录远程全部过程，需要注意格式，我发现你之前记录的异常都是一行体现，但终端是一行一个；因为目前访问报错，我不知道具体实现样式。
+```text
+我在任务中心看到的案例
+删除路径 /home/umpay/ums/nginx失败：rm: 无法删除 '/home/umpay/ums/nginx/lweim/1': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/2': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/3': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/4': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/5': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/6': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/7': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/8': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/9': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/10': 权限不够
+
+实际终端操作
+[umpay@localhost lweim]$ rm -rf *
+rm: 无法删除 '1': 权限不够
+rm: 无法删除 '10': 权限不够
+rm: 无法删除 '2': 权限不够
+rm: 无法删除 '3': 权限不够
+rm: 无法删除 '4': 权限不够
+rm: 无法删除 '5': 权限不够
+rm: 无法删除 '6': 权限不够
+rm: 无法删除 '7': 权限不够
+rm: 无法删除 '8': 权限不够
+rm: 无法删除 '9': 权限不够
+
+```
+309. Nginx 生命周期管理，安装、升级、卸载，在点击执行后，统一使用右上角弹窗这没问题，但是部分细节不统一。不要再右侧的进度里面体现任何跳转按钮，直接在右上角弹窗体现，点击“查看完整日志”新建浏览器窗口跳转到对应的任务，目前是只有启停是这样实现的；另外，右侧的进度体现进度滚动条即可以及最后的结果（成功或失败），如果有多台节点，可以每个节点一个滚动条及状态展示；我预期是生命周期管理保持统一。
+```text
+Nginx 重启任务已创建
+查看完整日志
+```
+310. 

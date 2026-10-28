@@ -1,11 +1,13 @@
 """验证 Nginx 卸载选择、路径门禁和 systemd 探测。"""
 
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 import re
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from ngxops.accounts.models import User
 from ngxops.accounts.passwords import make_password
@@ -18,7 +20,7 @@ from ngxops.database.session import session_scope
 from ngxops.nginx_uninstall.models import NginxUninstallRun
 from ngxops.settings.models import SystemSetting
 from ngxops.nodes.models import Node
-from ngxops.tasks.models import Task
+from ngxops.tasks.models import NginxOperationLog, Task
 
 
 @pytest.fixture
@@ -624,9 +626,18 @@ def test_uninstall_prefix_boundary_preserves_parent_and_trusts_config_path_conta
     class FakeContext:
         """收集删除操作日志。"""
 
-        def append_log(self, _message):
-            """忽略测试中的日志写入。"""
-            return None
+        def __init__(self):
+            """初始化任务中心与完整日志收集器。"""
+            self.task_logs = []
+            self.detail_logs = []
+
+        def append_log(self, message):
+            """收集任务中心日志。"""
+            self.task_logs.append(message)
+
+        def append_detail_log(self, message):
+            """收集完整日志。"""
+            self.detail_logs.append(message)
 
     monkeypatch.setattr(services, "_run_command", fake_run_command)
     paths = [
@@ -639,9 +650,12 @@ def test_uninstall_prefix_boundary_preserves_parent_and_trusts_config_path_conta
     assert services._find_foreign_prefix_entries(
         object(), "/opt/app/nginx", paths, object()
     ) == ["/opt/app/nginx/local-cache"]
+    context = FakeContext()
     assert services._delete_remote_path(
-        object(), "/opt/app/nginx", "dir", FakeContext()
+        object(), "/opt/app/nginx", "dir", context
     ) == "removed"
+    assert context.task_logs == []
+    assert context.detail_logs == ["已删除：/opt/app/nginx"]
     assert "rm -rf /opt/app/nginx" in commands
     assert "rm -rf /opt/app" not in commands
 
@@ -716,3 +730,149 @@ def test_uninstall_aborts_when_live_nginx_v_cannot_be_read(monkeypatch):
     assert "nginx -V" in outcome.detail
     assert commands == []
     assert client.closed is True
+
+
+def test_uninstall_task_log_page_renders_after_user_session_detaches(uninstall_client):
+    """卸载历史详情可渲染完整日志和脱离 Session 的用户字段。"""
+    client, app = uninstall_client
+    with session_scope(app.state.database.session_factory) as session:
+        with session.begin():
+            run = session.scalar(select(NginxUninstallRun).limit(1))
+            task_id = run.task_id
+            session.add(
+                NginxOperationLog(
+                    operation_type="nginx_uninstall",
+                    task_id=task_id,
+                    node_id=run.node_id,
+                    level="info",
+                    message="远程命令输出行",
+                    created_at=datetime(2026, 10, 27, 12, 0, 0),
+                )
+            )
+
+    response = client.get("/nginx/uninstall/task/{}/log/".format(task_id))
+
+    assert response.status_code == 200
+    assert "完整远程操作日志" in response.text
+    assert "2026-10-27 20:00:00" in response.text
+    assert "远程命令输出行" in response.text
+    assert "uninstall-admin" in response.text
+    assert "UN-261027-0001" in response.text
+
+
+def test_uninstall_create_toast_opens_first_task_log_in_new_window(uninstall_client):
+    """卸载成功提示提供新窗口打开完整日志的入口，进度沿用升级布局。"""
+    client = uninstall_client[0]
+    center = client.get("/nginx/uninstall/center/")
+    assert center.status_code == 200
+    assert 'class="uninstall-side upgrade-progress-column"' in center.text
+    assert 'class="card upgrade-progress-card"' in center.text
+
+    script = client.get("/static/js/nginx-uninstall.js")
+    assert script.status_code == 200
+    assert 'label: "查看完整日志"' in script.text
+    assert 'target: "_blank"' in script.text
+    assert 'window.showToast(data.message, "success", 8000, logAction)' in script.text
+
+
+def test_uninstall_command_keeps_stderr_lines_in_full_log_and_compacts_summary(
+    monkeypatch,
+):
+    """卸载命令错误在完整日志中逐行保存，任务错误摘要不拼接全部 stderr。"""
+    from ngxops.nginx_uninstall import services
+
+    output_lines = [
+        "rm: cannot remove '{}': Permission denied".format(index)
+        for index in range(1, 11)
+    ]
+
+    class FakeContext:
+        """收集任务摘要日志和专属完整日志。"""
+
+        def __init__(self):
+            """初始化日志缓冲。"""
+            self.detail_logs = []
+            self.task_logs = []
+
+        def has_detail_log_sink(self):
+            """表示测试已配置专属日志接收器。"""
+            return True
+
+        def append_detail_log(self, message, _level="info"):
+            """收集一条完整日志。"""
+            self.detail_logs.append(message)
+
+        def append_detail_logs(self, messages, _level="info"):
+            """按行收集完整日志。"""
+            self.detail_logs.extend(messages)
+
+        def append_log(self, message, _level="info"):
+            """收集任务中心核心日志。"""
+            self.task_logs.append(message)
+
+        def check_cancelled(self):
+            """保持模拟命令运行。"""
+            return None
+
+    class FakeChannel:
+        """提供多行远程 stderr 和固定退出码。"""
+
+        def __init__(self, lines):
+            """把 stderr 按行编码为远程数据块。"""
+            self.lines = [(line + "\n").encode("utf-8") for line in lines]
+            self.position = 0
+
+        def recv_ready(self):
+            """模拟 stdout 没有数据。"""
+            return False
+
+        def recv_stderr_ready(self):
+            """指示是否仍有 stderr 数据。"""
+            return self.position < len(self.lines)
+
+        def recv_stderr(self, _size):
+            """返回下一行 stderr。"""
+            value = self.lines[self.position]
+            self.position += 1
+            return value
+
+        def exit_status_ready(self):
+            """在 stderr 全部读取后报告命令结束。"""
+            return self.position == len(self.lines)
+
+        def recv_exit_status(self):
+            """返回远程命令失败状态。"""
+            return 1
+
+    class FakeStream:
+        """提供 Paramiko stdout 所需 channel 属性。"""
+
+        def __init__(self, channel):
+            """绑定模拟 SSH channel。"""
+            self.channel = channel
+
+    class FakeClient:
+        """返回模拟远程命令流。"""
+
+        def __init__(self, channel):
+            """保存命令输出 channel。"""
+            self.channel = channel
+
+        def exec_command(self, _command, timeout=None):
+            """返回模拟 stdout 流。"""
+            return None, FakeStream(self.channel), None
+
+    context = FakeContext()
+    client = FakeClient(FakeChannel(output_lines))
+
+    with pytest.raises(ValueError) as error:
+        services._require_command(
+            client, "rm -rf /data/nginx", context, "删除路径 /data/nginx"
+        )
+
+    assert "$ rm -rf /data/nginx" in context.detail_logs
+    assert context.detail_logs[1:] == output_lines
+    assert "Permission denied" in str(error.value)
+    assert "其余输出见完整日志" in str(error.value)
+    assert len(str(error.value)) < 260
+    assert context.task_logs == []

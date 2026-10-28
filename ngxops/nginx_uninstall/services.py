@@ -239,7 +239,16 @@ def _backup_path(hostname: str, backup_dir: str = _BACKUP_DIR) -> str:
 
 def _run_command(client, command: str, context: Optional[TaskContext] = None, timeout: int = 45):
     """运行有超时限制的 SSH 命令并返回退出码和输出。"""
+    has_detail_log_sink = getattr(context, "has_detail_log_sink", None)
+    if callable(has_detail_log_sink) and has_detail_log_sink():
+        context.append_detail_log("$ {}".format(command))
     return _run_remote_command(client, command, timeout=timeout, context=context)
+
+
+def _compact_failure_message(message: str, limit: int = 240) -> str:
+    """把失败详情压缩为任务摘要可读的单行文本。"""
+    compact = " ".join((message or "").split())
+    return compact if len(compact) <= limit else compact[: limit - 3] + "..."
 
 
 def _package_origin(client, binary: str, context: Optional[TaskContext] = None) -> dict:
@@ -860,7 +869,7 @@ def create_uninstall_batch(
                         source_batch=batch_number,
                         target_hostnames=node.hostname,
                         target_ips=node.ip,
-                        target_configs="{}:{}".format(options["install_origin"], options["package_name"] or options["prefix"]),
+                        target_configs="",
                         subject_type="node",
                         subject_id=node.id,
                         trigger_user_id=user_id,
@@ -967,7 +976,10 @@ def _require_command(client, command: str, context: TaskContext, label: str, *, 
     """执行远程命令并把非零退出统一转换为业务错误。"""
     status, output = _run_command(client, _privileged(command, use_sudo), context, timeout)
     if status != 0:
-        detail = " ".join((output or "").split())[-800:]
+        output_lines = [line.strip() for line in (output or "").splitlines() if line.strip()]
+        detail = _compact_failure_message(output_lines[0], 180) if output_lines else ""
+        if len(output_lines) > 1:
+            detail = "{}；其余输出见完整日志".format(detail)
         raise ValueError("{}失败{}".format(label, "：" + detail if detail else ""))
     return output
 
@@ -1003,11 +1015,11 @@ def _delete_remote_path(client, path: str, kind: str, context: TaskContext) -> s
     quoted = shlex.quote(normalized)
     status, _output = _run_command(client, "test -e {}".format(quoted), context)
     if status != 0:
-        context.append_log("路径不存在，跳过：{}".format(normalized))
+        context.append_detail_log("路径不存在，跳过：{}".format(normalized))
         return "skipped"
     command = "rm -f {}".format(quoted) if kind == "file" else "rm -rf {}".format(quoted)
     _require_command(client, command, context, "删除路径 {}".format(normalized), timeout=120)
-    context.append_log("已删除：{}".format(normalized))
+    context.append_detail_log("已删除：{}".format(normalized))
     return "removed"
 
 
@@ -1087,7 +1099,7 @@ def _run_uninstall(
                 status, _output = _run_command(client, "{} -s quit".format(binary), context, 90)
                 if status != 0:
                     _require_command(client, "{} -s stop".format(binary), context, "停止 Nginx", timeout=90)
-            context.append_log("Nginx 已停止")
+            context.append_detail_log("Nginx 已停止")
         context.check_cancelled()
         if snapshot["origin"] == "package":
             _phase(context, 45, "通过包管理器卸载 Nginx")
@@ -1196,10 +1208,11 @@ def _run_uninstall(
         if removed:
             _apply_uninstall_state(session_factory, target)
         message = str(exc) if isinstance(exc, ValueError) else "卸载失败（{}）".format(type(exc).__name__)
-        result["message"] = message[:1000]
-        context.append_log(message[:1000], "error")
-        context.append_detail_log(message[:1000], "error")
-        return TaskOutcome("failed", message[:2000], {"nodes": [result]})
+        summary = _compact_failure_message(message)
+        result["message"] = summary
+        context.append_log(summary, "error")
+        context.append_detail_log(summary, "error")
+        return TaskOutcome("failed", summary, {"nodes": [result]})
     finally:
         if client is not None:
             client.close()

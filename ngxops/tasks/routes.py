@@ -252,9 +252,10 @@ def task_detail(
     log_target_map = _task_log_target_map(
         task.target_hostnames, task.target_ips, result_nodes
     )
+    is_uninstall_type = task.operation_type == "nginx_uninstall"
     target_configs = [
         item.strip()
-        for item in (task.target_configs or "").split(",")
+        for item in ("" if is_uninstall_type else task.target_configs or "").split(",")
         if item.strip()
     ]
     trigger_username = "-"
@@ -280,6 +281,9 @@ def task_detail(
     )
     can_execute_uninstall = user.is_superuser or bool(
         checker and checker(session, user, "nginx_uninstall", "execute")
+    )
+    can_read_uninstall = user.is_superuser or bool(
+        checker and checker(session, user, "nginx_uninstall", "read")
     )
     summary = result_tree.get("summary", {}) if isinstance(result_tree, dict) else {}
     return render_page(
@@ -315,7 +319,9 @@ def task_detail(
             in ("nginx_upgrade", "nginx_rollback"),
             "is_install_type": task.operation_type == "nginx_install",
             "is_service_type": task.operation_type == "nginx_service_control",
+            "is_uninstall_type": is_uninstall_type,
             "can_read_upgrade": can_read_upgrade,
+            "can_read_uninstall": can_read_uninstall,
             "is_config_sync_type": task.operation_type == "config_batch_sync",
             "can_cancel": _can_cancel_task(
                 task, upgrade_phase, can_execute_upgrade

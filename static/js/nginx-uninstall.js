@@ -425,7 +425,13 @@
                 document.getElementById("uninstallProgress").classList.remove("d-none");
                 document.getElementById("uninstallBatchLabel").textContent = "批次 " + data.batch_number;
                 document.getElementById("uninstallCancel").classList.remove("d-none");
-                window.showToast(data.message, "success");
+                var taskId = data.task_ids && data.task_ids.length ? data.task_ids[0] : null;
+                var logAction = taskId ? {
+                    label: "查看完整日志",
+                    href: "/nginx/uninstall/task/" + taskId + "/log/",
+                    target: "_blank"
+                } : null;
+                window.showToast(data.message, "success", 8000, logAction);
                 pollBatch();
             }).catch(function (error) { window.showAlert("创建失败", error.message); });
         }
