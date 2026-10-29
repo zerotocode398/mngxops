@@ -408,6 +408,22 @@ def nginx_service_task_log(
     names = [part.strip() for part in task.target_hostnames.split(",") if part.strip()]
     ips = [part.strip() for part in task.target_ips.split(",") if part.strip()]
     result_nodes = result_tree.get("nodes", []) if isinstance(result_tree, dict) else []
+    result_nodes = [item for item in result_nodes if isinstance(item, dict)]
+    if task.status == "cancelled":
+        for item in result_nodes:
+            if item.get("status") in ("pending", "running"):
+                item["status"] = "cancelled"
+                item["message"] = "任务已取消"
+        if isinstance(result_tree, dict):
+            result_tree["summary"] = {
+                "success": sum(1 for item in result_nodes if item.get("status") == "success"),
+                "failed": sum(
+                    1
+                    for item in result_nodes
+                    if item.get("status") in ("failed", "cancelled")
+                ),
+                "total": len(result_nodes),
+            }
     for index in range(max(len(names), len(ips), len(result_nodes))):
         result_node = (
             result_nodes[index]
@@ -429,6 +445,34 @@ def nginx_service_task_log(
                     "ip": ip,
                 }
             )
+    result_nodes = result_tree.get("nodes", []) if isinstance(result_tree, dict) else []
+    versions = list(
+        dict.fromkeys(
+            str(item.get("version") or "").strip()
+            for item in result_nodes
+            if isinstance(item, dict) and str(item.get("version") or "").strip()
+        )
+    )
+    current_version = ", ".join(versions) or "未知"
+    if result_nodes:
+        success_count = sum(1 for item in result_nodes if item.get("status") == "success")
+        fail_count = sum(
+            1 for item in result_nodes if item.get("status") in ("failed", "cancelled")
+        )
+        total_count = len(result_nodes)
+    else:
+        result_summary = result_tree.get("summary", {}) if isinstance(result_tree, dict) else {}
+        success_count = int(result_summary.get("success", 0) or 0)
+        fail_count = int(result_summary.get("failed", 0) or 0)
+        total_count = int(result_summary.get("total", len(targets)) or 0)
+    batch_summary = {
+        "created_at": format_task_datetime(task.created_at),
+        "started_at": format_task_datetime(task.started_at),
+        "finished_at": format_task_datetime(task.finished_at),
+        "success_count": success_count,
+        "fail_count": fail_count,
+        "total_count": total_count,
+    }
     return render_page(
         request,
         "nginx_service/task_log.html",
@@ -444,6 +488,8 @@ def nginx_service_task_log(
                 "cancelled": "secondary",
             }.get(task.status, "secondary"),
             "targets": targets,
+            "batch_summary": batch_summary,
+            "current_version": current_version,
             "result_tree": result_tree,
             "logs": logs,
             "log_node_ids": legacy_log_node_ids,

@@ -2,8 +2,8 @@
 {% block title %}Nginx 卸载中心 - ngxops{% endblock %}
 {% block page_title %}<i class="bi bi-trash3" aria-hidden="true"></i> Nginx 卸载中心{% endblock %}
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17">
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-uninstall.css') }}?v=301-1">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=309-2">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-uninstall.css') }}?v=309-2">
 {% endblock %}
 
 {% block content %}
@@ -124,4 +124,4 @@
 <div id="uninstallConfig" data-can-execute="{{ 'true' if can_execute else 'false' }}" data-max-count="{{ batch_max_count }}" data-preview-url="/api/nginx/uninstall/preview" data-create-url="/api/nginx/uninstall/tasks" data-batch-url-prefix="/api/nginx/uninstall/batches/" data-cancel-url-prefix="/api/tasks/" data-task-url-prefix="/api/nginx/uninstall/tasks/" hidden></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-uninstall.js') }}?v=301-1"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-uninstall.js') }}?v=309-2"></script>{% endblock %}

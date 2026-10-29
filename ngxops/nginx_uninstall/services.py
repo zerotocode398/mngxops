@@ -1065,6 +1065,18 @@ def _run_uninstall(
         _phase(context, 8, "正在连接远程节点")
         client = _connect_target(target, context)
         inspected = _inspect_client(client, target, context)
+        result.update(
+            {
+                "version": inspected.get("version", ""),
+                "nginx_path": target.get("nginx_path", ""),
+                "main_conf_path": next(
+                    (item.get("path", "") for item in inspected.get("paths", []) if item.get("key") == "--conf-path"),
+                    "",
+                ),
+                "startup_mode": inspected.get("systemd", {}).get("mode", ""),
+                "paths": inspected.get("paths", []),
+            }
+        )
         if inspected["package"]["origin"] != snapshot["origin"]:
             raise ValueError("安装来源与预览结果不同，请重新预览后再执行")
         if snapshot["origin"] == "package" and inspected["package"]["package"] != snapshot["package"]:
@@ -1240,6 +1252,7 @@ def _inspect_client(client, target: dict, context: Optional[TaskContext] = None)
         "running": running,
         "nginx_v_ok": status == 0,
         "configure_opts": parsed.get("configure_opts", ""),
+        "version": parsed.get("version", ""),
     }
 
 

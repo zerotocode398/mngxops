@@ -461,7 +461,7 @@
             requestJson(config.dataset.batchUrlPrefix + encodeURIComponent(activeBatch)).then(function (data) {
                 var rows = data.tasks.map(function (task) {
                     var statusClass = task.status === "success" ? "success" : (task.status === "failed" ? "danger" : (task.status === "running" ? "info" : "secondary"));
-                    return '<article class="uninstall-progress-item"><div class="uninstall-progress-item-header"><div class="min-w-0"><strong>' + escapeHtml(task.hostname) + '</strong><small class="d-block text-muted">' + escapeHtml(task.ip) + '</small></div><span class="badge text-bg-' + statusClass + '">' + escapeHtml(statusLabels[task.status] || task.status) + '</span></div><div class="small text-muted text-break mb-2">' + escapeHtml(task.detail || "-") + '</div><div class="d-flex align-items-center gap-2"><div class="progress flex-grow-1" style="height:5px" role="progressbar" aria-label="' + escapeHtml(task.hostname) + ' 卸载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + task.progress + '"><div class="progress-bar' + (task.finished ? " bg-" + statusClass : " progress-bar-striped progress-bar-animated") + '" style="width:' + task.progress + '%"></div></div><small>' + task.progress + '%</small><a class="btn btn-outline-primary btn-sm" href="/nginx/uninstall/task/' + task.task_id + '/log/" aria-label="查看完整日志" title="查看完整日志"><i class="bi bi-file-text" aria-hidden="true"></i></a></div></article>';
+                    return '<article class="uninstall-progress-item"><div class="uninstall-progress-item-header"><div class="min-w-0"><strong>' + escapeHtml(task.hostname) + '</strong><small class="d-block text-muted">' + escapeHtml(task.ip) + '</small></div><span class="badge text-bg-' + statusClass + '">' + escapeHtml(statusLabels[task.status] || task.status) + '</span></div><div class="d-flex align-items-center gap-2"><div class="progress flex-grow-1" style="height:5px" role="progressbar" aria-label="' + escapeHtml(task.hostname) + ' 卸载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + task.progress + '"><div class="progress-bar' + (task.finished ? " bg-" + statusClass : " progress-bar-striped progress-bar-animated") + '" style="width:' + task.progress + '%"></div></div><small>' + task.progress + '%</small></div></article>';
                 }).join("");
                 document.getElementById("uninstallProgressRows").innerHTML = rows;
                 document.getElementById("uninstallProgressBar").style.width = data.progress + "%";
@@ -470,7 +470,7 @@
                 progressBadge.classList.remove("d-none", "text-bg-secondary", "text-bg-success", "text-bg-warning");
                 progressBadge.textContent = data.progress + "%";
                 progressBadge.classList.add(data.finished ? (data.fail_count ? "text-bg-warning" : "text-bg-success") : "text-bg-secondary");
-                document.getElementById("uninstallProgressCounts").textContent = "完成 " + data.tasks.filter(function (task) { return task.finished; }).length + " / " + data.total + " · 成功 " + data.success_count + " · 失败 " + data.fail_count;
+                document.getElementById("uninstallProgressCounts").textContent = "结果：成功 " + data.success_count + "，失败 " + data.fail_count + "，共 " + data.total + " 台";
                 document.getElementById("uninstallCancel").classList.toggle("d-none", data.finished);
                 if (!data.finished) pollTimer = window.setTimeout(pollBatch, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
                 else {
@@ -559,8 +559,14 @@
         function poll() {
             requestJson(config.dataset.taskUrlPrefix + taskId + "?after_log_id=" + cursor).then(function (data) {
                 document.getElementById("uninstallTaskStatus").textContent = statusLabels[data.status] || data.status;
-                document.getElementById("uninstallTaskProgress").textContent = data.progress + "%";
-                document.getElementById("uninstallTaskDetail").textContent = data.detail;
+                var progressBar = document.getElementById("uninstallTaskProgressBar");
+                progressBar.style.width = data.progress + "%";
+                progressBar.parentElement.setAttribute("aria-valuenow", String(data.progress));
+                progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
+                if (["success", "failed", "cancelled"].indexOf(data.status) >= 0) progressBar.classList.add(data.status === "success" ? "bg-success" : (data.status === "failed" ? "bg-danger" : "bg-secondary"));
+                var resultNode = data.result_tree && data.result_tree.nodes && data.result_tree.nodes[0];
+                var currentVersion = document.getElementById("lifecycleCurrentVersion");
+                if (resultNode && resultNode.version && currentVersion) currentVersion.textContent = resultNode.version;
                 config.dataset.batchActive = data.batch_active ? "true" : "false";
                 data.logs.forEach(function (entry) {
                     appendLog(entry);
@@ -570,7 +576,6 @@
                 var stillRunning = data.status === "pending" || data.status === "running" || data.batch_active;
                 document.getElementById("uninstallLogState").textContent = data.has_more_logs ? "正在载入剩余日志" : (stillRunning ? "实时更新中" : "执行完成");
                 logs.scrollTop = logs.scrollHeight;
-                if (data.result_tree) document.getElementById("uninstallTaskResult").textContent = JSON.stringify(data.result_tree, null, 2);
                 if (stillRunning || data.has_more_logs) window.setTimeout(poll, window.NGXOPS_TASK_POLL_INTERVAL || 2000);
                 var cancel = document.getElementById("uninstallTaskCancel");
                 if (cancel && data.status !== "pending" && data.status !== "running") cancel.remove();

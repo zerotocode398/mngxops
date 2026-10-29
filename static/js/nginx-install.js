@@ -1,22 +1,6 @@
 (function () {
     "use strict";
 
-    var phaseLabels = {
-        pending: "等待执行",
-        checking_tools: "检查编译工具",
-        uploading_package: "上传源码包",
-        extracting_package: "解压源码包",
-        preparing_modules: "准备第三方模块",
-        configuring: "执行 configure",
-        compiling: "执行 make",
-        installing: "执行 make install",
-        verifying: "验证安装",
-        starting: "启动 Nginx",
-        syncing_config: "自动同步配置",
-        success: "安装完成",
-        failed: "安装失败",
-        cancelled: "已取消"
-    };
     var statusLabels = {
         pending: "等待执行",
         running: "执行中",
@@ -56,9 +40,9 @@
         });
     }
 
-    function notify(message, type, duration) {
+    function notify(message, type, duration, action) {
         if (window.showToast) {
-            window.showToast(message, type || "info", duration || 3000);
+            window.showToast(message, type || "info", duration || 3000, action);
         }
     }
 
@@ -904,7 +888,13 @@
                 document.getElementById("progressPlaceholder").classList.add("d-none");
                 document.getElementById("installProgressLive").classList.remove("d-none");
                 document.getElementById("installBatchNumber").textContent = batchNumber;
-                notify(result.message || ("安装任务已创建，批次 " + batchNumber), "success");
+                var firstTaskId = result.task_ids && result.task_ids.length ? result.task_ids[0] : null;
+                var logAction = firstTaskId ? {
+                    label: "查看完整日志",
+                    href: "/nginx-install/task/" + firstTaskId + "/log/",
+                    target: "_blank"
+                } : null;
+                notify(result.message || ("安装任务已创建，批次 " + batchNumber), "success", 8000, logAction);
                 if (result.skipped && result.skipped.length) {
                     notify(result.skipped.map(function (item) { return item.hostname + "：" + item.reason; }).join("；"), "warning", 6000);
                 }
@@ -973,20 +963,11 @@
                     var bar = document.createElement("div");
                     bar.className = "progress-bar";
                     progress.appendChild(bar);
-                    var phase = document.createElement("div");
-                    phase.className = "small mt-2";
-                    phase.dataset.role = "phase";
-                    var detail = document.createElement("p");
-                    detail.className = "install-task-row-detail d-none";
-                    detail.dataset.role = "detail";
-                    var link = document.createElement("a");
-                    link.className = "btn btn-outline-secondary btn-sm mt-2";
-                    link.dataset.role = "log-link";
-                    link.innerHTML = '<i class="bi bi-file-text me-1" aria-hidden="true"></i>查看完整日志';
+                    var percent = document.createElement("small");
+                    percent.className = "text-muted d-block mt-1";
+                    percent.dataset.role = "progress-label";
                     body.appendChild(progress);
-                    body.appendChild(phase);
-                    body.appendChild(detail);
-                    body.appendChild(link);
+                    body.appendChild(percent);
                     row.appendChild(summary);
                     row.appendChild(body);
                     list.appendChild(row);
@@ -1000,7 +981,7 @@
                 var notice = document.getElementById("batchCompleteNotice");
                 notice.classList.remove("d-none", "alert-success", "alert-warning");
                 notice.classList.add(batch.all_success ? "alert-success" : "alert-warning");
-                notice.textContent = "批次完成：成功 " + batch.success_count + "，失败或取消 " + batch.fail_count + "，共 " + batch.total + " 台。";
+                notice.textContent = "结果：成功 " + batch.success_count + "，失败 " + batch.fail_count + "，共 " + batch.total + " 台。";
             }
         }
 
@@ -1010,16 +991,10 @@
             badge.textContent = statusLabels[task.status] || task.status;
             badge.className = "badge text-bg-" + (task.status === "success" ? "success" : (task.status === "failed" ? "danger" : (task.status === "running" ? "info" : "secondary")));
             row.querySelector(".progress-bar").style.width = task.progress + "%";
-            row.querySelector('[data-role="phase"]').textContent = (phaseLabels[task.phase] || task.phase) + " · " + task.progress + "%";
-            var detail = row.querySelector('[data-role="detail"]');
-            if (task.status === "failed" || task.status === "cancelled") {
-                detail.classList.remove("d-none");
-                detail.textContent = task.detail;
-            } else {
-                detail.classList.add("d-none");
-            }
-            var link = row.querySelector('[data-role="log-link"]');
-            link.href = task.log_url;
+            var progressBar = row.querySelector(".progress-bar");
+            progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
+            if (task.finished) progressBar.classList.add(task.status === "success" ? "bg-success" : (task.status === "failed" ? "bg-danger" : "bg-secondary"));
+            row.querySelector('[data-role="progress-label"]').textContent = task.progress + "%";
         }
 
         function setStep(step) {
@@ -1080,6 +1055,10 @@
         function update(task, batchTask) {
             document.getElementById("installTaskStatus").textContent = statusLabels[task.status] || task.status;
             document.getElementById("installTaskStatus").className = "badge text-bg-" + (task.status === "success" ? "success" : (task.status === "failed" ? "danger" : (task.status === "running" ? "info" : "secondary")));
+            var resultNode = task.result_tree && task.result_tree.node;
+            if (resultNode && resultNode.startup_mode) {
+                document.getElementById("installStartupMode").textContent = resultNode.startup_mode === "systemd" ? "systemctl" : "二进制";
+            }
             var progressBar = document.getElementById("installTaskProgress");
             progressBar.style.width = task.progress + "%";
             progressBar.parentElement.setAttribute("aria-valuenow", String(task.progress));
@@ -1087,9 +1066,7 @@
             if (terminal.indexOf(task.status) >= 0) {
                 progressBar.classList.add(task.status === "success" ? "bg-success" : (task.status === "failed" ? "bg-danger" : "bg-secondary"));
             }
-            document.getElementById("installTaskProgressLabel").textContent = task.progress + "% · " + (task.detail || "");
             if (batchTask) {
-                document.getElementById("installTaskPhase").textContent = phaseLabels[batchTask.phase] || batchTask.phase;
                 if (batchTask.sync_ok !== null) {
                     document.getElementById("installSyncResult").textContent = (batchTask.sync_ok ? "成功 · " : "失败 · ") + batchTask.sync_detail;
                 }

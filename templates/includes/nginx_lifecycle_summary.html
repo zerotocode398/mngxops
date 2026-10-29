@@ -1,0 +1,18 @@
+{% macro lifecycle_summary(batch_number, history_href, created_at, started_at, finished_at, targets, success_count, fail_count, total_count, current_version=none, install_origin=none) %}
+<div class="row g-2 lifecycle-task-summary">
+    <div class="col-12 col-md-6"><span class="text-muted">批次号：</span><a href="{{ history_href }}"><code>{{ batch_number }}</code></a></div>
+    <div class="col-12 col-md-6"><span class="text-muted">创建时间：</span>{{ created_at or "-" }}</div>
+    <div class="col-12 col-md-6"><span class="text-muted">开始时间：</span><span id="lifecycleStartedAt">{{ started_at or "-" }}</span></div>
+    <div class="col-12 col-md-6"><span class="text-muted">完成时间：</span><span id="lifecycleFinishedAt">{{ finished_at or "-" }}</span></div>
+    <div class="col-12">
+        <span class="text-muted">目标节点：</span>
+        <span class="lifecycle-target-list" id="lifecycleTargets">
+            {% for target in targets %}<span class="lifecycle-target"{% if not loop.first %} data-lifecycle-extra-target hidden{% endif %}>{{ target.hostname or target.get("node_hostname", "-") }}{% if target.ip or target.get("node_ip") %} <small class="text-muted">({{ target.ip or target.get("node_ip") }})</small>{% endif %}</span>{% else %}-{% endfor %}
+        </span>
+        {% if targets|length > 1 %}<button type="button" class="btn btn-link btn-sm lifecycle-target-toggle p-0" data-lifecycle-target-toggle aria-expanded="false" aria-controls="lifecycleTargets"><span data-lifecycle-target-toggle-label>展开其余 {{ targets|length - 1 }} 台</span><i class="bi bi-chevron-down ms-1" aria-hidden="true"></i></button>{% endif %}
+    </div>
+    <div class="col-12"><span class="text-muted">结果：</span><span id="lifecycleResultSummary" data-success-count="{{ success_count }}" data-fail-count="{{ fail_count }}" data-total-count="{{ total_count }}">成功 {{ success_count }}，失败 {{ fail_count }}，共 {{ total_count }} 台</span></div>
+    {% if current_version is not none %}<div class="col-12 col-md-6"><span class="text-muted">当前版本：</span><code id="lifecycleCurrentVersion">{{ current_version or "未知" }}</code></div>{% endif %}
+    {% if install_origin is not none %}<div class="col-12 col-md-6"><span class="text-muted">安装来源：</span>{{ install_origin }}</div>{% endif %}
+</div>
+{% endmacro %}

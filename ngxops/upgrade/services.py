@@ -859,10 +859,12 @@ def resolve_backup_binary_path(run: NginxUpgradeRun, task: Optional[Task] = None
 def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task_id: int, context: TaskContext):
     """在后台线程执行节点升级、验证、必要时自动回滚。"""
     client = None
+    lifecycle_details = {"listen_ports": "执行后读取", "startup_mode": ""}
     try:
         run, target, package = _load_run_snapshot(
             session_factory, encryption_key, package_dir, task_id
         )
+        lifecycle_details.update({"hostname": run.node_hostname, "ip": run.node_ip})
         context.check_cancelled()
         _set_run_phase(session_factory, task_id, context, "fetching_config", 5, "正在获取 Nginx 编译参数")
         client = _connect_target(target, context)
@@ -876,6 +878,9 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
         parsed = parse_nginx_v_output(raw_output)
         if status != 0 or not parsed["configure_opts"]:
             raise UpgradeTaskError("读取当前 Nginx 编译参数失败")
+        lifecycle_details["listen_ports"] = _read_nginx_listen_ports(
+            client, target["nginx_path"], context
+        )
         if run.current_configure_opts and set(parsed["params"]) != set(
             tokenize_configure_args(run.current_configure_opts)
         ):
@@ -1093,6 +1098,11 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
             target_binary,
             context=_UpgradeDetailedLogContext(context),
         )
+        lifecycle_details["startup_mode"] = (
+            "systemctl"
+            if "systemd" in reload_message.lower()
+            else ("二进制" if reload_ok else "未确认")
+        )
         context.append_log(
             "Nginx reload/start 成功" if reload_ok else "Nginx reload/start 失败",
             level="info" if reload_ok else "error",
@@ -1117,6 +1127,8 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
                 "hostname": target["hostname"], "ip": target["ip"],
                 "current_version": parsed["version"], "target_version": final_version,
                 "backup_binary_path": backup_path,
+                "listen_ports": lifecycle_details["listen_ports"],
+                "startup_mode": lifecycle_details["startup_mode"],
             }}
         )
         context.append_detail_log("Nginx 编译升级成功")
@@ -1140,7 +1152,13 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
         summary = _task_center_failure_summary(message)
         context.append_log(summary, level="error")
         context.append_detail_log(message, level="error")
-        context.set_result_tree({"summary": {"total": 1, "success": 0, "failed": 1}, "error": summary})
+        context.set_result_tree(
+            {
+                "summary": {"total": 1, "success": 0, "failed": 1},
+                "error": summary,
+                "node": lifecycle_details,
+            }
+        )
         return TaskOutcome("failed", summary[:2000], None)
     finally:
         if client is not None:
@@ -1529,6 +1547,36 @@ def _tail_output(output: str, max_lines: int = 80) -> str:
     return "\n".join((output or "").strip().splitlines()[-max_lines:])
 
 
+def _read_nginx_listen_ports(client, binary_path: str, context: TaskContext) -> str:
+    """读取 Nginx 生效配置中的监听端口且不保留配置正文。"""
+    command = "{} -T 2>&1 | awk '/^[[:space:]]*listen[[:space:]]+/ {{ print }}'".format(
+        shlex.quote(binary_path or "nginx")
+    )
+    try:
+        status, output = _run_remote_command(
+            client, command, timeout=90, context=context, log_output=False
+        )
+    except TaskCancelled:
+        raise
+    except Exception:
+        return "未能读取"
+    if status != 0:
+        return "未能读取"
+    ports = set()
+    for line in (output or "").splitlines():
+        match = re.match(r"^\s*listen\s+([^;]+);", line)
+        if not match:
+            continue
+        tokens = match.group(1).split()
+        if not tokens:
+            continue
+        endpoint = tokens[0].strip("'\"")
+        port = endpoint.rsplit(":", 1)[-1] if ":" in endpoint else endpoint
+        if port.isdigit() and 1 <= int(port) <= 65535:
+            ports.add(int(port))
+    return ", ".join(str(port) for port in sorted(ports)) or "未识别"
+
+
 def _restore_binary(client, backup_path: str, binary_path: str, context: TaskContext) -> None:
     """从升级前备份尝试恢复二进制并记录恢复结果。"""
     status, _output = _run_remote_command(
@@ -1566,12 +1614,17 @@ def _set_rollback_progress(context: TaskContext, progress: int, detail: str) -> 
 def _run_rollback(session_factory, encryption_key: bytes, task_id: int, context: TaskContext):
     """恢复指定升级记录的备份二进制并重新加载 Nginx。"""
     client = None
+    lifecycle_details = {"listen_ports": "执行后读取", "startup_mode": ""}
     try:
         source_run, target = _load_rollback_snapshot(
             session_factory, encryption_key, task_id
         )
+        lifecycle_details.update({"hostname": target["hostname"], "ip": target["ip"]})
         _set_rollback_progress(context, 15, "连接节点并检查回滚备份")
         client = _connect_target(target, context)
+        lifecycle_details["listen_ports"] = _read_nginx_listen_ports(
+            client, target["nginx_path"], context
+        )
         status, _output = _run_remote_command(
             client,
             "test -f {}".format(shlex.quote(source_run.backup_binary_path)),
@@ -1595,6 +1648,9 @@ def _run_rollback(session_factory, encryption_key: bytes, task_id: int, context:
             source_run.current_binary_path,
             context=_UpgradeDetailedLogContext(context),
         )
+        lifecycle_details["startup_mode"] = (
+            "systemctl" if "systemd" in message.lower() else ("二进制" if ok else "未确认")
+        )
         context.append_log(
             "Nginx reload/start 成功" if ok else "Nginx reload/start 失败",
             level="info" if ok else "error",
@@ -1613,7 +1669,9 @@ def _run_rollback(session_factory, encryption_key: bytes, task_id: int, context:
             source_run.current_binary_path,
         )
         context.set_result_tree({"summary": {"total": 1, "success": 1, "failed": 0}, "node": {
-            "hostname": target["hostname"], "ip": target["ip"], "message": "已恢复旧版本"
+            "hostname": target["hostname"], "ip": target["ip"], "message": "已恢复旧版本",
+            "listen_ports": lifecycle_details["listen_ports"],
+            "startup_mode": lifecycle_details["startup_mode"],
         }})
         context.append_detail_log("Nginx 已回滚到升级前版本")
         return TaskOutcome("success", "Nginx 已回滚到升级前版本", None)
@@ -1623,7 +1681,13 @@ def _run_rollback(session_factory, encryption_key: bytes, task_id: int, context:
     except (UpgradeTaskError, ValueError) as exc:
         context.append_log(str(exc), level="error")
         context.append_detail_log(str(exc), level="error")
-        context.set_result_tree({"summary": {"total": 1, "success": 0, "failed": 1}, "error": str(exc)})
+        context.set_result_tree(
+            {
+                "summary": {"total": 1, "success": 0, "failed": 1},
+                "error": str(exc),
+                "node": lifecycle_details,
+            }
+        )
         return TaskOutcome("failed", str(exc)[:2000], None)
     finally:
         if client is not None:

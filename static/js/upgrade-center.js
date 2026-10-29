@@ -53,7 +53,7 @@
     }
 
     function notify(message, type, action) {
-        if (window.showToast) window.showToast(message, type || "info", 3000, action);
+        if (window.showToast) window.showToast(message, type || "info", action ? 8000 : 3000, action);
     }
 
     function stepOneComplete() {
@@ -1440,7 +1440,12 @@
                 progress: 0
             };
         });
-        notify(message || ("升级任务已创建，批次 " + batchNumber), "success");
+        var logAction = taskIds.length ? {
+            href: "/upgrade/tasks/" + taskIds[0] + "/",
+            label: "查看完整日志",
+            target: "_blank"
+        } : null;
+        notify(message || ("升级任务已创建，批次 " + batchNumber), "success", logAction);
         pollBatch(taskIds, states, batchNumber);
     }
 
@@ -1450,6 +1455,8 @@
                 .done(function (task) {
                     states[id].status = task.status;
                     states[id].progress = task.progress;
+                    states[id].hostname = task.target_hostnames || ("节点 " + id);
+                    states[id].ip = task.target_ips || "";
                 });
         });
         $.when.apply($, jobs).always(function () {
@@ -1463,14 +1470,58 @@
 
     function renderBatchTasks(taskIds, states) {
         var totalProgress = 0;
+        var success = 0;
+        var failed = 0;
+        var list = document.getElementById("upgradeTaskList");
+        list.replaceChildren();
         taskIds.forEach(function (id) {
-            totalProgress += states[id].progress;
+            var task = states[id];
+            totalProgress += task.progress;
+            if (task.status === "success") success += 1;
+            if (task.status === "failed" || task.status === "cancelled") failed += 1;
+            var row = document.createElement("article");
+            row.className = "lifecycle-progress-item";
+            var header = document.createElement("div");
+            header.className = "uninstall-progress-item-header";
+            var identity = document.createElement("div");
+            var node = document.createElement("strong");
+            node.textContent = task.hostname || ("节点 " + id);
+            identity.appendChild(node);
+            if (task.ip) {
+                var ip = document.createElement("small");
+                ip.className = "d-block text-muted";
+                ip.textContent = task.ip;
+                identity.appendChild(ip);
+            }
+            header.appendChild(identity);
+            var status = document.createElement("span");
+            status.className = "badge text-bg-" + (task.status === "success" ? "success" : (task.status === "failed" ? "danger" : (task.status === "running" ? "info" : "secondary")));
+            status.textContent = ({ pending: "等待执行", running: "执行中", success: "升级成功", failed: "升级失败", cancelled: "已取消" })[task.status] || task.status;
+            header.appendChild(status);
+            var progress = document.createElement("div");
+            progress.className = "progress";
+            progress.style.height = "6px";
+            var bar = document.createElement("div");
+            bar.className = "progress-bar";
+            if (["success", "failed", "cancelled"].indexOf(task.status) >= 0) {
+                bar.classList.add(task.status === "success" ? "bg-success" : (task.status === "failed" ? "bg-danger" : "bg-secondary"));
+            } else {
+                bar.classList.add("progress-bar-striped", "progress-bar-animated");
+            }
+            bar.style.width = task.progress + "%";
+            progress.appendChild(bar);
+            var percent = document.createElement("small");
+            percent.className = "text-muted d-block mt-1";
+            percent.textContent = task.progress + "%";
+            row.append(header, progress, percent);
+            list.appendChild(row);
         });
         var average = taskIds.length ? Math.floor(totalProgress / taskIds.length) : 0;
         var progressBar = document.getElementById("batchProgressBar");
         progressBar.style.width = average + "%";
         progressBar.parentElement.setAttribute("aria-valuenow", String(average));
         document.getElementById("batchProgressBadge").textContent = average + "%";
+        document.getElementById("upgradeBatchResults").textContent = "成功 " + success + "，失败 " + failed + "，共 " + taskIds.length + " 台";
     }
 
     if (center) {
@@ -1657,11 +1708,10 @@
             requestJson("POST", "/api/upgrade/tasks/" + detail.dataset.taskId + "/rollback", {})
                 .done(function (result) {
                     notify(result.message, "success", {
-                        href: "/tasks/" + result.task_id + "/",
-                        label: "查看回滚任务",
+                        href: "/upgrade/tasks/" + result.task_id + "/",
+                        label: "查看完整日志",
                         target: "_blank"
                     });
-                    window.location.assign("/upgrade/tasks/" + result.task_id + "/");
                 })
                 .fail(function (error) { notify(errorMessage(error), "danger"); });
         });
@@ -1675,8 +1725,21 @@
                 appendLogs(task, log);
                 applyUpgradeLogFilter();
                 document.getElementById("taskProgress").style.width = task.progress + "%";
-                document.getElementById("taskProgressLabel").textContent = task.progress + "% · " + task.detail;
-                document.getElementById("taskStatus").textContent = ({ pending: "等待执行", running: "执行中", success: "升级成功", failed: "升级失败", cancelled: "已取消" })[task.status] || task.status;
+                var lifecycleNode = task.result_tree && task.result_tree.node;
+                if (lifecycleNode) {
+                    var listenPorts = document.getElementById("upgradeListenPorts");
+                    var startupMode = document.getElementById("upgradeStartupMode");
+                    if (listenPorts && lifecycleNode.listen_ports) listenPorts.textContent = lifecycleNode.listen_ports;
+                    if (startupMode && lifecycleNode.startup_mode) startupMode.textContent = lifecycleNode.startup_mode;
+                }
+                var isRollback = task.operation_type === "nginx_rollback";
+                document.getElementById("taskStatus").textContent = ({
+                    pending: "等待执行",
+                    running: "执行中",
+                    success: isRollback ? "回滚成功" : "升级成功",
+                    failed: isRollback ? "回滚失败" : "升级失败",
+                    cancelled: "已取消"
+                })[task.status] || task.status;
                 var statusClass = task.status === "success" ? "success" : (task.status === "failed" ? "danger" : (task.status === "running" ? "info" : "secondary"));
                 document.getElementById("taskStatus").className = "badge text-bg-" + statusClass;
                 var progressBar = document.getElementById("taskProgress");

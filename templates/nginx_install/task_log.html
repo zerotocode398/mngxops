@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Nginx 安装任务 {{ task.id }} - ngxops{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> Nginx 安装任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=258-1"><link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-install.css') }}?v=258-1"><link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=309-2">{% endblock %}
 
 {% block content %}
+{% from "includes/nginx_lifecycle_summary.html" import lifecycle_summary %}
 <div class="d-flex flex-wrap gap-2 mb-3">
     <a class="btn btn-outline-secondary btn-sm" href="/nginx-install/history/?search={{ run.batch_number|urlencode }}"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回历史</a>
     <a class="btn btn-outline-primary btn-sm" href="/nginx-install/center/"><i class="bi bi-download me-1" aria-hidden="true"></i>安装中心</a>
@@ -11,25 +12,34 @@
 
 <section class="card mb-3" id="installTaskDetail" data-task-id="{{ task.id }}" data-task-status="{{ task.status }}">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div><strong>{{ run.node_hostname }}</strong><small class="text-muted ms-2">{{ run.node_ip }}</small></div>
+        <div><strong>Nginx 全新安装</strong><small class="text-muted ms-2">{{ targets|length }} 台节点</small></div>
         <div class="d-flex align-items-center gap-2"><span class="badge text-bg-{{ status_context.status_class }}" id="installTaskStatus">{{ status_context.status_label }}</span>{% if can_cancel %}<button class="btn btn-outline-danger btn-sm" type="button" id="cancelInstallTask" data-task-id="{{ task.id }}"><i class="bi bi-stop-circle me-1" aria-hidden="true"></i>取消任务</button>{% endif %}</div>
     </div>
     <div class="card-body">
-        <div class="row g-2 small mb-3">
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">目标版本：</span><code>{{ run.target_version }}</code></div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">安装路径：</span><code>{{ run.target_prefix }}</code></div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">主配置路径：</span><code>{{ run.main_conf_path or (run.target_prefix ~ "/conf/nginx.conf") }}</code></div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">源码包：</span>{{ run.source_package_name or "-" }}</div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">工作目录：</span><code>{{ run.remote_work_dir }}</code></div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">批次：</span><a href="/nginx-install/history/?search={{ run.batch_number|urlencode }}"><code>{{ run.batch_number }}</code></a></div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">并行编译：</span>-j{{ run.make_jobs }}</div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">监听端口：</span>{{ run.listen_port }}</div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">当前阶段：</span><span id="installTaskPhase">{{ phase_label }}</span></div>
-            <div class="col-sm-6 col-lg-3"><span class="text-muted">配置同步：</span><span id="installSyncResult">{% if run.sync_ok is sameas true %}成功 · {{ run.sync_detail }}{% elif run.sync_ok is sameas false %}失败 · {{ run.sync_detail }}{% else %}等待执行{% endif %}</span></div>
+        {% set summary = batch_summary %}
+        {{ lifecycle_summary(run.batch_number, "/nginx-install/history/?search=" ~ (run.batch_number|urlencode), summary.created_at, summary.started_at, summary.finished_at, targets, summary.success_count, summary.fail_count, summary.total_count) }}
+        <div class="row g-2 small mt-2">
+            <div class="col-12 col-md-6"><span class="text-muted">目标版本：</span><code>{{ run.target_version }}</code></div>
+            <div class="col-12 col-md-6"><span class="text-muted">安装路径：</span><code>{{ run.target_prefix }}</code></div>
+            <div class="col-12 col-md-6"><span class="text-muted">主配置路径：</span><code>{{ run.main_conf_path or (run.target_prefix ~ "/conf/nginx.conf") }}</code></div>
+            <div class="col-12 col-md-6"><span class="text-muted">可执行文件路径：</span><code>{{ run.nginx_path or (run.target_prefix ~ "/sbin/nginx") }}</code></div>
+            <div class="col-12 col-md-6"><span class="text-muted">编译并行数：</span>{{ run.make_jobs }}</div>
+            <div class="col-12 col-md-6"><span class="text-muted">监听端口：</span>{{ run.listen_port }}</div>
+            <div class="col-12 col-md-6"><span class="text-muted">源码包：</span>{{ run.source_package.file_name if run.source_package else run.source_package_name or "-" }}</div>
+            <div class="col-12 col-md-6"><span class="text-muted">启动方式：</span><span id="installStartupMode">{{ "systemctl" if startup_mode == "systemd" else ("二进制" if startup_mode == "binary" else "执行后确定") }}</span></div>
+            <div class="col-12 col-md-6"><span class="text-muted">启动用户：</span>{{ run.nginx_user }}</div>
+            <div class="col-12 col-md-6"><span class="text-muted">远程工作目录：</span><code>{{ run.remote_work_dir }}</code></div>
+            <div class="col-12"><span class="text-muted">配置同步：</span><span id="installSyncResult">{% if run.sync_ok is sameas true %}成功 · {{ run.sync_detail }}{% elif run.sync_ok is sameas false %}失败 · {{ run.sync_detail }}{% else %}等待执行{% endif %}</span></div>
         </div>
-        <div class="progress" role="progressbar" aria-label="安装任务进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ task.progress }}"><div class="progress-bar{% if task.status == 'success' %} bg-success{% elif task.status == 'failed' %} bg-danger{% elif task.status == 'cancelled' %} bg-secondary{% endif %}" id="installTaskProgress" style="width:{{ task.progress }}%"></div></div>
-        <small class="text-muted d-block mt-1" id="installTaskProgressLabel">{{ task.progress }}% · {{ task.detail }}</small>
+        <div class="progress mt-3" role="progressbar" aria-label="安装任务进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ task.progress }}"><div class="progress-bar{% if task.status == 'success' %} bg-success{% elif task.status == 'failed' %} bg-danger{% elif task.status == 'cancelled' %} bg-secondary{% endif %}" id="installTaskProgress" style="width:{{ task.progress }}%"></div></div>
     </div>
+</section>
+
+<section class="card mb-3">
+    <div class="card-header"><h2 class="h6 mb-0">节点结果</h2></div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead class="table-light"><tr><th>主机名</th><th>IP</th><th>状态</th><th>进度</th><th>结果</th></tr></thead><tbody id="installNodeResults">
+{% for target in targets %}{% set target_task = batch_runs[loop.index0].task %}<tr data-lifecycle-task-id="{{ target.task_id }}"><td>{{ target.hostname }}</td><td><code>{{ target.ip }}</code></td><td><span class="badge text-bg-{{ 'success' if target_task.status == 'success' else ('danger' if target_task.status == 'failed' else ('info' if target_task.status == 'running' else 'secondary')) }}" data-lifecycle-status>{{ {"pending":"等待执行","running":"执行中","success":"安装成功","failed":"安装失败","cancelled":"已取消"}.get(target_task.status, target_task.status) }}</span></td><td><div class="progress lifecycle-node-progress" role="progressbar" aria-label="{{ target.hostname }} 安装进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ 100 if target_task.status in ('success', 'failed', 'cancelled') else target_task.progress }}" data-lifecycle-progress><div class="progress-bar{% if target_task.status == 'success' %} bg-success{% elif target_task.status == 'failed' %} bg-danger{% elif target_task.status == 'cancelled' %} bg-secondary{% elif target_task.status == 'running' %} progress-bar-striped progress-bar-animated{% endif %}" data-lifecycle-progress-bar style="width:{{ 100 if target_task.status in ('success', 'failed', 'cancelled') else target_task.progress }}%"></div></div></td><td data-lifecycle-detail>{{ target_task.detail or "-" }}</td></tr>{% endfor %}
+    </tbody></table></div>
 </section>
 
 <section class="card mb-3">
@@ -43,6 +53,7 @@
     <div class="card-body"><div class="upgrade-log-output" id="installLogOutput" data-after-log-id="{{ log_cursor }}" aria-live="polite">{% for log in logs %}<div class="upgrade-log-line log-{{ log.level }}" data-task-id="{{ log.task_id }}"><time>{{ format_task_datetime(log.created_at) }}</time><span class="upgrade-log-message">{{ log.message }}</span></div>{% else %}<div class="upgrade-log-empty" data-empty-log>暂无日志</div>{% endfor %}</div></div>
 </section>
 <div id="installTaskDetailData" data-task-id="{{ task.id }}" data-batch="{{ run.batch_number }}" data-batch-active="{{ 'true' if batch_active else 'false' }}"></div>
+<div id="lifecycleBatchConfig" data-operation-type="nginx_install" data-batch-active="{{ 'true' if batch_active else 'false' }}" data-batch-url="/api/tasks?operation_type=nginx_install&amp;source_batch={{ run.batch_number|urlencode }}&amp;page_size=100" hidden></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=258-2"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-lifecycle-detail.js') }}?v=309-3"></script><script src="{{ request.url_for('static', path='js/nginx-install.js') }}?v=309-2"></script>{% endblock %}

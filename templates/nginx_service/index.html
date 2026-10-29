@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Nginx 启停 - ngxops{% endblock %}
 {% block page_title %}<i class="bi bi-power" aria-hidden="true"></i> Nginx 启停{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=17"><link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-service.css') }}?v=268-2">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=309-2"><link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-service.css') }}?v=268-2">{% endblock %}
 
 {% block content %}
 <div class="service-layout">
@@ -97,4 +97,4 @@
 <div id="serviceConfig" data-can-operate="{{ 'true' if can_operate else 'false' }}" data-max-count="{{ batch_max_count }}" data-nodes-url="/api/nginx/service/nodes" data-execute-url="/api/nginx/service/execute" data-task-url-prefix="/api/nginx/service/tasks/" data-active-task-id="{{ active_task.id if active_task else '' }}" hidden></div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-service.js') }}?v=275-3"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-service.js') }}?v=309-2"></script>{% endblock %}

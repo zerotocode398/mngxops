@@ -411,12 +411,40 @@
             tbody.replaceChildren();
             tree.nodes.forEach(function (node) {
                 var row = document.createElement("tr");
-                [node.hostname, node.ip, node.message].forEach(function (value, index) {
-                    var cell = document.createElement("td");
-                    cell.textContent = value || "";
-                    if (index === 1) cell.className = "font-monospace";
-                    row.appendChild(cell);
-                });
+                row.dataset.serviceNodeId = String(node.id);
+                var hostname = document.createElement("td");
+                hostname.textContent = node.hostname || "";
+                var ip = document.createElement("td");
+                ip.className = "font-monospace";
+                ip.textContent = node.ip || "";
+                var statusCell = document.createElement("td");
+                var badge = document.createElement("span");
+                badge.className = "badge text-bg-" + statusClass(node.status);
+                badge.textContent = statusLabel(node.status);
+                statusCell.appendChild(badge);
+                var progressCell = document.createElement("td");
+                var progress = document.createElement("div");
+                progress.className = "progress lifecycle-node-progress";
+                progress.setAttribute("role", "progressbar");
+                progress.setAttribute("aria-label", (node.hostname || "节点") + " 启停进度");
+                progress.setAttribute("aria-valuemin", "0");
+                progress.setAttribute("aria-valuemax", "100");
+                var bar = document.createElement("div");
+                bar.className = "progress-bar";
+                if (node.status === "running") {
+                    bar.classList.add("progress-bar-striped", "progress-bar-animated");
+                    bar.style.width = "100%";
+                } else {
+                    var done = node.status === "success" || node.status === "failed" || node.status === "cancelled";
+                    progress.setAttribute("aria-valuenow", done ? "100" : "0");
+                    bar.style.width = done ? "100%" : "0%";
+                    if (done) bar.classList.add("bg-" + statusClass(node.status));
+                }
+                progress.appendChild(bar);
+                progressCell.appendChild(progress);
+                var result = document.createElement("td");
+                result.textContent = node.message || "-";
+                row.append(hostname, ip, statusCell, progressCell, result);
                 tbody.appendChild(row);
             });
         }
@@ -430,6 +458,19 @@
                 .then(function (result) {
                     if (!result.response.ok || !result.data.success) return;
                     var data = result.data;
+                    if (data.status === "cancelled" && data.result_tree && data.result_tree.nodes) {
+                        data.result_tree.nodes.forEach(function (node) {
+                            if (node.status === "pending" || node.status === "running") {
+                                node.status = "cancelled";
+                                node.message = "任务已取消";
+                            }
+                        });
+                        data.result_tree.summary = {
+                            success: data.result_tree.nodes.filter(function (node) { return node.status === "success"; }).length,
+                            failed: data.result_tree.nodes.filter(function (node) { return node.status === "failed" || node.status === "cancelled"; }).length,
+                            total: data.result_tree.nodes.length
+                        };
+                    }
                     var status = document.getElementById("taskStatus");
                     status.className = "badge text-bg-" + statusClass(data.status);
                     status.textContent = statusLabel(data.status);
@@ -439,10 +480,22 @@
                     progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
                     if (terminal[data.status]) progressBar.classList.add("bg-" + statusClass(data.status));
                     document.getElementById("taskProgress").textContent = data.progress + "%";
-                    document.getElementById("taskDetail").textContent = data.detail || "";
-                    document.getElementById("taskProgressLabel").textContent = data.progress + "% · " + (data.detail || "");
-                    if (data.started_at) document.getElementById("startedAt").textContent = window.formatUtc8DateTime(data.started_at);
-                    if (data.finished_at) document.getElementById("finishedAt").textContent = window.formatUtc8DateTime(data.finished_at);
+                    if (data.started_at) document.getElementById("lifecycleStartedAt").textContent = window.formatUtc8DateTime(data.started_at);
+                    if (data.finished_at) document.getElementById("lifecycleFinishedAt").textContent = window.formatUtc8DateTime(data.finished_at);
+                    if (data.result_tree && data.result_tree.summary) {
+                        var summary = data.result_tree.summary;
+                        var resultLabel = document.getElementById("lifecycleResultSummary");
+                        resultLabel.dataset.successCount = String(summary.success || 0);
+                        resultLabel.dataset.failCount = String(summary.failed || 0);
+                        resultLabel.dataset.totalCount = String(summary.total || 0);
+                        resultLabel.textContent = "成功 " + (summary.success || 0) + "，失败 " + (summary.failed || 0) + "，共 " + (summary.total || 0) + " 台";
+                    }
+                    var versions = [];
+                    ((data.result_tree && data.result_tree.nodes) || []).forEach(function (node) {
+                        if (node.version && versions.indexOf(node.version) < 0) versions.push(node.version);
+                    });
+                    var currentVersion = document.getElementById("lifecycleCurrentVersion");
+                    if (currentVersion && versions.length) currentVersion.textContent = versions.join(", ");
                     renderResultTree(data.result_tree);
                     (data.logs || []).forEach(renderLog);
                     applyLogFilter();

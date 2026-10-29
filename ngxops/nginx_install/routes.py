@@ -1,5 +1,6 @@
 """提供 Nginx 全新安装向导、历史页面和任务 API。"""
 
+import json
 import re
 from datetime import datetime, timedelta
 from math import ceil
@@ -15,6 +16,7 @@ from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
 from ngxops.database.session import get_session
 from ngxops.database.session import session_scope
+from ngxops.lifecycle import summarize_lifecycle_runs
 from ngxops.nginx_install.models import NginxInstallRun
 from ngxops.nginx_install.services import (
     build_install_configure_opts,
@@ -574,21 +576,25 @@ def nginx_install_task_log(
             .where(TaskLog.task_id.in_(batch_task_ids))
             .order_by(TaskLog.id.asc())
         ).all()
-    targets = [
-        {
-            "task_id": item.task_id,
-            "hostname": item.node_hostname,
-            "ip": item.node_ip,
-        }
-        for item in batch_runs
-    ]
+    batch_summary = summarize_lifecycle_runs(batch_runs)
+    targets = batch_summary["targets"]
+    try:
+        result_tree = json.loads(task.result_tree_json) if task.result_tree_json else None
+    except (TypeError, ValueError):
+        result_tree = None
+    result_node = result_tree.get("node", {}) if isinstance(result_tree, dict) else {}
+    startup_mode = result_node.get("startup_mode", "")
     return render_page(
         request,
         "nginx_install/task_log.html",
         {
             "run": run,
             "task": task,
+            "batch_runs": batch_runs,
             "targets": targets,
+            "batch_summary": batch_summary,
+            "result_tree": result_tree,
+            "startup_mode": startup_mode,
             "batch_active": batch_active,
             "logs": logs,
             "log_cursor": max((item.id for item in logs), default=0),

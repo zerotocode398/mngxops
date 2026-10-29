@@ -266,3 +266,37 @@
     .upgrade-confirm-node-heading { flex-direction: column; }
     .upgrade-confirm-node-meta { text-align: left; }
 }
+.lifecycle-progress-item {
+    min-width: 0;
+    padding: 8px 9px;
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    background: #fff;
+}
+.lifecycle-progress-item > div:first-child {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.lifecycle-node-progress {
+    min-width: 56px;
+    height: 5px;
+}
+.lifecycle-target-list {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    vertical-align: middle;
+}
+.lifecycle-target {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.lifecycle-target[hidden] { display: none; }
+.lifecycle-target-toggle { white-space: nowrap; }

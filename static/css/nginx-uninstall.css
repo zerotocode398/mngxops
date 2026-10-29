@@ -158,6 +158,19 @@
 .uninstall-progress-item-header .badge { flex: 0 0 auto; }
 .uninstall-progress-item .progress { min-width: 40px; }
 
+.uninstall-path-item {
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    background: #fff;
+}
+
+.uninstall-path-item > summary { cursor: pointer; }
+.uninstall-path-item[open] > summary { margin-bottom: 6px; }
+.uninstall-path-item code { white-space: normal; overflow-wrap: anywhere; }
+.uninstall-path-item li { overflow-wrap: anywhere; }
+
 @media (max-width: 575.98px) {
     .uninstall-overview-toolbar .btn {
         flex: 1 1 auto;

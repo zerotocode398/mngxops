@@ -850,13 +850,13 @@ configure arguments: --prefix=/opt/app/nginx --conf-path=/opt/app/nginx/etc/ngin
 299. **已完成**：节点组新增/编辑页的成员选择表复用公共行点击切换逻辑，点击可选节点行可勾选/取消；达到 3 个节点组上限的禁用行不响应。可选行显示指针反馈。更新 `templates/nodes/group_form.html`、`static/js/node-groups.js`、`static/css/node-groups.css`、`tests/test_nodes.py` 和 `docs/nodes.md`，递增页面静态资源版本至 `v=3`。
 299 验证：节点组脚本 `node --check`、Python `py_compile` 和 `git diff --check` 通过；未运行 pytest 或浏览器视觉验证。
 300. **已完成**：卸载范围预览与二次确认中的 prefix 未知归属路径改为默认收起的列表，摘要显示路径数量；展开后每行显示一条路径，长路径可换行。更新 `static/js/nginx-uninstall.js`、`static/css/nginx-uninstall.css`、`templates/nginx_uninstall/center.html`，静态资源版本更新至 `v=300-1`。未运行自动化测试或浏览器验证。
-301. Nginx 卸载，“已创建 1 个卸载任务，批次 UN-261027-0001”，参考 Nginx 升级的右上角弹窗提示，点击“查看完整日志”时新建浏览器窗口；同时卸载进度布局和样式参考 Nginx 升级的升级进度。
-302. 任务中心任务类型为Nginx 卸载，为什么目标节点上方会显示“删除路径 /home/umpay/ums/nginx失败：rm: 无法删除 '/home/umpay/ums/nginx/lweim/1': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/2': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/3': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/4': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/5': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/6': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/7': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/8': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/9': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/10': 权限不够”，我理解不需要展示。
-303. 任务中心任务类型为Nginx 卸载，目标配置（1） source:/home/umpay/ums/nginx，可以删了，我觉得没必要。
-304. 任务中心任务类型为Nginx 卸载，来源批次 UN-261027-0001应该是跳转到 Nginx 卸载历史。
-305. 任务中心任务类型为Nginx 卸载，执行结果原因“删除路径 /home/umpay/ums/nginx失败：rm: 无法删除 '/home/umpay/ums/nginx/lweim/1': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/2': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/3': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/4': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/5': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/6': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/7': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/8': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/9': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/10': 权限不够” 太多了，我理解可以默认显示几个字符串，点击后可以收缩/开展。
-306. 任务中心任务类型为Nginx 卸载执行日志体现核心步骤就可。
-307. Nginx 卸载历史进入详情报错。
+301. **已完成**：Nginx 卸载，“已创建 1 个卸载任务，批次 UN-261027-0001”，参考 Nginx 升级的右上角弹窗提示，点击“查看完整日志”时新建浏览器窗口；同时卸载进度布局和样式参考 Nginx 升级的升级进度。
+302. **已完成**：任务中心任务类型为Nginx 卸载，为什么目标节点上方会显示“删除路径 /home/umpay/ums/nginx失败：rm: 无法删除 '/home/umpay/ums/nginx/lweim/1': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/2': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/3': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/4': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/5': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/6': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/7': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/8': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/9': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/10': 权限不够”，我理解不需要展示。
+303. **已完成**：任务中心任务类型为Nginx 卸载，目标配置（1） source:/home/umpay/ums/nginx，可以删了，我觉得没必要。
+304. **已完成**：任务中心任务类型为Nginx 卸载，来源批次 UN-261027-0001应该是跳转到 Nginx 卸载历史。
+305. **已完成**：任务中心任务类型为Nginx 卸载，执行结果原因“删除路径 /home/umpay/ums/nginx失败：rm: 无法删除 '/home/umpay/ums/nginx/lweim/1': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/2': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/3': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/4': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/5': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/6': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/7': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/8': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/9': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/10': 权限不够” 太多了，我理解可以默认显示几个字符串，点击后可以收缩/开展。
+306. **已完成**：任务中心任务类型为Nginx 卸载执行日志体现核心步骤就可。
+307. **已完成**：Nginx 卸载历史进入详情报错。
 ```text
     value = self._fire_loader_callables(state, key, passive)
   File "D:\PyCharm\联动优势\works\django-labs\ngxops\venv\lib\site-packages\sqlalchemy\orm\attributes.py", line 1126, in _fire_loader_callables
@@ -867,7 +867,7 @@ configure arguments: --prefix=/opt/app/nginx --conf-path=/opt/app/nginx/etc/ngin
     raise orm_exc.DetachedInstanceError(
 sqlalchemy.orm.exc.DetachedInstanceError: Instance <User at 0x1d3987c8b50> is not bound to a Session; attribute refresh operation cannot proceed (Background on this error at: https://sqlalche.me/e/20/bhk3)
 ```
-308. Nginx 卸载历史，完整日志应该是记录远程全部过程，需要注意格式，我发现你之前记录的异常都是一行体现，但终端是一行一个；因为目前访问报错，我不知道具体实现样式。
+308. **已完成**：Nginx 卸载历史，完整日志应该是记录远程全部过程，需要注意格式，我发现你之前记录的异常都是一行体现，但终端是一行一个；因为目前访问报错，我不知道具体实现样式。
 ```text
 我在任务中心看到的案例
 删除路径 /home/umpay/ums/nginx失败：rm: 无法删除 '/home/umpay/ums/nginx/lweim/1': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/2': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/3': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/4': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/5': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/6': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/7': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/8': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/9': 权限不够 rm: 无法删除 '/home/umpay/ums/nginx/lweim/10': 权限不够
@@ -886,9 +886,21 @@ rm: 无法删除 '8': 权限不够
 rm: 无法删除 '9': 权限不够
 
 ```
-309. Nginx 生命周期管理，安装、升级、卸载，在点击执行后，统一使用右上角弹窗这没问题，但是部分细节不统一。不要再右侧的进度里面体现任何跳转按钮，直接在右上角弹窗体现，点击“查看完整日志”新建浏览器窗口跳转到对应的任务，目前是只有启停是这样实现的；另外，右侧的进度体现进度滚动条即可以及最后的结果（成功或失败），如果有多台节点，可以每个节点一个滚动条及状态展示；我预期是生命周期管理保持统一。
+309. **已完成**：Nginx 生命周期管理，安装、升级、卸载，在点击执行后，统一使用右上角弹窗这没问题，但是部分细节不统一。不要再右侧的进度里面体现任何跳转按钮，直接在右上角弹窗体现，点击“查看完整日志”新建浏览器窗口跳转到对应的任务，目前是只有启停是这样实现的；另外，右侧的进度体现进度滚动条即可以及最后的结果（成功或失败），如果有多台节点，可以每个节点一个滚动条及状态展示；我预期是生命周期管理保持统一。
 ```text
 Nginx 重启任务已创建
 查看完整日志
 ```
-310. 
+310. **已完成**：Nginx 卸载任务详情，批次、安装来源等信息布局、样式等参考 Nginx 升级任务详情；执行结果参考 Nginx 启停任务详情 的节点结果；完整执行日志参考 Nginx 启停任务详情的完整执行日志；将 完整远程操作日志 文案调整为 完整执行日志；
+311. **已完成**：Nginx 生命周期管理安装、升级、启停、卸载，节点表头字段都不统一；比如启停的有执行摘要、创建|开始|完成时间；安装有当前阶段、并行编译等等；我理解他们应该有一些共性字段，我能想到的有，批次号、创建时间、开始时间、完成时间、目标节点（默认展示1台，超过1台点击后可字段展开/收起）、结果（成功 x，失败 x，共 x 台）、当前版本（安装应该没有）、安装来源（源码 或者 yum，安装应该没有），同时针对各阶段我觉得也应该有一些自定义的字段，如下
+```text
+Nginx 升级，目标版本（直接显示源码包的名称，比如 nginx-1.31.8.tar.gz）、升级模式、远程工作目录、编译并行数（不要-j2，直接显示数字）、升级前可执行文件备份路径）、监听端口、启动方式（systemctl 或者 二进制）、启动用户（Nginx 的启动用户）。
+Nginx 安装，目标版本、安装路径、主配置路径、可执行文件路径、编译并行数（不要-j2，直接显示数字）、监听端口、源码包（直接显示源码包的名称，比如 nginx-1.31.8.tar.gz）、启动方式（systemctl 或者 二进制）、启动用户（Nginx 的启动用户）。
+Nginx 启停，操作（重启/重载/启动/停止）。
+Nginx 卸载，安装路径、主配置六级、可执行文件路径、删除路径（可以单独弄个卡片，以节点粒度展示，默认展示 --prefix 的值，点击可以自动展开/收起）删除路径）。
+
+```
+同时，我理解“100% · Nginx 编译升级成功”、“100% · 安装成功”、“100% · Nginx 重启完成：成功 1，失败 0，共 1 台” 这些文案可以删掉了；另外4这个核心功能这些共性字段应该排版顺序都一样，自定义类的可以按需调整；布局、样式可参考 Nginx 升级任务详情进行参考。
+312. 阿萨德
+
+**用户页面功能测试 309–311 实施记录（2026-10-29）**：安装、升级、启停、卸载任务详情复用生命周期批次摘要，按同一顺序展示批次号、创建/开始/完成时间、节点展开列表和成功/失败计数；节点结果表统一为主机名、IP、状态、进度条、结果。安装、升级、卸载的任务创建通知增加“查看完整日志”新窗口入口，移除右侧进度行内日志按钮及阶段/错误详情；卸载详情增加批次节点结果、逐节点删除路径折叠、批次安装来源/版本和“完整执行日志”标题。升级详情的批次轮询按任务实际类型兼容回滚并显示回滚状态，回滚目标版本显示原升级记录的目标版本；回滚通知留在当前页并新窗口打开任务详情。安装和升级运行时仅筛选读取 Nginx `listen` 端口并记录实际启动方式，不持久化配置正文；卸载批次混合来源时汇总展示不同安装来源，包安装路径明细不误报 `--prefix` 为待删除目录。启停任务创建时保存各节点版本快照，详情补齐节点状态和进度指示；任务取消时将未完成节点结果标记为取消。相关静态资源缓存版本更新，无数据库迁移。按用户要求未启动程序或运行自动化测试，由用户进行页面功能测试。

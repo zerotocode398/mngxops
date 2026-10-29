@@ -90,6 +90,11 @@ def create_service_task(
         with session_scope(session_factory) as session:
             with session.begin():
                 batch_number = _next_batch_number(session, datetime.now())
+                versions = dict(
+                    session.execute(
+                        select(Node.id, Node.nginx_version).where(Node.id.in_(node_ids))
+                    ).all()
+                )
                 task = Task(
                     operation_type="nginx_service_control",
                     detail="已创建 Nginx {} 任务，等待执行".format(
@@ -113,6 +118,7 @@ def create_service_task(
                                     "id": node_id,
                                     "hostname": hostnames[index],
                                     "ip": ips[index],
+                                    "version": versions.get(node_id, ""),
                                     "status": "pending",
                                     "message": "等待执行",
                                 }
@@ -326,6 +332,7 @@ def _run_service_batch(
                     "id": node_id,
                     "hostname": node.hostname if node else "节点 {}".format(node_id),
                     "ip": node.ip if node else "",
+                    "version": node.nginx_version if node else "",
                     "status": "pending",
                     "message": "等待执行",
                 }
@@ -337,85 +344,107 @@ def _run_service_batch(
     success_count = 0
     fail_count = 0
     if not encryption_key:
+        for item in nodes:
+            item["status"] = "failed"
+            item["message"] = "凭证加密密钥不可用"
+        results["summary"] = {
+            "success": 0,
+            "failed": len(nodes),
+            "total": len(nodes),
+        }
+        context.set_result_tree(results)
         return TaskOutcome("failed", "凭证加密密钥不可用", results)
 
-    for index, item in enumerate(nodes, start=1):
-        context.check_cancelled()
-        node_context = _NodeTaskContext(context, int(item["id"]))
-        service_node_id = int(item["id"])
-        node_context.set_detail_log_sink(
-            lambda messages, level, node_id=service_node_id: append_nginx_operation_logs(
-                session_factory,
-                context.task_id,
-                "nginx_service_control",
-                messages,
-                level,
-                node_id,
-            )
-        )
-        hostname = item["hostname"] or item["ip"]
-        context.update_progress(
-            min(98, int((index - 1) * 99 / max(total, 1))),
-            "正在对 {} 执行 Nginx {}（{}/{}）".format(
-                hostname, action_label, index, total
-            ),
-        )
-        item["status"] = "running"
-        item["message"] = "正在执行 Nginx {}".format(action_label)
-        context.set_result_tree(results)
-        node_context.append_log(
-            "{} ({}) 开始 Nginx {}".format(hostname, item["ip"], action_label)
-        )
-        target, error = _load_target(session_factory, int(item["id"]), encryption_key)
-        ok = False
-        message = error
-        if target is not None:
-            client = None
-            try:
-                client = _connect_target(target, node_context)
-                ok, message = _run_action(client, target, action, node_context)
-            except TaskCancelled:
-                raise
-            except Exception as exc:
-                log_exception(
-                    logger,
-                    "Nginx service action failed",
-                    exc,
-                    "node_id={} action={}".format(item["id"], action),
+    try:
+        for index, item in enumerate(nodes, start=1):
+            context.check_cancelled()
+            node_context = _NodeTaskContext(context, int(item["id"]))
+            service_node_id = int(item["id"])
+            node_context.set_detail_log_sink(
+                lambda messages, level, node_id=service_node_id: append_nginx_operation_logs(
+                    session_factory,
+                    context.task_id,
+                    "nginx_service_control",
+                    messages,
+                    level,
+                    node_id,
                 )
-                message = "SSH 或远程操作失败（{}）".format(type(exc).__name__)
-            finally:
-                if client is not None:
-                    client.close()
-        item["status"] = "success" if ok else "failed"
-        item["message"] = message or ("操作成功" if ok else "操作失败")
-        if ok:
-            success_count += 1
-        else:
-            fail_count += 1
+            )
+            hostname = item["hostname"] or item["ip"]
+            context.update_progress(
+                min(98, int((index - 1) * 99 / max(total, 1))),
+                "正在对 {} 执行 Nginx {}（{}/{}）".format(
+                    hostname, action_label, index, total
+                ),
+            )
+            item["status"] = "running"
+            item["message"] = "正在执行 Nginx {}".format(action_label)
+            context.set_result_tree(results)
+            node_context.append_log(
+                "{} ({}) 开始 Nginx {}".format(hostname, item["ip"], action_label)
+            )
+            target, error = _load_target(session_factory, int(item["id"]), encryption_key)
+            ok = False
+            message = error
+            if target is not None:
+                client = None
+                try:
+                    client = _connect_target(target, node_context)
+                    ok, message = _run_action(client, target, action, node_context)
+                except TaskCancelled:
+                    raise
+                except Exception as exc:
+                    log_exception(
+                        logger,
+                        "Nginx service action failed",
+                        exc,
+                        "node_id={} action={}".format(item["id"], action),
+                    )
+                    message = "SSH 或远程操作失败（{}）".format(type(exc).__name__)
+                finally:
+                    if client is not None:
+                        client.close()
+            item["status"] = "success" if ok else "failed"
+            item["message"] = message or ("操作成功" if ok else "操作失败")
+            if ok:
+                success_count += 1
+            else:
+                fail_count += 1
+            results["summary"] = {
+                "success": success_count,
+                "failed": fail_count,
+                "total": total,
+            }
+            context.set_result_tree(results)
+            node_context.append_log(
+                "{} ({}) Nginx {}{}".format(
+                    hostname,
+                    item["ip"],
+                    action_label,
+                    "成功: {}".format(item["message"])
+                    if ok
+                    else "失败: {}".format(item["message"]),
+                ),
+                level="info" if ok else "error",
+            )
+            context.update_progress(
+                min(99, int(index * 99 / max(total, 1))),
+                "Nginx {}：成功 {}，失败 {}，已完成 {}/{}".format(
+                    action_label, success_count, fail_count, index, total
+                ),
+            )
+    except TaskCancelled:
+        for item in nodes:
+            if item["status"] in ("pending", "running"):
+                item["status"] = "cancelled"
+                item["message"] = "任务已取消"
         results["summary"] = {
             "success": success_count,
-            "failed": fail_count,
+            "failed": fail_count + sum(1 for item in nodes if item["status"] == "cancelled"),
             "total": total,
         }
         context.set_result_tree(results)
-        node_context.append_log(
-            "{} ({}) Nginx {}{}".format(
-                hostname,
-                item["ip"],
-                action_label,
-                "成功: {}".format(item["message"])
-                if ok
-                else "失败: {}".format(item["message"]),
-            ),
-            level="info" if ok else "error",
-        )
-        context.update_progress(
-            min(99, int(index * 99 / max(total, 1))),
-            "Nginx {}：成功 {}，失败 {}，已完成 {}/{}".format(
-                action_label, success_count, fail_count, index, total
-            ),
-        )
+        raise
 
     status = "success" if fail_count == 0 else "failed"
     detail = "Nginx {}完成：成功 {}，失败 {}，共 {} 台".format(

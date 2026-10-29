@@ -19,6 +19,7 @@ from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
 from ngxops.audit.service import request_client_ip
 from ngxops.database.session import get_session
+from ngxops.lifecycle import summarize_lifecycle_runs
 from ngxops.nodes.models import Node
 from ngxops.security.dependencies import require_any_permission, require_permission
 from ngxops.settings.service import read_setting
@@ -1067,6 +1068,15 @@ def _backup_path_note(run: NginxUpgradeRun, task: Task, path: str) -> str:
     return "升级尚未进入备份阶段，暂未生成升级前二进制副本。"
 
 
+def _configure_value(options: str, name: str, fallback: str = "") -> str:
+    """从 configure 参数中读取一个键值参数。"""
+    prefix = name + "="
+    return next(
+        (item[len(prefix):] for item in tokenize_configure_args(options) if item.startswith(prefix)),
+        fallback,
+    )
+
+
 @router.get("/upgrade/tasks/{task_id}/", include_in_schema=False)
 def upgrade_task_detail(
     request: Request,
@@ -1103,6 +1113,14 @@ def upgrade_task_detail(
         }
         for item in batch_runs
     ]
+    batch_summary = summarize_lifecycle_runs(batch_runs)
+    current_versions = list(
+        dict.fromkeys(
+            str(item.current_version or "").strip()
+            for item in batch_runs
+            if str(item.current_version or "").strip()
+        )
+    )
     batch_active = any(item.task.status in ("pending", "running") for item in batch_runs)
     logs = session.scalars(
         select(NginxUpgradeLog)
@@ -1115,12 +1133,30 @@ def upgrade_task_detail(
             .where(TaskLog.task_id.in_(batch_task_ids))
             .order_by(TaskLog.id.asc())
         ).all()
+    try:
+        result_tree = json.loads(task.result_tree_json) if task.result_tree_json else {}
+    except (TypeError, ValueError):
+        result_tree = {}
+    result_node = result_tree.get("node", {}) if isinstance(result_tree, dict) else {}
+    status_label = _STATUS_LABELS.get(task.status, task.status)
+    if run.upgrade_mode == "rollback":
+        status_label = {
+            "success": "回滚成功",
+            "failed": "回滚失败",
+        }.get(task.status, status_label)
+        target_version_display = run.target_version
+    else:
+        target_version_display = (
+            run.source_package.file_name if run.source_package else run.source_package_name
+        ) or run.target_version
     current = tokenize_configure_args(run.current_configure_opts)
     target = tokenize_configure_args(run.target_configure_opts)
     context = {
         "run": run,
         "task": task,
+        "batch_runs": batch_runs,
         "targets": targets,
+        "batch_summary": batch_summary,
         "batch_active": batch_active,
         "logs": logs,
         "log_cursor": max((item.id for item in logs), default=0),
@@ -1129,7 +1165,7 @@ def upgrade_task_detail(
         "target_params": target,
         "param_removed": [item for item in current if item not in set(target)],
         "param_added": [item for item in target if item not in set(current)],
-        "status_label": _STATUS_LABELS.get(task.status, task.status),
+        "status_label": status_label,
         "status_class": _status_context(task)["status_class"],
         "can_execute": _has_upgrade_permission(request, session, user, "execute"),
         "has_backup": bool(backup_binary_path),
@@ -1137,6 +1173,21 @@ def upgrade_task_detail(
         "backup_path_note": _backup_path_note(run, task, backup_binary_path),
         "is_rollback": run.upgrade_mode == "rollback",
         "mode_label": _MODE_LABELS.get(run.upgrade_mode, "二进制回滚"),
+        "target_version_display": target_version_display,
+        "batch_current_version": ", ".join(current_versions) or "未知",
+        "listen_ports": result_node.get("listen_ports") or "执行后读取",
+        "startup_mode": result_node.get("startup_mode") or "执行后确定",
+        "target_conf_path": _configure_value(
+            run.target_configure_opts,
+            "--conf-path",
+            run.target_prefix.rstrip("/") + "/conf/nginx.conf",
+        ),
+        "target_binary_path": _configure_value(
+            run.target_configure_opts,
+            "--sbin-path",
+            run.target_prefix.rstrip("/") + "/sbin/nginx",
+        ),
+        "nginx_user": _configure_value(run.target_configure_opts, "--user", "编译默认值"),
         "can_rollback": (
             _has_upgrade_permission(request, session, user, "execute")
             and run.upgrade_mode != "rollback"

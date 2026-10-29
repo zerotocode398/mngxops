@@ -15,6 +15,7 @@ from starlette.responses import Response
 from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
 from ngxops.database.session import get_session, session_scope
+from ngxops.lifecycle import summarize_lifecycle_runs
 from ngxops.nginx_uninstall.models import NginxUninstallRun
 from ngxops.nginx_uninstall.services import (
     _BATCH_LIMIT,
@@ -555,7 +556,7 @@ def nginx_uninstall_task_log(
     batch_query = (
         select(NginxUninstallRun)
         .join(Task, Task.id == NginxUninstallRun.task_id)
-        .options(joinedload(NginxUninstallRun.task))
+        .options(joinedload(NginxUninstallRun.task), joinedload(NginxUninstallRun.node))
         .where(
             NginxUninstallRun.batch_number == run.batch_number,
             Task.operation_type == run.task.operation_type,
@@ -587,7 +588,66 @@ def nginx_uninstall_task_log(
         result_tree = json.loads(run.task.result_tree_json) if run.task.result_tree_json else None
     except (TypeError, ValueError):
         result_tree = None
-    options = json.loads(run.options_json or "{}")
+    batch_summary = summarize_lifecycle_runs(batch_runs)
+    batch_details = []
+    for batch_run in batch_runs:
+        try:
+            item_options = json.loads(batch_run.options_json or "{}")
+        except (TypeError, ValueError):
+            item_options = {}
+        try:
+            item_tree = json.loads(batch_run.task.result_tree_json) if batch_run.task.result_tree_json else {}
+        except (TypeError, ValueError):
+            item_tree = {}
+        result_nodes = item_tree.get("nodes", []) if isinstance(item_tree, dict) else []
+        node_result = result_nodes[0] if result_nodes and isinstance(result_nodes[0], dict) else {}
+        deletion_paths = []
+        if batch_run.install_origin == "source" and batch_run.resolved_prefix:
+            deletion_paths.append(batch_run.resolved_prefix)
+        deletion_paths.extend(
+            entry.get("path", "")
+            for entry in item_options.get("extra_paths", [])
+            if isinstance(entry, dict) and entry.get("path")
+        )
+        if item_options.get("remove_backup") and item_options.get("backup_path"):
+            deletion_paths.append(item_options["backup_path"])
+        if item_options.get("remove_workdir") and item_options.get("work_dir"):
+            deletion_paths.append(item_options["work_dir"])
+        if item_options.get("remove_modules") and item_options.get("work_dir"):
+            deletion_paths.append(item_options["work_dir"].rstrip("/") + "/nginx-modules")
+        batch_details.append(
+            {
+                "run": batch_run,
+                "options": item_options,
+                "node_result": node_result,
+                "deletion_paths": list(dict.fromkeys(deletion_paths)),
+            }
+        )
+    primary_result = next(
+        (item["node_result"] for item in batch_details if item["run"].task_id == run.task_id),
+        {},
+    )
+    current_versions = []
+    for item in batch_details:
+        version = str(
+            item["node_result"].get("version")
+            or (item["run"].node.nginx_version if item["run"].node else "")
+            or ""
+        ).strip()
+        if version and version not in current_versions:
+            current_versions.append(version)
+    current_version = ", ".join(current_versions) or "未知"
+    install_origins = []
+    for item in batch_details:
+        item_run = item["run"]
+        origin = (
+            "源码"
+            if item_run.install_origin == "source"
+            else {"rpm": "yum", "deb": "apt"}.get(item_run.package_manager, "包管理器")
+        )
+        if origin not in install_origins:
+            install_origins.append(origin)
+    install_origin = "、".join(install_origins) or "未知"
     page_user = SimpleNamespace(
         id=user.id,
         username=user.username,
@@ -602,11 +662,15 @@ def nginx_uninstall_task_log(
             "run": run,
             "task": run.task,
             "batch_runs": batch_runs,
+            "batch_details": batch_details,
+            "batch_summary": batch_summary,
             "batch_active": batch_active,
             "logs": logs,
             "log_cursor": max((item.id for item in logs), default=0),
             "result_tree": result_tree,
-            "options": options,
+            "primary_result": primary_result,
+            "current_version": current_version,
+            "install_origin": install_origin,
             "format_task_datetime": format_task_datetime,
             "status_label": _STATUS_LABELS.get(run.task.status, run.task.status),
             "can_cancel": can_execute and run.task.status in ("pending", "running"),
