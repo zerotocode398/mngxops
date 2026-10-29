@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, time, timedelta
 from math import ceil
-from typing import Optional
+from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, or_, select
@@ -20,6 +20,8 @@ from ngxops.ui import render_page
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 PAGE_SIZES = (10, 20, 50)
+AUDIT_TIME_RANGES = {"all", "today", "7d", "30d", "custom"}
+BEIJING_OFFSET = timedelta(hours=8)
 FAIL_REASON_LABELS = {
     "": "未知",
     "user_not_found": "用户不存在",
@@ -65,6 +67,60 @@ def _date_range(value: str, end_of_day: bool = False) -> Optional[datetime]:
     return local_boundary + (timedelta(days=1) if end_of_day else timedelta())
 
 
+def _parse_audit_datetime(value: str, end_of_day: bool = False) -> Optional[datetime]:
+    """解析操作日志筛选框中的北京时间日期或秒级时间。"""
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return None
+    try:
+        if len(raw_value) == 10:
+            parsed_date = date.fromisoformat(raw_value)
+            boundary = time(23, 59, 59) if end_of_day else time.min
+            return datetime.combine(parsed_date, boundary)
+        parsed_datetime = datetime.fromisoformat(raw_value)
+    except ValueError:
+        return None
+    if parsed_datetime.tzinfo is not None:
+        return None
+    return parsed_datetime.replace(microsecond=0)
+
+
+def _audit_time_bounds(
+    time_range: str, date_from: str, date_to: str
+) -> Tuple[Optional[datetime], Optional[datetime], str]:
+    """转换操作日志预设或自定义范围为 SQLite UTC 查询边界。"""
+    local_today = (datetime.utcnow() + BEIJING_OFFSET).date()
+    days_back = {"today": 0, "7d": 6, "30d": 29}.get(time_range)
+    if days_back is not None:
+        start_local = datetime.combine(
+            local_today - timedelta(days=days_back), time.min
+        )
+        end_local = datetime.combine(local_today + timedelta(days=1), time.min)
+        return (
+            start_local - BEIJING_OFFSET,
+            end_local - BEIJING_OFFSET,
+            "",
+        )
+
+    start_local = _parse_audit_datetime(date_from)
+    end_local = _parse_audit_datetime(date_to, end_of_day=True)
+    invalid_start = bool(date_from and start_local is None)
+    invalid_end = bool(date_to and end_local is None)
+    if invalid_start or invalid_end:
+        return None, None, "请输入有效的起止时间。"
+    if start_local and end_local and start_local > end_local:
+        return None, None, "结束时间不能早于开始时间。"
+    start = start_local - BEIJING_OFFSET if start_local else None
+    end = end_local - BEIJING_OFFSET + timedelta(seconds=1) if end_local else None
+    return start, end, ""
+
+
+def _format_audit_datetime(value: str, end_of_day: bool = False) -> str:
+    """将有效的操作日志时间转换为 datetime-local 控件值。"""
+    parsed = _parse_audit_datetime(value, end_of_day=end_of_day)
+    return parsed.strftime("%Y-%m-%dT%H:%M:%S") if parsed else ""
+
+
 def _pagination(session: Session, statement, count_statement, request: Request) -> dict:
     """按当前查询生成统一的每页十、二十、五十条分页结果。"""
     total = int(session.scalar(count_statement) or 0)
@@ -105,30 +161,51 @@ def audit_log_list(
     search: str = Query("", max_length=500),
     module: str = Query("", max_length=100),
     result: str = Query("", max_length=20),
-    date_from: str = Query("", max_length=10),
-    date_to: str = Query("", max_length=10),
+    time_range: str = Query("all", max_length=20),
+    date_from: str = Query("", max_length=32),
+    date_to: str = Query("", max_length=32),
     user: User = Depends(require_permission("audit", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
-    """显示支持模块、结果、日期和多标签关键词的操作日志。"""
-    statement = select(AuditLog)
-    count_statement = select(func.count()).select_from(AuditLog)
+    """显示按标签关键词和时间范围筛选的操作日志。"""
+    statement = select(AuditLog).outerjoin(Task, Task.id == AuditLog.task_id)
+    count_statement = (
+        select(func.count(AuditLog.id))
+        .select_from(AuditLog)
+        .outerjoin(Task, Task.id == AuditLog.task_id)
+    )
     conditions = []
     for term in _search_terms(search):
         pattern = "%{}%".format(term)
         conditions.append(
             or_(
                 AuditLog.username.ilike(pattern),
+                AuditLog.ip.ilike(pattern),
                 AuditLog.action.ilike(pattern),
                 AuditLog.detail.ilike(pattern),
+                AuditLog.source_batch.ilike(pattern),
+                Task.target_hostnames.ilike(pattern),
+                Task.target_ips.ilike(pattern),
             )
         )
+    modules = session.scalars(
+        select(AuditLog.module).distinct().order_by(AuditLog.module)
+    ).all()
+    if module not in modules:
+        module = ""
+    if result not in ("success", "failed"):
+        result = ""
     if module:
         conditions.append(AuditLog.module == module)
     if result in ("success", "failed"):
         conditions.append(AuditLog.result == result)
-    start = _date_range(date_from)
-    end = _date_range(date_to, end_of_day=True)
+    if time_range not in AUDIT_TIME_RANGES:
+        time_range = "all"
+    if time_range == "all" and (date_from or date_to):
+        time_range = "custom"
+    start, end, date_error = _audit_time_bounds(time_range, date_from, date_to)
+    if date_error:
+        conditions.append(AuditLog.id == 0)
     if start:
         conditions.append(AuditLog.created_at >= start)
     if end:
@@ -137,9 +214,6 @@ def audit_log_list(
         statement = statement.where(condition)
         count_statement = count_statement.where(condition)
     page_data = _pagination(session, statement, count_statement, request)
-    modules = session.scalars(
-        select(AuditLog.module).distinct().order_by(AuditLog.module)
-    ).all()
     task_ids = {log.task_id for log in page_data["items"] if log.task_id}
     visible_task_ids = set()
     if task_ids:
@@ -160,12 +234,8 @@ def audit_log_list(
     rows = []
     for log in page_data["items"]:
         can_view_task = log.task_id in visible_task_ids
-        task_detail_prefix = "创建任务：#{}".format(log.task_id or "")
         task_link_in_detail = bool(
-            log.task_id and log.detail.startswith(task_detail_prefix)
-        )
-        task_detail_suffix = (
-            log.detail[len(task_detail_prefix) :] if task_link_in_detail else ""
+            log.task_id and log.detail.startswith("创建任务：")
         )
         rows.append(
             {
@@ -177,10 +247,7 @@ def audit_log_list(
                 ),
                 "can_view_task": can_view_task,
                 "task_link_in_detail": task_link_in_detail,
-                "task_detail_suffix": task_detail_suffix,
-                "task_detail_preview_suffix": task_detail_suffix[
-                    : max(0, 80 - len(task_detail_prefix))
-                ],
+                "show_detail_toggle": len(log.detail) > 80 or task_link_in_detail,
                 "created_at_display": _format_created_at(log.created_at),
             }
         )
@@ -192,10 +259,20 @@ def audit_log_list(
             "search": search,
             "module_filter": module,
             "result_filter": result,
-            "date_from": date_from,
-            "date_to": date_to,
             "modules": modules,
-            "has_filters": bool(search or module or result or date_from or date_to),
+            "time_range": time_range,
+            "date_from": (
+                _format_audit_datetime(date_from) if time_range == "custom" else ""
+            ),
+            "date_to": (
+                _format_audit_datetime(date_to, end_of_day=True)
+                if time_range == "custom"
+                else ""
+            ),
+            "date_error": date_error,
+            "has_filters": bool(
+                search or module or result or time_range != "all"
+            ),
             "pagination": page_data["pagination"],
         },
         user=user,

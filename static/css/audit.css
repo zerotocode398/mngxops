@@ -1,7 +1,7 @@
 .audit-log-table {
     width: 100%;
     min-width: 1000px;
-    table-layout: fixed;
+    table-layout: fixed !important;
 }
 
 .audit-log-table th,
@@ -25,6 +25,7 @@
 }
 
 .audit-detail-preview > span {
+    display: block;
     min-width: 0;
 }
 
@@ -46,7 +47,14 @@
 }
 
 .audit-detail-meta {
-    display: block;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
     margin-top: 0.25rem;
     overflow-wrap: anywhere;
+}
+
+#auditCustomRange .form-control {
+    min-width: 0;
 }

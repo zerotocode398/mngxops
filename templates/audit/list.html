@@ -3,7 +3,7 @@
 {% block title %}操作日志 - ngxops{% endblock %}
 {% block page_title %}操作日志{% endblock %}
 {% block extra_head %}
-<link rel="stylesheet" href="{{ request.url_for('static', path='css/audit.css') }}?v=3">
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/audit.css') }}?v=4">
 {% endblock %}
 
 {% block content %}
@@ -15,45 +15,60 @@
         </a>
     </div>
 
-    <form method="get" class="border-bottom pb-3 mb-3" id="auditSearchForm">
-        <div class="row g-2 align-items-end">
-            <div class="col-12 col-xl-4">
-                <label class="form-label small mb-1" for="auditSearch">搜索</label>
-                <input class="form-control form-control-sm" id="auditSearch" name="search"
-                       value="{{ search }}" placeholder="操作人、动作或详情；多个词以逗号分隔">
+    <form method="get" class="border-bottom pb-3 mb-3" id="auditSearchForm" data-query-submit-on-enter data-preserve-query-focus>
+        <div class="row g-2 align-items-center">
+            <div class="col-12 col-xl-3">
+                <label class="visually-hidden" for="auditSearch">操作人、来源 IP、主机名或 IP、批次号</label>
+                <input class="form-control form-control-sm" id="auditSearch" name="search" data-query-tags
+                       value="{{ search }}" placeholder="操作人、来源 IP、主机名或 IP、批次号" aria-label="操作人、来源 IP、主机名或 IP、批次号">
             </div>
-            <div class="col-6 col-xl-2">
-                <label class="form-label small mb-1" for="auditModule">模块</label>
-                <select class="form-select form-select-sm" id="auditModule" name="module">
-                    <option value="">全部模块</option>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="visually-hidden" for="auditModule">模块筛选</label>
+                <select class="form-select form-select-sm" id="auditModule" name="module" aria-label="模块筛选">
+                    <option value="">全部</option>
                     {% for module in modules %}<option value="{{ module }}"{% if module_filter == module %} selected{% endif %}>{{ module }}</option>{% endfor %}
                 </select>
             </div>
-            <div class="col-6 col-xl-2">
-                <label class="form-label small mb-1" for="auditResult">结果</label>
-                <select class="form-select form-select-sm" id="auditResult" name="result">
-                    <option value="">全部结果</option>
+            <div class="col-6 col-md-2 col-xl-1">
+                <label class="visually-hidden" for="auditResult">结果筛选</label>
+                <select class="form-select form-select-sm" id="auditResult" name="result" aria-label="结果筛选">
+                    <option value="">全部</option>
                     <option value="success"{% if result_filter == "success" %} selected{% endif %}>成功</option>
                     <option value="failed"{% if result_filter == "failed" %} selected{% endif %}>失败</option>
                 </select>
             </div>
-            <div class="col-6 col-xl-1">
-                <label class="form-label small mb-1" for="auditDateFrom">开始日期</label>
-                <input class="form-control form-control-sm" id="auditDateFrom" type="date" name="date_from" value="{{ date_from }}">
+            <div class="col-12 col-sm-4 col-xl-2">
+                <label class="visually-hidden" for="auditTimeRange">时间范围</label>
+                <select class="form-select form-select-sm" id="auditTimeRange" name="time_range" aria-label="时间范围">
+                    <option value="all"{% if time_range == "all" %} selected{% endif %}>全部时间</option>
+                    <option value="today"{% if time_range == "today" %} selected{% endif %}>今天</option>
+                    <option value="7d"{% if time_range == "7d" %} selected{% endif %}>近 7 天</option>
+                    <option value="30d"{% if time_range == "30d" %} selected{% endif %}>近 30 天</option>
+                    <option value="custom"{% if time_range == "custom" %} selected{% endif %}>自定义时间</option>
+                </select>
             </div>
-            <div class="col-6 col-xl-1">
-                <label class="form-label small mb-1" for="auditDateTo">结束日期</label>
-                <input class="form-control form-control-sm" id="auditDateTo" type="date" name="date_to" value="{{ date_to }}">
+            <div class="col-12 col-xl-4" id="auditCustomRange"{% if time_range != "custom" %} hidden{% endif %}>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="visually-hidden" for="auditDateFrom">起始时间，精确到秒</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">从</span>
+                            <input class="form-control" id="auditDateFrom" type="datetime-local" step="1" name="date_from" value="{{ date_from }}" aria-label="起始时间，精确到秒"{% if time_range != "custom" %} disabled{% endif %}>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <label class="visually-hidden" for="auditDateTo">终止时间，精确到秒</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">至</span>
+                            <input class="form-control" id="auditDateTo" type="datetime-local" step="1" name="date_to" value="{{ date_to }}" aria-label="终止时间，精确到秒"{% if time_range != "custom" %} disabled{% endif %}>
+                        </div>
+                    </div>
+                </div>
             </div>
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-            <div class="col-12 col-xl-2 d-flex gap-1">
-                <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button>
-                <button class="btn btn-outline-secondary btn-sm" type="button" data-range="0">今天</button>
-                <button class="btn btn-outline-secondary btn-sm" type="button" data-range="6">近7天</button>
-                <button class="btn btn-outline-secondary btn-sm" type="button" data-range="29">近30天</button>
-                {% if has_filters %}<a class="btn btn-outline-secondary btn-sm" href="/audit/" title="清空筛选" aria-label="清空筛选"><i class="bi bi-x-lg" aria-hidden="true"></i></a>{% endif %}
-            </div>
         </div>
+        {% if has_filters %}<div class="d-flex justify-content-end mt-2"><a class="btn btn-outline-secondary btn-sm" href="/audit/" title="清空条件" aria-label="清空条件"><i class="bi bi-x-lg" aria-hidden="true"></i></a></div>{% endif %}
+        {% if date_error %}<div class="small text-danger mt-2" role="alert">{{ date_error }}</div>{% endif %}
     </form>
 
     <div class="table-responsive">
@@ -78,10 +93,16 @@
                     <td class="audit-detail-cell">
                         <div class="audit-detail-layout">
                             <div class="audit-detail-content">
-                                <div class="audit-detail-preview"><span>{% if row.task_link_in_detail %}创建任务：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{{ row.task_detail_preview_suffix }}{% if row.log.detail|length > 80 %}...{% endif %}{% else %}{{ row.log.detail[:80] }}{% if row.log.detail|length > 80 %}...{% endif %}{% endif %}</span></div>
-                                {% if row.log.detail|length > 80 %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">{% if row.task_link_in_detail %}创建任务：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{{ row.task_detail_suffix }}{% else %}{{ row.log.detail }}{% endif %}</div>{% endif %}
+                                <div class="audit-detail-preview"><span>{% if row.task_link_in_detail %}{% if row.log.source_batch %}批次：{{ row.log.source_batch }}，{% endif %}任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{% else %}{{ row.log.detail[:80] }}{% if row.log.detail|length > 80 %}...{% endif %}{% endif %}</span></div>
+                                {% if row.show_detail_toggle %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">
+                                    {{ row.log.detail }}
+                                    {% if row.task_link_in_detail %}<div class="small text-muted audit-detail-meta">
+                                        {% if row.log.source_batch %}<span>批次：{{ row.log.source_batch }}</span>{% endif %}
+                                        <span>任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}</span>
+                                    </div>{% endif %}
+                                </div>{% endif %}
                             </div>
-                            {% if row.log.detail|length > 80 %}
+                            {% if row.show_detail_toggle %}
                             <button class="btn btn-link btn-sm p-0 audit-detail-toggle" type="button"
                                     aria-label="展开详情" title="展开详情" aria-expanded="false"
                                     aria-controls="audit-detail-{{ row.log.id }}">
@@ -89,8 +110,10 @@
                             </button>
                             {% endif %}
                         </div>
-                        {% if row.log.source_batch %}<div class="small text-muted audit-detail-meta">批次：{{ row.log.source_batch }}</div>{% endif %}
-                        {% if row.log.task_id and not row.task_link_in_detail %}<span class="small audit-detail-meta">任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}<span>#{{ row.log.task_id }}</span>{% endif %}</span>{% endif %}
+                        {% if not row.task_link_in_detail and (row.log.source_batch or row.log.task_id) %}<div class="small text-muted audit-detail-meta">
+                            {% if row.log.source_batch %}<span>批次：{{ row.log.source_batch }}</span>{% endif %}
+                            {% if row.log.task_id %}<span>任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}</span>{% endif %}
+                        </div>{% endif %}
                     </td>
                 </tr>
             {% else %}
@@ -106,17 +129,36 @@
 {% block scripts %}
 <script>
 $(function () {
-    $("[data-range]").on("click", function () {
-        var daysBack = Number($(this).data("range"));
-        var end = new Date();
-        var start = new Date(end);
-        start.setDate(start.getDate() - daysBack);
-        function asDate(value) {
-            return value.getFullYear() + "-" + String(value.getMonth() + 1).padStart(2, "0") + "-" + String(value.getDate()).padStart(2, "0");
+    var form = document.getElementById("auditSearchForm");
+    var timeRange = document.getElementById("auditTimeRange");
+    var customRange = document.getElementById("auditCustomRange");
+    var dateFrom = document.getElementById("auditDateFrom");
+    var dateTo = document.getElementById("auditDateTo");
+
+    function setCustomRangeVisible(visible) {
+        customRange.hidden = !visible;
+        dateFrom.disabled = !visible;
+        dateTo.disabled = !visible;
+    }
+
+    $(timeRange).on("change", function () {
+        var custom = this.value === "custom";
+        setCustomRangeVisible(custom);
+        if (custom) dateFrom.focus();
+        else form.requestSubmit();
+    });
+    $("#auditModule, #auditResult").on("change", function () {
+        form.requestSubmit();
+    });
+
+    $("#auditDateFrom, #auditDateTo").on("change", function () {
+        dateTo.setCustomValidity("");
+        if (dateFrom.value && dateTo.value && dateFrom.value > dateTo.value) {
+            dateTo.setCustomValidity("终止时间不能早于起始时间。");
+            dateTo.reportValidity();
+            return;
         }
-        $("#auditDateFrom").val(asDate(start));
-        $("#auditDateTo").val(asDate(end));
-        $("#auditSearchForm").trigger("submit");
+        form.requestSubmit();
     });
     $(document).on("click", ".audit-detail-toggle", function () {
         var $button = $(this);
