@@ -1059,17 +1059,7 @@
             if (resultNode && resultNode.startup_mode) {
                 document.getElementById("installStartupMode").textContent = resultNode.startup_mode === "systemd" ? "systemctl" : "二进制";
             }
-            var progressBar = document.getElementById("installTaskProgress");
-            progressBar.style.width = task.progress + "%";
-            progressBar.parentElement.setAttribute("aria-valuenow", String(task.progress));
-            progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
-            if (terminal.indexOf(task.status) >= 0) {
-                progressBar.classList.add(task.status === "success" ? "bg-success" : (task.status === "failed" ? "bg-danger" : "bg-secondary"));
-            }
             if (batchTask) {
-                if (batchTask.sync_ok !== null) {
-                    document.getElementById("installSyncResult").textContent = (batchTask.sync_ok ? "成功 · " : "失败 · ") + batchTask.sync_detail;
-                }
                 if (cancel) cancel.classList.toggle("d-none", !["pending", "checking_tools", "uploading_package", "extracting_package", "preparing_modules"].includes(batchTask.phase) || terminal.indexOf(task.status) >= 0);
             }
             task.logs.forEach(function (item) {

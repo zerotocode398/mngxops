@@ -453,7 +453,7 @@ def nginx_service_task_log(
             if isinstance(item, dict) and str(item.get("version") or "").strip()
         )
     )
-    current_version = ", ".join(versions) or "未知"
+    current_version = ", ".join(versions) or "-"
     if result_nodes:
         success_count = sum(1 for item in result_nodes if item.get("status") == "success")
         fail_count = sum(

@@ -16,7 +16,7 @@ from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
 from ngxops.database.session import get_session
 from ngxops.database.session import session_scope
-from ngxops.lifecycle import summarize_lifecycle_runs
+from ngxops.lifecycle import source_package_display_name, summarize_lifecycle_runs
 from ngxops.nginx_install.models import NginxInstallRun
 from ngxops.nginx_install.services import (
     build_install_configure_opts,
@@ -584,6 +584,7 @@ def nginx_install_task_log(
         result_tree = None
     result_node = result_tree.get("node", {}) if isinstance(result_tree, dict) else {}
     startup_mode = result_node.get("startup_mode", "")
+    source_package = run.source_package
     return render_page(
         request,
         "nginx_install/task_log.html",
@@ -595,6 +596,11 @@ def nginx_install_task_log(
             "batch_summary": batch_summary,
             "result_tree": result_tree,
             "startup_mode": startup_mode,
+            "target_version_display": source_package_display_name(
+                source_package.name if source_package else run.source_package_name,
+                source_package.version if source_package else run.target_version,
+                source_package.file_name if source_package else "",
+            ),
             "batch_active": batch_active,
             "logs": logs,
             "log_cursor": max((item.id for item in logs), default=0),

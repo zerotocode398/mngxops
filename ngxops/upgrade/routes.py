@@ -19,7 +19,7 @@ from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
 from ngxops.audit.service import request_client_ip
 from ngxops.database.session import get_session
-from ngxops.lifecycle import summarize_lifecycle_runs
+from ngxops.lifecycle import source_package_display_name, summarize_lifecycle_runs
 from ngxops.nodes.models import Node
 from ngxops.security.dependencies import require_any_permission, require_permission
 from ngxops.settings.service import read_setting
@@ -1146,9 +1146,12 @@ def upgrade_task_detail(
         }.get(task.status, status_label)
         target_version_display = run.target_version
     else:
-        target_version_display = (
-            run.source_package.file_name if run.source_package else run.source_package_name
-        ) or run.target_version
+        source_package = run.source_package
+        target_version_display = source_package_display_name(
+            source_package.name if source_package else run.source_package_name,
+            source_package.version if source_package else run.target_version,
+            source_package.file_name if source_package else "",
+        )
     current = tokenize_configure_args(run.current_configure_opts)
     target = tokenize_configure_args(run.target_configure_opts)
     context = {
@@ -1174,9 +1177,9 @@ def upgrade_task_detail(
         "is_rollback": run.upgrade_mode == "rollback",
         "mode_label": _MODE_LABELS.get(run.upgrade_mode, "二进制回滚"),
         "target_version_display": target_version_display,
-        "batch_current_version": ", ".join(current_versions) or "未知",
-        "listen_ports": result_node.get("listen_ports") or "执行后读取",
-        "startup_mode": result_node.get("startup_mode") or "执行后确定",
+        "batch_current_version": ", ".join(current_versions) or "-",
+        "listen_ports": result_node.get("listen_ports") or "-",
+        "startup_mode": result_node.get("startup_mode") or "-",
         "target_conf_path": _configure_value(
             run.target_configure_opts,
             "--conf-path",

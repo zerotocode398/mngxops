@@ -559,11 +559,6 @@
         function poll() {
             requestJson(config.dataset.taskUrlPrefix + taskId + "?after_log_id=" + cursor).then(function (data) {
                 document.getElementById("uninstallTaskStatus").textContent = statusLabels[data.status] || data.status;
-                var progressBar = document.getElementById("uninstallTaskProgressBar");
-                progressBar.style.width = data.progress + "%";
-                progressBar.parentElement.setAttribute("aria-valuenow", String(data.progress));
-                progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
-                if (["success", "failed", "cancelled"].indexOf(data.status) >= 0) progressBar.classList.add(data.status === "success" ? "bg-success" : (data.status === "failed" ? "bg-danger" : "bg-secondary"));
                 var resultNode = data.result_tree && data.result_tree.nodes && data.result_tree.nodes[0];
                 var currentVersion = document.getElementById("lifecycleCurrentVersion");
                 if (resultNode && resultNode.version && currentVersion) currentVersion.textContent = resultNode.version;

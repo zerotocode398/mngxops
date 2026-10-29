@@ -1724,7 +1724,6 @@
             .done(function (task) {
                 appendLogs(task, log);
                 applyUpgradeLogFilter();
-                document.getElementById("taskProgress").style.width = task.progress + "%";
                 var lifecycleNode = task.result_tree && task.result_tree.node;
                 if (lifecycleNode) {
                     var listenPorts = document.getElementById("upgradeListenPorts");
@@ -1742,11 +1741,6 @@
                 })[task.status] || task.status;
                 var statusClass = task.status === "success" ? "success" : (task.status === "failed" ? "danger" : (task.status === "running" ? "info" : "secondary"));
                 document.getElementById("taskStatus").className = "badge text-bg-" + statusClass;
-                var progressBar = document.getElementById("taskProgress");
-                progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
-                if (["success", "failed", "cancelled"].indexOf(task.status) >= 0) {
-                    progressBar.classList.add("bg-" + statusClass);
-                }
                 detail.dataset.taskStatus = task.status;
                 updateDetailActions(task);
                 log.dataset.batchActive = task.batch_active ? "true" : "false";

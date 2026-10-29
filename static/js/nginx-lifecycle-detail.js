@@ -51,28 +51,12 @@
                 badge.className = "badge text-bg-" + statusClass(item.status);
                 badge.textContent = statusLabel(item.status, config.dataset.operationType);
             }
-            var progress = row.querySelector("[data-lifecycle-progress]");
-            var progressBar = row.querySelector("[data-lifecycle-progress-bar]");
-            if (progress && progressBar) {
-                var terminal = ["success", "failed", "cancelled"].indexOf(item.status) >= 0;
-                var progressValue = terminal ? 100 : item.progress;
-                progress.setAttribute("aria-valuenow", String(progressValue));
-                progressBar.style.width = progressValue + "%";
-                progressBar.classList.remove(
-                    "bg-success",
-                    "bg-danger",
-                    "bg-secondary",
-                    "progress-bar-striped",
-                    "progress-bar-animated"
-                );
-                if (terminal) {
-                    progressBar.classList.add("bg-" + statusClass(item.status));
-                } else if (item.status === "running") {
-                    progressBar.classList.add("progress-bar-striped", "progress-bar-animated");
-                }
-            }
             var detail = row.querySelector("[data-lifecycle-detail]");
-            if (detail) detail.textContent = item.detail || "-";
+            if (detail) {
+                detail.textContent = item.detail || "-";
+                detail.classList.toggle("text-success", item.status === "success");
+                detail.classList.toggle("text-danger", item.status === "failed");
+            }
         });
         var success = items.filter(function (item) { return item.status === "success"; }).length;
         var failed = items.filter(function (item) { return item.status === "failed" || item.status === "cancelled"; }).length;
@@ -81,7 +65,9 @@
             summary.dataset.successCount = String(success);
             summary.dataset.failCount = String(failed);
             summary.dataset.totalCount = String(items.length);
-            summary.textContent = "成功 " + success + "，失败 " + failed + "，共 " + items.length + " 台";
+            summary.querySelector("[data-lifecycle-success]").textContent = "成功 " + success;
+            summary.querySelector("[data-lifecycle-failed]").textContent = "失败 " + failed;
+            summary.querySelector("[data-lifecycle-total]").textContent = String(items.length);
         }
         var started = items.map(function (item) { return item.started_at; }).filter(Boolean).sort()[0];
         var finished = items.map(function (item) { return item.finished_at; }).filter(Boolean).sort().slice(-1)[0];

@@ -22,7 +22,11 @@ from ngxops.tasks.executor import (
     append_nginx_operation_logs,
 )
 from ngxops.tasks.models import Task, TaskLog
-from ngxops.upgrade.services import _connect_target, _run_remote_command
+from ngxops.upgrade.services import (
+    _connect_target,
+    _run_remote_command,
+    parse_nginx_v_output,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -242,6 +246,26 @@ def _systemd_unit(client, context: TaskContext) -> str:
     return ""
 
 
+def _read_nginx_version(client, target: Dict[str, object], context: TaskContext) -> str:
+    """在启停动作前读取远程 Nginx 版本。"""
+    binary = shlex.quote(str(target.get("nginx_path") or "nginx"))
+    try:
+        status, output = _run_remote_command(
+            client,
+            "{} -v 2>&1".format(binary),
+            timeout=30,
+            context=context,
+            log_output=False,
+        )
+    except TaskCancelled:
+        raise
+    except Exception:
+        return ""
+    if status != 0:
+        return ""
+    return parse_nginx_v_output(output or "").get("version", "")
+
+
 def _run_action(
     client,
     target: Dict[str, object],
@@ -390,6 +414,10 @@ def _run_service_batch(
                 client = None
                 try:
                     client = _connect_target(target, node_context)
+                    version = _read_nginx_version(client, target, node_context)
+                    if version:
+                        item["version"] = version
+                        context.set_result_tree(results)
                     ok, message = _run_action(client, target, action, node_context)
                 except TaskCancelled:
                     raise

@@ -859,7 +859,7 @@ def resolve_backup_binary_path(run: NginxUpgradeRun, task: Optional[Task] = None
 def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task_id: int, context: TaskContext):
     """在后台线程执行节点升级、验证、必要时自动回滚。"""
     client = None
-    lifecycle_details = {"listen_ports": "执行后读取", "startup_mode": ""}
+    lifecycle_details = {"listen_ports": "", "startup_mode": ""}
     try:
         run, target, package = _load_run_snapshot(
             session_factory, encryption_key, package_dir, task_id
@@ -1614,7 +1614,7 @@ def _set_rollback_progress(context: TaskContext, progress: int, detail: str) -> 
 def _run_rollback(session_factory, encryption_key: bytes, task_id: int, context: TaskContext):
     """恢复指定升级记录的备份二进制并重新加载 Nginx。"""
     client = None
-    lifecycle_details = {"listen_ports": "执行后读取", "startup_mode": ""}
+    lifecycle_details = {"listen_ports": "", "startup_mode": ""}
     try:
         source_run, target = _load_rollback_snapshot(
             session_factory, encryption_key, task_id

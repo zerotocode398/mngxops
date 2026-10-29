@@ -6,6 +6,33 @@ from typing import Iterable, Optional
 from ngxops.tasks.presentation import format_task_datetime
 
 
+def source_package_display_name(
+    name: str, version: str, stored_file_name: str = ""
+) -> str:
+    """根据源码包元数据生成不含随机存储名的归档名称。"""
+    package_name = str(name or "").strip()
+    package_version = str(version or "").strip()
+    stored_name = str(stored_file_name or "").lower()
+    suffixes = (".tar.gz", ".tgz")
+    suffix = next(
+        (item for item in suffixes if stored_name.endswith(item)), ".tar.gz"
+    )
+    existing_suffix = next(
+        (item for item in suffixes if package_name.lower().endswith(item)), ""
+    )
+    if existing_suffix:
+        package_name = package_name[: -len(existing_suffix)]
+        if not stored_name.endswith(suffixes):
+            suffix = existing_suffix
+    if not package_name:
+        package_name = "nginx"
+    if package_version and not package_name.lower().endswith(
+        ("-" + package_version.lower(), "_" + package_version.lower())
+    ):
+        package_name = "{}-{}".format(package_name.rstrip("-_"), package_version)
+    return package_name + suffix
+
+
 def summarize_lifecycle_runs(runs: Iterable[object]) -> dict:
     """汇总单节点运行记录的目标、结果和批次时间。"""
     items = list(runs)

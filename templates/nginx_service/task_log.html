@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}启停任务详情 - {{ task.source_batch }}{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> 启停任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=309-2"><link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-service.css') }}?v=276-2">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=313-1"><link rel="stylesheet" href="{{ request.url_for('static', path='css/nginx-service.css') }}?v=276-2">{% endblock %}
 
 {% block content %}
-{% from "includes/nginx_lifecycle_summary.html" import lifecycle_summary %}
+{% from "includes/nginx_lifecycle_summary.html" import lifecycle_field, lifecycle_summary %}
 <div class="d-flex flex-wrap gap-2 mb-3">
     <a class="btn btn-outline-secondary btn-sm" href="/nginx/service/history/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回历史</a>
     <a class="btn btn-outline-primary btn-sm" href="/nginx/service/"><i class="bi bi-power me-1" aria-hidden="true"></i>启停操作台</a>
@@ -15,15 +15,15 @@
         <div class="d-flex align-items-center gap-2"><span class="badge text-bg-{{ status_class }}" id="taskStatus">{{ status_label }}</span><span class="badge text-bg-primary{% if task.status in ('success', 'failed', 'cancelled') %} d-none{% endif %}" id="taskProgress">{{ task.progress }}%</span></div>
     </div>
     <div class="card-body">
-        {{ lifecycle_summary(task.source_batch, "/nginx/service/history/?search=" ~ (task.source_batch|urlencode), batch_summary.created_at, batch_summary.started_at, batch_summary.finished_at, targets, batch_summary.success_count, batch_summary.fail_count, batch_summary.total_count, current_version) }}
-        <div class="row g-2 mt-2 mb-3"><div class="col-12"><span class="text-muted">操作：</span>{{ action_label }}</div></div>
-        <div class="progress" role="progressbar" aria-label="启停任务进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ task.progress }}"><div class="progress-bar{% if task.status == 'success' %} bg-success{% elif task.status == 'failed' %} bg-danger{% elif task.status == 'cancelled' %} bg-secondary{% endif %}" id="taskProgressBar" style="width:{{ task.progress }}%"></div></div>
+        {% call lifecycle_summary(task.source_batch, "/nginx/service/history/?search=" ~ (task.source_batch|urlencode), batch_summary.created_at, batch_summary.started_at, batch_summary.finished_at, targets, batch_summary.success_count, batch_summary.fail_count, batch_summary.total_count, current_version) %}
+            {% call lifecycle_field("操作", true) %}{{ action_label }}{% endcall %}
+        {% endcall %}
     </div>
 </section>
 <section class="card mb-3">
     <div class="card-header"><h2 class="h6 mb-0">节点结果</h2></div>
-    <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead class="table-light"><tr><th>主机名</th><th>IP</th><th>状态</th><th>进度</th><th>结果</th></tr></thead><tbody id="taskNodeResults">
-    {% if result_tree and result_tree.nodes %}{% for item in result_tree.nodes %}{% set node_status_class = {"pending":"secondary","running":"info","success":"success","failed":"danger","cancelled":"secondary"}.get(item.status, "secondary") %}<tr data-service-node-id="{{ item.id }}"><td>{{ item.hostname }}</td><td><code>{{ item.ip }}</code></td><td><span class="badge text-bg-{{ node_status_class }}" data-service-status>{{ {"pending":"等待执行","running":"执行中","success":"成功","failed":"失败","cancelled":"已取消"}.get(item.status, item.status) }}</span></td><td><div class="progress lifecycle-node-progress" role="progressbar" aria-label="{{ item.hostname }} 启停进度" aria-valuemin="0" aria-valuemax="100"{% if item.status != "running" %} aria-valuenow="{{ 100 if item.status in ("success", "failed", "cancelled") else 0 }}"{% endif %}><div class="progress-bar{% if item.status == "running" %} progress-bar-striped progress-bar-animated{% elif item.status == "success" %} bg-success{% elif item.status == "failed" %} bg-danger{% elif item.status == "cancelled" %} bg-secondary{% endif %}" data-service-progress style="width:{{ 100 if item.status in ("running", "success", "failed", "cancelled") else 0 }}%"></div></div></td><td data-service-result>{{ item.message or "-" }}</td></tr>{% endfor %}{% else %}<tr><td colspan="5" class="text-muted">暂无结果</td></tr>{% endif %}
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead class="table-light"><tr><th>主机名</th><th>IP</th><th>状态</th><th>结果</th></tr></thead><tbody id="taskNodeResults">
+    {% if result_tree and result_tree.nodes %}{% for item in result_tree.nodes %}{% set node_status_class = {"pending":"secondary","running":"info","success":"success","failed":"danger","cancelled":"secondary"}.get(item.status, "secondary") %}<tr data-service-node-id="{{ item.id }}"><td>{{ item.hostname }}</td><td><code>{{ item.ip }}</code></td><td><span class="badge text-bg-{{ node_status_class }}" data-service-status>{{ {"pending":"等待执行","running":"执行中","success":"成功","failed":"失败","cancelled":"已取消"}.get(item.status, item.status) }}</span></td><td class="{% if item.status == 'success' %}text-success{% elif item.status == 'failed' %}text-danger{% endif %}" data-service-result>{{ item.message or "-" }}</td></tr>{% endfor %}{% else %}<tr><td colspan="4" class="text-muted">暂无结果</td></tr>{% endif %}
     </tbody></table></div>
 </section>
 <section class="card">
@@ -35,4 +35,4 @@
 </section>
 <div id="serviceTaskConfig" data-task-id="{{ task.id }}" data-url="/api/nginx/service/tasks/{{ task.id }}" data-log-cursor="{{ log_cursor }}" data-status="{{ task.status }}" hidden></div>
 {% endblock %}
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-lifecycle-detail.js') }}?v=309-3"></script><script src="{{ request.url_for('static', path='js/nginx-service.js') }}?v=309-2"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-lifecycle-detail.js') }}?v=313-1"></script><script src="{{ request.url_for('static', path='js/nginx-service.js') }}?v=313-1"></script>{% endblock %}

@@ -636,7 +636,7 @@ def nginx_uninstall_task_log(
         ).strip()
         if version and version not in current_versions:
             current_versions.append(version)
-    current_version = ", ".join(current_versions) or "未知"
+    current_version = ", ".join(current_versions) or "-"
     install_origins = []
     for item in batch_details:
         item_run = item["run"]
@@ -647,7 +647,7 @@ def nginx_uninstall_task_log(
         )
         if origin not in install_origins:
             install_origins.append(origin)
-    install_origin = "、".join(install_origins) or "未知"
+    install_origin = "、".join(install_origins) or "-"
     page_user = SimpleNamespace(
         id=user.id,
         username=user.username,

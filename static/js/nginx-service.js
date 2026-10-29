@@ -422,29 +422,11 @@
                 badge.className = "badge text-bg-" + statusClass(node.status);
                 badge.textContent = statusLabel(node.status);
                 statusCell.appendChild(badge);
-                var progressCell = document.createElement("td");
-                var progress = document.createElement("div");
-                progress.className = "progress lifecycle-node-progress";
-                progress.setAttribute("role", "progressbar");
-                progress.setAttribute("aria-label", (node.hostname || "节点") + " 启停进度");
-                progress.setAttribute("aria-valuemin", "0");
-                progress.setAttribute("aria-valuemax", "100");
-                var bar = document.createElement("div");
-                bar.className = "progress-bar";
-                if (node.status === "running") {
-                    bar.classList.add("progress-bar-striped", "progress-bar-animated");
-                    bar.style.width = "100%";
-                } else {
-                    var done = node.status === "success" || node.status === "failed" || node.status === "cancelled";
-                    progress.setAttribute("aria-valuenow", done ? "100" : "0");
-                    bar.style.width = done ? "100%" : "0%";
-                    if (done) bar.classList.add("bg-" + statusClass(node.status));
-                }
-                progress.appendChild(bar);
-                progressCell.appendChild(progress);
                 var result = document.createElement("td");
+                result.classList.toggle("text-success", node.status === "success");
+                result.classList.toggle("text-danger", node.status === "failed");
                 result.textContent = node.message || "-";
-                row.append(hostname, ip, statusCell, progressCell, result);
+                row.append(hostname, ip, statusCell, result);
                 tbody.appendChild(row);
             });
         }
@@ -474,11 +456,6 @@
                     var status = document.getElementById("taskStatus");
                     status.className = "badge text-bg-" + statusClass(data.status);
                     status.textContent = statusLabel(data.status);
-                    var progressBar = document.getElementById("taskProgressBar");
-                    progressBar.style.width = data.progress + "%";
-                    progressBar.parentElement.setAttribute("aria-valuenow", String(data.progress));
-                    progressBar.classList.remove("bg-success", "bg-danger", "bg-secondary");
-                    if (terminal[data.status]) progressBar.classList.add("bg-" + statusClass(data.status));
                     document.getElementById("taskProgress").textContent = data.progress + "%";
                     if (data.started_at) document.getElementById("lifecycleStartedAt").textContent = window.formatUtc8DateTime(data.started_at);
                     if (data.finished_at) document.getElementById("lifecycleFinishedAt").textContent = window.formatUtc8DateTime(data.finished_at);
@@ -488,7 +465,9 @@
                         resultLabel.dataset.successCount = String(summary.success || 0);
                         resultLabel.dataset.failCount = String(summary.failed || 0);
                         resultLabel.dataset.totalCount = String(summary.total || 0);
-                        resultLabel.textContent = "成功 " + (summary.success || 0) + "，失败 " + (summary.failed || 0) + "，共 " + (summary.total || 0) + " 台";
+                        resultLabel.querySelector("[data-lifecycle-success]").textContent = "成功 " + (summary.success || 0);
+                        resultLabel.querySelector("[data-lifecycle-failed]").textContent = "失败 " + (summary.failed || 0);
+                        resultLabel.querySelector("[data-lifecycle-total]").textContent = String(summary.total || 0);
                     }
                     var versions = [];
                     ((data.result_tree && data.result_tree.nodes) || []).forEach(function (node) {
