@@ -56,6 +56,8 @@ _VALID_GIT_URL = re.compile(r"^(?:https?://|ssh://|git://|[A-Za-z0-9_.-]+@)[^\s]
 class _UpgradeRunSnapshot:
     """保存后台升级执行所需的非 ORM 参数快照。"""
 
+    node_hostname: str
+    node_ip: str
     remote_work_dir: str
     current_configure_opts: str
     third_party_json: str
@@ -1202,6 +1204,8 @@ def _load_run_snapshot(session_factory, encryption_key: bytes, package_dir: Path
         if _file_md5(package_path) != package.file_md5:
             raise UpgradeTaskError("Nginx 源码包校验值已变化")
         run_snapshot = _UpgradeRunSnapshot(
+            node_hostname=run.node_hostname,
+            node_ip=run.node_ip,
             remote_work_dir=run.remote_work_dir,
             current_configure_opts=run.current_configure_opts,
             third_party_json=run.third_party_json,

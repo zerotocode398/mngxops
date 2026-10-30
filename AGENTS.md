@@ -953,8 +953,9 @@ Nginx 卸载，安装路径、主配置六级、可执行文件路径、删除�
 批次：UN-261028-0001，任务 ID：#90
 ```
 326. **已完成**：升级模块内部导航改为主内容区局部更新，保留全局侧栏及菜单折叠状态；升级中心、源码包/模块包、上传、历史和任务详情的同域链接通过局部导航切换，筛选和已确认的包删除使用局部请求，上传成功后局部回到包列表。升级中心步骤 1 的已选节点和源码包在往返包管理页时保留，包下载继续使用浏览器原生下载。实现：`static/js/upgrade-navigation.js`、`static/js/app.js`、`templates/base.html`、升级中心/包管理/上传模板及 `static/js/upgrade-packages.js`。无路由、权限或数据结构变化。未启动程序或运行测试，待用户页面验证。
-327. Nginx 升级报错日志报错，“2026-10-30 12:45:32 INFO ngxops.tasks.executor request_id=- task_id=99 node_id=- operation_type=nginx_upgrade source_batch=UG-261030-0001 actor_user_id=1 task_event action=started
+327. **已完成**：修复 Nginx 升级任务启动时读取快照中缺失节点 hostname/IP 的异常；快照现在保留任务记录中的节点主机名和 IP，不依赖可变化的节点当前信息。
+原始日志：“2026-10-30 12:45:32 INFO ngxops.tasks.executor request_id=- task_id=99 node_id=- operation_type=nginx_upgrade source_batch=UG-261030-0001 actor_user_id=1 task_event action=started
 2026-10-30 12:45:32 ERROR ngxops.upgrade.services request_id=- task_id=99 node_id=- operation_type=nginx_upgrade source_batch=UG-261030-0001 actor_user_id=1 Nginx 升级任务异常 task_id=99 exception_type=AttributeError exception='_UpgradeRunSnapshot' object has no attribute 'node_hostname'
   File "D:\PyCharm\联动优势\works\django-labs\ngxops\ngxops\upgrade\services.py", line 867, in _run_upgrade
-    lifecycle_details.update({"hostname": run.node_hostname, "ip": run.node_ip})”。页面报错“Nginx 升级失败（AttributeError）”
-328. 
+    lifecycle_details.update({"hostname": run.node_hostname, "ip": run.node_ip})”。页面报错“Nginx 升级失败（AttributeError）”实现：`ngxops/upgrade/services.py`。无数据库迁移；未启动程序或运行测试。
+328. Nginx 升级任务详情，提出回滚到旧版本功能，同时删除相关功能。
