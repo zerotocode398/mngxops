@@ -1680,39 +1680,12 @@
             cancelButton.remove();
         }
 
-        var canRollback = canExecute && !isRollback && detail.dataset.hasBackup === "1" &&
-            detail.dataset.rolledBack !== "1" && ["success", "failed"].indexOf(task.status) >= 0;
-        var rollbackButton = document.getElementById("rollbackUpgrade");
-        if (canRollback && !rollbackButton) {
-            rollbackButton = document.createElement("button");
-            rollbackButton.className = "btn btn-warning btn-sm";
-            rollbackButton.type = "button";
-            rollbackButton.id = "rollbackUpgrade";
-            rollbackButton.innerHTML = '<i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>回滚到旧版本';
-            document.getElementById("taskStatus").parentElement.appendChild(rollbackButton);
-        } else if (!canRollback && rollbackButton) {
-            rollbackButton.remove();
-        }
     }
 
     function cancelCurrentUpgrade() {
         window.showConfirm("取消升级", "确认取消当前任务？", function () {
             requestJson("POST", "/api/upgrade/tasks/" + detail.dataset.taskId + "/cancel", {})
                 .done(function (result) { notify(result.message, "success"); window.setTimeout(pollDetail, 400); })
-                .fail(function (error) { notify(errorMessage(error), "danger"); });
-        });
-    }
-
-    function rollbackCurrentUpgrade() {
-        window.showConfirm("回滚 Nginx", "确认恢复升级前的二进制并重新加载 Nginx？", function () {
-            requestJson("POST", "/api/upgrade/tasks/" + detail.dataset.taskId + "/rollback", {})
-                .done(function (result) {
-                    notify(result.message, "success", {
-                        href: "/upgrade/tasks/" + result.task_id + "/",
-                        label: "查看完整日志",
-                        target: "_blank"
-                    });
-                })
                 .fail(function (error) { notify(errorMessage(error), "danger"); });
         });
     }
@@ -1770,7 +1743,6 @@
         applyUpgradeLogFilter();
         detail.addEventListener("click", function (event) {
             if (event.target.closest("#cancelUpgrade")) cancelCurrentUpgrade();
-            if (event.target.closest("#rollbackUpgrade")) rollbackCurrentUpgrade();
         });
     }
 })(window.jQuery, window, document);

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ "回滚" if run.upgrade_mode == "rollback" else "升级" }}任务详情 - {{ run.node_hostname }}{% endblock %}
 {% block page_title %}<i class="bi bi-file-text" aria-hidden="true"></i> {{ "回滚" if run.upgrade_mode == "rollback" else "升级" }}任务详情{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=313-1">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ request.url_for('static', path='css/upgrade.css') }}?v=328-1">{% endblock %}
 
 {% block content %}
 {% from "includes/nginx_lifecycle_summary.html" import lifecycle_field, lifecycle_summary %}
@@ -9,10 +9,10 @@
     <a class="btn btn-outline-secondary btn-sm" href="/upgrade/history/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>返回历史</a>
     <a class="btn btn-outline-primary btn-sm" href="/upgrade/center/"><i class="bi bi-rocket-takeoff me-1" aria-hidden="true"></i>升级中心</a>
 </div>
-<section class="card mb-3" id="upgradeTaskDetail" data-task-id="{{ task.id }}" data-task-status="{{ task.status }}" data-phase="{{ run.phase }}" data-can-cancel="{{ '1' if can_cancel else '0' }}" data-can-rollback="{{ '1' if can_rollback else '0' }}" data-can-execute="{{ '1' if can_execute else '0' }}" data-has-backup="{{ '1' if has_backup else '0' }}" data-is-rollback="{{ '1' if is_rollback else '0' }}" data-rolled-back="{{ '1' if rolled_back else '0' }}">
+<section class="card mb-3" id="upgradeTaskDetail" data-task-id="{{ task.id }}" data-task-status="{{ task.status }}" data-phase="{{ run.phase }}" data-can-cancel="{{ '1' if can_cancel else '0' }}" data-can-execute="{{ '1' if can_execute else '0' }}" data-is-rollback="{{ '1' if is_rollback else '0' }}">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div><strong>Nginx {{ "回滚" if is_rollback else "升级" }}</strong><small class="text-muted ms-2">{{ targets|length }} 台节点</small></div>
-        <div class="d-flex align-items-center gap-2"><span class="badge text-bg-{{ status_class }}" id="taskStatus">{{ status_label }}</span>{% if can_cancel %}<button class="btn btn-outline-danger btn-sm" type="button" id="cancelUpgrade"><i class="bi bi-stop-circle me-1" aria-hidden="true"></i>取消任务</button>{% endif %}{% if can_rollback %}<button class="btn btn-warning btn-sm" type="button" id="rollbackUpgrade"><i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>回滚到旧版本</button>{% endif %}</div>
+        <div class="d-flex align-items-center gap-2"><span class="badge text-bg-{{ status_class }}" id="taskStatus">{{ status_label }}</span>{% if can_cancel %}<button class="btn btn-outline-danger btn-sm" type="button" id="cancelUpgrade"><i class="bi bi-stop-circle me-1" aria-hidden="true"></i>取消任务</button>{% endif %}</div>
     </div>
     <div class="card-body">
         {% set summary = batch_summary %}
@@ -21,11 +21,6 @@
             {% call lifecycle_field("升级模式") %}{{ mode_label }}{% endcall %}
             {% call lifecycle_field("远程工作目录") %}<code>{{ run.remote_work_dir }}</code>{% endcall %}
             {% call lifecycle_field("编译并行数") %}{{ run.make_jobs }}{% endcall %}
-            {% call lifecycle_field("升级前 Nginx 二进制备份路径") %}
-                {% if backup_binary_path %}<code class="upgrade-backup-path">{{ backup_binary_path }}</code>
-                {% else %}<span class="text-muted" data-backup-binary-path>尚未生成</span>{% endif %}
-                {% if not backup_binary_path and backup_path_note %}<small class="text-muted">{{ backup_path_note }}</small>{% endif %}
-            {% endcall %}
             {% call lifecycle_field("主配置路径") %}<code>{{ target_conf_path or "-" }}</code>{% endcall %}
             {% call lifecycle_field("可执行文件路径") %}<code>{{ target_binary_path or "-" }}</code>{% endcall %}
             {% call lifecycle_field("监听端口") %}<span id="upgradeListenPorts">{{ listen_ports }}</span>{% endcall %}
@@ -63,4 +58,4 @@
 </section>
 <div id="lifecycleBatchConfig" data-operation-type="{{ task.operation_type }}" data-batch-active="{{ 'true' if batch_active else 'false' }}" data-batch-url="/api/tasks?operation_type={{ task.operation_type|urlencode }}&amp;source_batch={{ run.batch_number|urlencode }}&amp;page_size=100" hidden></div>
 {% endblock %}
-{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-lifecycle-detail.js') }}?v=313-1"></script><script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=313-1"></script>{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='js/nginx-lifecycle-detail.js') }}?v=313-1"></script><script src="{{ request.url_for('static', path='js/upgrade-center.js') }}?v=328-1"></script>{% endblock %}

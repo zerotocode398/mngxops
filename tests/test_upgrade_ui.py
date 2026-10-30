@@ -41,7 +41,6 @@ from ngxops.upgrade.services import (
     _load_run_snapshot,
     _run_remote_command,
     effective_removed_modules,
-    resolve_backup_binary_path,
 )
 
 
@@ -273,23 +272,6 @@ def test_detail_log_sink_redacts_sensitive_assignments_and_private_key_blocks():
     assert "private-key-material" not in stored_text
     assert "[已隐藏]" in stored_text
     assert "[已隐藏私钥]" in stored_text
-
-
-def test_backup_binary_path_reads_legacy_result_tree_fallback():
-    """验证旧任务结果树中的二进制备份路径仍可用于回滚。"""
-    run = SimpleNamespace(
-        backup_binary_path="",
-        node_hostname="edge-prod",
-        node_ip="192.0.2.40",
-    )
-    task = SimpleNamespace(
-        result_tree_json=(
-            '{"node":{"hostname":"edge-prod",'
-            '"backup_binary_path":"/usr/sbin/nginx.old"}}'
-        )
-    )
-
-    assert resolve_backup_binary_path(run, task) == "/usr/sbin/nginx.old"
 
 
 def test_compute_config_accepts_third_party_module_models(upgrade_client):
@@ -1079,11 +1061,11 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
     upgrade_detail = client.get("/upgrade/tasks/{}/".format(task_id))
     task_center_detail = client.get("/tasks/{}/".format(task_id))
     assert upgrade_detail.status_code == 200
-    assert 'id="rollbackUpgrade"' in upgrade_detail.text
-    assert 'data-has-backup="1"' in upgrade_detail.text
+    assert 'id="rollbackUpgrade"' not in upgrade_detail.text
+    assert 'data-has-backup=' not in upgrade_detail.text
     assert 'class="upgrade-log-output"' in upgrade_detail.text
     assert 'id="logLiveLabel"' in upgrade_detail.text
-    assert "升级前 Nginx 二进制备份路径" in upgrade_detail.text
+    assert "升级前 Nginx 二进制备份路径" not in upgrade_detail.text
     assert "远程副本，用于二进制回滚，不是日志备份" not in upgrade_detail.text
     assert "configure output line 204" in upgrade_detail.text
     assert "2026-10-12 11:04:00" in upgrade_detail.text
@@ -1104,8 +1086,8 @@ def test_package_and_history_filters_use_shared_query_and_page_sizes(upgrade_cli
         assert session.scalar(select(func.count()).select_from(NginxSourcePackage)) == 11
 
 
-def test_upgrade_detail_explains_missing_binary_backup_path(upgrade_client):
-    """验证备份阶段前失败时明确显示未生成的二进制副本原因。"""
+def test_upgrade_detail_omits_manual_rollback_controls(upgrade_client):
+    """验证任务详情不再显示手动回滚入口或备份路径信息。"""
     client, app, _csrf_token, user_id = upgrade_client
     with session_scope(app.state.database.session_factory) as session:
         with session.begin():
@@ -1139,11 +1121,9 @@ def test_upgrade_detail_explains_missing_binary_backup_path(upgrade_client):
     detail = client.get("/upgrade/tasks/{}/".format(task_id))
 
     assert detail.status_code == 200
-    assert "升级前 Nginx 二进制备份路径" in detail.text
-    assert "尚未生成" in detail.text
-    assert "任务在创建升级前二进制副本之前结束" in detail.text
-    assert 'data-has-backup="0"' in detail.text
     assert 'id="rollbackUpgrade"' not in detail.text
+    assert 'data-has-backup=' not in detail.text
+    assert "升级前 Nginx 二进制备份路径" not in detail.text
 
 
 def test_upgrade_home_shows_four_stats_and_recent_task_table(upgrade_client):

@@ -37,7 +37,6 @@ from ngxops.upgrade.models import (
 from ngxops.upgrade.services import (
     PackageConflict,
     compute_target_configure_opts,
-    create_rollback_task,
     create_upgrade_batch,
     delete_package,
     fetch_node_nginx_v,
@@ -45,7 +44,6 @@ from ngxops.upgrade.services import (
     parse_nginx_v_output,
     persist_uploaded_package,
     rewrite_configure_prefix,
-    resolve_backup_binary_path,
     tokenize_configure_args,
     validate_target_prefix,
     validate_remote_work_dir,
@@ -161,15 +159,6 @@ class UpgradeTaskCreateResponse(BaseModel):
     batch_number: str
     task_id: int
     task_ids: List[int]
-    message: str
-
-
-class UpgradeRollbackResponse(BaseModel):
-    """描述回滚任务排队结果。"""
-
-    success: bool = True
-    task_id: int
-    batch_number: str
     message: str
 
 
@@ -955,33 +944,6 @@ def cancel_upgrade_task_api(
     return UpgradeCancelResponse(message="升级任务已取消", task_id=task_id)
 
 
-@router.post("/api/upgrade/tasks/{task_id}/rollback", response_model=UpgradeRollbackResponse, summary="创建 Nginx 二进制回滚任务", responses=api_error_responses((400, 401, 403, 404, 409, 422, 500)))
-def rollback_upgrade_task_api(
-    request: Request,
-    task_id: int = ApiPath(..., ge=1),
-    user: User = Depends(require_permission("upgrade", "execute")),
-    session: Session = Depends(get_session),
-) -> UpgradeRollbackResponse:
-    """将符合条件的历史升级记录转成异步回滚任务。"""
-    session.rollback()
-    try:
-        result = create_rollback_task(
-            request.app.state.database.session_factory,
-            request.app.state.task_executor,
-            request.app.state.credential_encryption_key,
-            user.id,
-            task_id,
-            trigger_ip=request_client_ip(request),
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return UpgradeRollbackResponse(
-        task_id=result["task_id"],
-        batch_number=result["batch_number"],
-        message="回滚任务已加入任务中心",
-    )
-
-
 @router.get("/upgrade/history/", include_in_schema=False)
 def upgrade_history(
     request: Request,
@@ -1053,23 +1015,6 @@ def upgrade_history(
     return render_page(request, "upgrade/history.html", result, user, session)
 
 
-def _backup_path_note(run: NginxUpgradeRun, task: Task, path: str) -> str:
-    """解释二进制备份路径为空时当前升级阶段的含义。"""
-    if path:
-        return ""
-    if run.phase == "backing_up":
-        if task.status in _UPGRADE_ACTIVE_STATUSES:
-            return "正在复制升级前的 Nginx 可执行文件，备份路径尚未生成。"
-        return "备份命令未完成，因此没有生成可回滚的二进制副本。"
-    if task.status == "success":
-        return "任务已成功结束，但没有记录备份路径；请检查完整执行日志。"
-    if run.phase in ("configuring", "compiling", "replacing_binary", "verifying", "upgrading", "success"):
-        return "任务已越过备份阶段，但没有记录备份路径；请检查完整执行日志。"
-    if task.status in ("failed", "cancelled"):
-        return "任务在创建升级前二进制副本之前结束，因此尚未生成备份。"
-    return "升级尚未进入备份阶段，暂未生成升级前二进制副本。"
-
-
 def _configure_value(options: str, name: str, fallback: str = "") -> str:
     """从 configure 参数中读取一个键值参数。"""
     prefix = name + "="
@@ -1086,7 +1031,7 @@ def upgrade_task_detail(
     user: User = Depends(require_permission("upgrade", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
-    """显示升级任务参数差异、实时日志和可用回滚入口。"""
+    """显示升级任务参数差异和实时日志。"""
     run = session.scalars(
         select(NginxUpgradeRun)
         .options(joinedload(NginxUpgradeRun.task))
@@ -1095,7 +1040,6 @@ def upgrade_task_detail(
     if run is None:
         raise HTTPException(status_code=404, detail="升级任务不存在")
     task = run.task
-    backup_binary_path = resolve_backup_binary_path(run, task)
     batch_runs = session.scalars(
         select(NginxUpgradeRun)
         .join(Task, Task.id == NginxUpgradeRun.task_id)
@@ -1173,9 +1117,6 @@ def upgrade_task_detail(
         "status_label": status_label,
         "status_class": _status_context(task)["status_class"],
         "can_execute": _has_upgrade_permission(request, session, user, "execute"),
-        "has_backup": bool(backup_binary_path),
-        "backup_binary_path": backup_binary_path,
-        "backup_path_note": _backup_path_note(run, task, backup_binary_path),
         "is_rollback": run.upgrade_mode == "rollback",
         "mode_label": _MODE_LABELS.get(run.upgrade_mode, "二进制回滚"),
         "target_version_display": target_version_display,
@@ -1193,13 +1134,6 @@ def upgrade_task_detail(
             run.target_prefix.rstrip("/") + "/sbin/nginx",
         ),
         "nginx_user": _configure_value(run.target_configure_opts, "--user", "编译默认值"),
-        "can_rollback": (
-            _has_upgrade_permission(request, session, user, "execute")
-            and run.upgrade_mode != "rollback"
-            and task.status in ("success", "failed")
-            and bool(backup_binary_path)
-            and run.rolled_back_at is None
-        ),
         "can_cancel": (
             _has_upgrade_permission(request, session, user, "execute")
             and run.upgrade_mode != "rollback"

@@ -43,7 +43,6 @@
 .upgrade-history-version { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-history-batch { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upgrade-history-progress { width: 100%; min-width: 0; height: 6px; }
-.upgrade-backup-path { overflow-wrap: anywhere; }
 .upgrade-selected-targets { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 7px 9px; border: 1px solid var(--gray-300); border-radius: 4px; background: #fff; }
 .upgrade-selected-summary { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .upgrade-selected-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 6px 3px 9px; border: 1px solid var(--gray-200); border-radius: 4px; background: var(--gray-100); overflow-wrap: anywhere; }

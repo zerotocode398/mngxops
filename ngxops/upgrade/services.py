@@ -819,45 +819,6 @@ class _UpgradeDetailedLogContext:
         return self._context.append_detail_log(message, level)
 
 
-def resolve_backup_binary_path(run: NginxUpgradeRun, task: Optional[Task] = None) -> str:
-    """从升级记录或历史任务结果中解析可回滚的二进制副本路径。"""
-    stored_path = (run.backup_binary_path or "").strip()
-    if stored_path:
-        return stored_path
-    source_task = task or run.task
-    try:
-        result_tree = json.loads(source_task.result_tree_json or "")
-    except (AttributeError, TypeError, ValueError):
-        return ""
-    if not isinstance(result_tree, dict):
-        return ""
-
-    records = []
-    node_result = result_tree.get("node")
-    if isinstance(node_result, dict):
-        records.append(node_result)
-    nodes = result_tree.get("nodes")
-    if isinstance(nodes, list):
-        matches = [
-            item for item in nodes
-            if isinstance(item, dict)
-            and (
-                item.get("ip") == run.node_ip
-                or item.get("hostname") == run.node_hostname
-            )
-        ]
-        if matches:
-            records.extend(matches)
-        elif len(nodes) == 1 and isinstance(nodes[0], dict):
-            records.append(nodes[0])
-    records.append(result_tree)
-    for record in records:
-        backup_path = record.get("backup_binary_path") or record.get("backup_path")
-        if isinstance(backup_path, str) and backup_path.strip():
-            return backup_path.strip()
-    return ""
-
-
 def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task_id: int, context: TaskContext):
     """在后台线程执行节点升级、验证、必要时自动回滚。"""
     client = None
@@ -1027,8 +988,6 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
             "备份当前 Nginx 二进制失败",
             context=context,
         )
-        _store_backup_path(session_factory, task_id, backup_path)
-
         tokens = tokenize_configure_args(run.target_configure_opts)
         if not tokens:
             raise UpgradeTaskError("目标 configure 参数为空")
@@ -1128,7 +1087,6 @@ def _run_upgrade(session_factory, encryption_key: bytes, package_dir: Path, task
             {"summary": {"total": 1, "success": 1, "failed": 0}, "node": {
                 "hostname": target["hostname"], "ip": target["ip"],
                 "current_version": parsed["version"], "target_version": final_version,
-                "backup_binary_path": backup_path,
                 "listen_ports": lifecycle_details["listen_ports"],
                 "startup_mode": lifecycle_details["startup_mode"],
             }}
@@ -1259,17 +1217,6 @@ def _update_run_current(session_factory, task_id: int, parsed: dict) -> None:
                     current_prefix=parsed["prefix"],
                     current_binary_path=parsed["binary_path"],
                 )
-            )
-
-
-def _store_backup_path(session_factory, task_id: int, backup_path: str) -> None:
-    """记录可供后续回滚使用的远程二进制备份路径。"""
-    with session_scope(session_factory) as session:
-        with session.begin():
-            session.execute(
-                update(NginxUpgradeRun)
-                .where(NginxUpgradeRun.task_id == task_id)
-                .values(backup_binary_path=backup_path)
             )
 
 
@@ -1608,111 +1555,6 @@ def _update_node_nginx(session_factory, node_id: int, version: str, binary_path:
             node.last_nginx_probe_at = datetime.utcnow()
 
 
-def _set_rollback_progress(context: TaskContext, progress: int, detail: str) -> None:
-    """同时更新回滚进度并记录核心与完整阶段日志。"""
-    context.update_progress(progress, detail=detail)
-    context.append_log(detail)
-    context.append_detail_log(detail)
-
-
-def _run_rollback(session_factory, encryption_key: bytes, task_id: int, context: TaskContext):
-    """恢复指定升级记录的备份二进制并重新加载 Nginx。"""
-    client = None
-    lifecycle_details = {"listen_ports": "", "startup_mode": ""}
-    try:
-        source_run, target = _load_rollback_snapshot(
-            session_factory, encryption_key, task_id
-        )
-        lifecycle_details.update({"hostname": target["hostname"], "ip": target["ip"]})
-        _set_rollback_progress(context, 15, "连接节点并检查回滚备份")
-        client = _connect_target(target, context)
-        lifecycle_details["listen_ports"] = _read_nginx_listen_ports(
-            client, target["nginx_path"], context
-        )
-        status, _output = _run_remote_command(
-            client,
-            "test -f {}".format(shlex.quote(source_run.backup_binary_path)),
-            context=context,
-        )
-        if status != 0:
-            raise UpgradeTaskError("回滚备份文件不存在")
-        _set_rollback_progress(context, 45, "恢复旧 Nginx 二进制")
-        _require_remote_success(
-            client,
-            "cp -p -- {} {}".format(
-                shlex.quote(source_run.backup_binary_path),
-                shlex.quote(source_run.current_binary_path),
-            ),
-            "恢复旧 Nginx 二进制失败",
-            context=context,
-        )
-        _set_rollback_progress(context, 75, "重新加载 Nginx")
-        ok, message = _reload_nginx(
-            client,
-            source_run.current_binary_path,
-            context=_UpgradeDetailedLogContext(context),
-        )
-        lifecycle_details["startup_mode"] = (
-            "systemctl" if "systemd" in message.lower() else ("二进制" if ok else "未确认")
-        )
-        context.append_log(
-            "Nginx reload/start 成功" if ok else "Nginx reload/start 失败",
-            level="info" if ok else "error",
-        )
-        if not ok:
-            raise UpgradeTaskError("二进制已恢复，但 Nginx reload/start 失败")
-        with session_scope(session_factory) as session:
-            with session.begin():
-                fresh = session.get(NginxUpgradeRun, source_run.id)
-                if fresh:
-                    fresh.rolled_back_at = datetime.utcnow()
-        _update_node_nginx(
-            session_factory,
-            target["id"],
-            source_run.current_version or target["nginx_version"],
-            source_run.current_binary_path,
-        )
-        context.set_result_tree({"summary": {"total": 1, "success": 1, "failed": 0}, "node": {
-            "hostname": target["hostname"], "ip": target["ip"], "message": "已恢复旧版本",
-            "listen_ports": lifecycle_details["listen_ports"],
-            "startup_mode": lifecycle_details["startup_mode"],
-        }})
-        context.append_detail_log("Nginx 已回滚到升级前版本")
-        return TaskOutcome("success", "Nginx 已回滚到升级前版本", None)
-    except TaskCancelled:
-        context.append_detail_log("任务已取消", level="warning")
-        raise
-    except (UpgradeTaskError, ValueError) as exc:
-        context.append_log(str(exc), level="error")
-        context.append_detail_log(str(exc), level="error")
-        context.set_result_tree(
-            {
-                "summary": {"total": 1, "success": 0, "failed": 1},
-                "error": str(exc),
-                "node": lifecycle_details,
-            }
-        )
-        return TaskOutcome("failed", str(exc)[:2000], None)
-    finally:
-        if client is not None:
-            client.close()
-
-
-def create_rollback_runner(session_factory, encryption_key: bytes, task_id: int):
-    """构造绑定原升级记录的异步回滚回调。"""
-    def run(context: TaskContext):
-        """在线程池执行远程二进制恢复。"""
-        context.set_detail_log_sink(
-            lambda messages, level: _append_upgrade_execution_logs(
-                session_factory, task_id, messages, level
-            )
-        )
-        context.append_detail_log("任务开始执行")
-        return _run_rollback(session_factory, encryption_key, task_id, context)
-
-    return run
-
-
 def create_upgrade_batch(
     session_factory,
     executor,
@@ -1960,145 +1802,3 @@ def create_upgrade_batch(
                         )
                     )
     return {"batch_number": batch_number, "task_ids": task_ids}
-
-
-def create_rollback_task(
-    session_factory,
-    executor,
-    encryption_key: bytes,
-    user_id: int,
-    source_task_id: int,
-    trigger_ip: str = "",
-) -> dict:
-    """校验历史升级记录并排入异步二进制回滚任务。"""
-    with _BATCH_LOCK:
-        with session_scope(session_factory) as session:
-            prepare_audit_session(session, actor_id=user_id, ip=trigger_ip)
-            source = session.scalars(
-                select(NginxUpgradeRun)
-                .join(Task, Task.id == NginxUpgradeRun.task_id)
-                .where(NginxUpgradeRun.task_id == source_task_id)
-            ).one_or_none()
-            source_task = session.get(Task, source_task_id)
-            if source is None or source_task is None or source.upgrade_mode == "rollback":
-                raise ValueError("升级记录不存在")
-            if source_task.status not in ("success", "failed"):
-                raise ValueError("当前任务状态不允许回滚")
-            source_backup_path = resolve_backup_binary_path(source, source_task)
-            if not source_backup_path:
-                raise ValueError("没有可用的备份文件")
-            if source.rolled_back_at is not None:
-                raise ValueError("该升级任务已经回滚")
-            active = session.scalar(
-                select(Task.id)
-                .join(NginxUpgradeRun, NginxUpgradeRun.task_id == Task.id)
-                .where(
-                    NginxUpgradeRun.node_id == source.node_id,
-                    Task.status.in_(("pending", "running")),
-                )
-                .limit(1)
-            )
-            if active is not None:
-                raise ValueError("该节点有其他升级任务正在执行")
-            node = session.scalars(
-                select(Node).options(joinedload(Node.credential)).where(
-                    Node.id == source.node_id, Node.is_deleted.is_(False)
-                )
-            ).one_or_none()
-            if node is None or node.is_locked or node.status != "online":
-                raise ValueError("目标节点当前不可连接")
-            if node.credential is None or not node.credential.is_enabled:
-                raise ValueError("节点未配置有效的 SSH 凭证")
-            task = Task(
-                operation_type="nginx_rollback",
-                detail="Nginx 回滚任务已加入队列",
-                source_batch=source.batch_number,
-                target_hostnames=source.node_hostname,
-                target_ips=source.node_ip,
-                trigger_user_id=user_id,
-            )
-            session.add(task)
-            session.flush()
-            rollback = NginxUpgradeRun(
-                task_id=task.id,
-                node_id=source.node_id,
-                source_package_id=source.source_package_id,
-                rollback_of_id=source.id,
-                batch_number=source.batch_number,
-                node_hostname=source.node_hostname,
-                node_ip=source.node_ip,
-                source_package_name=source.source_package_name,
-                target_version=source.current_version or "未知",
-                upgrade_mode="rollback",
-                remote_work_dir=source.remote_work_dir,
-                make_jobs=source.make_jobs,
-                current_version=source.current_version,
-                current_configure_opts=source.current_configure_opts,
-                current_prefix=source.current_prefix,
-                current_binary_path=source.current_binary_path,
-                target_configure_opts=source.current_configure_opts,
-                target_prefix=source.current_prefix,
-                backup_binary_path=source_backup_path,
-            )
-            session.add(rollback)
-            from ngxops.tasks.models import TaskLog
-            session.add(TaskLog(task_id=task.id, message="回滚任务已加入执行队列"))
-            session.add(
-                NginxUpgradeLog(
-                    task_id=task.id,
-                    message="回滚任务已加入执行队列",
-                )
-            )
-            session.commit()
-            rollback_task_id = task.id
-    executor.submit(
-        rollback_task_id,
-        create_rollback_runner(session_factory, encryption_key, rollback_task_id),
-    )
-    return {"task_id": rollback_task_id, "batch_number": source.batch_number}
-
-
-def _load_rollback_snapshot(session_factory, encryption_key: bytes, task_id: int):
-    """加载回滚任务指向的原升级记录及 SSH 认证快照。"""
-    with session_scope(session_factory) as session:
-        rollback = session.scalars(
-            select(NginxUpgradeRun).where(NginxUpgradeRun.task_id == task_id)
-        ).one_or_none()
-        source = session.get(NginxUpgradeRun, rollback.rollback_of_id) if rollback else None
-        source_task = session.get(Task, source.task_id) if source else None
-        backup_path = (
-            resolve_backup_binary_path(source, source_task)
-            if source is not None
-            else ""
-        )
-        if rollback is None or source is None or not backup_path:
-            raise UpgradeTaskError("没有可用的升级回滚备份")
-        source.backup_binary_path = backup_path
-        node = session.scalars(
-            select(Node).options(joinedload(Node.credential)).where(
-                Node.id == source.node_id, Node.is_deleted.is_(False)
-            )
-        ).one_or_none()
-        if node is None or node.is_locked or node.status != "online":
-            raise UpgradeTaskError("目标节点当前不可连接")
-        credential = node.credential
-        if credential is None or not credential.is_enabled:
-            raise UpgradeTaskError("节点未配置有效的 SSH 凭证")
-        try:
-            secret = credential.get_password(encryption_key) if credential.auth_type == "password" else credential.get_private_key(encryption_key)
-        except CredentialDecryptionError as exc:
-            raise UpgradeTaskError("节点 SSH 凭证解密失败") from exc
-        return source, {
-            "id": node.id,
-            "hostname": node.hostname,
-            "ip": node.ip,
-            "port": node.port,
-            "nginx_path": node.nginx_path or "/usr/sbin/nginx",
-            "nginx_version": node.nginx_version,
-            "username": credential.username,
-            "auth_type": credential.auth_type,
-            "password": secret if credential.auth_type == "password" else "",
-            "private_key": secret if credential.auth_type == "key" else "",
-            "ssh_timeout": read_setting(session, "node.ssh_connect_timeout", 3),
-            "detect_retries": read_setting(session, "node.detect_retries", 1),
-        }
