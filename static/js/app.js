@@ -680,6 +680,19 @@
 
     });
 
+    document.addEventListener("ngxops:page-inserted", function () {
+        initializeQueryTags();
+        var alertPayload = document.getElementById("permission-alert-payload");
+        if (alertPayload) showToast(alertPayload.dataset.message, "danger");
+        $(".alert-auto-dismiss").each(function () {
+            var alert = this;
+            window.setTimeout(function () {
+                $(alert).css("opacity", "0");
+                window.setTimeout(function () { $(alert).remove(); }, 350);
+            }, 3000);
+        });
+    });
+
     $(document).on("hidden.bs.modal", "#ngxopsConfirmModal", function () {
         $("#ngxopsConfirmBtn").prop("disabled", false).text("确认");
         var callback = acceptedCallback;

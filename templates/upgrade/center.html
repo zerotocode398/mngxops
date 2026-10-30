@@ -9,10 +9,10 @@
     <a class="btn btn-outline-secondary btn-sm" href="/upgrade/">
         <i class="bi bi-house me-1" aria-hidden="true"></i>首页
     </a>
-    <a class="btn btn-outline-secondary btn-sm" href="/upgrade/packages/">
+    <a class="btn btn-outline-secondary btn-sm" href="/upgrade/packages/" data-upgrade-local-nav>
         <i class="bi bi-archive me-1" aria-hidden="true"></i>源码包
     </a>
-    <a class="btn btn-outline-secondary btn-sm" href="/upgrade/modules/">
+    <a class="btn btn-outline-secondary btn-sm" href="/upgrade/modules/" data-upgrade-local-nav>
         <i class="bi bi-puzzle me-1" aria-hidden="true"></i>模块包
     </a>
     <a class="btn btn-outline-secondary btn-sm" href="/upgrade/history/">
@@ -124,7 +124,7 @@
                             </ul></nav>
                             <div class="upgrade-selector-page-size"><label class="small text-muted mb-0" for="packagePageSize">每页</label><select class="form-select form-select-sm" id="packagePageSize" aria-label="每页源码包数"><option value="10" selected>10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></div>
                         </div>
-                        {% if missing_source_package_count %}<div class="small text-danger mt-1">{{ missing_source_package_count }} 个源码包文件缺失，已禁用选择；{% if can_create %}请到 <a href="/upgrade/packages/">源码包管理</a> 重新上传。{% else %}请联系有源码包上传权限的管理员重新上传。{% endif %}</div>{% endif %}
+                        {% if missing_source_package_count %}<div class="small text-danger mt-1">{{ missing_source_package_count }} 个源码包文件缺失，已禁用选择；{% if can_create %}请到 <a href="/upgrade/packages/" data-upgrade-local-nav>源码包管理</a> 重新上传。{% else %}请联系有源码包上传权限的管理员重新上传。{% endif %}</div>{% endif %}
                         <div class="small text-muted mt-1" id="selectedPackageSummary">尚未选择源码包</div>
                     </div>
                 </div>

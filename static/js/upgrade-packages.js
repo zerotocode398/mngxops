@@ -215,7 +215,10 @@
                 progressBar.classList.add("bg-success");
                 progressPercent.textContent = "100%";
                 progressLabel.textContent = "归档校验完成";
-                window.setTimeout(function () { window.location.assign(data.redirect); }, 500);
+                window.setTimeout(function () {
+                    if (window.navigateUpgradePage) window.navigateUpgradePage(data.redirect);
+                    else window.location.assign(data.redirect);
+                }, 500);
                 return;
             }
             resetButton();

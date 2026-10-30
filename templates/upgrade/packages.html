@@ -11,9 +11,9 @@
 <section class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="ms-auto d-flex flex-wrap justify-content-end gap-2">
-            <a class="btn btn-outline-secondary btn-sm" href="/upgrade/center/"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>升级中心</a>
-            {% if is_source %}<a class="btn btn-outline-secondary btn-sm" href="/upgrade/modules/">模块包</a>{% else %}<a class="btn btn-outline-secondary btn-sm" href="/upgrade/packages/">源码包</a>{% endif %}
-            {% if can_create %}<a class="btn btn-primary btn-sm" href="{{ '/upgrade/packages/upload/' if is_source else '/upgrade/modules/upload/' }}"><i class="bi bi-upload me-1" aria-hidden="true"></i>上传包</a>{% endif %}
+            <a class="btn btn-outline-secondary btn-sm" href="/upgrade/center/" data-upgrade-local-nav><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>升级中心</a>
+            {% if is_source %}<a class="btn btn-outline-secondary btn-sm" href="/upgrade/modules/" data-upgrade-local-nav>模块包</a>{% else %}<a class="btn btn-outline-secondary btn-sm" href="/upgrade/packages/" data-upgrade-local-nav>源码包</a>{% endif %}
+            {% if can_create %}<a class="btn btn-primary btn-sm" href="{{ '/upgrade/packages/upload/' if is_source else '/upgrade/modules/upload/' }}" data-upgrade-local-nav><i class="bi bi-upload me-1" aria-hidden="true"></i>上传包</a>{% endif %}
         </div>
     </div>
     <div class="card-body border-bottom py-2">
@@ -44,7 +44,7 @@
                         <td><small>{{ package.created_at_display }}</small></td>
                         <td class="text-end text-nowrap">
                             <a class="btn btn-outline-primary btn-sm" href="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}{{ package.id }}/download/" title="下载包" aria-label="下载 {{ package.name }}"><i class="bi bi-download" aria-hidden="true"></i></a>
-                            {% if can_delete %}<form class="d-inline" method="post" data-confirm="确认删除这个包？正在执行的任务使用中的包不能删除。" action="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}{{ package.id }}/delete/?search={{ search|urlencode }}&page={{ pagination.page }}&per_page={{ pagination.per_page }}">
+                            {% if can_delete %}<form class="d-inline" method="post" data-upgrade-partial-post data-confirm="确认删除这个包？正在执行的任务使用中的包不能删除。" action="{{ '/upgrade/packages/' if is_source else '/upgrade/modules/' }}{{ package.id }}/delete/?search={{ search|urlencode }}&page={{ pagination.page }}&per_page={{ pagination.per_page }}">
                                 {% include "includes/csrf_field.html" %}
                                 <button class="btn btn-outline-danger btn-sm" type="submit" title="删除包" aria-label="删除 {{ package.name }}"><i class="bi bi-trash" aria-hidden="true"></i></button>
                             </form>{% endif %}
