@@ -6,8 +6,8 @@ import json
 import logging
 import secrets
 from collections.abc import Iterator, MutableMapping
-from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional, Tuple
 
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -25,10 +25,12 @@ from ngxops.logging_setup import log_exception
 logger = logging.getLogger(__name__)
 SESSION_COOKIE_NAME = "sessionid"
 SESSION_KEY_LENGTH = 43
-SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60
 CSRF_COOKIE_NAME = "csrftoken"
 CSRF_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60
 PERMISSION_ALERT_KEY = "mngxops_perm_denied"
+SESSION_REVOCATION_REASON_KEY = "_ngxops_revocation_reason"
+SESSION_REVOKED_BY_OTHER_LOGIN = "other_login"
+_SESSION_TIMEZONE = timezone(timedelta(hours=8))
 _MISSING = object()
 
 
@@ -119,26 +121,33 @@ class ServerSession(MutableMapping[str, Any]):
         self.deleted = False
 
 
-def _load_session(session_factory: sessionmaker, session_key: str) -> Optional[Dict[str, Any]]:
-    """读取未过期会话并清理无效记录。"""
+def session_expiry_at_utc() -> datetime:
+    """返回北京时间当日结束对应的 UTC 会话过期时间。"""
+    now = datetime.now(_SESSION_TIMEZONE)
+    next_midnight = datetime.combine(
+        now.date() + timedelta(days=1),
+        datetime.min.time(),
+        tzinfo=_SESSION_TIMEZONE,
+    )
+    return next_midnight.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _load_session_state(
+    session_factory: sessionmaker,
+    session_key: str,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """读取有效会话或被强制撤销的原因，并清理过期记录。"""
     with session_scope(session_factory) as db_session:
         row = db_session.execute(
             text(
                 "SELECT session_data, "
-                "expires_at > CURRENT_TIMESTAMP AS is_valid "
+                "expires_at > CURRENT_TIMESTAMP AS is_valid, expires_at "
                 "FROM ngxops_sessions WHERE session_key = :session_key"
             ),
             {"session_key": session_key},
         ).first()
         if row is None:
-            return None
-        if not row[1]:
-            db_session.execute(
-                text("DELETE FROM ngxops_sessions WHERE session_key = :session_key"),
-                {"session_key": session_key},
-            )
-            db_session.commit()
-            return None
+            return None, None
 
         try:
             data = json.loads(row[0])
@@ -150,8 +159,47 @@ def _load_session(session_factory: sessionmaker, session_key: str) -> Optional[D
                 {"session_key": session_key},
             )
             db_session.commit()
-            return None
-        return data
+            return None, None
+
+        revocation_reason = data.get(SESSION_REVOCATION_REASON_KEY)
+        if revocation_reason == SESSION_REVOKED_BY_OTHER_LOGIN:
+            if row[1]:
+                return None, revocation_reason
+            db_session.execute(
+                text("DELETE FROM ngxops_sessions WHERE session_key = :session_key"),
+                {"session_key": session_key},
+            )
+            db_session.commit()
+            return None, None
+
+        if not row[1]:
+            db_session.execute(
+                text("DELETE FROM ngxops_sessions WHERE session_key = :session_key"),
+                {"session_key": session_key},
+            )
+            db_session.commit()
+            return None, None
+
+        current_expiry = session_expiry_at_utc().strftime("%Y-%m-%d %H:%M:%S.%f")
+        if str(row[2]) > current_expiry:
+            db_session.execute(
+                text(
+                    "UPDATE ngxops_sessions SET expires_at = :expires_at "
+                    "WHERE session_key = :session_key"
+                ),
+                {"expires_at": current_expiry, "session_key": session_key},
+            )
+            db_session.commit()
+        return data, None
+
+
+def _load_session(
+    session_factory: sessionmaker,
+    session_key: str,
+) -> Optional[Dict[str, Any]]:
+    """读取未过期会话并清理无效记录。"""
+    data, _ = _load_session_state(session_factory, session_key)
+    return data
 
 
 def _save_session(
@@ -160,7 +208,7 @@ def _save_session(
 ) -> Optional[str]:
     """删除旧会话并持久化变更后的 JSON 会话数据。"""
     session_key = session.session_key or secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(seconds=SESSION_MAX_AGE_SECONDS)
+    expires_at = session_expiry_at_utc()
     expires_at_text = expires_at.strftime("%Y-%m-%d %H:%M:%S.%f")
     user_id = session.data.get("user_id")
     try:
@@ -247,7 +295,9 @@ class SessionMiddleware(BaseHTTPMiddleware):
         call_next: RequestResponseEndpoint,
     ) -> Response:
         """在请求前加载会话，并在响应前保存变更。"""
-        if request.url.path == "/health":
+        if request.url.path == "/health" or request.url.path.startswith(
+            "/static/"
+        ):
             return await call_next(request)
         settings = request.app.state.settings
         secret_key = request.app.state.secret_key
@@ -264,9 +314,10 @@ class SessionMiddleware(BaseHTTPMiddleware):
         session_factory = request.app.state.database.session_factory
         try:
             session_data = None
+            revocation_reason = None
             if valid_session_key:
-                session_data = await run_in_threadpool(
-                    _load_session,
+                session_data, revocation_reason = await run_in_threadpool(
+                    _load_session_state,
                     session_factory,
                     raw_session_key,
                 )
@@ -284,6 +335,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
             invalid_cookie=bool(raw_session_key and not valid_session_data),
         )
         request.scope["session"] = session
+        request.state.session_revocation_reason = revocation_reason
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
         csrf_token = csrf_cookie if _valid_csrf_cookie(csrf_cookie, secret_key) else ""
         if not csrf_token:
@@ -292,7 +344,6 @@ class SessionMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
-            modified = session.modified or session.deleted
             if session.modified or session.deleted:
                 if session.deleted and not session.data:
                     await run_in_threadpool(_delete_session, session_factory, session)
@@ -313,11 +364,10 @@ class SessionMiddleware(BaseHTTPMiddleware):
             )
 
         secure = settings.https_only
-        if session_key and modified:
+        if session_key:
             response.set_cookie(
                 SESSION_COOKIE_NAME,
                 session_key,
-                max_age=SESSION_MAX_AGE_SECONDS,
                 httponly=True,
                 secure=secure,
                 samesite="lax",

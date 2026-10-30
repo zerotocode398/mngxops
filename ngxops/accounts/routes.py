@@ -7,10 +7,11 @@ import uuid
 from datetime import timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
+from ngxops.api.contracts import api_error_response
 from ngxops.accounts.service import (
     DEFAULT_FAIL_COUNT,
     DEFAULT_LOCK_MINUTES,
@@ -30,6 +31,7 @@ from ngxops.security.dependencies import (
     logout_user,
     require_authenticated_user,
 )
+from ngxops.security.sessions import SESSION_REVOKED_BY_OTHER_LOGIN
 from ngxops.ui import render_page
 
 
@@ -49,9 +51,14 @@ async def login_page(
     policy = await run_in_threadpool(
         read_login_lock_policy, request.app.state.database.session_factory
     )
+    was_kicked = request.query_params.get("reason") == "other_login"
     return _render_login(
         request,
         next_url=next_url,
+        error_type="auth_failed" if was_kicked else "",
+        error_message=(
+            "账号已在其他浏览器登录，当前会话已退出" if was_kicked else ""
+        ),
         fail_threshold=policy.fail_threshold,
         lock_minutes=policy.lock_minutes,
     )
@@ -151,6 +158,38 @@ async def logout_page(request: Request) -> Response:
     """撤销当前服务端会话并返回登录页。"""
     logout_user(request)
     return RedirectResponse("/login/", status_code=302)
+
+
+@router.get("/api/session/status", include_in_schema=False)
+def session_status(
+    request: Request,
+    user: Optional[User] = Depends(get_current_user),
+) -> Response:
+    """返回当前会话状态并说明是否因其他浏览器登录而撤销。"""
+    headers = {"Cache-Control": "no-store"}
+    if user is not None:
+        return JSONResponse(
+            status_code=200,
+            content={"success": True},
+            headers=headers,
+        )
+
+    was_kicked = (
+        getattr(request.state, "session_revocation_reason", None)
+        == SESSION_REVOKED_BY_OTHER_LOGIN
+    )
+    message = (
+        "账号已在其他浏览器登录，当前会话已退出"
+        if was_kicked
+        else "登录状态已失效，请重新登录"
+    )
+    login_url = "/login/?reason=other_login" if was_kicked else "/login/"
+    return api_error_response(
+        401,
+        message,
+        redirect=login_url,
+        headers=headers,
+    )
 
 
 async def _confirm_kick_login(request: Request) -> Response:

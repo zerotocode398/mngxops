@@ -13,7 +13,10 @@ from ngxops.security.errors import (
     CsrfViolation,
     PermissionDenied,
 )
-from ngxops.security.sessions import PERMISSION_ALERT_KEY
+from ngxops.security.sessions import (
+    PERMISSION_ALERT_KEY,
+    SESSION_REVOKED_BY_OTHER_LOGIN,
+)
 
 
 def is_json_request(request: Request) -> bool:
@@ -63,11 +66,23 @@ async def handle_authentication_required(
     if request.url.query:
         next_url += "?" + request.url.query
     login_url = "/login/?next={}".format(quote(next_url, safe=""))
+    was_kicked = (
+        getattr(request.state, "session_revocation_reason", None)
+        == SESSION_REVOKED_BY_OTHER_LOGIN
+    )
     if is_json_request(request):
         return api_error_response(
             401,
-            "登录已过期，请重新登录",
-            redirect=login_url,
+            (
+                "账号已在其他浏览器登录，当前会话已退出"
+                if was_kicked
+                else "登录已过期，请重新登录"
+            ),
+            redirect=("/login/?reason=other_login" if was_kicked else login_url),
+        )
+    if was_kicked:
+        login_url = "/login/?reason=other_login&next={}".format(
+            quote(next_url, safe="")
         )
     return RedirectResponse(
         url=login_url,

@@ -32,6 +32,56 @@
         }
     }
 
+    function initializeSessionMonitor() {
+        if (!document.body || document.body.dataset.sessionCheckEnabled !== "1") {
+            return;
+        }
+
+        var requestInFlight = false;
+        var redirecting = false;
+
+        function redirectForInvalidSession(xhr) {
+            if (redirecting) {
+                return;
+            }
+            redirecting = true;
+            var payload = xhr.responseJSON || {};
+            var message = payload.message || "登录状态已失效，请重新登录";
+            var loginUrl = payload.redirect || "/login/";
+            showToast(message, "danger", 2200);
+            window.setTimeout(function () {
+                window.location.replace(loginUrl);
+            }, 1800);
+        }
+
+        function checkSession() {
+            if (document.hidden || requestInFlight || redirecting) {
+                return;
+            }
+            requestInFlight = true;
+            $.ajax({
+                url: "/api/session/status",
+                method: "GET",
+                dataType: "json",
+                cache: false
+            }).fail(function (xhr) {
+                if (xhr.status === 401) {
+                    redirectForInvalidSession(xhr);
+                }
+            }).always(function () {
+                requestInFlight = false;
+            });
+        }
+
+        window.setInterval(checkSession, 30000);
+        document.addEventListener("visibilitychange", function () {
+            if (!document.hidden) {
+                checkSession();
+            }
+        });
+        checkSession();
+    }
+
     function initializeQueryTags() {
         var forms = document.querySelectorAll("form[method='get']");
         forms.forEach(function (form) {
@@ -620,6 +670,7 @@
     $(function () {
         initializeNavigation();
         initializeQueryTags();
+        initializeSessionMonitor();
 
         $("#sidebarToggleBtn").on("click", function () {
             if (window.matchMedia("(max-width: 767.98px)").matches) {

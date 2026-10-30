@@ -10,7 +10,7 @@ from sqlalchemy import case, delete, select, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from ngxops.audit.service import prepare_audit_session
+from ngxops.audit.service import prepare_audit_session, write_audit_log
 from ngxops.accounts.models import LoginFailureState, LoginLog, User
 from ngxops.accounts.passwords import (
     burn_unknown_user_password_check,
@@ -19,6 +19,11 @@ from ngxops.accounts.passwords import (
     validate_new_password,
 )
 from ngxops.database.session import session_scope
+from ngxops.security.sessions import (
+    SESSION_REVOCATION_REASON_KEY,
+    SESSION_REVOKED_BY_OTHER_LOGIN,
+    session_expiry_at_utc,
+)
 from ngxops.settings.service import read_setting
 
 
@@ -277,20 +282,67 @@ def complete_login(
             if user is None or not user.is_active:
                 db_session.rollback()
                 return False
+            revoked_session_count = 0
             if revoke_existing_sessions:
-                db_session.execute(
-                    text("DELETE FROM ngxops_sessions WHERE user_id = :user_id"),
-                    {"user_id": user_id},
+                revoked_session_count = _mark_sessions_revoked_by_other_login(
+                    db_session,
+                    user_id,
                 )
             user.last_login = datetime.utcnow()
             db_session.add(
                 _make_login_log(user.username, ip, user_agent, "success", "")
             )
+            prepare_audit_session(
+                db_session,
+                actor_id=user.id,
+                username=user.username,
+                ip=ip,
+            )
+            write_audit_log(
+                db_session,
+                "账户管理",
+                "登录成功",
+                "用户登录成功",
+            )
+            if revoked_session_count:
+                write_audit_log(
+                    db_session,
+                    "账户管理",
+                    "其他浏览器被挤下线",
+                    "本次登录已挤下线 {} 个其他浏览器会话".format(
+                        revoked_session_count
+                    ),
+                )
             db_session.commit()
             return True
         except Exception:
             db_session.rollback()
             raise
+
+
+def _mark_sessions_revoked_by_other_login(
+    db_session: Session,
+    user_id: int,
+) -> int:
+    """保留至当日结束的撤销标记以便旧页面识别异地登录。"""
+    session_data = json.dumps(
+        {SESSION_REVOCATION_REASON_KEY: SESSION_REVOKED_BY_OTHER_LOGIN},
+        separators=(",", ":"),
+    )
+    expires_at = session_expiry_at_utc().strftime("%Y-%m-%d %H:%M:%S.%f")
+    result = db_session.execute(
+        text(
+            "UPDATE ngxops_sessions SET user_id = NULL, session_data = :session_data, "
+            "expires_at = :expires_at "
+            "WHERE user_id = :user_id AND expires_at > CURRENT_TIMESTAMP"
+        ),
+        {
+            "session_data": session_data,
+            "expires_at": expires_at,
+            "user_id": user_id,
+        },
+    )
+    return max(0, int(result.rowcount or 0))
 
 
 def _make_login_log(
