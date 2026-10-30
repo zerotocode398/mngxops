@@ -381,7 +381,7 @@ def test_uninstall_preview_key_error_is_logged_and_incomplete_metadata_fails_clo
         node_id,
         app.state.credential_encryption_key,
         "/tmp/nginx-upgrade",
-        "/opt/app/mngxops",
+        "/opt/ngxops/backups",
     )
     assert result["eligible"] is False
     assert result["gate_message"] == "远程预览失败（KeyError）"
@@ -404,7 +404,7 @@ def test_uninstall_preview_key_error_is_logged_and_incomplete_metadata_fails_clo
         node_id,
         app.state.credential_encryption_key,
         "/tmp/nginx-upgrade",
-        "/opt/app/mngxops",
+        "/opt/ngxops/backups",
     )
     assert incomplete["eligible"] is False
     assert incomplete["gate_message"] == "远程预览数据不完整，请重新探测"
@@ -425,7 +425,7 @@ def test_uninstall_preview_key_error_is_logged_and_incomplete_metadata_fails_clo
         node_id,
         app.state.credential_encryption_key,
         "/tmp/nginx-upgrade",
-        "/opt/app/mngxops",
+        "/opt/ngxops/backups",
     )
     assert missing_runtime_state["eligible"] is False
     assert missing_runtime_state["gate_message"] == "远程预览数据不完整，请重新探测"

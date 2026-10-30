@@ -19,7 +19,7 @@ from ngxops.database.base import Base
 
 
 class User(Base):
-    """映射与原项目 Django User 核心字段兼容的账户身份。"""
+    """保存账户认证与权限共用的用户身份字段。"""
 
     __tablename__ = "auth_user"
 

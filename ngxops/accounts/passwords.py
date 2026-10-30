@@ -1,4 +1,4 @@
-"""提供与 Django 默认 PBKDF2 摘要兼容的密码工具。"""
+"""提供 PBKDF2-SHA256 密码摘要的生成与校验。"""
 
 import base64
 import hashlib
@@ -36,7 +36,7 @@ _COMMON_PASSWORDS = frozenset(
 
 
 def make_password(password: str) -> str:
-    """按 Django 默认编码格式生成 PBKDF2-SHA256 密码摘要。"""
+    """生成 PBKDF2-SHA256 密码摘要。"""
     salt = "".join(secrets.choice(_SALT_ALPHABET) for _ in range(22))
     digest = hashlib.pbkdf2_hmac(
         "sha256",
@@ -54,7 +54,7 @@ def make_password(password: str) -> str:
 
 
 def check_password(password: str, encoded: str) -> bool:
-    """校验 Django PBKDF2-SHA256 格式的密码摘要。"""
+    """校验 PBKDF2-SHA256 密码摘要。"""
     if len(password) > 4096:
         return False
     try:

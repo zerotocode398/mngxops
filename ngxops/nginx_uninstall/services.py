@@ -35,7 +35,7 @@ from ngxops.upgrade.services import _connect_target, _run_remote_command, parse_
 _BATCH_LOCK = threading.Lock()
 _BATCH_LIMIT = 3
 _WORK_DIR = "/tmp/nginx-upgrade"
-_BACKUP_DIR = "/opt/app/mascloud/ansible/mngxops"
+_BACKUP_DIR = "/opt/ngxops/backups"
 _FORBIDDEN_PATHS = frozenset(
     (
         "",

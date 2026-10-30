@@ -391,7 +391,7 @@
     function setSidebarCollapsed(collapsed) {
         $(document.documentElement).toggleClass("sidebar-collapsed", collapsed);
         $(document.body).removeClass("sidebar-mobile-open");
-        safelyWrite(getStorage("localStorage"), "mngxops_sidebar_collapsed", collapsed ? "1" : "0");
+        safelyWrite(getStorage("localStorage"), "ngxops_sidebar_collapsed", collapsed ? "1" : "0");
         closeSubmenus();
         $("#sidebarToggleBtn")
             .attr("title", collapsed ? "展开菜单" : "收起菜单")
@@ -423,7 +423,7 @@
             var expanded = $(".sidebar .submenu.show").map(function () {
                 return this.id;
             }).get();
-            safelyWrite(getStorage("sessionStorage"), "mngxops_expanded_submenus", JSON.stringify(expanded));
+            safelyWrite(getStorage("sessionStorage"), "ngxops_expanded_submenus", JSON.stringify(expanded));
         }
     }
 
@@ -645,7 +645,7 @@
                 activeParent.addClass("show");
                 $("[data-target='" + activeParent.attr("id") + "']").attr("aria-expanded", "true");
             }
-            var saved = safelyRead(getStorage("sessionStorage"), "mngxops_expanded_submenus", "[]");
+            var saved = safelyRead(getStorage("sessionStorage"), "ngxops_expanded_submenus", "[]");
             try {
                 JSON.parse(saved).forEach(function (id) {
                     var $submenu = $("#" + id);

@@ -680,7 +680,7 @@ def _apply_sync_results(
     elif mode == "full" and errors and progress_callback:
         progress_callback("连接或发现阶段存在错误，跳过缺失检查和远程清理")
     elif mode == "partial":
-        # 与参考实现一致，部分同步也清理 marked_deleted；只在发现完整时执行。
+        # 完整发现成功后，部分同步也清理标记待删除的远程文件。
         if not errors and ssh_client is not None:
             if progress_callback:
                 progress_callback("清理已标记删除的远程配置")

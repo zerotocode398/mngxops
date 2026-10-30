@@ -25,7 +25,7 @@ from ngxops.tasks.executor import TaskCancelled, TaskContext, TaskOutcome, creat
 
 logger = logging.getLogger(__name__)
 MAX_NODE_WORKERS = 3
-DEFAULT_BACKUP_DIR = "/opt/app/mascloud/ansible/mngxops"
+DEFAULT_BACKUP_DIR = "/opt/ngxops/backups"
 _NODE_LABEL_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _TERMINAL_ITEM_STATUSES = frozenset(("success", "failed"))

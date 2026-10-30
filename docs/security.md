@@ -20,11 +20,11 @@
 - `get_current_user` 从服务端会话加载 `auth_user`，`require_authenticated_user`、`require_superuser` 和 `require_permission(resource, action)` 可用于页面/API 路由。
 - 其他浏览器确认强制登录时，旧会话立即失效并保留到当天结束的撤销原因；旧页面轮询可提示“账号已在其他浏览器登录，当前会话已退出”并跳转登录页。普通过期会话显示通用失效提示。
 - `require_permission` 对超管直接放行；普通用户委托给 `app.state.permission_checker(db_session, user, resource, action)`。NX-011 已接入 RBAC 解析器；用户直授始终生效，个人角色优先于用户组角色，未配置任何授权时拒绝访问。
-- 页面未登录跳转 `/login/?next=...`；JSON/AJAX 未登录返回 HTTP 401，并按 JSON API 公共错误结构提供登录跳转地址。页面无权访问按原规则写入一次性 `mngxops_perm_denied` 提示，同源 Referer 可回跳，否则由 Jinja2 渲染 403；JSON/AJAX 无权返回符合公共错误结构的 HTTP 403。接口约定见 [api.md](api.md)。
+- 页面未登录跳转 `/login/?next=...`；JSON/AJAX 未登录返回 HTTP 401，并按 JSON API 公共错误结构提供登录跳转地址。页面无权访问时写入一次性权限提示，同源 Referer 可回跳，否则由 Jinja2 渲染 403；JSON/AJAX 无权返回符合公共错误结构的 HTTP 403。接口约定见 [api.md](api.md)。
 - 权限提示通过 `consume_permission_alert(session)` 读取并消费，供 NX-004 公共布局接入 `showAlert`。
 
 `python-multipart` 固定为 0.0.20，用于解析 URL 编码及 multipart 表单。NX-021 节点工作簿导入只接受 `.xlsx`，路由最多读取 8 MiB + 1 byte 以拒绝超限文件，再交给 openpyxl 的只读模式解析；应用层限制不替代反向代理的请求体大小限制。
 
 ## 范围
 
-本阶段实现会话、CSRF、认证/授权依赖与错误响应；NX-010 已增加账户页面、PBKDF2 密码校验、失败锁定、登录记录和设备冲突确认；NX-011 已接入用户、角色、用户组及 RBAC 管理；NX-020 已增加独立密钥加密的凭证存储和受 RBAC 保护的解密 API；NX-021 已增加带大小限制、全文件校验和 CSRF 保护的节点工作簿导入。原 Django 数据库及 session 序列化不会被自动接管。
+系统使用服务端会话、CSRF 校验、认证/授权依赖和统一错误响应。账户登录具备失败锁定、登录记录及异地登录确认；用户、角色和用户组通过 RBAC 管理。SSH 凭证使用独立密钥加密存储，节点工作簿导入受文件大小限制并进行完整校验。

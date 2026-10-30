@@ -32,7 +32,7 @@
 | 配置管理 | `config.discover_max_depth` | 3 层 | 下次配置发现或同步 |
 | 配置管理 | `config.default_nginx_path` | `/etc/nginx/nginx.conf` | 新节点或没有已保存路径的配置同步 |
 | 配置管理 | `config.default_nginx_bin` | `/usr/sbin/nginx` | 新建/导入节点没有填写 Nginx 二进制路径时 |
-| 发布管理 | `release.backup_dir` | `/opt/app/mascloud/ansible/mngxops` | 下次发布；每个节点写入其 hostname 子目录 |
+| 发布管理 | `release.backup_dir` | `/opt/ngxops/backups` | 下次发布；每个节点写入其 hostname 子目录 |
 | 登录 | `auth.login_fail_lock_count` | 5 次 | 下次登录；允许 3 至 30 次，不能关闭 |
 | 登录 | `auth.login_fail_lock_minutes` | 15 分钟 | 下次登录；允许 1 至 1440 分钟 |
 | 系统 | `system.task_progress_poll_interval` | 2 秒 | 通用任务中心、节点、配置、发布、升级、安装、启停和卸载任务进度；刷新页面后生效 |
@@ -55,7 +55,7 @@
 
 认证用户请求每天最多启动一次后台清理；清理在独立线程及数据库 Session 中执行，不占用 FastAPI 事件循环。每日日期锁按 UTC 日期记录在当前进程中，部署按单个 Uvicorn worker 运行。清理以记录创建时间和当前 UTC 时间计算截止点，保留天数为 0 时跳过对应类别。
 
-统一任务表将原项目分开的任务中心、发布和升级任务分类清理。任务中心策略排除发布/回滚和升级/回滚类型；发布策略只处理发布/回滚；升级策略只处理升级/回滚。所有策略都跳过 `pending`、`running`。升级记录还会排除 `pending`、`fetching_config`、`uploading_package`、`downloading_modules`、`configuring`、`compiling`、`backing_up`、`replacing_binary`、`upgrading` 和 `verifying` 阶段，即使任务状态已进入终态也不删除运行中的升级阶段。删除任务时由 SQLite 外键级联清除任务日志和关联安装/卸载/升级运行快照；审计记录没有任务外键，因此由自己的保留策略独立清理。
+数据保留策略分别处理任务中心、发布/回滚和升级/回滚记录。所有策略都跳过 `pending`、`running`。升级记录还会排除 `fetching_config`、`uploading_package`、`downloading_modules`、`configuring`、`compiling`、`backing_up`、`replacing_binary`、`upgrading` 和 `verifying` 阶段，即使任务状态已进入终态也不删除运行中的升级阶段。删除任务时由 SQLite 外键级联清除任务日志和关联安装/卸载/升级运行快照；审计记录没有任务外键，因此由自己的保留策略独立清理。
 
 可使用 `python -m ngxops.settings purge` 立即执行一次清理。命令使用当前 `NGXOPS_HOME` 数据库，不自动升级 schema；执行前应确认目标数据库并备份。输出为各类别实际删除行数的 JSON 对象。
 

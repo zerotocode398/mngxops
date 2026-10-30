@@ -1,155 +1,161 @@
 # ngxops
 
-基于 FastAPI、Jinja2、jQuery 和 SQLite3 重写的 Nginx 多节点管理平台。当前已实现账户/RBAC、凭证与节点、配置同步、批量发布与回滚、异步任务中心、源码包管理、Nginx 编译升级/安装/启停/卸载、操作审计、系统设置和仪表盘。阶段状态见 [AGENTS.md](AGENTS.md)，文档索引见 [docs/README.md](docs/README.md)。
+ngxops 是用于管理 Nginx 多节点运维流程的 Web 平台，提供账户与权限、SSH 凭证、节点资产、配置同步、批量发布、任务跟踪、Nginx 安装/升级/启停/卸载、系统设置和操作审计。
 
-## Windows 本地首次启动
+本文是 Linux 环境的安装和日常操作手册。功能细节见 [文档索引](docs/README.md)，开发规范见 [AGENTS.md](AGENTS.md)。
 
-以下命令在项目根目录的 PowerShell 中执行。服务端要求 Python 3.9；本机默认虚拟环境位于项目同级的 `..\venv3`。先确认 `python --version` 输出为 Python 3.9.x：
+## 运行要求
 
-```powershell
-python --version
-```
+- Linux x86-64 或 ARM64。
+- Python 3.9 或更新版本。Python 3.6、3.7 和 3.8 不支持当前代码与依赖。
+- SQLite 数据库存放在可写数据目录中。
+- 当前 Web 服务按单个 worker 部署；不要使用多个 Uvicorn worker。
 
-如果 `..\venv3` 尚不存在，使用 Python 3.9 创建一次：
+## 源码安装
 
-```powershell
-python -m venv ..\venv3
-```
+在仓库根目录执行。为服务数据选择一个稳定且仅服务账户可读写的目录；以下使用用户主目录作为示例：
 
-每个新的 PowerShell 窗口都需要重新激活虚拟环境，然后安装项目依赖：
-
-```powershell
-& ..\venv3\Scripts\Activate.ps1
+```bash
+python3 --version
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+
+export NGXOPS_HOME="$HOME/.local/share/ngxops"
+mkdir -p "$NGXOPS_HOME"
 ```
 
-### 1. 选择数据目录
+`NGXOPS_HOME` 未设置时使用启动命令所在目录。数据库、密钥、上传包和日志命令必须使用同一个数据目录。CLI 也可在子命令前使用 `--home PATH` 指定目录。
 
-为 ngxops 指定独立、可写的数据目录。不要指向同级 Django 项目 `mngxops` 的数据目录。SQLite 数据库、会话签名密钥、SSH 凭证加密密钥和上传的 Nginx 包都存放在这个目录下。
+## 首次初始化
 
-```powershell
-$env:NGXOPS_HOME = 'D:\ngxops-data'
+先创建数据库并应用所有已登记的数据库版本，再创建首位超级管理员：
+
+```bash
+python -m ngxops --home "$NGXOPS_HOME" database init
+python -m ngxops --home "$NGXOPS_HOME" admin create
 ```
 
-`NGXOPS_HOME` 只对当前 PowerShell 窗口及其启动的进程生效。数据库迁移、管理员命令和 Web 服务必须使用同一个目录；打开新窗口时要再次设置。若不设置，源码和单文件程序都使用启动命令所在的当前工作目录。
+管理员用户名默认为 `admin`，也可作为 `create` 的参数指定，例如 `admin create ops`。密码通过交互提示输入并二次确认，输入内容不会回显。不要将密码放入命令参数、环境变量或脚本。
 
-### 2. 初始化或升级数据库
+## 启动与停止
 
-先停止正在运行的 ngxops 服务，再在项目根目录执行：
+前台启动服务，适合首次访问和查看启动错误：
 
-```powershell
-python -m ngxops.database upgrade
+```bash
+python -m ngxops --home "$NGXOPS_HOME" serve --no-reload
 ```
 
-首次运行会在所选数据目录中创建 `db.sqlite3` 并应用当前代码登记的全部迁移（当前为 v19）。再次执行只会应用尚未执行的迁移。迁移不会在 Web 服务启动时自动运行；没有 ngxops 迁移标记的非空数据库会被拒绝修改，不能用同级 Django 项目的数据库进行初始化。
+服务默认监听 `0.0.0.0:11993`。在服务器本机访问 <http://127.0.0.1:11993/login/> 登录；`/health` 用于健康检查，`/docs` 提供 API 文档。前台服务使用 `Ctrl+C` 停止。
 
-### 3. 创建首个超级管理员
+CLI 也可在后台管理单个服务进程：
 
-数据库迁移成功后创建默认登录名为 `admin` 的超级管理员：
-
-```powershell
-python -m ngxops admin create
+```bash
+python -m ngxops --home "$NGXOPS_HOME" start
+python -m ngxops --home "$NGXOPS_HOME" status
+python -m ngxops --home "$NGXOPS_HOME" stop
 ```
 
-命令会要求输入并再次确认密码，输入时不会回显。也可在 `create` 后附加其他用户名，例如 `python -m ngxops admin create ops`；用户名只允许 ASCII 字母、数字、下划线和连字符，长度为 1 至 150 个字符。此命令只用于创建首个用户：数据库至少完成 v1 至 v3 迁移且尚无任何用户时才会成功。
+`start` 不启用自动重载，也不配置开机自启。生产环境应由 systemd 或等效服务管理器负责启动、停止和重启；详见 [部署说明](docs/deployment.md)。需要远程访问时，将服务置于配置了 TLS 和访问控制的反向代理之后。
 
-新密码至少 8 个字符，不能全部为数字、不能与用户名过于相似，也不能属于程序拒绝的常见弱密码。密码不要写在命令参数或脚本中。
+## 数据库操作
 
-### 4. 启动并登录
+Web 服务不会自动创建或升级数据库。首次安装使用 `database init`；升级已有安装前先停止服务并备份数据目录，再执行：
 
-确认当前 PowerShell 中仍设置了相同的 `NGXOPS_HOME`，然后启动服务：
-
-```powershell
-python run_server.py
+```bash
+python -m ngxops --home "$NGXOPS_HOME" database upgrade
 ```
 
-开发模式默认监听 `127.0.0.1:8000` 并启用自动重载。服务进程保持运行时，在浏览器访问 <http://127.0.0.1:8000/login/>，使用刚创建的用户名和密码登录。按 `Ctrl+C` 停止服务。`/health` 是健康检查，`/docs` 是 FastAPI 接口文档，`/openapi.json` 提供 OpenAPI JSON。
+升级命令只应用尚未执行的登记版本。含有业务表但缺少本项目迁移记录的数据库会被拒绝修改。数据库结构、迁移和备份内容见 [数据库说明](docs/database.md)。
 
-可用启动参数临时覆盖监听地址、端口和自动重载；端口被占用时可换用其他端口：
+数据目录至少包含以下内容：
 
-```powershell
-python run_server.py --host 127.0.0.1 --port 8001 --no-reload
+| 路径 | 用途 |
+|---|---|
+| `db.sqlite3` | 账户、凭证密文、节点、配置、任务和审计数据 |
+| `.secret_key` | 自动生成的会话签名密钥 |
+| `.fernet_key` | 自动生成的 SSH 凭证加密密钥 |
+| `nginx_packages/` | 上传的 Nginx 源码包和模块包 |
+| `logs/` | 应用与 CLI 运行日志 |
+
+备份前停止服务：前台 `serve` 使用 `Ctrl+C` 停止，CLI `start` 启动的服务使用 CLI `stop`，由 systemd 管理的服务停止对应 unit。数据库和两个密钥文件必须一起备份；缺少凭证加密密钥将无法解密既有凭证。
+
+```bash
+tar -czf "$HOME/ngxops-backup-$(date +%F-%H%M%S).tar.gz" -C "$(dirname "$NGXOPS_HOME")" "$(basename "$NGXOPS_HOME")"
 ```
 
-### 5. 修改管理员密码
+## 管理员密码
 
-以管理员身份登录后，打开当前服务地址下的 `/password/change/` 页面，或从个人中心选择“修改密码”。默认端口下地址为 <http://127.0.0.1:8000/password/change/>；若启动时指定了其他端口，请相应替换 `8000`。填写当前密码、新密码和确认密码后提交。修改成功后当前浏览器会话继续有效，该账户在其他浏览器中的旧会话会失效。
+修改密码可以在登录后访问 `/password/change/`。无法登录时，可在服务器本地重置超级管理员密码：
 
-修改密码要求输入正确的旧密码；新密码需两次一致，并遵守创建管理员时的密码规则。若无法登录，可在本机运行 `python -m ngxops admin reset` 重置默认 `admin` 账户；也可附加其他超级管理员用户名。该命令不要求旧密码，会撤销目标账户的旧会话，因此应限制对应用数据目录的系统账户访问。
+```bash
+python -m ngxops --home "$NGXOPS_HOME" admin reset
+```
 
-首次部署和升级的备份要求、配置项及运行限制见 [`docs/deployment.md`](docs/deployment.md)；账户规则见 [`docs/accounts.md`](docs/accounts.md)。Nginx 全新安装流程见 [`docs/nginx-install.md`](docs/nginx-install.md)，编译升级和包管理见 [`docs/upgrade.md`](docs/upgrade.md)，启停操作台和历史见 [`docs/nginx-service.md`](docs/nginx-service.md)。
+用户名默认为 `admin`，可在 `reset` 后指定其他超级管理员用户名。新密码通过隐藏输入并再次确认；操作会解除登录失败锁定并撤销该用户已有会话。此命令不要求旧密码，应限制对数据目录和服务器终端的访问。
 
-## 单文件可执行程序
+完整账户规则见 [账户说明](docs/accounts.md)。
 
-在目标操作系统及目标 CPU 架构上使用 Python 3.9 构建。构建脚本会按主机自动命名：Windows x86-64 输出 `ngxops-win10-amd.exe`，Linux x86-64 输出 `ngxops-linux-amd64`，Linux ARM64 输出 `ngxops-linux-arm64`。PyInstaller 不做跨操作系统或跨 CPU 架构交叉编译：
+## 命令行参数
 
-```console
+查看所有命令及参数：
+
+```bash
+python -m ngxops --help
+python -m ngxops serve --help
+python -m ngxops start --help
+python -m ngxops stop --help
+python -m ngxops database --help
+python -m ngxops admin --help
+```
+
+常用服务选项为 `--host`、`--port` 和 `--log-level`。前台 `serve` 支持 `--reload`/`--no-reload`；后台 `start` 不支持自动重载。`stop` 支持 `--timeout`。全局 `--home PATH` 放在命令前，例如 `python -m ngxops --home /srv/ngxops database upgrade`。
+
+## 配置环境变量
+
+| 变量 | 默认值 | 用途 |
+|---|---|---|
+| `NGXOPS_HOME` | 当前工作目录 | SQLite、密钥、上传包和日志所在目录 |
+| `NGXOPS_HOST` | `0.0.0.0` | 默认监听地址，可由 CLI 参数覆盖 |
+| `NGXOPS_PORT` | `11993` | 默认监听端口，可由 CLI 参数覆盖 |
+| `NGXOPS_DEBUG` | 源码运行开启；单文件运行关闭 | 调试模式 |
+| `NGXOPS_RELOAD` | 源码运行开启；单文件运行关闭 | 前台服务自动重载默认值 |
+| `NGXOPS_LOG_LEVEL` | `info` | 日志级别 |
+| `NGXOPS_SECRET_KEY` | 自动生成并保存到 `.secret_key` | 会话与 CSRF 签名；固定部署密钥可通过此变量指定 |
+| `NGXOPS_HTTPS` | `0` | 为会话与 CSRF Cookie 启用 Secure 属性 |
+| `NGXOPS_CSRF_TRUSTED_ORIGINS` | 空 | 逗号分隔的额外可信来源 |
+| `NGXOPS_RELEASE_BACKUP_DIR` | `/opt/ngxops/backups` | 发布备份目录的默认值，可由系统设置调整 |
+| `NGXOPS_UPGRADE_PACKAGE_MAX_SIZE_MB` | `20` | 系统设置未初始化时的包上传限制，单位 MiB |
+
+正式部署时，通过 systemd 的 `Environment=`、环境文件或等效方式设置变量，并确保迁移、管理员命令和服务进程读取同一组配置。
+
+## Linux 单文件程序
+
+在目标 Linux 主机或同架构构建机上创建 Python 3.9+ 环境并安装 `requirements.txt`，然后执行：
+
+```bash
+source .venv/bin/activate
 python -m pip install -r requirements.txt
-python tools/build_binary.py --help
+python tools/build_binary.py --print-target
 python tools/build_binary.py
 ```
 
-Windows 构建须在 Windows x86-64 上执行；Linux amd64 和 arm64 分别须在相应架构的 Linux 主机或虚拟机上执行。Linux 二进制依赖目标系统提供的 glibc，建议在计划支持的最旧 Linux 发行版上构建，再到较新发行版验证运行。构建结果是带控制台的单文件程序，包含 Python 运行时、依赖、Jinja2 模板和静态资源。发布时只分发该可执行文件；数据库、密钥、上传文件和日志位于数据目录，不打进二进制。
+产物位于 `dist/`：x86-64 为 `ngxops-linux-amd64`，ARM64 为 `ngxops-linux-arm64`。构建不支持跨 CPU 架构或跨操作系统；Linux 产物依赖系统 glibc，建议在计划支持的最旧发行版上构建。数据库、密钥、包和日志仍保存在独立的数据目录，不会打入可执行文件。
 
-单文件程序支持英文交互提示和标准帮助参数。先查看完整命令：
-
-```powershell
-.\dist\ngxops-win10-amd.exe --help
-.\dist\ngxops-win10-amd.exe admin --help
-```
-
-Windows PowerShell 首次初始化和启动示例：
-
-```powershell
-$env:NGXOPS_HOME = 'D:\ngxops-data'
-.\dist\ngxops-win10-amd.exe database init
-.\dist\ngxops-win10-amd.exe admin create
-.\dist\ngxops-win10-amd.exe start --host 127.0.0.1 --port 8000
-.\dist\ngxops-win10-amd.exe status
-```
-
-Linux amd64 初始化和启动示例（arm64 将文件名替换为 `ngxops-linux-arm64`）：
+使用二进制执行初始化和管理命令：
 
 ```bash
 export NGXOPS_HOME="$HOME/.local/share/ngxops"
 ./dist/ngxops-linux-amd64 database init
 ./dist/ngxops-linux-amd64 admin create
-./dist/ngxops-linux-amd64 start --host 127.0.0.1 --port 8000
+./dist/ngxops-linux-amd64 start
 ./dist/ngxops-linux-amd64 status
 ```
 
-`admin create` 会隐藏输入并二次确认首个超级管理员密码。服务启动后访问 <http://127.0.0.1:8000/login/>。常用运维命令如下：
+使用 `./dist/ngxops-linux-amd64 --help` 查看参数。停止、升级数据库和重置密码分别使用 `stop`、`database upgrade` 和 `admin reset`。ARM64 主机需将文件名替换为 `ngxops-linux-arm64`。打包细节见 [发行说明](docs/packaging.md)。
 
-```powershell
-.\dist\ngxops-win10-amd.exe stop
-.\dist\ngxops-win10-amd.exe database upgrade
-.\dist\ngxops-win10-amd.exe admin reset
-```
+## 其他文档
 
-密码重置会隐藏输入新密码、清除登录失败锁定并撤销该管理员的既有会话；无需旧密码，因此只能在有权访问数据目录的本机账户下执行。服务也可用 `serve` 在当前控制台前台运行，按 `Ctrl+C` 停止。CLI 所有子命令都有 `--help`。
-
-查看 [`docs/packaging.md`](docs/packaging.md) 了解完整命令、后台启停行为、运行日志和发布注意事项。
-
-## 配置
-
-| 环境变量 | 默认值 | 用途 |
-|---|---|---|
-| `NGXOPS_HOST` | 开发环境 `127.0.0.1`；冻结运行 `0.0.0.0` | Uvicorn 监听地址 |
-| `NGXOPS_PORT` | 开发环境 `8000`；冻结运行 `11993` | Uvicorn 监听端口 |
-| `NGXOPS_DEBUG` | 开发环境开启；冻结运行关闭 | FastAPI 调试模式 |
-| `NGXOPS_RELOAD` | 开发环境开启；冻结运行关闭 | Uvicorn 自动重载 |
-| `NGXOPS_LOG_LEVEL` | `info` | 运行日志级别，和调试模式分开配置 |
-| `NGXOPS_HOME` | 当前工作目录 | 可写数据目录，启动时自动创建；CLI 也可在子命令前使用 `--home` 指定 |
-| `NGXOPS_SECRET_KEY` | 自动生成并保存在数据目录 `.secret_key` | CSRF Cookie 签名密钥；多进程部署应共享固定密钥 |
-| `NGXOPS_HTTPS` | `0` | 启用 Secure 会话与 CSRF Cookie |
-| `NGXOPS_CSRF_TRUSTED_ORIGINS` | 空 | 逗号分隔的额外可信来源，例如 `https://ops.example.com` |
-| `NGXOPS_RELEASE_BACKUP_DIR` | `/opt/app/mascloud/ansible/mngxops` | v14 系统设置表不可用时的发布备份目录兼容默认值；升级后由 `release.backup_dir` 控制 |
-| `NGXOPS_UPGRADE_PACKAGE_MAX_SIZE_MB` | `20` | v14 系统设置表不可用时的上传限制兼容默认值，范围 1 到 1024 MiB；升级后由 `upgrade.package_max_size_mb` 控制 |
-
-模板与静态资源从程序资源目录读取；数据库、上传文件和密钥等可写数据使用 `NGXOPS_HOME`。应用工厂本身不会连接或创建 SQLite 数据库。
-
-`NGXOPS_*` 是当前配置前缀；为兼容旧部署，同名 `MNGXOPS_*` 变量仍可用，二者同时设置时 `NGXOPS_*` 优先。源码和单文件程序未指定数据目录时，都使用当前工作目录。
-
-数据库约束见 [`docs/database.md`](docs/database.md)，会话、CSRF 和认证依赖见 [`docs/security.md`](docs/security.md)。
-
-系统设置与手动数据清理命令见 [`docs/settings.md`](docs/settings.md)。Nginx 安装/升级共享的源码与模块归档位于 `NGXOPS_HOME/nginx_packages/`，应与数据库和加密密钥一起备份。应用支持页面和 JSON 接口；异步任务、包管理锁及取消句柄驻留进程内，部署必须使用单个 Uvicorn worker。
+- [部署说明](docs/deployment.md)：服务账户、反向代理、环境配置和运行边界。
+- [文档索引](docs/README.md)：账户、节点、凭证、配置、发布、任务及 Nginx 运维模块说明。

@@ -27,7 +27,7 @@ SESSION_COOKIE_NAME = "sessionid"
 SESSION_KEY_LENGTH = 43
 CSRF_COOKIE_NAME = "csrftoken"
 CSRF_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60
-PERMISSION_ALERT_KEY = "mngxops_perm_denied"
+PERMISSION_ALERT_KEY = "ngxops_perm_denied"
 SESSION_REVOCATION_REASON_KEY = "_ngxops_revocation_reason"
 SESSION_REVOKED_BY_OTHER_LOGIN = "other_login"
 _SESSION_TIMEZONE = timezone(timedelta(hours=8))

@@ -36,9 +36,8 @@ MANIFEST
 #   Usually these files are written by a python script from a template
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
-# 自动生成的 spec 可忽略；仓库内交付用 mngxops.spec 需入库
+# 忽略临时生成的打包配置，保留仓库正式构建配置
 *.spec
-!mngxops.spec
 !ngxops.spec
 
 # Installer logs
@@ -64,7 +63,7 @@ cover/
 *.mo
 *.pot
 
-# Django stuff:
+# Application data and secrets:
 *.log
 local_settings.py
 db.sqlite3

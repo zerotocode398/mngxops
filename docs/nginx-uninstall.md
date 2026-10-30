@@ -9,7 +9,7 @@
 - 页面选择和预览、创建接口均按系统设置 `node.batch_max_count` 限制，默认 3；刷新中心页应用最新上限。
 - `/nginx/uninstall/history/` 支持节点、IP、批次、prefix、包名、操作人和状态筛选/分页。
 - `/nginx/uninstall/task/{task_id}/log/` 展示卸载快照、结果树及同批次完整远程操作日志；批次涉及多个节点时可按节点筛选。
-- 页面/历史使用 `nginx_uninstall.read`；预览和执行使用 `nginx_uninstall.execute`。迁移 v12 将既有 `nodes.read` 授权复制为卸载查看，将 `nodes.update` 复制为卸载执行，适配原项目的授权迁移策略。
+- 页面/历史使用 `nginx_uninstall.read`；预览和执行使用 `nginx_uninstall.execute`。初始化权限时，会将已有节点查看和修改授权映射到对应卸载权限。
 
 ## API
 

@@ -851,7 +851,7 @@ def role_list(
     admin: User = Depends(require_superuser),
     db_session: Session = Depends(get_session),
 ) -> Response:
-    """显示角色列表，并兼容原项目角色别名路径。"""
+    """显示角色列表并处理角色别名路径。"""
     context = _list_roles(db_session, search, page, per_page)
     return _render(request, "rbac/roles_list.html", admin, db_session, context)
 

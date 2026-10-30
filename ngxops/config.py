@@ -34,14 +34,8 @@ def get_data_dir() -> Path:
 
 
 def _environment_value(name: str) -> Optional[str]:
-    """优先读取 NGXOPS 配置，并兼容旧的 MNGXOPS 环境变量。"""
-    value = os.environ.get(name)
-    if value is not None:
-        return value
-    if name.startswith("NGXOPS_"):
-        legacy_name = "MNGXOPS_{}".format(name[len("NGXOPS_"):])
-        return os.environ.get(legacy_name)
-    return None
+    """读取指定的 NGXOPS 环境变量。"""
+    return os.environ.get(name)
 
 
 def _read_bool(name: str, default: bool) -> bool:
@@ -131,8 +125,8 @@ def get_settings() -> Settings:
     """从环境变量生成经过校验的服务配置。"""
     frozen = is_frozen()
     resource_dir = get_resource_dir()
-    default_host = "0.0.0.0" if frozen else "127.0.0.1"
-    default_port = 11993 if frozen else 8000
+    default_host = "0.0.0.0"
+    default_port = 11993
     debug_default = not frozen
     debug = _read_bool("NGXOPS_DEBUG", debug_default)
     log_level = (_environment_value("NGXOPS_LOG_LEVEL") or "").strip().lower()
@@ -162,7 +156,7 @@ def get_settings() -> Settings:
         ),
         release_backup_dir=(
             _environment_value("NGXOPS_RELEASE_BACKUP_DIR") or ""
-        ).strip() or "/opt/app/mascloud/ansible/mngxops",
+        ).strip() or "/opt/ngxops/backups",
         upgrade_package_max_size_mb=_read_positive_int(
             "NGXOPS_UPGRADE_PACKAGE_MAX_SIZE_MB", 20, 1024
         ),

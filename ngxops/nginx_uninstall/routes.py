@@ -766,7 +766,7 @@ def preview_uninstall(
             read_setting(
                 session,
                 "release.backup_dir",
-                "/opt/app/mascloud/ansible/mngxops",
+                "/opt/ngxops/backups",
             ),
         )
     except ValueError as exc:
