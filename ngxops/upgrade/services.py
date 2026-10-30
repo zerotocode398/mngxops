@@ -24,7 +24,7 @@ import paramiko
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, sessionmaker
 
-from ngxops.audit.service import prepare_audit_session
+from ngxops.audit.service import prepare_audit_session, sync_task_audit_result
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.credentials.models import Credential
 from ngxops.database.session import session_scope
@@ -1939,11 +1939,13 @@ def create_upgrade_batch(
         except RuntimeError as exc:
             with session_scope(session_factory) as session:
                 with session.begin():
-                    session.execute(
+                    failed_task = session.execute(
                         update(Task)
                         .where(Task.id == task_id, Task.status == "pending")
                         .values(status="failed", detail="升级任务未能启动", finished_at=datetime.utcnow())
                     )
+                    if failed_task.rowcount == 1:
+                        sync_task_audit_result(session, [task_id], "failed")
                     from ngxops.tasks.models import TaskLog
                     session.add(TaskLog(task_id=task_id, level="error", message="升级任务未能启动"))
                     session.add(

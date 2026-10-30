@@ -12,8 +12,11 @@ from sqlalchemy import func, inspect, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from ngxops.audit.service import prepare_audit_session
-from ngxops.audit.service import write_audit_log
+from ngxops.audit.service import (
+    prepare_audit_session,
+    sync_task_audit_result,
+    write_audit_log,
+)
 from ngxops.logging_setup import log_context, log_exception
 from ngxops.database.session import session_scope
 from ngxops.tasks.models import (
@@ -219,6 +222,7 @@ def _finish_task(
             )
             if result.rowcount != 1:
                 return False
+            sync_task_audit_result(session, [task_id], status)
             safe_detail = _redact_text(detail)[:MAX_LOG_LENGTH]
             latest_log = session.scalar(
                 select(TaskLog.message)
@@ -636,6 +640,7 @@ def cancel_task(
             )
             if result.rowcount != 1:
                 return False
+            sync_task_audit_result(session, [task_id], "cancelled")
             write_audit_log(
                 session,
                 "任务中心",
@@ -674,6 +679,7 @@ def recover_interrupted_tasks(engine: Engine, session_factory: sessionmaker) -> 
                     updated_at=now,
                 )
             )
+            sync_task_audit_result(session, task_ids, "failed")
             session.add_all(
                 TaskLog(
                     task_id=task_id,

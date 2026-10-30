@@ -2,6 +2,9 @@
 
 {% block title %}登录日志 - ngxops{% endblock %}
 {% block page_title %}登录日志{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ request.url_for('static', path='css/audit.css') }}?v=5">
+{% endblock %}
 
 {% block content %}
 <section class="container-fluid px-0">
@@ -12,39 +15,57 @@
         </a>
     </div>
 
-    <form method="get" class="border-bottom pb-3 mb-3" id="loginSearchForm">
+    <form method="get" class="border-bottom pb-3 mb-3" id="loginSearchForm" data-query-submit-on-enter data-preserve-query-focus>
         <div class="row g-2 align-items-end">
-            <div class="col-12 col-xl-5">
-                <label class="form-label small mb-1" for="loginSearch">搜索</label>
-                <input class="form-control form-control-sm" id="loginSearch" name="search"
-                       value="{{ search }}" placeholder="用户名或 IP；多个词以逗号分隔">
+            <div class="col-12 col-xl-3">
+                <label class="visually-hidden" for="loginSearch">用户名或来源 IP</label>
+                <input class="form-control form-control-sm" id="loginSearch" name="search" data-query-tags
+                       value="{{ search }}" placeholder="用户名或来源 IP；多个词以逗号分隔" aria-label="用户名或来源 IP">
             </div>
-            <div class="col-6 col-xl-2">
-                <label class="form-label small mb-1" for="loginStatus">结果</label>
-                <select class="form-select form-select-sm" id="loginStatus" name="status">
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="visually-hidden" for="loginStatus">登录结果</label>
+                <select class="form-select form-select-sm" id="loginStatus" name="status" aria-label="登录结果">
                     <option value="">全部结果</option>
                     <option value="success"{% if status_filter == "success" %} selected{% endif %}>成功</option>
                     <option value="failed"{% if status_filter == "failed" %} selected{% endif %}>失败</option>
                 </select>
             </div>
-            <div class="col-6 col-xl-1">
-                <label class="form-label small mb-1" for="loginDateFrom">开始日期</label>
-                <input class="form-control form-control-sm" id="loginDateFrom" type="date" name="date_from" value="{{ date_from }}">
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="visually-hidden" for="loginTimeRange">时间范围</label>
+                <select class="form-select form-select-sm" id="loginTimeRange" name="time_range" aria-label="时间范围">
+                    <option value="all"{% if time_range == "all" %} selected{% endif %}>全部时间</option>
+                    <option value="today"{% if time_range == "today" %} selected{% endif %}>今天</option>
+                    <option value="7d"{% if time_range == "7d" %} selected{% endif %}>近 7 天</option>
+                    <option value="30d"{% if time_range == "30d" %} selected{% endif %}>近 30 天</option>
+                    <option value="custom"{% if time_range == "custom" %} selected{% endif %}>自定义时间</option>
+                </select>
             </div>
-            <div class="col-6 col-xl-1">
-                <label class="form-label small mb-1" for="loginDateTo">结束日期</label>
-                <input class="form-control form-control-sm" id="loginDateTo" type="date" name="date_to" value="{{ date_to }}">
+            <div class="col-12 col-xl-4" id="loginCustomRange"{% if time_range != "custom" %} hidden{% endif %}>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="visually-hidden" for="loginDateFrom">起始时间，精确到秒</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">从</span>
+                            <input class="form-control" id="loginDateFrom" type="datetime-local" step="1" name="date_from" value="{{ date_from }}" aria-label="起始时间，精确到秒"{% if time_range != "custom" %} disabled{% endif %}>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <label class="visually-hidden" for="loginDateTo">终止时间，精确到秒</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">至</span>
+                            <input class="form-control" id="loginDateTo" type="datetime-local" step="1" name="date_to" value="{{ date_to }}" aria-label="终止时间，精确到秒"{% if time_range != "custom" %} disabled{% endif %}>
+                        </div>
+                    </div>
+                </div>
             </div>
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-            <div class="col-12 col-xl-3 d-flex gap-1">
-                <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-search me-1" aria-hidden="true"></i>筛选</button>
-                {% if has_filters %}<a class="btn btn-outline-secondary btn-sm" href="/audit/logins/" title="清空筛选" aria-label="清空筛选"><i class="bi bi-x-lg" aria-hidden="true"></i> 清空</a>{% endif %}
-            </div>
+            {% if has_filters %}<div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="/audit/logins/" title="清空条件" aria-label="清空条件"><i class="bi bi-x-lg" aria-hidden="true"></i></a></div>{% endif %}
         </div>
+        {% if date_error %}<div class="small text-danger mt-2" role="alert">{{ date_error }}</div>{% endif %}
     </form>
 
     <div class="table-responsive">
-        <table class="table table-hover table-sm align-middle mb-0">
+        <table class="table table-hover table-sm align-middle login-log-table mb-0">
             <thead class="table-light"><tr>
                 <th>时间</th><th>用户名</th><th>来源 IP</th><th>浏览器信息</th><th>结果</th><th>失败原因</th>
             </tr></thead>
@@ -54,7 +75,14 @@
                     <td class="text-nowrap"><small>{{ created_at_display.get(log.id) }}</small></td>
                     <td>{{ log.username }}</td>
                     <td class="text-nowrap">{{ log.ip or "-" }}</td>
-                    <td class="small text-break" style="max-width: 420px">{{ log.user_agent or "-" }}</td>
+                    <td class="login-agent-cell">
+                        {% if log.user_agent and log.user_agent|length > 72 %}
+                        <details class="login-agent-details">
+                            <summary title="展开完整浏览器信息">{{ log.user_agent[:72] }}...</summary>
+                            <div class="login-agent-full">{{ log.user_agent }}</div>
+                        </details>
+                        {% else %}<span class="small">{{ log.user_agent or "-" }}</span>{% endif %}
+                    </td>
                     <td>{% if log.status == "success" %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
                     <td>{% if log.status == "failed" %}{{ fail_reason_labels.get(log.fail_reason, "未知") }}{% else %}-{% endif %}</td>
                 </tr>
@@ -66,4 +94,41 @@
     </div>
     {% include "includes/pagination_footer.html" %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(function () {
+    var form = document.getElementById("loginSearchForm");
+    var timeRange = document.getElementById("loginTimeRange");
+    var customRange = document.getElementById("loginCustomRange");
+    var dateFrom = document.getElementById("loginDateFrom");
+    var dateTo = document.getElementById("loginDateTo");
+
+    function setCustomRangeVisible(visible) {
+        customRange.hidden = !visible;
+        dateFrom.disabled = !visible;
+        dateTo.disabled = !visible;
+    }
+
+    $(timeRange).on("change", function () {
+        var custom = this.value === "custom";
+        setCustomRangeVisible(custom);
+        if (custom) dateFrom.focus();
+        else form.requestSubmit();
+    });
+    $("#loginStatus").on("change", function () {
+        form.requestSubmit();
+    });
+    $("#loginDateFrom, #loginDateTo").on("change", function () {
+        dateTo.setCustomValidity("");
+        if (dateFrom.value && dateTo.value && dateFrom.value > dateTo.value) {
+            dateTo.setCustomValidity("终止时间不能早于起始时间。");
+            dateTo.reportValidity();
+            return;
+        }
+        form.requestSubmit();
+    });
+});
+</script>
 {% endblock %}

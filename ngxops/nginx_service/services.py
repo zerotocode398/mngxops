@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, sessionmaker
 
-from ngxops.audit.service import prepare_audit_session
+from ngxops.audit.service import prepare_audit_session, sync_task_audit_result
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.database.session import session_scope
 from ngxops.logging_setup import log_exception
@@ -150,7 +150,7 @@ def create_service_task(
         except RuntimeError as exc:
             with session_scope(session_factory) as session:
                 with session.begin():
-                    session.execute(
+                    failed_task = session.execute(
                         update(Task)
                         .where(Task.id == task_id, Task.status == "pending")
                         .values(
@@ -160,6 +160,8 @@ def create_service_task(
                             finished_at=datetime.utcnow(),
                         )
                     )
+                    if failed_task.rowcount == 1:
+                        sync_task_audit_result(session, [task_id], "failed")
                     session.add(
                         TaskLog(task_id=task_id, level="error", message="任务无法启动")
                     )

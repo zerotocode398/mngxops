@@ -5,7 +5,7 @@ from math import ceil
 from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
@@ -77,16 +77,6 @@ def _detail_preview(log: AuditLog) -> str:
     if len(preview) > 80:
         return preview[:80] + "..."
     return preview
-
-
-def _date_range(value: str, end_of_day: bool = False) -> Optional[datetime]:
-    """将北京时间日期筛选转换为 SQLite 保存的 UTC 无时区边界。"""
-    try:
-        parsed = date.fromisoformat(value)
-    except (TypeError, ValueError):
-        return None
-    local_boundary = datetime.combine(parsed, time.min) - timedelta(hours=8)
-    return local_boundary + (timedelta(days=1) if end_of_day else timedelta())
 
 
 def _parse_audit_datetime(value: str, end_of_day: bool = False) -> Optional[datetime]:
@@ -196,6 +186,23 @@ def audit_log_list(
         .select_from(AuditLog)
         .outerjoin(Task, Task.id == AuditLog.task_id)
     )
+    task_audit_result = case(
+        (
+            and_(
+                AuditLog.action != "取消异步任务",
+                Task.status == "success",
+            ),
+            "success",
+        ),
+        (
+            and_(
+                AuditLog.action != "取消异步任务",
+                Task.status.in_(("failed", "cancelled")),
+            ),
+            "failed",
+        ),
+        else_=AuditLog.result,
+    )
     conditions = []
     for term in _search_terms(search):
         pattern = "%{}%".format(term)
@@ -220,7 +227,7 @@ def audit_log_list(
     if module:
         conditions.append(AuditLog.module == module)
     if result in ("success", "failed"):
-        conditions.append(AuditLog.result == result)
+        conditions.append(task_audit_result == result)
     if time_range not in AUDIT_TIME_RANGES:
         time_range = "all"
     if time_range == "all" and (date_from or date_to):
@@ -237,8 +244,14 @@ def audit_log_list(
         count_statement = count_statement.where(condition)
     page_data = _pagination(session, statement, count_statement, request)
     task_ids = {log.task_id for log in page_data["items"] if log.task_id}
+    task_statuses = {}
     visible_task_ids = set()
     if task_ids:
+        task_statuses = dict(
+            session.execute(
+                select(Task.id, Task.status).where(Task.id.in_(task_ids))
+            ).all()
+        )
         can_read_all_tasks, allowed_operations, _ = _task_permissions(
             request, session, user, include_poll_permissions=True
         )
@@ -256,6 +269,14 @@ def audit_log_list(
     rows = []
     for log in page_data["items"]:
         can_view_task = log.task_id in visible_task_ids
+        task_status = task_statuses.get(log.task_id)
+        effective_result = log.result
+        if log.action != "取消异步任务":
+            effective_result = {
+                "success": "success",
+                "failed": "failed",
+                "cancelled": "failed",
+            }.get(task_status, effective_result)
         detail_preview = _detail_preview(log)
         task_link_in_detail = bool(
             log.task_id and (log.detail or "").startswith("创建任务：")
@@ -269,6 +290,7 @@ def audit_log_list(
                     else MODULE_LINKS.get(log.module)
                 ),
                 "can_view_task": can_view_task,
+                "result": effective_result,
                 "task_link_in_detail": task_link_in_detail,
                 "detail_preview": detail_preview,
                 "show_detail_toggle": (
@@ -313,12 +335,13 @@ def login_log_list(
     request: Request,
     search: str = Query("", max_length=500),
     status: str = Query("", max_length=20),
-    date_from: str = Query("", max_length=10),
-    date_to: str = Query("", max_length=10),
+    time_range: str = Query("all", max_length=20),
+    date_from: str = Query("", max_length=32),
+    date_to: str = Query("", max_length=32),
     user: User = Depends(require_permission("audit", "read")),
     session: Session = Depends(get_session),
 ) -> Response:
-    """显示成功与失败的登录记录和失败原因。"""
+    """显示按关键词、结果和北京时间范围筛选的登录记录。"""
     statement = select(LoginLog)
     count_statement = select(func.count()).select_from(LoginLog)
     conditions = []
@@ -327,10 +350,17 @@ def login_log_list(
         conditions.append(
             or_(LoginLog.username.ilike(pattern), LoginLog.ip.ilike(pattern))
         )
-    if status in ("success", "failed"):
+    if status not in ("success", "failed"):
+        status = ""
+    if status:
         conditions.append(LoginLog.status == status)
-    start = _date_range(date_from)
-    end = _date_range(date_to, end_of_day=True)
+    if time_range not in AUDIT_TIME_RANGES:
+        time_range = "all"
+    if time_range == "all" and (date_from or date_to):
+        time_range = "custom"
+    start, end, date_error = _audit_time_bounds(time_range, date_from, date_to)
+    if date_error:
+        conditions.append(LoginLog.id == 0)
     if start:
         conditions.append(LoginLog.created_at >= start)
     if end:
@@ -363,9 +393,15 @@ def login_log_list(
             },
             "search": search,
             "status_filter": status,
-            "date_from": date_from,
-            "date_to": date_to,
-            "has_filters": bool(search or status or date_from or date_to),
+            "time_range": time_range,
+            "date_from": (
+                _format_audit_datetime(date_from) if time_range == "custom" else ""
+            ),
+            "date_to": (
+                _format_audit_datetime(date_to) if time_range == "custom" else ""
+            ),
+            "date_error": date_error,
+            "has_filters": bool(search or status or time_range != "all"),
             "fail_reason_labels": FAIL_REASON_LABELS,
             "pagination": {
                 "page": page,

@@ -58,3 +58,27 @@
 #auditCustomRange .form-control {
     min-width: 0;
 }
+
+.login-log-table {
+    width: 100%;
+    min-width: 900px;
+    table-layout: fixed;
+}
+
+.login-agent-cell {
+    max-width: 280px;
+    overflow-wrap: anywhere;
+}
+
+.login-agent-details summary {
+    overflow: hidden;
+    cursor: pointer;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.login-agent-full {
+    padding-top: 0.35rem;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}

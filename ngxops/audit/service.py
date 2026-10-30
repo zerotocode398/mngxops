@@ -2,9 +2,9 @@
 
 from contextlib import contextmanager
 import logging
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Dict, Iterator, Optional, Sequence, Tuple
 
-from sqlalchemy import event, inspect
+from sqlalchemy import event, inspect, update
 from sqlalchemy.orm import Session
 
 from ngxops.accounts.models import User
@@ -122,6 +122,25 @@ def write_audit_log(
         },
     )
     return log
+
+
+def sync_task_audit_result(
+    session: Session, task_ids: Sequence[int], task_status: str
+) -> None:
+    """按任务终态更新关联的任务创建审计结果。"""
+    if task_status not in ("success", "failed", "cancelled") or not task_ids:
+        return
+    if not inspect(session.connection()).has_table(AuditLog.__tablename__):
+        return
+    result = "success" if task_status == "success" else "failed"
+    session.execute(
+        update(AuditLog)
+        .where(
+            AuditLog.task_id.in_(task_ids),
+            AuditLog.action != "取消异步任务",
+        )
+        .values(result=result)
+    )
 
 
 @contextmanager

@@ -39,13 +39,16 @@
             </div>
             <div class="col-12 col-sm-4 col-xl-2">
                 <label class="visually-hidden" for="auditTimeRange">时间范围</label>
-                <select class="form-select form-select-sm" id="auditTimeRange" name="time_range" aria-label="时间范围">
-                    <option value="all"{% if time_range == "all" %} selected{% endif %}>全部时间</option>
-                    <option value="today"{% if time_range == "today" %} selected{% endif %}>今天</option>
-                    <option value="7d"{% if time_range == "7d" %} selected{% endif %}>近 7 天</option>
-                    <option value="30d"{% if time_range == "30d" %} selected{% endif %}>近 30 天</option>
-                    <option value="custom"{% if time_range == "custom" %} selected{% endif %}>自定义时间</option>
-                </select>
+                <div class="d-flex gap-1">
+                    <select class="form-select form-select-sm flex-grow-1" id="auditTimeRange" name="time_range" aria-label="时间范围">
+                        <option value="all"{% if time_range == "all" %} selected{% endif %}>全部时间</option>
+                        <option value="today"{% if time_range == "today" %} selected{% endif %}>今天</option>
+                        <option value="7d"{% if time_range == "7d" %} selected{% endif %}>近 7 天</option>
+                        <option value="30d"{% if time_range == "30d" %} selected{% endif %}>近 30 天</option>
+                        <option value="custom"{% if time_range == "custom" %} selected{% endif %}>自定义时间</option>
+                    </select>
+                    {% if has_filters %}<a class="btn btn-outline-secondary btn-sm" href="/audit/" title="清空条件" aria-label="清空条件"><i class="bi bi-x-lg" aria-hidden="true"></i></a>{% endif %}
+                </div>
             </div>
             <div class="col-12 col-xl-4" id="auditCustomRange"{% if time_range != "custom" %} hidden{% endif %}>
                 <div class="row g-2">
@@ -67,7 +70,6 @@
             </div>
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
         </div>
-        {% if has_filters %}<div class="d-flex justify-content-end mt-2"><a class="btn btn-outline-secondary btn-sm" href="/audit/" title="清空条件" aria-label="清空条件"><i class="bi bi-x-lg" aria-hidden="true"></i></a></div>{% endif %}
         {% if date_error %}<div class="small text-danger mt-2" role="alert">{{ date_error }}</div>{% endif %}
     </form>
 
@@ -89,7 +91,7 @@
                     <td>{% if row.module_link %}<a href="{{ row.module_link }}">{{ row.log.module }}</a>{% else %}{{ row.log.module }}{% endif %}</td>
                     <td>{{ row.log.action }}</td>
                     <td class="text-nowrap">{{ row.log.ip or "-" }}</td>
-                    <td>{% if row.log.result == "success" %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
+                    <td>{% if row.result == "success" %}<span class="badge text-bg-success">成功</span>{% else %}<span class="badge text-bg-danger">失败</span>{% endif %}</td>
                     <td class="audit-detail-cell">
                         <div class="audit-detail-layout">
                             <div class="audit-detail-content">
