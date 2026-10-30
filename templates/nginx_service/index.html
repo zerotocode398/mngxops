@@ -47,7 +47,7 @@
                     {% for task in recent_tasks %}
                         <tr>
                             <td><a href="/nginx/service/history/?search={{ task.source_batch|urlencode }}"><code>{{ task.source_batch }}</code></a></td>
-                            <td><span title="{{ task.target_hostnames }}">{{ task.target_hostnames|truncate(36, True) }}</span><small class="d-block text-muted">{{ task.target_ips|truncate(42, True) }}</small></td>
+                            <td><div class="upgrade-overview-node" title="{{ task.target_hostnames }}{% if task.target_ips %} ({{ task.target_ips }}){% endif %}"><span class="upgrade-overview-node-name" title="{{ task.target_hostnames }}">{{ task.target_hostnames|truncate(36, True) }}</span>{% if task.target_ips %}<small class="text-muted upgrade-overview-node-ip">({{ task.target_ips|truncate(42, True) }})</small>{% endif %}</div></td>
                             <td><span class="badge text-bg-primary">{{ action_labels.get(task.target_configs, task.target_configs) }}</span></td>
                             <td><span class="badge text-bg-{{ status_classes.get(task.status, 'secondary') }}">{{ status_labels.get(task.status, task.status) }}</span></td>
                             <td>{{ operator_names.get(task.trigger_user_id, "-") }}</td>
