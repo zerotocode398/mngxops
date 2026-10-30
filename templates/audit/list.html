@@ -96,7 +96,7 @@
                         <div class="audit-detail-layout">
                             <div class="audit-detail-content">
                                 <div class="audit-detail-preview"><span>{% if row.task_link_in_detail %}{% if row.log.source_batch %}批次：{{ row.log.source_batch }}，{% endif %}任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{% else %}{{ row.detail_preview }}{% endif %}</span></div>
-                                {% if row.show_detail_toggle %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">
+                                {% if row.log.detail %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">
                                     {{ row.log.detail }}
                                     {% if row.task_link_in_detail %}<div class="small text-muted audit-detail-meta">
                                         {% if row.log.source_batch %}<span>批次：{{ row.log.source_batch }}</span>{% endif %}
@@ -104,9 +104,10 @@
                                     </div>{% endif %}
                                 </div>{% endif %}
                             </div>
-                            {% if row.show_detail_toggle %}
-                            <button class="btn btn-link btn-sm p-0 audit-detail-toggle" type="button"
+                            {% if row.log.detail %}
+                            <button class="btn btn-link btn-sm p-0 audit-detail-toggle{% if not row.show_detail_toggle %} d-none{% endif %}" type="button"
                                     aria-label="展开详情" title="展开详情" aria-expanded="false"
+                                    data-required-toggle="{{ 1 if row.show_detail_toggle else 0 }}"
                                     aria-controls="audit-detail-{{ row.log.id }}">
                                 <i class="bi bi-chevron-down" aria-hidden="true"></i>
                             </button>
@@ -143,6 +144,25 @@ $(function () {
         dateTo.disabled = !visible;
     }
 
+    function updateAuditDetailToggle(cell) {
+        var $cell = $(cell);
+        var $button = $cell.find(".audit-detail-toggle");
+        if (!$button.length || $button.attr("aria-expanded") === "true") return;
+        var preview = $cell.find(".audit-detail-preview > span").get(0);
+        var required = $button.attr("data-required-toggle") === "1";
+        var clipped = preview && preview.scrollWidth > preview.clientWidth;
+        $button.toggleClass("d-none", !required && !clipped);
+    }
+
+    function updateAuditDetailToggles() {
+        $(".audit-detail-cell").each(function () {
+            updateAuditDetailToggle(this);
+        });
+    }
+
+    updateAuditDetailToggles();
+    $(window).on("resize", updateAuditDetailToggles);
+
     $(timeRange).on("change", function () {
         var custom = this.value === "custom";
         setCustomRangeVisible(custom);
@@ -172,6 +192,7 @@ $(function () {
         $button.attr("aria-label", expanded ? "展开详情" : "收起详情");
         $button.attr("title", expanded ? "展开详情" : "收起详情");
         $button.find("i").toggleClass("bi-chevron-down bi-chevron-up");
+        if (expanded) updateAuditDetailToggle($cell);
     });
 });
 </script>
