@@ -14,6 +14,7 @@ from starlette.responses import Response
 
 from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
+from ngxops.audit.service import request_client_ip
 from ngxops.database.session import get_session, session_scope
 from ngxops.lifecycle import summarize_lifecycle_runs
 from ngxops.nginx_uninstall.models import NginxUninstallRun
@@ -801,6 +802,7 @@ def create_uninstall_tasks(
             user.id,
             items,
             batch_limit=batch_limit,
+            trigger_ip=request_client_ip(request),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

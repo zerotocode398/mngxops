@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, sessionmaker
 
+from ngxops.audit.service import prepare_audit_session
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.database.session import session_scope
 from ngxops.logging_setup import log_exception
@@ -88,10 +89,12 @@ def create_service_task(
     ips: List[str],
     action: str,
     trigger_user_id: int,
+    trigger_ip: str = "",
 ) -> Tuple[int, str]:
     """创建启停任务、日增批次并提交到统一线程池。"""
     with _BATCH_LOCK:
         with session_scope(session_factory) as session:
+            prepare_audit_session(session, actor_id=trigger_user_id, ip=trigger_ip)
             with session.begin():
                 batch_number = _next_batch_number(session, datetime.now())
                 versions = dict(

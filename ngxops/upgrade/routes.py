@@ -911,6 +911,7 @@ def create_upgrade_tasks_api(
             user.id,
             payload.model_dump(),
             batch_limit=batch_limit,
+            trigger_ip=request_client_ip(request),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -970,6 +971,7 @@ def rollback_upgrade_task_api(
             request.app.state.credential_encryption_key,
             user.id,
             task_id,
+            trigger_ip=request_client_ip(request),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

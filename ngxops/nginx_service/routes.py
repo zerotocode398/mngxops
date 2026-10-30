@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
+from ngxops.audit.service import request_client_ip
 from ngxops.credentials.models import Credential
 from ngxops.database.session import get_session
 from ngxops.nginx_service.services import (
@@ -621,6 +622,7 @@ def execute_service_action(
         ips=eligible_ips,
         action=payload.action,
         trigger_user_id=user.id,
+        trigger_ip=request_client_ip(request),
     )
     message = "已创建 Nginx {} 任务（{} 台）".format(
         ACTION_LABELS[payload.action], len(eligible)

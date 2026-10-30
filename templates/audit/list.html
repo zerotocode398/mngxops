@@ -93,7 +93,7 @@
                     <td class="audit-detail-cell">
                         <div class="audit-detail-layout">
                             <div class="audit-detail-content">
-                                <div class="audit-detail-preview"><span>{% if row.task_link_in_detail %}{% if row.log.source_batch %}批次：{{ row.log.source_batch }}，{% endif %}任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{% else %}{{ row.log.detail[:80] }}{% if row.log.detail|length > 80 %}...{% endif %}{% endif %}</span></div>
+                                <div class="audit-detail-preview"><span>{% if row.task_link_in_detail %}{% if row.log.source_batch %}批次：{{ row.log.source_batch }}，{% endif %}任务 ID：{% if row.can_view_task %}<a href="/tasks/{{ row.log.task_id }}/" target="_blank" rel="noopener noreferrer" title="在新标签页查看任务详情">#{{ row.log.task_id }}</a>{% else %}#{{ row.log.task_id }}{% endif %}{% else %}{{ row.detail_preview }}{% endif %}</span></div>
                                 {% if row.show_detail_toggle %}<div class="audit-detail-full d-none" id="audit-detail-{{ row.log.id }}">
                                     {{ row.log.detail }}
                                     {% if row.task_link_in_detail %}<div class="small text-muted audit-detail-meta">

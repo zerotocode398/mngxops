@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, selectinload, sessionmaker
 
+from ngxops.audit.service import prepare_audit_session
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.database.session import session_scope
 from ngxops.logging_setup import log_exception
@@ -1061,6 +1062,7 @@ def create_install_batch(
     user_id: int,
     payload: dict,
     batch_limit: int = 3,
+    trigger_ip: str = "",
 ) -> dict:
     """校验目标与包后在同一事务创建安装批次并启动任务。"""
     node_ids = list(dict.fromkeys(payload.get("node_ids") or ()))
@@ -1070,6 +1072,7 @@ def create_install_batch(
         raise ValueError("单次最多选择 {} 台节点".format(batch_limit))
     with _PACKAGE_BATCH_LOCK:
         with session_scope(session_factory) as session:
+            prepare_audit_session(session, actor_id=user_id, ip=trigger_ip)
             with session.begin():
                 package = session.get(
                     NginxSourcePackage, payload.get("source_package_id")

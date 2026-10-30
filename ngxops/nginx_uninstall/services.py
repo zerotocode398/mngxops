@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, sessionmaker
 
+from ngxops.audit.service import prepare_audit_session
 from ngxops.configs.services import mark_node_bindings_orphaned
 from ngxops.credentials.crypto import CredentialDecryptionError
 from ngxops.database.session import session_scope
@@ -801,6 +802,7 @@ def create_uninstall_batch(
     user_id: int,
     items: List[dict],
     batch_limit: int = _BATCH_LIMIT,
+    trigger_ip: str = "",
 ) -> dict:
     """校验卸载确认数据、创建历史快照并提交每节点任务。"""
     if not items:
@@ -821,6 +823,7 @@ def create_uninstall_batch(
         )
     with _BATCH_LOCK:
         with session_scope(session_factory) as session:
+            prepare_audit_session(session, actor_id=user_id, ip=trigger_ip)
             with session.begin():
                 nodes = session.scalars(
                     select(Node)

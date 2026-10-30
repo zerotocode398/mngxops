@@ -22,6 +22,17 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 PAGE_SIZES = (10, 20, 50)
 AUDIT_TIME_RANGES = {"all", "today", "7d", "30d", "custom"}
 BEIJING_OFFSET = timedelta(hours=8)
+PACKAGE_AUDIT_ACTIONS = frozenset(
+    (
+        "上传源码包",
+        "覆盖源码包",
+        "删除源码包",
+        "上传模块包",
+        "覆盖模块包",
+        "删除模块包",
+    )
+)
+ARCHIVE_DETAIL_MARKER = "；归档文件："
 FAIL_REASON_LABELS = {
     "": "未知",
     "user_not_found": "用户不存在",
@@ -55,6 +66,17 @@ def _search_terms(value: str) -> list:
         for term in (value or "").replace("，", ",").split(",")
         if term.strip()
     ]
+
+
+def _detail_preview(log: AuditLog) -> str:
+    """生成操作日志的简短预览并将归档文件名留给展开详情。"""
+    detail = log.detail or ""
+    preview = detail
+    if log.action in PACKAGE_AUDIT_ACTIONS and ARCHIVE_DETAIL_MARKER in detail:
+        preview = detail.split(ARCHIVE_DETAIL_MARKER, 1)[0]
+    if len(preview) > 80:
+        return preview[:80] + "..."
+    return preview
 
 
 def _date_range(value: str, end_of_day: bool = False) -> Optional[datetime]:
@@ -234,8 +256,9 @@ def audit_log_list(
     rows = []
     for log in page_data["items"]:
         can_view_task = log.task_id in visible_task_ids
+        detail_preview = _detail_preview(log)
         task_link_in_detail = bool(
-            log.task_id and log.detail.startswith("创建任务：")
+            log.task_id and (log.detail or "").startswith("创建任务：")
         )
         rows.append(
             {
@@ -247,7 +270,12 @@ def audit_log_list(
                 ),
                 "can_view_task": can_view_task,
                 "task_link_in_detail": task_link_in_detail,
-                "show_detail_toggle": len(log.detail) > 80 or task_link_in_detail,
+                "detail_preview": detail_preview,
+                "show_detail_toggle": (
+                    len(log.detail or "") > 80
+                    or detail_preview != (log.detail or "")
+                    or task_link_in_detail
+                ),
                 "created_at_display": _format_created_at(log.created_at),
             }
         )

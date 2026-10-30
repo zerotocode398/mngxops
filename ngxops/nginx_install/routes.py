@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ngxops.accounts.models import User
 from ngxops.api.contracts import api_error_responses
+from ngxops.audit.service import request_client_ip
 from ngxops.database.session import get_session
 from ngxops.database.session import session_scope
 from ngxops.lifecycle import source_package_display_name, summarize_lifecycle_runs
@@ -737,6 +738,7 @@ def create_install_tasks(
             user.id,
             values,
             batch_limit=batch_limit,
+            trigger_ip=request_client_ip(request),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

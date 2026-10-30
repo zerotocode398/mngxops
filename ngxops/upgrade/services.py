@@ -1717,6 +1717,7 @@ def create_upgrade_batch(
     user_id: int,
     payload: dict,
     batch_limit: int = 3,
+    trigger_ip: str = "",
 ) -> dict:
     """全量校验并创建同一批次的逐节点升级任务。"""
     try:
@@ -1773,6 +1774,7 @@ def create_upgrade_batch(
 
     with _BATCH_LOCK:
         with session_scope(session_factory) as session:
+            prepare_audit_session(session, actor_id=user_id, ip=trigger_ip)
             package = session.get(NginxSourcePackage, package_id)
             if package is None:
                 raise ValueError("源码包不存在")
@@ -1954,10 +1956,18 @@ def create_upgrade_batch(
     return {"batch_number": batch_number, "task_ids": task_ids}
 
 
-def create_rollback_task(session_factory, executor, encryption_key: bytes, user_id: int, source_task_id: int) -> dict:
+def create_rollback_task(
+    session_factory,
+    executor,
+    encryption_key: bytes,
+    user_id: int,
+    source_task_id: int,
+    trigger_ip: str = "",
+) -> dict:
     """校验历史升级记录并排入异步二进制回滚任务。"""
     with _BATCH_LOCK:
         with session_scope(session_factory) as session:
+            prepare_audit_session(session, actor_id=user_id, ip=trigger_ip)
             source = session.scalars(
                 select(NginxUpgradeRun)
                 .join(Task, Task.id == NginxUpgradeRun.task_id)

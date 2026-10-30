@@ -42,7 +42,7 @@
 
 .audit-detail-full {
     margin-top: 0.35rem;
-    white-space: pre-wrap;
+    white-space: normal;
     overflow-wrap: anywhere;
 }
 
