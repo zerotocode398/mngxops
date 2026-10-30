@@ -51,21 +51,20 @@ python -m ngxops serve --help
 python -m ngxops start --help
 ```
 
-服务选项包括 `--host`、`--port` 和 `--log-level`。前台 `serve` 支持 `--reload` 与 `--no-reload`；后台 `start` 不启用自动重载。CLI 支持 `--home PATH`，必须放在子命令之前。
+服务选项包括 `--host`、`--port` 和 `--log-level`。前台 `serve` 使用 `--reload [true|false]` 控制自动重载；省略参数时沿用配置默认值，单独传 `--reload` 时开启，传 `--reload false` 时关闭。后台 `start` 不启用自动重载。CLI 支持 `--home PATH`，必须放在子命令之前。
 
 ## 初始化与运行
 
 统一设置数据目录，然后执行初始化和服务命令：
 
 ```bash
-export NGXOPS_HOME="$HOME/.local/share/ngxops"
-mkdir -p "$NGXOPS_HOME"
+mkdir -p /opt/app/ngxops
 
-./dist/ngxops-linux-amd64 --home "$NGXOPS_HOME" database init
-./dist/ngxops-linux-amd64 --home "$NGXOPS_HOME" admin create
-./dist/ngxops-linux-amd64 --home "$NGXOPS_HOME" start
-./dist/ngxops-linux-amd64 --home "$NGXOPS_HOME" status
-./dist/ngxops-linux-amd64 --home "$NGXOPS_HOME" stop
+./dist/ngxops-linux-amd64 --home /opt/app/ngxops database init
+./dist/ngxops-linux-amd64 --home /opt/app/ngxops admin create
+./dist/ngxops-linux-amd64 --home /opt/app/ngxops start
+./dist/ngxops-linux-amd64 --home /opt/app/ngxops status
+./dist/ngxops-linux-amd64 --home /opt/app/ngxops stop
 ```
 
 ARM64 主机将可执行文件名替换为 `ngxops-linux-arm64`。`admin create` 和 `admin reset` 通过隐藏提示输入密码并二次确认。全局 `--home` 或 `NGXOPS_HOME` 必须在数据库、管理员、启停命令间保持一致。
@@ -73,8 +72,7 @@ ARM64 主机将可执行文件名替换为 `ngxops-linux-arm64`。`admin create`
 也可使用环境变量管理数据目录：
 
 ```bash
-export NGXOPS_HOME=/var/lib/ngxops
-./dist/ngxops-linux-amd64 database upgrade
+./dist/ngxops-linux-amd64 --home /opt/app/ngxops database upgrade
 ```
 
 需要重设密码时，单独运行 `./dist/ngxops-linux-amd64 admin reset admin`。

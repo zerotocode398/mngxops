@@ -16,7 +16,7 @@ from ngxops.accounts.management import (
 )
 from ngxops.accounts.passwords import validate_new_password
 from ngxops.config import Settings, get_settings
-from ngxops.cli_format import NonNullDefaultsHelpFormatter
+from ngxops.cli_format import NonNullDefaultsHelpFormatter, parse_bool_argument
 from ngxops.database.connection import create_database
 from ngxops.database.migration_runner import upgrade_database
 from ngxops.logging_setup import configure_logging, log_exception
@@ -288,24 +288,17 @@ def _add_server_options(
         help="Uvicorn log level.",
     )
     if allow_reload:
-        reload_options = parser.add_mutually_exclusive_group()
-        reload_options.add_argument(
+        parser.add_argument(
             "--reload",
-            dest="reload",
-            action="store_true",
-            help="Enable automatic reload (configured default: {}).".format(
+            nargs="?",
+            const=True,
+            default=None,
+            type=parse_bool_argument,
+            metavar="true|false",
+            help="Auto reload; bare flag enables it, configured default: {}.".format(
                 "enabled" if settings.reload else "disabled"
             ),
         )
-        reload_options.add_argument(
-            "--no-reload",
-            dest="reload",
-            action="store_false",
-            help="Disable automatic reload (configured default: {}).".format(
-                "enabled" if settings.reload else "disabled"
-            ),
-        )
-        parser.set_defaults(reload=None)
 
 
 def _serve(settings: Settings, arguments: argparse.Namespace) -> int:

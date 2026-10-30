@@ -46,7 +46,7 @@ WorkingDirectory=/opt/ngxops
 Environment=NGXOPS_HOME=/var/lib/ngxops
 Environment=NGXOPS_DEBUG=0
 Environment=NGXOPS_RELOAD=0
-ExecStart=/opt/ngxops/.venv/bin/python -m ngxops serve --host 127.0.0.1 --port 11993 --no-reload
+ExecStart=/opt/ngxops/.venv/bin/python -m ngxops serve --host 127.0.0.1 --port 11993 --reload false
 Restart=on-failure
 RestartSec=5
 
