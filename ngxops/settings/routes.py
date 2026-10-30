@@ -182,7 +182,23 @@ def update_settings_group(
     """以超级管理员身份校验并保存一个分组。"""
     prepare_audit_session(session, user.id, user.username, request_client_ip(request))
     try:
+        initialize_defaults(session)
+        previous_values = {
+            row.key: row.value
+            for row in session.scalars(
+                select(SystemSetting).where(
+                    SystemSetting.group_name == payload.group
+                )
+            ).all()
+        }
         saved = save_group_settings(session, payload.group, payload.values, user.id)
+        current_rows = (
+            session.scalars(
+                select(SystemSetting).where(SystemSetting.key.in_(saved))
+            ).all()
+            if saved
+            else []
+        )
     except LookupError as exc:
         session.rollback()
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -193,12 +209,31 @@ def update_settings_group(
         session.rollback()
         raise
     if saved:
+        current_values = {row.key: row.value for row in current_rows}
+        presets = preset_by_key()
+        changes = []
+        for key in saved:
+            preset = presets.get(key, {})
+            label = preset.get("label", key)
+            unit = preset.get("unit", "")
+            old_value = previous_values.get(key, preset.get("value", ""))
+            new_value = current_values.get(key, "")
+            old_display = " ".join(str(old_value).split()) or "（空）"
+            new_display = " ".join(str(new_value).split()) or "（空）"
+            if unit:
+                old_display = "{} {}".format(old_display, unit)
+                new_display = "{} {}".format(new_display, unit)
+            changes.append(
+                "{}（{}），由 {} 调整为 {}".format(
+                    label, key, old_display, new_display
+                )
+            )
         write_audit_log(
             session,
             "系统设置",
             "更新系统设置",
             "分组「{}」修改 {} 项：{}".format(
-                payload.group, len(saved), ", ".join(saved[:20])
+                payload.group, len(saved), "；".join(changes)
             ),
         )
     session.commit()
