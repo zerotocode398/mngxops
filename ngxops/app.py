@@ -1,7 +1,6 @@
 """创建 FastAPI 应用并配置模板、静态资源和基础错误边界。"""
 
 import logging
-import time
 from contextlib import asynccontextmanager
 from typing import Optional
 from uuid import uuid4
@@ -144,34 +143,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.add_middleware(SessionMiddleware)
 
     @app.middleware("http")
-    async def log_request(request: Request, call_next):
-        """记录页面和 API 请求的身份、路径、结果与耗时。"""
+    async def add_request_id(request: Request, call_next):
+        """为非静态请求生成可关联日志的请求 ID 并返回给客户端。"""
         if request.url.path.startswith("/static/"):
             return await call_next(request)
-        started_at = time.monotonic()
         request_id = uuid4().hex
-        response = None
         with log_context(request_id=request_id):
-            try:
-                response = await call_next(request)
-                response.headers["X-Request-ID"] = request_id
-                return response
-            finally:
-                session = request.scope.get("session")
-                user_id = session.get("user_id", "-") if session is not None else "-"
-                client_ip = request.client.host if request.client is not None else "-"
-                status_code = response.status_code if response is not None else 500
-                with log_context(actor_user_id=user_id):
-                    logging.getLogger("ngxops.access").info(
-                        "request method=%s path=%s status=%s duration_ms=%d "
-                        "user_id=%s client_ip=%s",
-                        request.method,
-                        request.url.path,
-                        status_code,
-                        int((time.monotonic() - started_at) * 1000),
-                        user_id,
-                        client_ip,
-                    )
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
 
     app.mount(
         "/static",

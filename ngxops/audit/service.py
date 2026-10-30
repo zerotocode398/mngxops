@@ -473,18 +473,38 @@ def _queue_runtime_audit(session: Session, values: Dict[str, object]) -> None:
     session.info.setdefault("runtime_audit_entries", []).append(values)
 
 
+def log_business_action(
+    username: str,
+    module: str,
+    action: str,
+    result: str,
+    ip: str,
+    detail: str,
+) -> None:
+    """将业务动作按易读格式写入运行日志。"""
+    logger.info(
+        "business_action user=%s module=%s action=%s result=%s ip=%s detail=%s",
+        username,
+        module,
+        action,
+        result,
+        ip,
+        detail,
+        extra={"ngxops_business_action": True},
+    )
+
+
 def _log_committed_audit(session: Session) -> None:
     """將已提交的業務操作摘要寫入輪轉文件日誌。"""
     entries = session.info.pop("runtime_audit_entries", [])
     for entry in entries:
-        logger.info(
-            "business_action user=%s module=%s action=%s result=%s ip=%s detail=%s",
-            entry.get("username", ""),
-            entry.get("module", ""),
-            entry.get("action", ""),
-            entry.get("result", "success"),
-            entry.get("ip", ""),
-            entry.get("detail", ""),
+        log_business_action(
+            username=str(entry.get("username", "")),
+            module=str(entry.get("module", "")),
+            action=str(entry.get("action", "")),
+            result=str(entry.get("result", "success")),
+            ip=str(entry.get("ip", "")),
+            detail=str(entry.get("detail", "")),
         )
 
 

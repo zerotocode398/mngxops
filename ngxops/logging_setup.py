@@ -65,9 +65,32 @@ class LogContextFilter(logging.Filter):
 class RedactingFormatter(logging.Formatter):
     """在输出前遮蔽常见格式的密钥和认证值。"""
 
+    def __init__(
+        self,
+        fmt: str,
+        datefmt: Optional[str] = None,
+        business_action_fmt: Optional[str] = None,
+        no_request_id_fmt: Optional[str] = None,
+    ) -> None:
+        """初始化通用日志、业务审计和无请求 ID 日志格式。"""
+        super().__init__(fmt, datefmt)
+        self._business_action_formatter = logging.Formatter(
+            business_action_fmt or fmt,
+            datefmt=datefmt,
+        )
+        self._no_request_id_formatter = logging.Formatter(
+            no_request_id_fmt or fmt,
+            datefmt=datefmt,
+        )
+
     def format(self, record: logging.LogRecord) -> str:
         """格式化并遮蔽日志内容中的敏感值。"""
-        rendered = super().format(record)
+        if getattr(record, "ngxops_business_action", False):
+            rendered = self._business_action_formatter.format(record)
+        elif getattr(record, "request_id", "-") == "-":
+            rendered = self._no_request_id_formatter.format(record)
+        else:
+            rendered = super().format(record)
         rendered = _PRIVATE_KEY_PATTERN.sub("[REDACTED PRIVATE KEY]", rendered)
         rendered = _URL_CREDENTIAL_PATTERN.sub(r"\1[REDACTED]@", rendered)
         return _SENSITIVE_VALUE_PATTERN.sub(r"\1\2[REDACTED]", rendered)
@@ -104,6 +127,13 @@ def configure_logging(
         "source_batch=%(source_batch)s actor_user_id=%(actor_user_id)s "
         "%(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        business_action_fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
+        no_request_id_fmt=(
+            "%(asctime)s %(levelname)s %(name)s task_id=%(task_id)s "
+            "node_id=%(node_id)s operation_type=%(operation_type)s "
+            "source_batch=%(source_batch)s actor_user_id=%(actor_user_id)s "
+            "%(message)s"
+        ),
     )
     file_handler = RotatingFileHandler(
         str(log_path),

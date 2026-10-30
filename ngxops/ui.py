@@ -8,10 +8,27 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from ngxops.accounts.models import User
+from ngxops.audit.service import log_business_action, request_client_ip
 from ngxops.security.sessions import consume_permission_alert
 
 
 ALLOWED_SIDEBAR_NAV = frozenset(("nginx_install", "upgrade", "nginx_service", "nginx_uninstall"))
+_PAGE_AUDIT_MODULES = {
+    "accounts": "账户管理",
+    "audit": "操作日志",
+    "configs": "配置管理",
+    "credentials": "凭证管理",
+    "dashboard": "首页",
+    "nginx_install": "Nginx 安装",
+    "nginx_service": "Nginx 启停",
+    "nginx_uninstall": "Nginx 卸载",
+    "nodes": "节点管理",
+    "rbac": "用户管理",
+    "releases": "发布管理",
+    "settings": "系统设置",
+    "tasks": "任务中心",
+    "upgrade": "Nginx 升级",
+}
 
 _NAVIGATION = (
     {
@@ -378,9 +395,57 @@ def render_page(
 ) -> Response:
     """渲染继承全局布局的 Jinja2 页面。"""
     page_context = build_page_context(request, context, user, db_session)
-    return request.app.state.templates.TemplateResponse(
+    response = request.app.state.templates.TemplateResponse(
         name=template_name,
         request=request,
         context=page_context,
         status_code=status_code,
     )
+    if user is not None and request.method == "GET":
+        log_business_action(
+            username=user.username,
+            module=_page_audit_module(request, template_name),
+            action="查看页面",
+            result="success" if status_code < 400 else "failed",
+            ip=request_client_ip(request),
+            detail=_page_audit_detail(request, template_name),
+        )
+    return response
+
+
+def _page_audit_module(request: Request, template_name: str) -> str:
+    """结合页面模板目录和路由确定审计日志使用的业务模块名称。"""
+    parts = template_name.split("/")
+    section = parts[0]
+    filename = parts[-1]
+    path = request.url.path
+    if section == "nodes" and path.startswith("/nodes/groups/"):
+        return "节点分组"
+    if section == "rbac":
+        if path.startswith("/users/roles/") or filename.startswith("role"):
+            return "角色管理"
+        if path.startswith("/users/teams/") or filename.startswith("team"):
+            return "用户组管理"
+    if section == "audit" and (
+        path.startswith("/audit/logins/") or filename == "login_list.html"
+    ):
+        return "登录日志"
+    if section == "accounts":
+        if path.startswith("/password/change/") or filename == "password_change.html":
+            return "账户安全"
+        return "个人中心"
+    return _PAGE_AUDIT_MODULES.get(section, "管理平台")
+
+
+def _page_audit_detail(request: Request, template_name: str) -> str:
+    """从当前页面路由说明生成不含查询参数的审计摘要。"""
+    route = request.scope.get("route")
+    endpoint = getattr(route, "endpoint", None)
+    description = getattr(endpoint, "__doc__", "") or ""
+    first_line = next(
+        (line.strip() for line in description.splitlines() if line.strip()),
+        "",
+    )
+    if not first_line:
+        first_line = "查看{}页面".format(template_name.rsplit("/", 1)[-1])
+    return "查看页面：{}".format(first_line[:300])
